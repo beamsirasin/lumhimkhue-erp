@@ -5,8 +5,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { Printer } from 'lucide-react';
 import { getKdsItems, updateItemStatus } from '@/lib/actions/kds';
 import type { KdsItem } from '@/lib/actions/kds';
+import { print as printKitchen } from '@/lib/printer/service';
+import type { KitchenOrderData } from '@/lib/printer/types';
 
 type Station = KdsItem['station'];
 
@@ -194,6 +197,33 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
                     className={`mt-3 w-full rounded-md py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${cfg.actionClass}`}
                   >
                     {cfg.actionLabel}
+                  </button>
+
+                  {/* Print kitchen slip */}
+                  <button
+                    type="button"
+                    aria-label="พิมพ์สลิปครัว"
+                    onClick={() => {
+                      const order: KitchenOrderData = {
+                        tableNumber: item.tableNumber,
+                        station: item.station,
+                        orderedAt: new Date(item.orderedAt).toLocaleString('th-TH', {
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                          timeZone: 'Asia/Bangkok',
+                        }),
+                        items: [{
+                          name: item.menuItemName,
+                          quantity: item.quantity,
+                          notes: item.notes ?? undefined,
+                        }],
+                      };
+                      void printKitchen({ type: 'kitchen_order', order });
+                    }}
+                    className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-md border border-current py-1 text-xs text-slate-500 opacity-60 hover:opacity-100 transition-opacity"
+                  >
+                    <Printer className="size-3" />
+                    พิมพ์สลิป
                   </button>
                 </div>
               );

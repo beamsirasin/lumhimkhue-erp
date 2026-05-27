@@ -18,6 +18,7 @@ import {
   Settings,
   Menu,
   LogOut,
+  Printer,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { logoutAction } from '@/lib/actions/auth';
@@ -49,25 +50,28 @@ const NAV: Record<Role, NavSection[]> = {
         { href: '/users',     label: 'พนักงาน',      Icon: Users },
         { href: '/reports',   label: 'รายงาน',       Icon: BarChart3 },
         { href: '/settings',  label: 'ตั้งค่า',       Icon: Settings },
+        { href: '/printers',  label: 'เครื่องพิมพ์',   Icon: Printer },
       ],
     },
   ],
   cashier: [
     {
       items: [
-        { href: '/pos',    label: 'POS',   Icon: ShoppingCart },
-        { href: '/kds',    label: 'ครัว',  Icon: ChefHat },
-        { href: '/tables', label: 'โต๊ะ',  Icon: Grid3X3 },
-        { href: '/queue',  label: 'คิว',   Icon: UsersRound },
+        { href: '/pos',      label: 'POS',          Icon: ShoppingCart },
+        { href: '/kds',      label: 'ครัว',          Icon: ChefHat },
+        { href: '/tables',   label: 'โต๊ะ',           Icon: Grid3X3 },
+        { href: '/queue',    label: 'คิว',            Icon: UsersRound },
+        { href: '/printers', label: 'เครื่องพิมพ์',   Icon: Printer },
       ],
     },
   ],
   kitchen: [
     {
       items: [
-        { href: '/kds',    label: 'ครัว', Icon: ChefHat },
-        { href: '/tables', label: 'โต๊ะ', Icon: Grid3X3 },
-        { href: '/queue',  label: 'คิว',  Icon: UsersRound },
+        { href: '/kds',      label: 'ครัว',          Icon: ChefHat },
+        { href: '/tables',   label: 'โต๊ะ',           Icon: Grid3X3 },
+        { href: '/queue',    label: 'คิว',            Icon: UsersRound },
+        { href: '/printers', label: 'เครื่องพิมพ์',   Icon: Printer },
       ],
     },
   ],
@@ -86,6 +90,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/users':     'พนักงาน',
   '/reports':   'รายงาน',
   '/settings':  'ตั้งค่า',
+  '/printers':  'เครื่องพิมพ์',
 };
 
 const ROLE_LABEL: Record<Role, string> = {

@@ -56,10 +56,22 @@ export async function openSession(input: unknown) {
       .set({ status: 'occupied' })
       .where(eq(tables.id, tableId));
 
+    const thLocale: Intl.DateTimeFormatOptions = {
+      dateStyle: 'short',
+      timeStyle: 'short',
+      timeZone: 'Asia/Bangkok',
+    };
+
     revalidatePath('/tables');
     return {
       ok: true as const,
-      data: { sessionToken: newSession.sessionToken, tableQrToken: table.qrToken },
+      data: {
+        sessionToken: newSession.sessionToken,
+        tableQrToken: table.qrToken,
+        startedAt: startedAt.toLocaleString('th-TH', thLocale),
+        endsAt: endsAt.toLocaleString('th-TH', thLocale),
+        durationMinutes: pkg.durationMinutes,
+      },
     };
   } catch (e) {
     console.error('[openSession]', e);

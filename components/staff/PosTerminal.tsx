@@ -11,6 +11,10 @@ import {
   processPayment,
 } from '@/lib/actions/pos';
 import type { PosSession, PosSessionDetail } from '@/lib/actions/pos';
+import { useSession } from 'next-auth/react';
+import { Printer, CheckCircle2 } from 'lucide-react';
+import { print as printReceipt } from '@/lib/printer/service';
+import type { ReceiptData } from '@/lib/printer/types';
 
 const METHOD_LABEL: Record<string, string> = {
   cash: 'เงินสด',
@@ -211,6 +215,11 @@ function PaymentPanel({
   const [wasteCharge, setWasteCharge] = useState('0');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [paid, setPaid] = useState(false);
+  const [lastReceipt, setLastReceipt] = useState<ReceiptData | null>(null);
+
+  const { data: authData } = useSession();
+  const cashierName = authData?.user?.name ?? 'พนักงาน';
 
   const discountNum = Math.max(0, Number(discount) || 0);
   const wasteNum = Math.max(0, Number(wasteCharge) || 0);
@@ -240,13 +249,101 @@ function PaymentPanel({
       toast.error(result.error);
       return;
     }
-    toast.success(
-      `ชำระเงินสำเร็จ ฿${result.data.total.toLocaleString('th-TH')}` +
-        (method === 'cash' && result.data.changeAmount > 0
-          ? ` · เงินทอน ฿${result.data.changeAmount.toLocaleString('th-TH')}`
-          : ''),
+
+    // Build receipt data
+    const receiptItems: ReceiptData['items'] = [];
+    if (session.adults > 0)
+      receiptItems.push({
+        name: `${session.package.name} (ผู้ใหญ่)`,
+        quantity: session.adults,
+        total: Number(session.package.priceAdult) * session.adults,
+      });
+    if (session.children > 0)
+      receiptItems.push({
+        name: `${session.package.name} (เด็ก)`,
+        quantity: session.children,
+        total: Number(session.package.priceChild) * session.children,
+      });
+    if (session.seniors > 0)
+      receiptItems.push({
+        name: `${session.package.name} (ผู้สูงอายุ)`,
+        quantity: session.seniors,
+        total: Number(session.package.priceSenior) * session.seniors,
+      });
+    for (const item of allOrderItems.filter((i) => !i.menuItem.isBuffet)) {
+      receiptItems.push({
+        name: item.menuItem.name,
+        quantity: item.quantity,
+        total: Number(item.menuItem.extraPrice) * item.quantity,
+      });
+    }
+
+    const receipt: ReceiptData = {
+      shopName: 'ร้านชาบู',
+      tableNumber: session.table.number,
+      cashierName,
+      paidAt: new Date().toLocaleString('th-TH', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+        timeZone: 'Asia/Bangkok',
+      }),
+      items: receiptItems,
+      subtotal: totals.subtotal,
+      discount: discountNum,
+      serviceCharge: 0,
+      total: result.data.total,
+      receivedAmount: method === 'cash' ? receivedNum : result.data.total,
+      changeAmount: result.data.changeAmount,
+      paymentMethod: METHOD_LABEL[method],
+      sessionId: session.id,
+    };
+
+    setLastReceipt(receipt);
+    setPaid(true);
+    await printReceipt({ type: 'receipt', payment: receipt });
+  }
+
+  /* ── Success screen ───────────────────────────────────────── */
+  if (paid && lastReceipt) {
+    return (
+      <div className="mx-auto max-w-2xl p-6 space-y-6">
+        {/* Success card */}
+        <div className="rounded-xl border border-green-200 bg-green-50 p-8 text-center space-y-3">
+          <CheckCircle2 className="mx-auto size-12 text-green-500" />
+          <h2 className="text-xl font-bold text-green-800">ชำระเงินสำเร็จ</h2>
+          <p className="text-3xl font-bold tabular-nums text-slate-900">
+            ฿{lastReceipt.total.toLocaleString('th-TH')}
+          </p>
+          {lastReceipt.changeAmount > 0 && (
+            <p className="text-base text-slate-600">
+              เงินทอน ฿{lastReceipt.changeAmount.toLocaleString('th-TH')}
+            </p>
+          )}
+          <p className="text-sm text-slate-500">
+            โต๊ะ {lastReceipt.tableNumber} · ชำระด้วย {lastReceipt.paymentMethod}
+          </p>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => void printReceipt({ type: 'receipt', payment: lastReceipt })}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-300 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <Printer className="size-4" />
+            พิมพ์ใบเสร็จซ้ำ
+          </button>
+          <button
+            type="button"
+            onClick={onPaid}
+            className="flex-1 rounded-lg bg-slate-800 py-3 text-sm font-semibold text-white hover:bg-slate-700"
+          >
+            เสร็จสิ้น
+          </button>
+        </div>
+      </div>
     );
-    onPaid();
   }
 
   return (

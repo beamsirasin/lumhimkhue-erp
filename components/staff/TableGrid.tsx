@@ -21,8 +21,11 @@ import {
   SelectItem,
   SelectTrigger,
 } from '@/components/ui/select';
+import { Printer } from 'lucide-react';
 import { TableCard } from '@/components/staff/TableCard';
 import { getTablesWithSessions, type TableData, type PackageData } from '@/lib/actions/tables';
+import { print as printTableQr } from '@/lib/printer/service';
+import type { TableQrData } from '@/lib/printer/types';
 import {
   openSession,
   closeSession,
@@ -61,7 +64,7 @@ interface OpenTableFormProps {
   tableId: string;
   tableNumber: number;
   packages: PackageData[];
-  onSuccess: (data: { sessionToken: string; tableQrToken: string }) => void;
+  onSuccess: (data: { sessionToken: string; tableQrToken: string; startedAt: string; endsAt: string; durationMinutes: number }) => void;
   onClose: () => void;
 }
 
@@ -185,10 +188,11 @@ interface SessionQrDialogProps {
   open: boolean;
   tableNumber: number;
   sessionUrl: string;
+  tableQrData: TableQrData | null;
   onClose: () => void;
 }
 
-function SessionQrDialog({ open, tableNumber, sessionUrl, onClose }: SessionQrDialogProps) {
+function SessionQrDialog({ open, tableNumber, sessionUrl, tableQrData, onClose }: SessionQrDialogProps) {
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="sm:max-w-sm">
@@ -216,6 +220,15 @@ function SessionQrDialog({ open, tableNumber, sessionUrl, onClose }: SessionQrDi
           >
             คัดลอก URL
           </Button>
+          {tableQrData && (
+            <Button
+              variant="outline"
+              onClick={() => void printTableQr({ type: 'table_qr', table: tableQrData })}
+            >
+              <Printer className="mr-1.5 size-4" />
+              พิมพ์ QR
+            </Button>
+          )}
           <Button onClick={onClose}>ปิด</Button>
         </DialogFooter>
       </DialogContent>
@@ -230,7 +243,7 @@ interface TableActionDialogProps {
   table: TableData | null;
   packages: PackageData[];
   onClose: () => void;
-  onSessionCreated: (data: { sessionToken: string; tableQrToken: string; tableNumber: number }) => void;
+  onSessionCreated: (data: { sessionToken: string; tableQrToken: string; tableNumber: number; startedAt: string; endsAt: string; durationMinutes: number }) => void;
 }
 
 function TableActionDialog({
@@ -406,6 +419,9 @@ export function TableGrid({ initialTables, packages }: TableGridProps) {
     sessionToken: string;
     tableQrToken: string;
     tableNumber: number;
+    startedAt: string;
+    endsAt: string;
+    durationMinutes: number;
   } | null>(null);
 
   const { data: tables = initialTables } = useQuery({
@@ -432,6 +448,15 @@ export function TableGrid({ initialTables, packages }: TableGridProps) {
   const sessionUrl = qrData
     ? `${appUrl}/t/${qrData.tableQrToken}/s/${qrData.sessionToken}`
     : '';
+  const tableQrData: TableQrData | null = qrData
+    ? {
+        tableNumber: qrData.tableNumber,
+        url: sessionUrl,
+        startedAt: qrData.startedAt,
+        endsAt: qrData.endsAt,
+        durationMinutes: qrData.durationMinutes,
+      }
+    : null;
 
   return (
     <>
@@ -486,6 +511,7 @@ export function TableGrid({ initialTables, packages }: TableGridProps) {
         open={!!qrData}
         tableNumber={qrData?.tableNumber ?? 0}
         sessionUrl={sessionUrl}
+        tableQrData={tableQrData}
         onClose={() => setQrData(null)}
       />
     </>

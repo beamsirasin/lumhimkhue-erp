@@ -16,6 +16,9 @@ import {
 } from '@/lib/actions/queue';
 import { addQueueSchema, type AddQueueInput } from '@/lib/validations/queue';
 import type { QueueEntry } from '@/lib/actions/queue';
+import { Printer } from 'lucide-react';
+import { print as printQueueQr } from '@/lib/printer/service';
+import type { QueueQrData } from '@/lib/printer/types';
 
 interface QueueBoardProps {
   initialEntries: QueueEntry[];
@@ -26,6 +29,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
   const [addedToken, setAddedToken] = useState<{
     queueNumber: string;
     publicToken: string;
+    queueQrData: QueueQrData;
   } | null>(null);
 
   const queryClient = useQueryClient();
@@ -83,11 +87,31 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
       toast.error(result.error);
       return;
     }
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
+    const queueQrData: QueueQrData = {
+      queueNumber: result.data.queueNumber,
+      partySize: data.partySize,
+      url: `${appUrl}/q/${result.data.publicToken}`,
+      createdAt: new Date().toLocaleString('th-TH', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+        timeZone: 'Asia/Bangkok',
+      }),
+    };
+
     reset();
     setShowForm(false);
-    setAddedToken({ queueNumber: result.data.queueNumber, publicToken: result.data.publicToken });
+    setAddedToken({
+      queueNumber: result.data.queueNumber,
+      publicToken: result.data.publicToken,
+      queueQrData,
+    });
     invalidate();
     toast.success(`เพิ่มคิว ${result.data.queueNumber} สำเร็จ`);
+
+    // Auto-print queue ticket
+    void printQueueQr({ type: 'queue_qr', queueEntry: queueQrData });
   }
 
   return (
@@ -120,14 +144,25 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
               /q/{addedToken.publicToken}
             </p>
           </div>
-          <button
-            type="button"
-            aria-label="ปิด"
-            onClick={() => setAddedToken(null)}
-            className="text-green-600 hover:text-green-800 text-lg leading-none"
-          >
-            ×
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="พิมพ์ตั๋วซ้ำ"
+              onClick={() => void printQueueQr({ type: 'queue_qr', queueEntry: addedToken.queueQrData })}
+              className="flex items-center gap-1.5 rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50"
+            >
+              <Printer className="size-3.5" />
+              พิมพ์ตั๋ว
+            </button>
+            <button
+              type="button"
+              aria-label="ปิด"
+              onClick={() => setAddedToken(null)}
+              className="text-green-600 hover:text-green-800 text-lg leading-none"
+            >
+              ×
+            </button>
+          </div>
         </div>
       )}
 
