@@ -52,7 +52,6 @@ import {
 import {
   openSession,
   closeSession,
-  requestBillFromTable,
   moveSession,
 } from '@/lib/actions/sessions';
 import { createReservation, cancelReservation } from '@/lib/actions/reservations';
@@ -64,21 +63,20 @@ import { PricingTile } from '@/components/staff/PricingTile';
 
 /* ─── Status config ────────────────────────────────────────────────── */
 
-type VisualStatus = 'available' | 'occupied' | 'closing' | 'reserved' | 'linked';
+type VisualStatus = 'available' | 'occupied' | 'reserved' | 'linked';
 
 const STATUS_CONFIG: Record<VisualStatus, {
   bg: string; border: string; text: string; label: string; dot: string;
 }> = {
   available: { bg: 'bg-green-100',  border: 'border-green-400',  text: 'text-green-800',  label: 'ว่าง',      dot: 'bg-green-500' },
   occupied:  { bg: 'bg-red-100',    border: 'border-red-400',    text: 'text-red-800',    label: 'มีลูกค้า',  dot: 'bg-red-500' },
-  closing:   { bg: 'bg-amber-100',  border: 'border-amber-400',  text: 'text-amber-800',  label: 'รอบิล',     dot: 'bg-amber-500' },
   reserved:  { bg: 'bg-blue-100',   border: 'border-blue-400',   text: 'text-blue-800',   label: 'จอง',       dot: 'bg-blue-500' },
   linked:    { bg: 'bg-violet-100', border: 'border-violet-400', text: 'text-violet-800', label: 'เชื่อมโยง', dot: 'bg-violet-500' },
 };
 
 function getVisualStatus(table: TableData): VisualStatus {
   if (table.status === 'linked') return 'linked';
-  if (table.activeSession?.status === 'closing') return 'closing';
+  if (table.activeSession) return 'occupied';
   return table.status as VisualStatus;
 }
 
@@ -574,15 +572,6 @@ function TableSheet({
   const resv = table.activeReservation;
   const visualStatus = getVisualStatus(table);
 
-  const handleRequestBill = async () => {
-    if (!sess) return;
-    setBusy(true);
-    const r = await requestBillFromTable({ sessionId: sess.id });
-    setBusy(false);
-    if (r.ok) { toast.success('แจ้งรับบิลแล้ว'); onClose(); onRefetch(); }
-    else toast.error(r.error);
-  };
-
   const handleForceClose = async () => {
     if (!sess) return;
     if (!confirm(`บังคับปิดโต๊ะ ${table.label}?`)) return;
@@ -649,15 +638,9 @@ function TableSheet({
             </>
           )}
 
-          {/* ── OCCUPIED / CLOSING ── */}
-          {(visualStatus === 'occupied' || visualStatus === 'closing') && sess && (
+          {/* ── OCCUPIED ── */}
+          {visualStatus === 'occupied' && sess && (
             <>
-              {visualStatus === 'closing' && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                  <p className="text-xs font-medium text-amber-800">แจ้งรับบิลแล้ว — รอแคชเชียร์</p>
-                </div>
-              )}
-
               {/* Session info */}
               <div className="rounded-xl bg-slate-50 p-3 space-y-2 text-sm">
                 <div className="flex justify-between">
@@ -689,16 +672,6 @@ function TableSheet({
               </div>
 
               <div className="space-y-2">
-                {visualStatus === 'occupied' && (
-                  <button
-                    type="button"
-                    onClick={handleRequestBill}
-                    disabled={busy}
-                    className="w-full rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50 transition-colors"
-                  >
-                    เรียกเก็บเงิน
-                  </button>
-                )}
                 <button
                   type="button"
                   onClick={() => { onClose(); onMoveTable(sess.id, table.label); }}
@@ -1091,7 +1064,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
   const canvasH = Math.max(600, ...tables.map((t) => t.positionY + t.height + 40));
 
   const counts = tables.reduce<Record<string, number>>((acc, t) => {
-    const key = t.activeSession?.status === 'closing' ? 'closing' : t.status;
+    const key = t.activeSession ? 'occupied' : t.status;
     acc[key] = (acc[key] ?? 0) + 1;
     return acc;
   }, {});
@@ -1105,7 +1078,6 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
           <div className="hidden sm:flex items-center gap-3 text-xs text-slate-500">
             <LegendDot color="bg-green-500" label={`ว่าง (${counts.available ?? 0})`} />
             <LegendDot color="bg-red-500" label={`มีลูกค้า (${counts.occupied ?? 0})`} />
-            <LegendDot color="bg-amber-500" label={`รอบิล (${counts.closing ?? 0})`} />
             <LegendDot color="bg-blue-500" label={`จอง (${counts.reserved ?? 0})`} />
             {(counts.linked ?? 0) > 0 && <LegendDot color="bg-violet-500" label={`เชื่อมโยง (${counts.linked})`} />}
           </div>
