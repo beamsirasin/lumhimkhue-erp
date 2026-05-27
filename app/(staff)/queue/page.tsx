@@ -1,10 +1,12 @@
+import { redirect } from 'next/navigation';
+import { QueueBoard } from '@/components/staff/QueueBoard';
+import { getQueueList } from '@/lib/actions/queue';
+
 export const metadata = { title: 'จัดการคิว — ร้านชาบู ERP' };
 
-export default function QueuePage() {
-  return (
-    <div className="p-6">
-      <h1 className="text-xl font-medium text-slate-900">จัดการคิว</h1>
-      <p className="mt-1 text-sm text-slate-500">Phase 6 — อยู่ระหว่างพัฒนา</p>
-    </div>
-  );
+export default async function QueuePage() {
+  const result = await getQueueList();
+  if (!result.ok) redirect('/login');
+
+  return <QueueBoard initialEntries={result.data} />;
 }
