@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
-import { PricingPage } from '@/components/admin/PricingPage';
+import { PricingTilesPage } from '@/components/admin/PricingTilesPage';
 import { getPricingTiles } from '@/lib/actions/pricing';
 
 export const metadata = { title: 'Pricing Tiles — ร้านชาบู ERP' };
@@ -11,8 +11,8 @@ export default async function PricingTilesRoute() {
   if (!session?.user) redirect('/login');
   if (!can(session.user.role, 'pricing_tile:edit')) redirect('/');
 
-  const result = await getPricingTiles('guest');
+  const result = await getPricingTiles();
   if (!result.ok) redirect('/login');
 
-  return <PricingPage initialTiers={result.data} />;
+  return <PricingTilesPage initialData={result.data} />;
 }
