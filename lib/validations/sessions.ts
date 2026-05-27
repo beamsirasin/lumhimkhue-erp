@@ -1,17 +1,23 @@
 import { z } from 'zod';
 
-export const openSessionSchema = z.object({
-  tableId: z.string().uuid(),
-  packageId: z.string().uuid(),
-  adults: z.number().int().min(1, 'ต้องมีผู้ใหญ่อย่างน้อย 1 คน'),
-  children: z.number().int().min(0),
-  seniors: z.number().int().min(0),
+export const guestRowSchema = z.object({
+  pricingTierId: z.string().uuid(),
+  quantity: z.number().int().min(0),
 });
 
-export const extendSessionSchema = z.object({
+export const openSessionSchema = z.object({
+  tableId: z.string().uuid(),
+  guests: z
+    .array(guestRowSchema)
+    .refine((arr) => arr.some((g) => g.quantity > 0), {
+      message: 'ต้องมีผู้เข้าใช้บริการอย่างน้อย 1 คน',
+    }),
+  notes: z.string().max(500).optional(),
+});
+
+export const closeSessionSchema = z.object({
   sessionId: z.string().uuid(),
-  minutes: z.number().int().min(1).max(120),
 });
 
 export type OpenSessionInput = z.infer<typeof openSessionSchema>;
-export type ExtendSessionInput = z.infer<typeof extendSessionSchema>;
+export type CloseSessionInput = z.infer<typeof closeSessionSchema>;

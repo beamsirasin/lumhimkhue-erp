@@ -12,13 +12,14 @@ import {
   UsersRound,
   Grid3X3,
   UtensilsCrossed,
-  Package,
+  Tag,
   Users,
   BarChart3,
   Settings,
   Menu,
   LogOut,
   Printer,
+  History,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { logoutAction } from '@/lib/actions/auth';
@@ -35,33 +36,35 @@ const NAV: Record<Role, NavSection[]> = {
   owner: [
     {
       items: [
-        { href: '/dashboard', label: 'แดชบอร์ด', Icon: LayoutDashboard },
-        { href: '/pos',       label: 'POS',        Icon: ShoppingCart },
-        { href: '/kds',       label: 'ครัว',        Icon: ChefHat },
-        { href: '/queue',     label: 'คิว',         Icon: UsersRound },
-        { href: '/tables',    label: 'โต๊ะ',         Icon: Grid3X3 },
+        { href: '/dashboard',       label: 'แดชบอร์ด',           Icon: LayoutDashboard },
+        { href: '/pos',             label: 'POS',                Icon: ShoppingCart },
+        { href: '/kds',             label: 'ครัว',                Icon: ChefHat },
+        { href: '/queue',           label: 'คิว',                 Icon: UsersRound },
+        { href: '/tables',          label: 'โต๊ะ',                Icon: Grid3X3 },
+        { href: '/tables/history',  label: 'ประวัติ',             Icon: History },
       ],
     },
     {
       heading: 'จัดการ',
       items: [
-        { href: '/menu',      label: 'เมนูอาหาร',   Icon: UtensilsCrossed },
-        { href: '/packages',  label: 'แพ็กเกจ',      Icon: Package },
-        { href: '/users',     label: 'พนักงาน',      Icon: Users },
-        { href: '/reports',   label: 'รายงาน',       Icon: BarChart3 },
-        { href: '/settings',  label: 'ตั้งค่า',       Icon: Settings },
-        { href: '/printers',  label: 'เครื่องพิมพ์',   Icon: Printer },
+        { href: '/menu',     label: 'เมนูอาหาร',          Icon: UtensilsCrossed },
+        { href: '/pricing',  label: 'ราคาตามประเภทคน',     Icon: Tag },
+        { href: '/users',    label: 'พนักงาน',              Icon: Users },
+        { href: '/reports',  label: 'รายงาน',               Icon: BarChart3 },
+        { href: '/settings', label: 'ตั้งค่า',              Icon: Settings },
+        { href: '/printers', label: 'เครื่องพิมพ์',         Icon: Printer },
       ],
     },
   ],
   cashier: [
     {
       items: [
-        { href: '/pos',      label: 'POS',          Icon: ShoppingCart },
-        { href: '/kds',      label: 'ครัว',          Icon: ChefHat },
-        { href: '/tables',   label: 'โต๊ะ',           Icon: Grid3X3 },
-        { href: '/queue',    label: 'คิว',            Icon: UsersRound },
-        { href: '/printers', label: 'เครื่องพิมพ์',   Icon: Printer },
+        { href: '/pos',            label: 'POS',          Icon: ShoppingCart },
+        { href: '/kds',            label: 'ครัว',          Icon: ChefHat },
+        { href: '/tables',         label: 'โต๊ะ',           Icon: Grid3X3 },
+        { href: '/tables/history', label: 'ประวัติ',       Icon: History },
+        { href: '/queue',          label: 'คิว',            Icon: UsersRound },
+        { href: '/printers',       label: 'เครื่องพิมพ์',   Icon: Printer },
       ],
     },
   ],
@@ -80,17 +83,18 @@ const NAV: Record<Role, NavSection[]> = {
 /* ─── Page title map ─────────────────────────────────────────── */
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard': 'แดชบอร์ด',
-  '/pos':       'POS / แคชเชียร์',
-  '/kds':       'ครัว (KDS)',
-  '/queue':     'จัดการคิว',
-  '/tables':    'จัดการโต๊ะ',
-  '/menu':      'เมนูอาหาร',
-  '/packages':  'แพ็กเกจ',
-  '/users':     'พนักงาน',
-  '/reports':   'รายงาน',
-  '/settings':  'ตั้งค่า',
-  '/printers':  'เครื่องพิมพ์',
+  '/dashboard':      'แดชบอร์ด',
+  '/pos':            'POS / แคชเชียร์',
+  '/kds':            'ครัว (KDS)',
+  '/queue':          'จัดการคิว',
+  '/tables':         'จัดการโต๊ะ',
+  '/tables/history': 'ประวัติ session',
+  '/menu':           'เมนูอาหาร',
+  '/pricing':        'ราคาตามประเภทคน',
+  '/users':          'พนักงาน',
+  '/reports':        'รายงาน',
+  '/settings':       'ตั้งค่า',
+  '/printers':       'เครื่องพิมพ์',
 };
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -101,9 +105,9 @@ const ROLE_LABEL: Record<Role, string> = {
 
 function getPageTitle(pathname: string): string {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
-  const key = Object.keys(PAGE_TITLES).find(
-    (k) => k.length > 1 && pathname.startsWith(k + '/'),
-  );
+  const key = Object.keys(PAGE_TITLES)
+    .sort((a, b) => b.length - a.length) // longest match first
+    .find((k) => k.length > 1 && pathname.startsWith(k + '/'));
   return key ? PAGE_TITLES[key] : '';
 }
 
@@ -130,14 +134,20 @@ function NavItems({
           <div className="space-y-0.5">
             {section.items.map(({ href, label, Icon }) => {
               const isActive =
-                pathname === href || pathname.startsWith(href + '/');
+                pathname === href || (href.length > 1 && pathname.startsWith(href + '/') && href !== '/tables');
+              // Special: /tables/history is active only at that exact path
+              const isActiveExact = href === '/tables/history'
+                ? pathname === '/tables/history' || pathname.startsWith('/tables/history/')
+                : href === '/tables'
+                  ? pathname === '/tables'
+                  : isActive;
               return (
                 <Link
                   key={href}
                   href={href}
                   onClick={onNavigate}
                   className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                    isActive
+                    isActiveExact
                       ? 'bg-slate-800 text-white'
                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                   }`}

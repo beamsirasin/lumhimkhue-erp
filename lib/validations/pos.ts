@@ -5,7 +5,6 @@ export const processPaymentSchema = z.object({
   paymentMethod: z.enum(['cash', 'qr_promptpay', 'transfer', 'card']),
   receivedAmount: z.number().min(0),
   discount: z.number().min(0).default(0),
-  wasteCharge: z.number().min(0).default(0),
   notes: z.string().max(500).optional(),
 });
 

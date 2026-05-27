@@ -24,7 +24,7 @@ export async function getKdsItems() {
         status: orderItems.status,
         orderedAt: orders.createdAt,
         menuItemName: menuItems.name,
-        tableNumber: tables.number,
+        tableNumber: tables.label,
       })
       .from(orderItems)
       .innerJoin(orders, eq(orderItems.orderId, orders.id))

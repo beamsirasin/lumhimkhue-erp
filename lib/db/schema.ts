@@ -9,7 +9,6 @@ import {
   text,
   timestamp,
   jsonb,
-  unique,
   index,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
@@ -21,9 +20,10 @@ export const roleEnum = pgEnum('role', ['owner', 'cashier', 'kitchen']);
 export const tableStatusEnum = pgEnum('table_status', [
   'available',
   'occupied',
-  'cleaning',
   'reserved',
 ]);
+
+export const tableShapeEnum = pgEnum('table_shape', ['square', 'rectangle']);
 
 export const sessionStatusEnum = pgEnum('session_status', [
   'active',
@@ -88,24 +88,40 @@ export const tables = pgTable(
   'tables',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    number: integer('number').notNull().unique(),
+    /** Display label, e.g. "1", "VIP-A" — replaces old integer number */
+    label: varchar('label', { length: 50 }).notNull(),
     capacity: integer('capacity').notNull(),
     zone: varchar('zone', { length: 100 }).notNull().default('ทั่วไป'),
     status: tableStatusEnum('status').notNull().default('available'),
     qrToken: varchar('qr_token', { length: 100 }).notNull().unique(),
+    /** Floor plan position (px) */
+    positionX: integer('position_x').notNull().default(0),
+    positionY: integer('position_y').notNull().default(0),
+    /** Floor plan size (px, snapped to 20px grid) */
+    width: integer('width').notNull().default(80),
+    height: integer('height').notNull().default(80),
+    shape: tableShapeEnum('shape').notNull().default('square'),
+    /** Soft-delete: set when table has session history and is "removed" from floor plan */
+    deletedAt: timestamp('deleted_at'),
   },
   (t) => [index('tables_qr_token_idx').on(t.qrToken)],
 );
 
-export const packages = pgTable('packages', {
+/**
+ * Pricing tiers replace the old packages table.
+ * Each tier has a code (for logic), a Thai display name, and a price (VAT-inclusive).
+ */
+export const pricingTiers = pgTable('pricing_tiers', {
   id: uuid('id').primaryKey().defaultRandom(),
+  /** Unique machine code: 'adult', 'child', 'toddler', 'staff', 'staff_guest_first' */
+  code: varchar('code', { length: 50 }).notNull().unique(),
   name: varchar('name', { length: 255 }).notNull(),
-  priceAdult: numeric('price_adult', { precision: 10, scale: 2 }).notNull(),
-  priceChild: numeric('price_child', { precision: 10, scale: 2 }).notNull(),
-  priceSenior: numeric('price_senior', { precision: 10, scale: 2 }).notNull(),
-  durationMinutes: integer('duration_minutes').notNull(),
-  description: text('description'),
+  price: numeric('price', { precision: 10, scale: 2 }).notNull(),
+  vatIncluded: boolean('vat_included').notNull().default(true),
+  vatRate: numeric('vat_rate', { precision: 5, scale: 2 }).notNull().default('7.00'),
+  sortOrder: integer('sort_order').notNull().default(0),
   isActive: boolean('is_active').notNull().default(true),
+  notes: text('notes'),
 });
 
 export const sessions = pgTable(
@@ -115,23 +131,37 @@ export const sessions = pgTable(
     tableId: uuid('table_id')
       .notNull()
       .references(() => tables.id),
-    packageId: uuid('package_id')
-      .notNull()
-      .references(() => packages.id),
-    adults: integer('adults').notNull().default(0),
-    children: integer('children').notNull().default(0),
-    seniors: integer('seniors').notNull().default(0),
     startedAt: timestamp('started_at').notNull().defaultNow(),
-    endsAt: timestamp('ends_at').notNull(),
     closedAt: timestamp('closed_at'),
     status: sessionStatusEnum('status').notNull().default('active'),
     sessionToken: varchar('session_token', { length: 24 }).notNull().unique(),
+    notes: text('notes'),
   },
   (t) => [
     index('sessions_status_idx').on(t.status),
     index('sessions_session_token_idx').on(t.sessionToken),
     index('sessions_table_id_idx').on(t.tableId),
+    index('sessions_closed_at_idx').on(t.closedAt),
   ],
+);
+
+/**
+ * Each row = one pricing tier × quantity for a session.
+ * Replaces the old adults/children/seniors integer columns on sessions.
+ */
+export const sessionGuests = pgTable(
+  'session_guests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => sessions.id),
+    pricingTierId: uuid('pricing_tier_id')
+      .notNull()
+      .references(() => pricingTiers.id),
+    quantity: integer('quantity').notNull(),
+  },
+  (t) => [index('session_guests_session_id_idx').on(t.sessionId)],
 );
 
 export const categories = pgTable('categories', {
@@ -229,9 +259,6 @@ export const payments = pgTable('payments', {
   discount: numeric('discount', { precision: 10, scale: 2 })
     .notNull()
     .default('0'),
-  wasteCharge: numeric('waste_charge', { precision: 10, scale: 2 })
-    .notNull()
-    .default('0'),
   total: numeric('total', { precision: 10, scale: 2 }).notNull(),
   paymentMethod: paymentMethodEnum('payment_method').notNull(),
   receivedAmount: numeric('received_amount', {
@@ -273,20 +300,28 @@ export const tablesRelations = relations(tables, ({ many }) => ({
   sessions: many(sessions),
 }));
 
-export const packagesRelations = relations(packages, ({ many }) => ({
-  sessions: many(sessions),
+export const pricingTiersRelations = relations(pricingTiers, ({ many }) => ({
+  sessionGuests: many(sessionGuests),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one, many }) => ({
   table: one(tables, { fields: [sessions.tableId], references: [tables.id] }),
-  package: one(packages, {
-    fields: [sessions.packageId],
-    references: [packages.id],
-  }),
+  guests: many(sessionGuests),
   orders: many(orders),
   payment: one(payments, {
     fields: [sessions.id],
     references: [payments.sessionId],
+  }),
+}));
+
+export const sessionGuestsRelations = relations(sessionGuests, ({ one }) => ({
+  session: one(sessions, {
+    fields: [sessionGuests.sessionId],
+    references: [sessions.id],
+  }),
+  pricingTier: one(pricingTiers, {
+    fields: [sessionGuests.pricingTierId],
+    references: [pricingTiers.id],
   }),
 }));
 
@@ -342,10 +377,12 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Table = typeof tables.$inferSelect;
 export type NewTable = typeof tables.$inferInsert;
-export type Package = typeof packages.$inferSelect;
-export type NewPackage = typeof packages.$inferInsert;
+export type PricingTier = typeof pricingTiers.$inferSelect;
+export type NewPricingTier = typeof pricingTiers.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
 export type NewSession = typeof sessions.$inferInsert;
+export type SessionGuest = typeof sessionGuests.$inferSelect;
+export type NewSessionGuest = typeof sessionGuests.$inferInsert;
 export type Category = typeof categories.$inferSelect;
 export type NewCategory = typeof categories.$inferInsert;
 export type MenuItem = typeof menuItems.$inferSelect;

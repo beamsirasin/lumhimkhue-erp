@@ -34,7 +34,7 @@ export type ReceiptData = {
   shopName: string;
   shopAddress?: string;
   taxId?: string;
-  tableNumber: number;
+  tableNumber: string;
   cashierName: string;
   /** Display string, e.g. "27 พ.ค. 69 14:32" */
   paidAt: string;
@@ -56,13 +56,14 @@ export type ReceiptData = {
 };
 
 export type TableQrData = {
-  tableNumber: number;
+  tableNumber: string;
   /** Full URL the QR encodes */
   url: string;
   /** Display string */
   startedAt: string;
-  endsAt: string;
-  durationMinutes: number;
+  /** Optional — unlimited session has no end time */
+  endsAt?: string;
+  durationMinutes?: number;
 };
 
 export type QueueQrData = {
@@ -76,7 +77,7 @@ export type QueueQrData = {
 };
 
 export type KitchenOrderData = {
-  tableNumber: number;
+  tableNumber: string;
   /** e.g. "meat", "seafood" */
   station: string;
   /** Display string */

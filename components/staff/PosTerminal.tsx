@@ -108,10 +108,7 @@ export function PosTerminal({ initialSessions }: PosTerminalProps) {
       {/* Right — detail + payment */}
       <main className="flex-1 overflow-y-auto">
         {selectedId ? (
-          <DetailPanel
-            sessionId={selectedId}
-            onPaid={handlePaid}
-          />
+          <DetailPanel sessionId={selectedId} onPaid={handlePaid} />
         ) : (
           <div className="flex h-full items-center justify-center">
             <p className="text-slate-400">เลือกโต๊ะเพื่อดำเนินการ</p>
@@ -123,10 +120,9 @@ export function PosTerminal({ initialSessions }: PosTerminalProps) {
 }
 
 function baseTotal(session: PosSession): number {
-  return (
-    Number(session.package.priceAdult) * session.adults +
-    Number(session.package.priceChild) * session.children +
-    Number(session.package.priceSenior) * session.seniors
+  return session.guests.reduce(
+    (sum, g) => sum + Number(g.pricingTier.price) * g.quantity,
+    0,
   );
 }
 
@@ -141,6 +137,7 @@ function SessionRow({
 }) {
   const total = baseTotal(session);
   const isClosing = session.status === 'closing';
+  const totalGuests = session.guests.reduce((s, g) => s + g.quantity, 0);
 
   return (
     <button
@@ -156,7 +153,7 @@ function SessionRow({
     >
       <div className="flex items-center justify-between">
         <span className={`text-lg font-bold tabular-nums ${selected ? 'text-white' : 'text-slate-900'}`}>
-          โต๊ะ {session.table.number}
+          โต๊ะ {session.table.label}
         </span>
         {isClosing && !selected && (
           <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
@@ -164,8 +161,8 @@ function SessionRow({
           </span>
         )}
       </div>
-      <p className={`text-xs truncate ${selected ? 'text-slate-300' : 'text-slate-500'}`}>
-        {session.package.name} · {session.adults + session.children + session.seniors} คน
+      <p className={`text-xs ${selected ? 'text-slate-300' : 'text-slate-500'}`}>
+        {totalGuests} คน
       </p>
       <div className={`mt-0.5 flex justify-between text-xs ${selected ? 'text-slate-300' : 'text-slate-500'}`}>
         <span>฿{total.toLocaleString('th-TH')}</span>
@@ -212,7 +209,6 @@ function PaymentPanel({
   const [method, setMethod] = useState<'cash' | 'qr_promptpay' | 'transfer' | 'card'>('cash');
   const [received, setReceived] = useState('');
   const [discount, setDiscount] = useState('0');
-  const [wasteCharge, setWasteCharge] = useState('0');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [paid, setPaid] = useState(false);
@@ -222,8 +218,7 @@ function PaymentPanel({
   const cashierName = authData?.user?.name ?? 'พนักงาน';
 
   const discountNum = Math.max(0, Number(discount) || 0);
-  const wasteNum = Math.max(0, Number(wasteCharge) || 0);
-  const total = totals.subtotal - discountNum + wasteNum;
+  const total = totals.subtotal - discountNum;
   const receivedNum = Number(received) || 0;
   const change = method === 'cash' ? receivedNum - total : 0;
 
@@ -240,7 +235,6 @@ function PaymentPanel({
       paymentMethod: method,
       receivedAmount: method === 'cash' ? receivedNum : total,
       discount: discountNum,
-      wasteCharge: wasteNum,
       notes: notes || undefined,
     });
     setSubmitting(false);
@@ -252,24 +246,15 @@ function PaymentPanel({
 
     // Build receipt data
     const receiptItems: ReceiptData['items'] = [];
-    if (session.adults > 0)
-      receiptItems.push({
-        name: `${session.package.name} (ผู้ใหญ่)`,
-        quantity: session.adults,
-        total: Number(session.package.priceAdult) * session.adults,
-      });
-    if (session.children > 0)
-      receiptItems.push({
-        name: `${session.package.name} (เด็ก)`,
-        quantity: session.children,
-        total: Number(session.package.priceChild) * session.children,
-      });
-    if (session.seniors > 0)
-      receiptItems.push({
-        name: `${session.package.name} (ผู้สูงอายุ)`,
-        quantity: session.seniors,
-        total: Number(session.package.priceSenior) * session.seniors,
-      });
+    for (const g of session.guests) {
+      if (g.quantity > 0) {
+        receiptItems.push({
+          name: g.pricingTier.name,
+          quantity: g.quantity,
+          total: Number(g.pricingTier.price) * g.quantity,
+        });
+      }
+    }
     for (const item of allOrderItems.filter((i) => !i.menuItem.isBuffet)) {
       receiptItems.push({
         name: item.menuItem.name,
@@ -280,7 +265,7 @@ function PaymentPanel({
 
     const receipt: ReceiptData = {
       shopName: 'ร้านชาบู',
-      tableNumber: session.table.number,
+      tableNumber: session.table.label,
       cashierName,
       paidAt: new Date().toLocaleString('th-TH', {
         dateStyle: 'short',
@@ -307,7 +292,6 @@ function PaymentPanel({
   if (paid && lastReceipt) {
     return (
       <div className="mx-auto max-w-2xl p-6 space-y-6">
-        {/* Success card */}
         <div className="rounded-xl border border-green-200 bg-green-50 p-8 text-center space-y-3">
           <CheckCircle2 className="mx-auto size-12 text-green-500" />
           <h2 className="text-xl font-bold text-green-800">ชำระเงินสำเร็จ</h2>
@@ -323,8 +307,6 @@ function PaymentPanel({
             โต๊ะ {lastReceipt.tableNumber} · ชำระด้วย {lastReceipt.paymentMethod}
           </p>
         </div>
-
-        {/* Action buttons */}
         <div className="flex gap-3">
           <button
             type="button"
@@ -352,8 +334,10 @@ function PaymentPanel({
       <div className="rounded-xl border border-slate-200 bg-white p-5">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-2xl font-bold text-slate-900">โต๊ะ {session.table.number}</p>
-            <p className="text-sm text-slate-500">{session.package.name}</p>
+            <p className="text-2xl font-bold text-slate-900">โต๊ะ {session.table.label}</p>
+            <p className="text-sm text-slate-500">
+              {session.guests.reduce((s, g) => s + g.quantity, 0)} คน
+            </p>
           </div>
           {session.status === 'closing' && (
             <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
@@ -364,36 +348,18 @@ function PaymentPanel({
 
         {/* Guest breakdown */}
         <div className="mt-4 space-y-1.5 border-t border-slate-100 pt-4">
-          {session.adults > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-600">
-                ผู้ใหญ่ {session.adults} คน × ฿{Number(session.package.priceAdult).toLocaleString('th-TH')}
-              </span>
-              <span className="tabular-nums font-medium text-slate-900">
-                ฿{(Number(session.package.priceAdult) * session.adults).toLocaleString('th-TH')}
-              </span>
-            </div>
-          )}
-          {session.children > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-600">
-                เด็ก {session.children} คน × ฿{Number(session.package.priceChild).toLocaleString('th-TH')}
-              </span>
-              <span className="tabular-nums font-medium text-slate-900">
-                ฿{(Number(session.package.priceChild) * session.children).toLocaleString('th-TH')}
-              </span>
-            </div>
-          )}
-          {session.seniors > 0 && (
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-600">
-                ผู้สูงอายุ {session.seniors} คน × ฿{Number(session.package.priceSenior).toLocaleString('th-TH')}
-              </span>
-              <span className="tabular-nums font-medium text-slate-900">
-                ฿{(Number(session.package.priceSenior) * session.seniors).toLocaleString('th-TH')}
-              </span>
-            </div>
-          )}
+          {session.guests.map((g) => (
+            g.quantity > 0 && (
+              <div key={g.id} className="flex justify-between text-sm">
+                <span className="text-slate-600">
+                  {g.pricingTier.name} {g.quantity} คน × ฿{Number(g.pricingTier.price).toLocaleString('th-TH')}
+                </span>
+                <span className="tabular-nums font-medium text-slate-900">
+                  ฿{(Number(g.pricingTier.price) * g.quantity).toLocaleString('th-TH')}
+                </span>
+              </div>
+            )
+          ))}
           {totals.extraAmount > 0 && (
             <div className="flex justify-between text-sm">
               <span className="text-slate-600">รายการพิเศษ</span>
@@ -405,7 +371,7 @@ function PaymentPanel({
         </div>
       </div>
 
-      {/* Order items (compact) */}
+      {/* Order items */}
       {allOrderItems.length > 0 && (
         <div className="rounded-xl border border-slate-200 bg-white p-5">
           <h2 className="mb-3 text-sm font-semibold text-slate-700">
@@ -463,30 +429,16 @@ function PaymentPanel({
           ))}
         </div>
 
-        {/* Discount + waste */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">ส่วนลด (฿)</label>
-            <input
-              type="number"
-              min={0}
-              value={discount}
-              onChange={(e) => setDiscount(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm tabular-nums outline-none focus:border-slate-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">
-              ค่าของเสีย (฿)
-            </label>
-            <input
-              type="number"
-              min={0}
-              value={wasteCharge}
-              onChange={(e) => setWasteCharge(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm tabular-nums outline-none focus:border-slate-500"
-            />
-          </div>
+        {/* Discount */}
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">ส่วนลด (฿)</label>
+          <input
+            type="number"
+            min={0}
+            value={discount}
+            onChange={(e) => setDiscount(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm tabular-nums outline-none focus:border-slate-500"
+          />
         </div>
 
         {/* Total */}
@@ -501,12 +453,6 @@ function PaymentPanel({
               <span className="tabular-nums">−฿{discountNum.toLocaleString('th-TH')}</span>
             </div>
           )}
-          {wasteNum > 0 && (
-            <div className="flex justify-between text-sm text-red-600">
-              <span>ค่าของเสีย</span>
-              <span className="tabular-nums">+฿{wasteNum.toLocaleString('th-TH')}</span>
-            </div>
-          )}
           <div className="flex justify-between border-t border-slate-200 pt-2 font-bold text-slate-900">
             <span>ยอดชำระ</span>
             <span className="tabular-nums text-lg">฿{total.toLocaleString('th-TH')}</span>
@@ -517,9 +463,7 @@ function PaymentPanel({
         {method === 'cash' && (
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">
-                รับเงิน (฿)
-              </label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">รับเงิน (฿)</label>
               <input
                 type="number"
                 min={0}
@@ -530,9 +474,7 @@ function PaymentPanel({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">
-                เงินทอน (฿)
-              </label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">เงินทอน (฿)</label>
               <p
                 className={`rounded-lg border px-3 py-2 text-sm tabular-nums font-semibold ${
                   change >= 0

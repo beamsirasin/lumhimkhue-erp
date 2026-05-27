@@ -27,7 +27,6 @@ export async function getSessionData(tableToken: string, sessionToken: string) {
         eq(sessions.sessionToken, sessionToken),
         eq(sessions.tableId, table.id),
       ),
-      with: { package: true },
     });
     if (!session || session.status === 'closed')
       return { ok: false as const, error: 'session ไม่ถูกต้องหรือหมดอายุแล้ว' };

@@ -36,15 +36,19 @@ export async function getDashboardData() {
     const [todayRevRow] = await db
       .select({
         revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
-        sessions: sql<number>`count(*)`,
-        guests: sql<number>`coalesce(sum(${sessions.adults} + ${sessions.children} + ${sessions.seniors}), 0)`,
+        sessionCount: sql<number>`count(*)`,
+        guests: sql<number>`coalesce(sum((
+          SELECT coalesce(sum(sg.quantity), 0)
+          FROM session_guests sg
+          WHERE sg.session_id = ${sessions.id}
+        )), 0)`,
       })
       .from(payments)
       .innerJoin(sessions, eq(payments.sessionId, sessions.id))
       .where(gte(payments.paidAt, todayStart));
 
     const revenueToday = Number(todayRevRow.revenue);
-    const sessionsToday = Number(todayRevRow.sessions);
+    const sessionsToday = Number(todayRevRow.sessionCount);
     const guestsToday = Number(todayRevRow.guests);
     const avgPerSession = sessionsToday > 0 ? revenueToday / sessionsToday : 0;
 
@@ -54,7 +58,11 @@ export async function getDashboardData() {
         date: sql<string>`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`,
         revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
         sessionCount: sql<number>`count(*)`,
-        guests: sql<number>`coalesce(sum(${sessions.adults} + ${sessions.children} + ${sessions.seniors}), 0)`,
+        guests: sql<number>`coalesce(sum((
+          SELECT coalesce(sum(sg.quantity), 0)
+          FROM session_guests sg
+          WHERE sg.session_id = ${sessions.id}
+        )), 0)`,
       })
       .from(payments)
       .innerJoin(sessions, eq(payments.sessionId, sessions.id))
@@ -160,7 +168,11 @@ export async function getReportSummary(fromDate: string, toDate: string) {
         date: sql<string>`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`,
         revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
         sessionCount: sql<number>`count(*)`,
-        guests: sql<number>`coalesce(sum(${sessions.adults} + ${sessions.children} + ${sessions.seniors}), 0)`,
+        guests: sql<number>`coalesce(sum((
+          SELECT coalesce(sum(sg.quantity), 0)
+          FROM session_guests sg
+          WHERE sg.session_id = ${sessions.id}
+        )), 0)`,
       })
       .from(payments)
       .innerJoin(sessions, eq(payments.sessionId, sessions.id))

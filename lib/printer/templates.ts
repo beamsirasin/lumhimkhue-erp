@@ -110,8 +110,8 @@ ${hr()}
 ${qr}
 ${hr()}
 <div>${row('เริ่ม', data.startedAt)}</div>
-<div>${row('หมดเวลา', data.endsAt)}</div>
-<div>${row('บุฟเฟ่ต์', `${data.durationMinutes} นาที`)}</div>
+${data.endsAt ? `<div>${row('หมดเวลา', data.endsAt)}</div>` : ''}
+${data.durationMinutes != null ? `<div>${row('บุฟเฟ่ต์', `${data.durationMinutes} นาที`)}</div>` : ''}
 `.trim();
 }
 

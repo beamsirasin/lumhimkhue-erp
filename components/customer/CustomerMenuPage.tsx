@@ -1,12 +1,38 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { toast } from 'sonner';
-import { BuffetTimer } from './BuffetTimer';
+import { differenceInSeconds } from 'date-fns';
 import { useCartStore, selectTotalItems, selectTotalExtra } from '@/lib/store/cart';
 import { placeOrder, callStaff, requestBill } from '@/lib/actions/orders';
 import type { SessionData, MenuCategoriesData } from '@/lib/actions/orders';
+
+/* ─── Elapsed time display (counts up from session start) ─────────────────── */
+
+function ElapsedTimer({ startedAt }: { startedAt: Date }) {
+  const [display, setDisplay] = useState('');
+
+  useEffect(() => {
+    function update() {
+      const secs = differenceInSeconds(new Date(), new Date(startedAt));
+      const h = Math.floor(secs / 3600);
+      const m = Math.floor((secs % 3600) / 60);
+      const s = secs % 60;
+      if (h > 0) {
+        setDisplay(`${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+      } else {
+        setDisplay(`${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+      }
+    }
+    update();
+    const id = setInterval(update, 1_000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+
+  return <span className="tabular-nums font-semibold text-slate-900 text-sm">{display}</span>;
+}
+
+/* ─── Main component ──────────────────────────────────────────────────────── */
 
 interface CustomerMenuPageProps {
   sessionData: SessionData;
@@ -72,20 +98,20 @@ export function CustomerMenuPage({
       <header className="sticky top-0 z-10 bg-white border-b border-slate-200">
         <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-xs text-slate-500">โต๊ะ {table.number}</p>
-            <p className="text-sm font-medium text-slate-900 truncate">{session.package.name}</p>
+            <p className="text-xs text-slate-500">โต๊ะ {table.label}</p>
+            <p className="text-sm font-medium text-slate-900">บุฟเฟ่ต์ไม่อั้น</p>
           </div>
           <div className="flex items-center gap-4 shrink-0">
             <div className="text-right">
-              <p className="text-xs text-slate-500">เหลือเวลา</p>
-              <BuffetTimer endsAt={new Date(session.endsAt)} />
+              <p className="text-xs text-slate-500">เวลาที่ใช้</p>
+              <ElapsedTimer startedAt={session.startedAt} />
             </div>
-            <Link
+            <a
               href={`/t/${table.qrToken}/s/${sessionToken}/orders`}
               className="text-xs font-medium text-slate-700 underline underline-offset-2"
             >
               รายการของฉัน
-            </Link>
+            </a>
           </div>
         </div>
 
@@ -198,7 +224,7 @@ export function CustomerMenuPage({
         </div>
       </main>
 
-      {/* Action buttons (call staff / request bill) */}
+      {/* Action buttons */}
       <div className="fixed bottom-20 right-4 z-20 flex flex-col gap-2">
         <button
           type="button"

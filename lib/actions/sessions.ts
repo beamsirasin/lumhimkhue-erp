@@ -2,16 +2,12 @@
 
 import { revalidatePath } from 'next/cache';
 import { eq } from 'drizzle-orm';
-import { addMinutes } from 'date-fns';
 import { nanoid } from 'nanoid';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
-import { sessions, tables, packages } from '@/lib/db/schema';
-import {
-  openSessionSchema,
-  extendSessionSchema,
-} from '@/lib/validations/sessions';
+import { sessions, tables, sessionGuests, pricingTiers } from '@/lib/db/schema';
+import { openSessionSchema } from '@/lib/validations/sessions';
 
 export async function openSession(input: unknown) {
   const authSession = await auth();
@@ -20,9 +16,15 @@ export async function openSession(input: unknown) {
     return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
 
   const parsed = openSessionSchema.safeParse(input);
-  if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
+  if (!parsed.success)
+    return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' };
 
-  const { tableId, packageId, adults, children, seniors } = parsed.data;
+  const { tableId, guests, notes } = parsed.data;
+
+  // Filter out zero-quantity tiers
+  const nonZeroGuests = guests.filter((g) => g.quantity > 0);
+  if (nonZeroGuests.length === 0)
+    return { ok: false as const, error: 'ต้องมีผู้เข้าใช้บริการอย่างน้อย 1 คน' };
 
   try {
     const [table] = await db
@@ -34,22 +36,40 @@ export async function openSession(input: unknown) {
     if (table.status !== 'available')
       return { ok: false as const, error: 'โต๊ะนี้ไม่พร้อมใช้งานในขณะนี้' };
 
-    const [pkg] = await db
-      .select()
-      .from(packages)
-      .where(eq(packages.id, packageId))
-      .limit(1);
-    if (!pkg || !pkg.isActive)
-      return { ok: false as const, error: 'ไม่พบแพ็กเกจ' };
+    // Verify all pricing tier IDs are valid and active
+    const tierIds = nonZeroGuests.map((g) => g.pricingTierId);
+    const tiers = await db
+      .select({ id: pricingTiers.id })
+      .from(pricingTiers)
+      .where(eq(pricingTiers.isActive, true));
+    const activeTierIds = new Set(tiers.map((t) => t.id));
+    for (const tierId of tierIds) {
+      if (!activeTierIds.has(tierId))
+        return { ok: false as const, error: 'ไม่พบประเภทราคา' };
+    }
 
     const startedAt = new Date();
-    const endsAt = addMinutes(startedAt, pkg.durationMinutes);
     const sessionToken = nanoid(12);
 
     const [newSession] = await db
       .insert(sessions)
-      .values({ tableId, packageId, adults, children, seniors, startedAt, endsAt, sessionToken, status: 'active' })
-      .returning({ sessionToken: sessions.sessionToken });
+      .values({
+        tableId,
+        startedAt,
+        sessionToken,
+        status: 'active',
+        notes: notes ?? null,
+      })
+      .returning({ id: sessions.id, sessionToken: sessions.sessionToken });
+
+    // Insert session guests
+    await db.insert(sessionGuests).values(
+      nonZeroGuests.map((g) => ({
+        sessionId: newSession.id,
+        pricingTierId: g.pricingTierId,
+        quantity: g.quantity,
+      })),
+    );
 
     await db
       .update(tables)
@@ -68,9 +88,8 @@ export async function openSession(input: unknown) {
       data: {
         sessionToken: newSession.sessionToken,
         tableQrToken: table.qrToken,
+        tableLabel: table.label,
         startedAt: startedAt.toLocaleString('th-TH', thLocale),
-        endsAt: endsAt.toLocaleString('th-TH', thLocale),
-        durationMinutes: pkg.durationMinutes,
       },
     };
   } catch (e) {
@@ -100,7 +119,7 @@ export async function closeSession(input: { sessionId: string }) {
 
     await db
       .update(tables)
-      .set({ status: 'cleaning' })
+      .set({ status: 'available' })
       .where(eq(tables.id, session.tableId));
 
     revalidatePath('/tables');
@@ -111,48 +130,22 @@ export async function closeSession(input: { sessionId: string }) {
   }
 }
 
-export async function extendSession(input: unknown) {
+export async function requestBillFromTable(input: { sessionId: string }) {
   const authSession = await auth();
   if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
   if (!can(authSession.user.role, 'manage_tables'))
     return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
 
-  const parsed = extendSessionSchema.safeParse(input);
-  if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
-
   try {
-    const [session] = await db
-      .select({ endsAt: sessions.endsAt })
-      .from(sessions)
-      .where(eq(sessions.id, parsed.data.sessionId))
-      .limit(1);
-    if (!session) return { ok: false as const, error: 'ไม่พบข้อมูล session' };
-
     await db
       .update(sessions)
-      .set({ endsAt: addMinutes(session.endsAt, parsed.data.minutes) })
-      .where(eq(sessions.id, parsed.data.sessionId));
+      .set({ status: 'closing' })
+      .where(eq(sessions.id, input.sessionId));
 
     revalidatePath('/tables');
     return { ok: true as const };
   } catch (e) {
-    console.error('[extendSession]', e);
-    return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
-  }
-}
-
-export async function setTableCleaning(input: { tableId: string }) {
-  const authSession = await auth();
-  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
-  if (!can(authSession.user.role, 'manage_tables'))
-    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
-
-  try {
-    await db.update(tables).set({ status: 'cleaning' }).where(eq(tables.id, input.tableId));
-    revalidatePath('/tables');
-    return { ok: true as const };
-  } catch (e) {
-    console.error('[setTableCleaning]', e);
+    console.error('[requestBillFromTable]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
   }
 }

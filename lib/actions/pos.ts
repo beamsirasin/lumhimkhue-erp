@@ -5,7 +5,15 @@ import { eq, inArray, asc } from 'drizzle-orm';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
-import { sessions, orders, orderItems, tables, payments } from '@/lib/db/schema';
+import {
+  sessions,
+  orders,
+  orderItems,
+  tables,
+  payments,
+  sessionGuests,
+  pricingTiers,
+} from '@/lib/db/schema';
 import { processPaymentSchema } from '@/lib/validations/pos';
 
 export async function getPosSessionsForPos() {
@@ -18,7 +26,12 @@ export async function getPosSessionsForPos() {
     const result = await db.query.sessions.findMany({
       where: inArray(sessions.status, ['active', 'closing']),
       orderBy: [asc(sessions.startedAt)],
-      with: { table: true, package: true },
+      with: {
+        table: true,
+        guests: {
+          with: { pricingTier: true },
+        },
+      },
     });
     return { ok: true as const, data: result };
   } catch (e) {
@@ -40,7 +53,12 @@ export async function getPosSessionDetail(sessionId: string) {
   try {
     const session = await db.query.sessions.findFirst({
       where: eq(sessions.id, sessionId),
-      with: { table: true, package: true },
+      with: {
+        table: true,
+        guests: {
+          with: { pricingTier: true },
+        },
+      },
     });
     if (!session) return { ok: false as const, error: 'ไม่พบ session' };
 
@@ -54,11 +72,10 @@ export async function getPosSessionDetail(sessionId: string) {
       },
     });
 
-    const pkg = session.package;
-    const baseAmount =
-      Number(pkg.priceAdult) * session.adults +
-      Number(pkg.priceChild) * session.children +
-      Number(pkg.priceSenior) * session.seniors;
+    const baseAmount = session.guests.reduce(
+      (sum, g) => sum + Number(g.pricingTier.price) * g.quantity,
+      0,
+    );
 
     const extraAmount = sessionOrders
       .flatMap((o) => o.items)
@@ -94,13 +111,16 @@ export async function processPayment(input: unknown) {
   const parsed = processPaymentSchema.safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
 
-  const { sessionId, paymentMethod, receivedAmount, discount, wasteCharge, notes } = parsed.data;
+  const { sessionId, paymentMethod, receivedAmount, discount, notes } = parsed.data;
 
   try {
     // Verify session + no duplicate payment
     const session = await db.query.sessions.findFirst({
       where: eq(sessions.id, sessionId),
-      with: { table: true, package: true },
+      with: {
+        table: true,
+        guests: { with: { pricingTier: true } },
+      },
     });
     if (!session || session.status === 'closed')
       return { ok: false as const, error: 'session ไม่ถูกต้องหรือชำระเงินแล้ว' };
@@ -110,8 +130,7 @@ export async function processPayment(input: unknown) {
       .from(payments)
       .where(eq(payments.sessionId, sessionId))
       .limit(1);
-    if (existingPayment)
-      return { ok: false as const, error: 'session นี้ชำระเงินแล้ว' };
+    if (existingPayment) return { ok: false as const, error: 'session นี้ชำระเงินแล้ว' };
 
     // Compute totals server-side
     const sessionOrders = await db.query.orders.findMany({
@@ -123,11 +142,10 @@ export async function processPayment(input: unknown) {
       },
     });
 
-    const pkg = session.package;
-    const baseAmount =
-      Number(pkg.priceAdult) * session.adults +
-      Number(pkg.priceChild) * session.children +
-      Number(pkg.priceSenior) * session.seniors;
+    const baseAmount = session.guests.reduce(
+      (sum, g) => sum + Number(g.pricingTier.price) * g.quantity,
+      0,
+    );
 
     const extraAmount = sessionOrders
       .flatMap((o) => o.items)
@@ -136,7 +154,8 @@ export async function processPayment(input: unknown) {
 
     const subtotal = baseAmount + extraAmount;
     const serviceCharge = 0;
-    const total = subtotal + serviceCharge - discount + wasteCharge;
+    const discountAmount = discount ?? 0;
+    const total = subtotal + serviceCharge - discountAmount;
 
     if (paymentMethod === 'cash' && receivedAmount < total)
       return { ok: false as const, error: 'จำนวนเงินที่รับไม่เพียงพอ' };
@@ -147,8 +166,7 @@ export async function processPayment(input: unknown) {
       sessionId,
       subtotal: String(subtotal),
       serviceCharge: String(serviceCharge),
-      discount: String(discount),
-      wasteCharge: String(wasteCharge),
+      discount: String(discountAmount),
       total: String(total),
       paymentMethod,
       receivedAmount: String(receivedAmount),
@@ -162,10 +180,11 @@ export async function processPayment(input: unknown) {
       .set({ status: 'closed', closedAt: new Date() })
       .where(eq(sessions.id, sessionId));
 
+    // Table goes to available (not cleaning) after payment
     await db
       .update(tables)
-      .set({ status: 'cleaning' })
-      .where(eq(tables.id, session.tableId));
+      .set({ status: 'available' })
+      .where(eq(tables.id, session.table.id));
 
     revalidatePath('/pos');
     revalidatePath('/tables');

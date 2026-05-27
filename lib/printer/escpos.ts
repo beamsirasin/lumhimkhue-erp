@@ -121,8 +121,8 @@ export function buildTableQr(data: TableQrData, paperWidth: 58 | 80): Uint8Array
     .line(sep(cols))
     .align('left')
     .line(`เริ่ม:     ${data.startedAt}`)
-    .line(`หมดเวลา:   ${data.endsAt}`)
-    .line(`ระยะเวลา:  บุฟเฟ่ต์ ${data.durationMinutes} นาที`)
+    .line(data.endsAt ? `หมดเวลา:   ${data.endsAt}` : 'ไม่มีเวลาสิ้นสุด (บุฟเฟ่ต์ไม่อั้น)')
+    .line(data.durationMinutes != null ? `ระยะเวลา:  บุฟเฟ่ต์ ${data.durationMinutes} นาที` : '')
     .newline(3)
     .cut('partial')
     .encode();
