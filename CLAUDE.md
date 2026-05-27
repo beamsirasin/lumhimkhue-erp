@@ -75,7 +75,7 @@ Never throw in server actions. Never use `any`.
 - [x] Phase 1 — Foundation (scaffold, schema, seed)
 - [x] Phase 2 — Auth
 - [x] Phase 3 — Table Management
-- [ ] Phase 4 — Customer Ordering
+- [x] Phase 4 — Customer Ordering
 - [ ] Phase 5 — Kitchen Display
 - [ ] Phase 6 — Queue System
 - [ ] Phase 7 — POS
