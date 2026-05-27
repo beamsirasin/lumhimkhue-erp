@@ -21,11 +21,7 @@ const guestRowSchema = z.object({
 const openSessionSchema = z.object({
   tableId: z.string().uuid(),
   linkedTableIds: z.array(z.string().uuid()).default([]),
-  guests: z
-    .array(guestRowSchema)
-    .refine((arr) => arr.some((g) => g.quantity > 0), {
-      message: 'ต้องมีผู้เข้าใช้บริการอย่างน้อย 1 คน',
-    }),
+  guests: z.array(guestRowSchema).default([]),
   notes: z.string().max(500).optional(),
   /** If the table was reserved, supply the reservationId to mark it as arrived */
   reservationId: z.string().uuid().optional(),
@@ -46,8 +42,6 @@ export async function openSession(input: unknown) {
 
   // Filter out zero-quantity tiles
   const nonZeroGuests = guests.filter((g) => g.quantity > 0);
-  if (nonZeroGuests.length === 0)
-    return { ok: false as const, error: 'ต้องมีผู้เข้าใช้บริการอย่างน้อย 1 คน' };
 
   try {
     // Verify all tables

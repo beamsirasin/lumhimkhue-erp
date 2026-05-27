@@ -336,12 +336,11 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
               <button
                 type="button"
                 onClick={() => setStep('link')}
-                disabled={totalGuests === 0}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 <Link2 className="size-3.5" />เชื่อมโต๊ะ
               </button>
-              <Button onClick={handleSubmit} disabled={submitting || totalGuests === 0}>
+              <Button onClick={handleSubmit} disabled={submitting}>
                 {submitting ? 'กำลังเปิด...' : 'เปิดโต๊ะ'}
               </Button>
             </>
