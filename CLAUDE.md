@@ -80,7 +80,7 @@ Never throw in server actions. Never use `any`.
 - [x] Phase 6 — Queue System
 - [x] Phase 7 — POS
 - [x] Phase 8 — Owner Dashboard
-- [ ] Phase 9 — Polish + Deploy
+- [x] Phase 9 — Polish + Deploy
 
 ## Seed Credentials
 - owner@shabu.local / password123
