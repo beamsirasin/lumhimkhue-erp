@@ -3,7 +3,7 @@
 This is a Next.js 15 ERP SaaS for shabu buffet restaurants. Read this file at the start of every session.
 
 ## Tech Stack
-- **Framework**: Next.js 15 App Router, TypeScript strict
+- **Framework**: Next.js 16 App Router, TypeScript strict
 - **Styling**: Tailwind CSS 4, shadcn/ui (slate base), lucide-react
 - **Database**: Neon Postgres + Drizzle ORM (`@neondatabase/serverless`)
 - **Auth**: Auth.js v5 (next-auth beta) + Credentials provider, JWT strategy
@@ -32,7 +32,7 @@ lib/auth/config.ts               → Auth.js config
 lib/auth/permissions.ts          → can(role, action) helper
 lib/actions/*.ts                 → All server actions
 lib/validations/*.ts             → Zod schemas
-middleware.ts                    → Auth + role guard
+proxy.ts                         → Auth + role guard (Next.js 16 rename from middleware.ts)
 ```
 
 ## UI Language
