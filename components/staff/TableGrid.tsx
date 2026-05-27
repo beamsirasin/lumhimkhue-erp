@@ -286,12 +286,11 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
           </DialogTitle>
         </DialogHeader>
 
-        {/* Step indicator */}
-        <div className="flex items-center gap-2 text-xs">
-          <span className={`rounded-full px-2.5 py-0.5 font-medium ${step === 'tiles' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500'}`}>1 จำนวนคน</span>
-          <ChevronRight className="size-3 text-slate-400" />
-          <span className={`rounded-full px-2.5 py-0.5 font-medium ${step === 'link' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500'}`}>2 เชื่อมโยงโต๊ะ</span>
-        </div>
+        {step === 'link' && (
+          <p className="flex items-center gap-1.5 text-xs text-slate-500">
+            <Link2 className="size-3.5" />เลือกโต๊ะที่ต้องการเชื่อมโยง
+          </p>
+        )}
 
         {step === 'tiles' && (
           <div className="space-y-4">
@@ -334,7 +333,17 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
           {step === 'tiles' ? (
             <>
               <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">ยกเลิก</button>
-              <Button onClick={() => setStep('link')} disabled={totalGuests === 0}>ถัดไป <ChevronRight className="ml-1 size-4" /></Button>
+              <button
+                type="button"
+                onClick={() => setStep('link')}
+                disabled={totalGuests === 0}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+              >
+                <Link2 className="size-3.5" />เชื่อมโต๊ะ
+              </button>
+              <Button onClick={handleSubmit} disabled={submitting || totalGuests === 0}>
+                {submitting ? 'กำลังเปิด...' : 'เปิดโต๊ะ'}
+              </Button>
             </>
           ) : (
             <>
