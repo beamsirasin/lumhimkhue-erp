@@ -1,10 +1,25 @@
-import { AppHeader } from '@/components/shared/AppHeader';
+import { redirect } from 'next/navigation';
+import { auth } from '@/auth';
+import { SidebarLayout } from '@/components/shared/SidebarLayout';
+import type { Role } from '@/lib/auth/permissions';
 
-export default function StaffLayout({ children }: { children: React.ReactNode }) {
+const roleHome: Record<Role, string> = {
+  owner: '/dashboard',
+  cashier: '/pos',
+  kitchen: '/kds',
+  host: '/queue',
+};
+
+export default async function StaffLayout({ children }: { children: React.ReactNode }) {
+  const session = await auth();
+  if (!session?.user) redirect('/login');
+
+  const role = session.user.role as Role;
+  const name = session.user.name ?? 'Staff';
+
   return (
-    <div className="flex min-h-screen flex-col">
-      <AppHeader />
-      <main className="flex-1">{children}</main>
-    </div>
+    <SidebarLayout role={role} userName={name}>
+      {children}
+    </SidebarLayout>
   );
 }

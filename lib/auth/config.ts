@@ -28,17 +28,14 @@ export const authConfig: NextAuthConfig = {
 
       if (pathname.startsWith('/kds')) {
         const role = session!.user.role;
-        if (role !== 'kitchen' && role !== 'owner') {
+        // kitchen, owner, cashier can view KDS
+        if (role !== 'kitchen' && role !== 'owner' && role !== 'cashier') {
           return Response.redirect(new URL('/', nextUrl.origin));
         }
       }
 
-      if (pathname.startsWith('/queue')) {
-        const role = session!.user.role;
-        if (role !== 'host' && role !== 'owner') {
-          return Response.redirect(new URL('/', nextUrl.origin));
-        }
-      }
+      // /queue is accessible to all authenticated roles
+      // /tables is accessible to all authenticated roles
 
       if (pathname.startsWith('/pos')) {
         const role = session!.user.role;
