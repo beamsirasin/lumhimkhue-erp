@@ -76,7 +76,7 @@ Never throw in server actions. Never use `any`.
 - [x] Phase 2 — Auth
 - [x] Phase 3 — Table Management
 - [x] Phase 4 — Customer Ordering
-- [ ] Phase 5 — Kitchen Display
+- [x] Phase 5 — Kitchen Display
 - [ ] Phase 6 — Queue System
 - [ ] Phase 7 — POS
 - [ ] Phase 8 — Owner Dashboard
