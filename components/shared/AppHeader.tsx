@@ -5,7 +5,6 @@ const roleLabel: Record<string, string> = {
   owner: 'เจ้าของร้าน',
   cashier: 'แคชเชียร์',
   kitchen: 'ครัว',
-  host: 'พนักงานต้อนรับ',
 };
 
 export async function AppHeader() {

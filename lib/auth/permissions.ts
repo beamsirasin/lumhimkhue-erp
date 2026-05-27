@@ -1,4 +1,4 @@
-export type Role = 'owner' | 'cashier' | 'kitchen' | 'host';
+export type Role = 'owner' | 'cashier' | 'kitchen';
 
 export type Action =
   | 'manage_menu'
@@ -23,9 +23,8 @@ const PERMISSIONS: Record<Role, Action[]> = {
     'view_kds',
     'manage_queue',
   ],
-  cashier: ['process_payment', 'manage_tables'],
-  kitchen: ['view_kds'],
-  host: ['manage_queue', 'manage_tables'],
+  cashier: ['process_payment', 'manage_tables', 'manage_queue', 'view_kds'],
+  kitchen: ['view_kds', 'manage_queue', 'manage_tables'],
 };
 
 export function can(role: Role, action: Action): boolean {

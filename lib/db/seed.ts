@@ -48,13 +48,6 @@ async function seed() {
       role: 'kitchen',
       isActive: true,
     },
-    {
-      email: 'host@shabu.local',
-      passwordHash,
-      name: 'โฮสต์',
-      role: 'host',
-      isActive: true,
-    },
   ]);
 
   console.log('✅ Users created');
@@ -194,7 +187,6 @@ async function seed() {
   console.log('  owner@shabu.local   / password123  (role: owner)');
   console.log('  cashier@shabu.local / password123  (role: cashier)');
   console.log('  kitchen@shabu.local / password123  (role: kitchen)');
-  console.log('  host@shabu.local    / password123  (role: host)');
 }
 
 seed().catch((err) => {

@@ -8,13 +8,12 @@ const ROLE_LABEL: Record<string, string> = {
   owner: 'เจ้าของ',
   cashier: 'แคชเชียร์',
   kitchen: 'ครัว',
-  host: 'Host',
 };
 
 const POLL_INFO = [
   { page: 'KDS', interval: '3 วินาที' },
   { page: 'คิว (ลูกค้า)', interval: '10 วินาที' },
-  { page: 'คิว (Host)', interval: '5 วินาที' },
+  { page: 'คิว (พนักงาน)', interval: '5 วินาที' },
   { page: 'จัดการโต๊ะ', interval: '5 วินาที' },
   { page: 'POS', interval: '5 วินาที' },
   { page: 'ออเดอร์ (ลูกค้า)', interval: '10 วินาที' },
@@ -23,9 +22,8 @@ const POLL_INFO = [
 
 const PERMISSIONS: Record<string, string[]> = {
   owner: ['ทุกอย่าง'],
-  cashier: ['ชำระเงิน', 'จัดการโต๊ะ'],
-  kitchen: ['ดู KDS'],
-  host: ['จัดการคิว', 'จัดการโต๊ะ'],
+  cashier: ['ชำระเงิน', 'จัดการโต๊ะ', 'จัดการคิว', 'ดู KDS'],
+  kitchen: ['ดู KDS', 'จัดการคิว', 'จัดการโต๊ะ'],
 };
 
 export default async function Settings() {

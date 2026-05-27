@@ -3,13 +3,6 @@ import { auth } from '@/auth';
 import { SidebarLayout } from '@/components/shared/SidebarLayout';
 import type { Role } from '@/lib/auth/permissions';
 
-const roleHome: Record<Role, string> = {
-  owner: '/dashboard',
-  cashier: '/pos',
-  kitchen: '/kds',
-  host: '/queue',
-};
-
 export default async function StaffLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   if (!session?.user) redirect('/login');

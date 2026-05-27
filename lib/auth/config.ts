@@ -55,7 +55,7 @@ export const authConfig: NextAuthConfig = {
     },
     session({ session, token }) {
       session.user.id = token.id as string;
-      session.user.role = token.role as 'owner' | 'cashier' | 'kitchen' | 'host';
+      session.user.role = token.role as 'owner' | 'cashier' | 'kitchen';
       return session;
     },
   },

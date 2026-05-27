@@ -16,7 +16,7 @@ import { relations } from 'drizzle-orm';
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
-export const roleEnum = pgEnum('role', ['owner', 'cashier', 'kitchen', 'host']);
+export const roleEnum = pgEnum('role', ['owner', 'cashier', 'kitchen']);
 
 export const tableStatusEnum = pgEnum('table_status', [
   'available',

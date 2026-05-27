@@ -71,14 +71,6 @@ const NAV: Record<Role, NavSection[]> = {
       ],
     },
   ],
-  host: [
-    {
-      items: [
-        { href: '/queue',  label: 'คิว',  Icon: UsersRound },
-        { href: '/tables', label: 'โต๊ะ', Icon: Grid3X3 },
-      ],
-    },
-  ],
 };
 
 /* ─── Page title map ─────────────────────────────────────────── */
@@ -100,7 +92,6 @@ const ROLE_LABEL: Record<Role, string> = {
   owner:   'เจ้าของร้าน',
   cashier: 'แคชเชียร์',
   kitchen: 'ครัว',
-  host:    'พนักงานต้อนรับ',
 };
 
 function getPageTitle(pathname: string): string {

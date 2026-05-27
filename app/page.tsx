@@ -5,7 +5,6 @@ const roleHome: Record<string, string> = {
   owner: '/dashboard',
   cashier: '/pos',
   kitchen: '/kds',
-  host: '/queue',
 };
 
 export default async function Home() {

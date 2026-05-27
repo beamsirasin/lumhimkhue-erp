@@ -28,14 +28,12 @@ const ROLE_LABEL: Record<string, string> = {
   owner: 'เจ้าของ',
   cashier: 'แคชเชียร์',
   kitchen: 'ครัว',
-  host: 'Host',
 };
 
 const ROLE_COLOR: Record<string, string> = {
   owner: 'bg-purple-100 text-purple-700',
   cashier: 'bg-blue-100 text-blue-700',
   kitchen: 'bg-orange-100 text-orange-700',
-  host: 'bg-teal-100 text-teal-700',
 };
 
 interface StaffPageProps {
