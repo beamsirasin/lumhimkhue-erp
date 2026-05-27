@@ -11,7 +11,6 @@ import {
   processPayment,
 } from '@/lib/actions/pos';
 import type { PosSession, PosSessionDetail } from '@/lib/actions/pos';
-import { useSession } from 'next-auth/react';
 import { Printer, CheckCircle2 } from 'lucide-react';
 import { print as printReceipt } from '@/lib/printer/service';
 import type { ReceiptData } from '@/lib/printer/types';
@@ -25,9 +24,10 @@ const METHOD_LABEL: Record<string, string> = {
 
 interface PosTerminalProps {
   initialSessions: PosSession[];
+  cashierName: string;
 }
 
-export function PosTerminal({ initialSessions }: PosTerminalProps) {
+export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
@@ -108,7 +108,7 @@ export function PosTerminal({ initialSessions }: PosTerminalProps) {
       {/* Right — detail + payment */}
       <main className="flex-1 overflow-y-auto">
         {selectedId ? (
-          <DetailPanel sessionId={selectedId} onPaid={handlePaid} />
+          <DetailPanel sessionId={selectedId} cashierName={cashierName} onPaid={handlePaid} />
         ) : (
           <div className="flex h-full items-center justify-center">
             <p className="text-slate-400">เลือกโต๊ะเพื่อดำเนินการ</p>
@@ -174,9 +174,11 @@ function SessionRow({
 
 function DetailPanel({
   sessionId,
+  cashierName,
   onPaid,
 }: {
   sessionId: string;
+  cashierName: string;
   onPaid: () => void;
 }) {
   const { data, isLoading } = useQuery({
@@ -194,14 +196,16 @@ function DetailPanel({
     );
   }
 
-  return <PaymentPanel detail={data} onPaid={onPaid} />;
+  return <PaymentPanel detail={data} cashierName={cashierName} onPaid={onPaid} />;
 }
 
 function PaymentPanel({
   detail,
+  cashierName,
   onPaid,
 }: {
   detail: PosSessionDetail;
+  cashierName: string;
   onPaid: () => void;
 }) {
   const { session, orders, totals } = detail;
@@ -213,9 +217,6 @@ function PaymentPanel({
   const [submitting, setSubmitting] = useState(false);
   const [paid, setPaid] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<ReceiptData | null>(null);
-
-  const { data: authData } = useSession();
-  const cashierName = authData?.user?.name ?? 'พนักงาน';
 
   const discountNum = Math.max(0, Number(discount) || 0);
   const total = totals.subtotal - discountNum;
