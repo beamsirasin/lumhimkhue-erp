@@ -79,7 +79,7 @@ Never throw in server actions. Never use `any`.
 - [x] Phase 5 — Kitchen Display
 - [x] Phase 6 — Queue System
 - [x] Phase 7 — POS
-- [ ] Phase 8 — Owner Dashboard
+- [x] Phase 8 — Owner Dashboard
 - [ ] Phase 9 — Polish + Deploy
 
 ## Seed Credentials
