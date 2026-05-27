@@ -1,6 +1,7 @@
 import type { NextAuthConfig } from 'next-auth';
 
-const adminPrefixes = ['/dashboard', '/menu', '/packages', '/users', '/reports', '/settings'];
+const adminPrefixes = ['/dashboard', '/menu', '/pricing-tiles', '/users', '/reports', '/settings'];
+const managerPrefixes = ['/pricing-tiles'];
 
 export const authConfig: NextAuthConfig = {
   providers: [],
@@ -20,26 +21,33 @@ export const authConfig: NextAuthConfig = {
 
       if (!isLoggedIn) return false;
 
+      const role = session!.user.role;
+
+      // Admin-only paths (owner + manager can access pricing-tiles)
       if (adminPrefixes.some((p) => pathname.startsWith(p))) {
-        if (session!.user.role !== 'owner') {
-          return Response.redirect(new URL('/', nextUrl.origin));
+        const isManagerPath = managerPrefixes.some((p) => pathname.startsWith(p));
+        if (isManagerPath) {
+          if (role !== 'owner' && role !== 'manager') {
+            return Response.redirect(new URL('/', nextUrl.origin));
+          }
+        } else {
+          if (role !== 'owner') {
+            return Response.redirect(new URL('/', nextUrl.origin));
+          }
         }
       }
 
       if (pathname.startsWith('/kds')) {
-        const role = session!.user.role;
-        // kitchen, owner, cashier can view KDS
-        if (role !== 'kitchen' && role !== 'owner' && role !== 'cashier') {
+        if (role !== 'kitchen' && role !== 'owner' && role !== 'cashier' && role !== 'manager') {
           return Response.redirect(new URL('/', nextUrl.origin));
         }
       }
 
-      // /queue is accessible to all authenticated roles
-      // /tables is accessible to all authenticated roles
+      // /queue, /tables accessible to all authenticated roles
+      // /tables/history accessible to all authenticated roles
 
       if (pathname.startsWith('/pos')) {
-        const role = session!.user.role;
-        if (role !== 'cashier' && role !== 'owner') {
+        if (role !== 'cashier' && role !== 'owner' && role !== 'manager') {
           return Response.redirect(new URL('/', nextUrl.origin));
         }
       }
@@ -55,8 +63,10 @@ export const authConfig: NextAuthConfig = {
     },
     session({ session, token }) {
       session.user.id = token.id as string;
-      session.user.role = token.role as 'owner' | 'cashier' | 'kitchen';
+      session.user.role = token.role as Role;
       return session;
     },
   },
 };
+
+type Role = 'owner' | 'manager' | 'cashier' | 'kitchen';

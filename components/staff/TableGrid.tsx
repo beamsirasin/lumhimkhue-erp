@@ -30,7 +30,7 @@ import {
 import {
   getTablesWithSessions,
   type TableData,
-  type PricingTierData,
+  type PricingTileData,
   createTable,
   updateTablePosition,
   updateTableMeta,
@@ -180,12 +180,12 @@ function TableNode({ table, editMode, onClickSession, onClickEdit }: TableNodePr
 interface OpenTableDialogProps {
   open: boolean;
   table: TableData | null;
-  pricingTiers: PricingTierData[];
+  pricingTiles: PricingTileData[];
   onClose: () => void;
   onSuccess: (data: { sessionToken: string; tableQrToken: string; tableLabel: string; startedAt: string }) => void;
 }
 
-function OpenTableDialog({ open, table, pricingTiers, onClose, onSuccess }: OpenTableDialogProps) {
+function OpenTableDialog({ open, table, pricingTiles, onClose, onSuccess }: OpenTableDialogProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -207,8 +207,8 @@ function OpenTableDialog({ open, table, pricingTiers, onClose, onSuccess }: Open
       return;
     }
     setSubmitting(true);
-    const guests = pricingTiers
-      .map((t) => ({ pricingTierId: t.id, quantity: quantities[t.id] ?? 0 }))
+    const guests = pricingTiles
+      .map((t) => ({ pricingTileId: t.id, quantity: quantities[t.id] ?? 0 }))
       .filter((g) => g.quantity > 0);
 
     const result = await openSession({ tableId: table.id, guests, notes: notes || undefined });
@@ -235,7 +235,7 @@ function OpenTableDialog({ open, table, pricingTiers, onClose, onSuccess }: Open
           {/* Guest counts per tier */}
           <div className="space-y-2">
             <p className="text-xs font-medium text-slate-500">จำนวนผู้เข้าใช้บริการ</p>
-            {pricingTiers.map((tier) => (
+            {pricingTiles.map((tier) => (
               <div key={tier.id} className="flex items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-slate-800">{tier.name}</p>
@@ -283,7 +283,7 @@ function OpenTableDialog({ open, table, pricingTiers, onClose, onSuccess }: Open
               <span className="font-semibold text-slate-900">{totalGuests} คน</span>
               <span className="ml-2 text-slate-500">ยอดประมาณ </span>
               <span className="font-semibold text-slate-900">
-                ฿{pricingTiers
+                ฿{pricingTiles
                   .reduce((s, t) => s + Number(t.price) * (quantities[t.id] ?? 0), 0)
                   .toLocaleString('th-TH')}
               </span>
@@ -531,9 +531,9 @@ function TableActionDialog({ open, table, onClose, onOpenTable, onRefetch }: Tab
               {/* Guest breakdown */}
               {sess.guests.map((g) => (
                 <div key={g.id} className="flex justify-between pl-3 text-xs">
-                  <span className="text-slate-400">{g.pricingTier.name} ×{g.quantity}</span>
+                  <span className="text-slate-400">{g.pricingTile.name} ×{g.quantity}</span>
                   <span className="text-slate-500">
-                    ฿{(Number(g.pricingTier.price) * g.quantity).toLocaleString('th-TH')}
+                    ฿{(Number(g.pricingTile.price) * g.quantity).toLocaleString('th-TH')}
                   </span>
                 </div>
               ))}
@@ -790,10 +790,10 @@ function AddTableDialog({ open, onClose, onCreated }: AddTableDialogProps) {
 
 interface TableGridProps {
   initialTables: TableData[];
-  pricingTiers: PricingTierData[];
+  pricingTiles: PricingTileData[];
 }
 
-export function TableGrid({ initialTables, pricingTiers }: TableGridProps) {
+export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
   const qc = useQueryClient();
   const [editMode, setEditMode] = useState(false);
   const [editingTable, setEditingTable] = useState<TableData | null>(null);
@@ -985,7 +985,7 @@ export function TableGrid({ initialTables, pricingTiers }: TableGridProps) {
       <OpenTableDialog
         open={openDialogOpen}
         table={openDialogTable}
-        pricingTiers={pricingTiers}
+        pricingTiles={pricingTiles}
         onClose={() => {
           setOpenDialogOpen(false);
           setOpenDialogTable(null);

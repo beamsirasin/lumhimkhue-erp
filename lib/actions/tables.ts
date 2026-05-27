@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
-import { tables, pricingTiers } from '@/lib/db/schema';
+import { tables, pricingTiles } from '@/lib/db/schema';
 
 /* ─── Queries ─────────────────────────────────────────────────────────────── */
 
@@ -25,9 +25,14 @@ export async function getTablesWithSessions() {
         orderBy: (s, { desc }) => [desc(s.startedAt)],
         with: {
           guests: {
-            with: { pricingTier: true },
+            with: { pricingTile: true },
           },
         },
+      },
+      reservations: {
+        where: (r, { inArray }) => inArray(r.status, ['pending']),
+        limit: 1,
+        orderBy: (r, { asc }) => [asc(r.reservedAt)],
       },
     },
   });
@@ -36,6 +41,7 @@ export async function getTablesWithSessions() {
     ok: true as const,
     data: rows.map((row) => {
       const s = row.sessions[0];
+      const r = row.reservations[0];
       return {
         id: row.id,
         label: row.label,
@@ -54,24 +60,34 @@ export async function getTablesWithSessions() {
               status: s.status,
               startedAt: s.startedAt,
               sessionToken: s.sessionToken,
+              parentSessionId: s.parentSessionId,
               notes: s.notes,
               guests: s.guests.map((g) => ({
                 id: g.id,
                 quantity: g.quantity,
-                pricingTier: {
-                  id: g.pricingTier.id,
-                  code: g.pricingTier.code,
-                  name: g.pricingTier.name,
-                  price: g.pricingTier.price,
+                pricingTile: {
+                  id: g.pricingTile.id,
+                  code: g.pricingTile.code,
+                  name: g.pricingTile.name,
+                  price: g.pricingTile.price,
                 },
               })),
-              /** Total guest count across all tiers */
               totalGuests: s.guests.reduce((sum, g) => sum + g.quantity, 0),
-              /** Base amount (sum of price × quantity) */
               baseAmount: s.guests.reduce(
-                (sum, g) => sum + Number(g.pricingTier.price) * g.quantity,
+                (sum, g) => sum + Number(g.pricingTile.price) * g.quantity,
                 0,
               ),
+            }
+          : null,
+        activeReservation: r
+          ? {
+              id: r.id,
+              customerName: r.customerName,
+              customerPhone: r.customerPhone,
+              reservedAt: r.reservedAt,
+              partySize: r.partySize,
+              notes: r.notes,
+              status: r.status,
             }
           : null,
       };
@@ -83,21 +99,27 @@ export type TableData = NonNullable<
   Extract<Awaited<ReturnType<typeof getTablesWithSessions>>, { ok: true }>['data']
 >[number];
 
-export async function getActivePricingTiers() {
+export async function getActivePricingTiles(category?: 'guest' | 'addon' | 'discount') {
   const session = await auth();
   if (!session?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
 
-  const data = await db
+  const rows = await db
     .select()
-    .from(pricingTiers)
-    .where(eq(pricingTiers.isActive, true))
-    .orderBy(pricingTiers.sortOrder);
+    .from(pricingTiles)
+    .where(
+      category
+        ? eq(pricingTiles.isActive, true) // we filter in the query builder below
+        : eq(pricingTiles.isActive, true),
+    )
+    .orderBy(pricingTiles.sortOrder);
+
+  const data = category ? rows.filter((r) => r.category === category) : rows;
 
   return { ok: true as const, data };
 }
 
-export type PricingTierData = NonNullable<
-  Extract<Awaited<ReturnType<typeof getActivePricingTiers>>, { ok: true }>['data']
+export type PricingTileData = NonNullable<
+  Extract<Awaited<ReturnType<typeof getActivePricingTiles>>, { ok: true }>['data']
 >[number];
 
 /* ─── Floor Plan CRUD ─────────────────────────────────────────────────────── */

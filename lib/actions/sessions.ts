@@ -6,7 +6,7 @@ import { nanoid } from 'nanoid';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
-import { sessions, tables, sessionGuests, pricingTiers } from '@/lib/db/schema';
+import { sessions, tables, sessionGuests, pricingTiles } from '@/lib/db/schema';
 import { openSessionSchema } from '@/lib/validations/sessions';
 
 export async function openSession(input: unknown) {
@@ -21,7 +21,7 @@ export async function openSession(input: unknown) {
 
   const { tableId, guests, notes } = parsed.data;
 
-  // Filter out zero-quantity tiers
+  // Filter out zero-quantity tiles
   const nonZeroGuests = guests.filter((g) => g.quantity > 0);
   if (nonZeroGuests.length === 0)
     return { ok: false as const, error: 'ต้องมีผู้เข้าใช้บริการอย่างน้อย 1 คน' };
@@ -36,15 +36,15 @@ export async function openSession(input: unknown) {
     if (table.status !== 'available')
       return { ok: false as const, error: 'โต๊ะนี้ไม่พร้อมใช้งานในขณะนี้' };
 
-    // Verify all pricing tier IDs are valid and active
-    const tierIds = nonZeroGuests.map((g) => g.pricingTierId);
-    const tiers = await db
-      .select({ id: pricingTiers.id })
-      .from(pricingTiers)
-      .where(eq(pricingTiers.isActive, true));
-    const activeTierIds = new Set(tiers.map((t) => t.id));
-    for (const tierId of tierIds) {
-      if (!activeTierIds.has(tierId))
+    // Verify all pricing tile IDs are valid and active
+    const tileIds = nonZeroGuests.map((g) => g.pricingTileId);
+    const activeTiles = await db
+      .select({ id: pricingTiles.id })
+      .from(pricingTiles)
+      .where(eq(pricingTiles.isActive, true));
+    const activeTileIds = new Set(activeTiles.map((t) => t.id));
+    for (const tileId of tileIds) {
+      if (!activeTileIds.has(tileId))
         return { ok: false as const, error: 'ไม่พบประเภทราคา' };
     }
 
@@ -66,7 +66,7 @@ export async function openSession(input: unknown) {
     await db.insert(sessionGuests).values(
       nonZeroGuests.map((g) => ({
         sessionId: newSession.id,
-        pricingTierId: g.pricingTierId,
+        pricingTileId: g.pricingTileId,
         quantity: g.quantity,
       })),
     );

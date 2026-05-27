@@ -15,12 +15,13 @@ import { relations } from 'drizzle-orm';
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
-export const roleEnum = pgEnum('role', ['owner', 'cashier', 'kitchen']);
+export const roleEnum = pgEnum('role', ['owner', 'manager', 'cashier', 'kitchen']);
 
 export const tableStatusEnum = pgEnum('table_status', [
   'available',
   'occupied',
   'reserved',
+  'linked',
 ]);
 
 export const tableShapeEnum = pgEnum('table_shape', ['square', 'rectangle']);
@@ -71,6 +72,27 @@ export const paymentMethodEnum = pgEnum('payment_method', [
   'card',
 ]);
 
+/** Pricing tile category: guest type | add-on item | discount */
+export const tileCategoryEnum = pgEnum('tile_category', [
+  'guest',
+  'addon',
+  'discount',
+]);
+
+/** Discount tile type */
+export const discountTypeEnum = pgEnum('discount_type', [
+  'fixed',
+  'percentage',
+]);
+
+/** Reservation lifecycle */
+export const reservationStatusEnum = pgEnum('reservation_status', [
+  'pending',
+  'arrived',
+  'cancelled',
+  'no_show',
+]);
+
 // ─── Tables ──────────────────────────────────────────────────────────────────
 
 export const users = pgTable('users', {
@@ -88,7 +110,7 @@ export const tables = pgTable(
   'tables',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    /** Display label, e.g. "1", "VIP-A" — replaces old integer number */
+    /** Display label, e.g. "1", "VIP-A" */
     label: varchar('label', { length: 50 }).notNull(),
     capacity: integer('capacity').notNull(),
     zone: varchar('zone', { length: 100 }).notNull().default('ทั่วไป'),
@@ -108,17 +130,29 @@ export const tables = pgTable(
 );
 
 /**
- * Pricing tiers replace the old packages table.
- * Each tier has a code (for logic), a Thai display name, and a price (VAT-inclusive).
+ * Pricing tiles — replaces pricingTiers.
+ * Three categories:
+ *   'guest'    — guest types (adult, child, …) used when opening table + billing
+ *   'addon'    — add-on items (extra cup, …) used in POS checkout
+ *   'discount' — discount tiles (10%, -50฿) used in POS checkout
  */
-export const pricingTiers = pgTable('pricing_tiers', {
+export const pricingTiles = pgTable('pricing_tiles', {
   id: uuid('id').primaryKey().defaultRandom(),
-  /** Unique machine code: 'adult', 'child', 'toddler', 'staff', 'staff_guest_first' */
+  /** Unique machine code: 'adult', 'child', 'addon_drink_glass', 'discount_10pct' */
   code: varchar('code', { length: 50 }).notNull().unique(),
   name: varchar('name', { length: 255 }).notNull(),
+  /** Base64 data URL or external URL — null = use category icon placeholder */
+  imageUrl: text('image_url'),
+  category: tileCategoryEnum('category').notNull(),
+  /** Price (VAT-inclusive if vatIncluded=true). For discount tiles: 0 (amount is in discountValue) */
   price: numeric('price', { precision: 10, scale: 2 }).notNull(),
-  vatIncluded: boolean('vat_included').notNull().default(true),
   vatRate: numeric('vat_rate', { precision: 5, scale: 2 }).notNull().default('7.00'),
+  vatIncluded: boolean('vat_included').notNull().default(true),
+  /** Only for category='discount' */
+  discountType: discountTypeEnum('discount_type'),
+  discountValue: numeric('discount_value', { precision: 10, scale: 2 }),
+  /** Optional tile background colour, e.g. '#FEE2E2' */
+  color: varchar('color', { length: 7 }),
   sortOrder: integer('sort_order').notNull().default(0),
   isActive: boolean('is_active').notNull().default(true),
   notes: text('notes'),
@@ -131,6 +165,13 @@ export const sessions = pgTable(
     tableId: uuid('table_id')
       .notNull()
       .references(() => tables.id),
+    /**
+     * Linked-table support.
+     * Primary session (the table that was opened first): null.
+     * Child session (a table linked to the primary): set to primary session id.
+     * All child sessions share guests / orders through the primary session.
+     */
+    parentSessionId: uuid('parent_session_id'),
     startedAt: timestamp('started_at').notNull().defaultNow(),
     closedAt: timestamp('closed_at'),
     status: sessionStatusEnum('status').notNull().default('active'),
@@ -142,12 +183,14 @@ export const sessions = pgTable(
     index('sessions_session_token_idx').on(t.sessionToken),
     index('sessions_table_id_idx').on(t.tableId),
     index('sessions_closed_at_idx').on(t.closedAt),
+    index('sessions_parent_session_id_idx').on(t.parentSessionId),
   ],
 );
 
 /**
- * Each row = one pricing tier × quantity for a session.
- * Replaces the old adults/children/seniors integer columns on sessions.
+ * Guest breakdown for a session.
+ * Only stored on the PRIMARY session (parentSessionId = null).
+ * References pricingTiles (category='guest').
  */
 export const sessionGuests = pgTable(
   'session_guests',
@@ -156,9 +199,9 @@ export const sessionGuests = pgTable(
     sessionId: uuid('session_id')
       .notNull()
       .references(() => sessions.id),
-    pricingTierId: uuid('pricing_tier_id')
+    pricingTileId: uuid('pricing_tile_id')
       .notNull()
-      .references(() => pricingTiers.id),
+      .references(() => pricingTiles.id),
     quantity: integer('quantity').notNull(),
   },
   (t) => [index('session_guests_session_id_idx').on(t.sessionId)],
@@ -275,6 +318,28 @@ export const payments = pgTable('payments', {
   notes: text('notes'),
 });
 
+/**
+ * Line items for a payment — addons and discounts applied at checkout.
+ * amount: positive for addons (increases total), negative for discounts.
+ */
+export const paymentLineItems = pgTable(
+  'payment_line_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    paymentId: uuid('payment_id')
+      .notNull()
+      .references(() => payments.id),
+    pricingTileId: uuid('pricing_tile_id')
+      .notNull()
+      .references(() => pricingTiles.id),
+    quantity: integer('quantity').notNull().default(1),
+    /** Positive = addon charge, negative = discount applied */
+    amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+    appliedAt: timestamp('applied_at').notNull().defaultNow(),
+  },
+  (t) => [index('payment_line_items_payment_id_idx').on(t.paymentId)],
+);
+
 export const auditLogs = pgTable(
   'audit_logs',
   {
@@ -289,23 +354,86 @@ export const auditLogs = pgTable(
   (t) => [index('audit_logs_created_at_idx').on(t.createdAt)],
 );
 
+/**
+ * Table reservations.
+ * Primary reservation (parentReservationId = null) is linked to the "main" table.
+ * Child reservations (parentReservationId set) are linked tables in a multi-table booking.
+ */
+export const reservations = pgTable(
+  'reservations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tableId: uuid('table_id')
+      .notNull()
+      .references(() => tables.id),
+    reservedAt: timestamp('reserved_at').notNull(),
+    customerName: varchar('customer_name', { length: 255 }).notNull(),
+    customerPhone: varchar('customer_phone', { length: 20 }),
+    partySize: integer('party_size').notNull(),
+    notes: text('notes'),
+    status: reservationStatusEnum('status').notNull().default('pending'),
+    /** Points to the primary reservation for linked-table bookings */
+    parentReservationId: uuid('parent_reservation_id'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+  },
+  (t) => [
+    index('reservations_table_id_idx').on(t.tableId),
+    index('reservations_reserved_at_idx').on(t.reservedAt),
+    index('reservations_status_idx').on(t.status),
+    index('reservations_parent_id_idx').on(t.parentReservationId),
+  ],
+);
+
+/**
+ * Guest breakdown pre-registered for a reservation.
+ * References pricingTiles (category='guest').
+ */
+export const reservationGuests = pgTable(
+  'reservation_guests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    reservationId: uuid('reservation_id')
+      .notNull()
+      .references(() => reservations.id),
+    pricingTileId: uuid('pricing_tile_id')
+      .notNull()
+      .references(() => pricingTiles.id),
+    quantity: integer('quantity').notNull(),
+  },
+  (t) => [index('reservation_guests_reservation_id_idx').on(t.reservationId)],
+);
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const usersRelations = relations(users, ({ many }) => ({
   payments: many(payments),
   auditLogs: many(auditLogs),
+  reservations: many(reservations),
 }));
 
 export const tablesRelations = relations(tables, ({ many }) => ({
   sessions: many(sessions),
+  reservations: many(reservations),
 }));
 
-export const pricingTiersRelations = relations(pricingTiers, ({ many }) => ({
+export const pricingTilesRelations = relations(pricingTiles, ({ many }) => ({
   sessionGuests: many(sessionGuests),
+  reservationGuests: many(reservationGuests),
+  paymentLineItems: many(paymentLineItems),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one, many }) => ({
   table: one(tables, { fields: [sessions.tableId], references: [tables.id] }),
+  /** Primary session: this points back to itself (null FK) — relation only used for child→parent */
+  parentSession: one(sessions, {
+    fields: [sessions.parentSessionId],
+    references: [sessions.id],
+    relationName: 'linkedSessions',
+  }),
+  linkedSessions: many(sessions, { relationName: 'linkedSessions' }),
   guests: many(sessionGuests),
   orders: many(orders),
   payment: one(payments, {
@@ -319,9 +447,9 @@ export const sessionGuestsRelations = relations(sessionGuests, ({ one }) => ({
     fields: [sessionGuests.sessionId],
     references: [sessions.id],
   }),
-  pricingTier: one(pricingTiers, {
-    fields: [sessionGuests.pricingTierId],
-    references: [pricingTiers.id],
+  pricingTile: one(pricingTiles, {
+    fields: [sessionGuests.pricingTileId],
+    references: [pricingTiles.id],
   }),
 }));
 
@@ -356,7 +484,7 @@ export const orderItemsRelations = relations(orderItems, ({ one }) => ({
   }),
 }));
 
-export const paymentsRelations = relations(payments, ({ one }) => ({
+export const paymentsRelations = relations(payments, ({ one, many }) => ({
   session: one(sessions, {
     fields: [payments.sessionId],
     references: [sessions.id],
@@ -365,10 +493,45 @@ export const paymentsRelations = relations(payments, ({ one }) => ({
     fields: [payments.processedBy],
     references: [users.id],
   }),
+  lineItems: many(paymentLineItems),
+}));
+
+export const paymentLineItemsRelations = relations(paymentLineItems, ({ one }) => ({
+  payment: one(payments, {
+    fields: [paymentLineItems.paymentId],
+    references: [payments.id],
+  }),
+  pricingTile: one(pricingTiles, {
+    fields: [paymentLineItems.pricingTileId],
+    references: [pricingTiles.id],
+  }),
 }));
 
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
   user: one(users, { fields: [auditLogs.userId], references: [users.id] }),
+}));
+
+export const reservationsRelations = relations(reservations, ({ one, many }) => ({
+  table: one(tables, { fields: [reservations.tableId], references: [tables.id] }),
+  createdByUser: one(users, { fields: [reservations.createdBy], references: [users.id] }),
+  parentReservation: one(reservations, {
+    fields: [reservations.parentReservationId],
+    references: [reservations.id],
+    relationName: 'linkedReservations',
+  }),
+  linkedReservations: many(reservations, { relationName: 'linkedReservations' }),
+  guests: many(reservationGuests),
+}));
+
+export const reservationGuestsRelations = relations(reservationGuests, ({ one }) => ({
+  reservation: one(reservations, {
+    fields: [reservationGuests.reservationId],
+    references: [reservations.id],
+  }),
+  pricingTile: one(pricingTiles, {
+    fields: [reservationGuests.pricingTileId],
+    references: [pricingTiles.id],
+  }),
 }));
 
 // ─── Inferred Types ───────────────────────────────────────────────────────────
@@ -377,8 +540,8 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Table = typeof tables.$inferSelect;
 export type NewTable = typeof tables.$inferInsert;
-export type PricingTier = typeof pricingTiers.$inferSelect;
-export type NewPricingTier = typeof pricingTiers.$inferInsert;
+export type PricingTile = typeof pricingTiles.$inferSelect;
+export type NewPricingTile = typeof pricingTiles.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
 export type NewSession = typeof sessions.$inferInsert;
 export type SessionGuest = typeof sessionGuests.$inferSelect;
@@ -395,5 +558,11 @@ export type QueueEntry = typeof queueEntries.$inferSelect;
 export type NewQueueEntry = typeof queueEntries.$inferInsert;
 export type Payment = typeof payments.$inferSelect;
 export type NewPayment = typeof payments.$inferInsert;
+export type PaymentLineItem = typeof paymentLineItems.$inferSelect;
+export type NewPaymentLineItem = typeof paymentLineItems.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type NewAuditLog = typeof auditLogs.$inferInsert;
+export type Reservation = typeof reservations.$inferSelect;
+export type NewReservation = typeof reservations.$inferInsert;
+export type ReservationGuest = typeof reservationGuests.$inferSelect;
+export type NewReservationGuest = typeof reservationGuests.$inferInsert;

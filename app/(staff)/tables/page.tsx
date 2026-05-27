@@ -1,21 +1,21 @@
 import { redirect } from 'next/navigation';
 import { TableGrid } from '@/components/staff/TableGrid';
-import { getTablesWithSessions, getActivePricingTiers } from '@/lib/actions/tables';
+import { getTablesWithSessions, getActivePricingTiles } from '@/lib/actions/tables';
 
 export const metadata = { title: 'จัดการโต๊ะ — ร้านชาบู ERP' };
 
 export default async function TablesPage() {
-  const [tablesResult, tiersResult] = await Promise.all([
+  const [tablesResult, tilesResult] = await Promise.all([
     getTablesWithSessions(),
-    getActivePricingTiers(),
+    getActivePricingTiles('guest'),
   ]);
 
-  if (!tablesResult.ok || !tiersResult.ok) redirect('/login');
+  if (!tablesResult.ok || !tilesResult.ok) redirect('/login');
 
   return (
     <TableGrid
       initialTables={tablesResult.data}
-      pricingTiers={tiersResult.data}
+      pricingTiles={tilesResult.data}
     />
   );
 }

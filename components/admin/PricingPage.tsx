@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Pencil, ToggleLeft, ToggleRight, X, Check } from 'lucide-react';
+import { Plus, Pencil, ToggleLeft, ToggleRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,11 +15,11 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import {
-  getPricingTiers,
-  createPricingTier,
-  updatePricingTier,
-  togglePricingTierActive,
-  type PricingTierRow,
+  getPricingTiles,
+  createPricingTile,
+  updatePricingTile,
+  togglePricingTileActive,
+  type PricingTileRow,
 } from '@/lib/actions/pricing';
 
 interface TierFormState {
@@ -45,23 +45,23 @@ const EMPTY_FORM: TierFormState = {
 };
 
 interface PricingPageProps {
-  initialTiers: PricingTierRow[];
+  initialTiers: PricingTileRow[];
 }
 
 export function PricingPage({ initialTiers }: PricingPageProps) {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingTier, setEditingTier] = useState<PricingTierRow | null>(null);
+  const [editingTier, setEditingTier] = useState<PricingTileRow | null>(null);
   const [form, setForm] = useState<TierFormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
 
   const { data: tiers = initialTiers } = useQuery({
-    queryKey: ['pricing-tiers'],
-    queryFn: () => getPricingTiers().then((r) => (r.ok ? r.data : [])),
+    queryKey: ['pricing-tiles'],
+    queryFn: () => getPricingTiles('guest').then((r) => (r.ok ? r.data : [])),
     initialData: initialTiers,
   });
 
-  const refetch = () => qc.invalidateQueries({ queryKey: ['pricing-tiers'] });
+  const refetch = () => qc.invalidateQueries({ queryKey: ['pricing-tiles'] });
 
   function openCreate() {
     setEditingTier(null);
@@ -69,7 +69,7 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
     setDialogOpen(true);
   }
 
-  function openEdit(tier: PricingTierRow) {
+  function openEdit(tier: PricingTileRow) {
     setEditingTier(tier);
     setForm({
       code: tier.code,
@@ -89,6 +89,7 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
     const payload = {
       code: form.code,
       name: form.name,
+      category: 'guest' as const,
       price: Number(form.price),
       vatIncluded: form.vatIncluded,
       vatRate: Number(form.vatRate),
@@ -98,8 +99,8 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
     };
 
     const result = editingTier
-      ? await updatePricingTier({ ...payload, id: editingTier.id })
-      : await createPricingTier(payload);
+      ? await updatePricingTile({ ...payload, id: editingTier.id })
+      : await createPricingTile(payload);
 
     setSubmitting(false);
     if (result.ok) {
@@ -111,8 +112,8 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
     }
   }
 
-  async function handleToggle(tier: PricingTierRow) {
-    const result = await togglePricingTierActive(tier.id);
+  async function handleToggle(tier: PricingTileRow) {
+    const result = await togglePricingTileActive(tier.id);
     if (result.ok) {
       toast.success(tier.isActive ? 'ปิดใช้งานแล้ว' : 'เปิดใช้งานแล้ว');
       refetch();
@@ -123,13 +124,10 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
 
   return (
     <div className="p-6 max-w-3xl">
-      {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-medium text-slate-900">ราคาตามประเภทคน</h1>
-          <p className="mt-0.5 text-sm text-slate-500">
-            กำหนดราคาบุฟเฟ่ต์แยกตามประเภทผู้เข้าใช้บริการ
-          </p>
+          <p className="mt-0.5 text-sm text-slate-500">กำหนดราคาบุฟเฟ่ต์แยกตามประเภทผู้เข้าใช้บริการ</p>
         </div>
         <Button onClick={openCreate}>
           <Plus className="mr-1.5 size-4" />
@@ -137,7 +135,6 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
         </Button>
       </div>
 
-      {/* Tiers table */}
       <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
         {tiers.length === 0 ? (
           <div className="py-12 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</div>
@@ -146,7 +143,7 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
             <thead>
               <tr className="border-b border-slate-100 text-left">
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500">ลำดับ</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500">รหัส (code)</th>
+                <th className="px-4 py-3 text-xs font-semibold text-slate-500">รหัส</th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500">ชื่อ</th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">ราคา (฿)</th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500">สถานะ</th>
@@ -173,15 +170,9 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
                       className="flex items-center gap-1.5 text-xs"
                     >
                       {tier.isActive ? (
-                        <>
-                          <ToggleRight className="size-5 text-green-500" />
-                          <span className="text-green-700">ใช้งาน</span>
-                        </>
+                        <><ToggleRight className="size-5 text-green-500" /><span className="text-green-700">ใช้งาน</span></>
                       ) : (
-                        <>
-                          <ToggleLeft className="size-5 text-slate-400" />
-                          <span className="text-slate-400">ปิด</span>
-                        </>
+                        <><ToggleLeft className="size-5 text-slate-400" /><span className="text-slate-400">ปิด</span></>
                       )}
                     </button>
                   </td>
@@ -202,13 +193,11 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
         )}
       </div>
 
-      {/* Create / Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(o) => { if (!o) setDialogOpen(false); }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{editingTier ? 'แก้ไขประเภทราคา' : 'เพิ่มประเภทราคา'}</DialogTitle>
           </DialogHeader>
-
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -232,7 +221,6 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
                 />
               </div>
             </div>
-
             <div className="space-y-1.5">
               <Label htmlFor="f-name">ชื่อแสดงผล *</Label>
               <Input
@@ -242,7 +230,6 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
                 placeholder="ผู้ใหญ่"
               />
             </div>
-
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="f-price">ราคา (฿)</Label>
@@ -267,17 +254,14 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
                 />
               </div>
             </div>
-
             <div className="space-y-1.5">
               <Label htmlFor="f-notes">หมายเหตุ (ไม่บังคับ)</Label>
               <Input
                 id="f-notes"
                 value={form.notes}
                 onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
-                placeholder="คำอธิบายเพิ่มเติม"
               />
             </div>
-
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -288,7 +272,6 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
               เปิดใช้งาน
             </label>
           </div>
-
           <DialogFooter>
             <button
               type="button"

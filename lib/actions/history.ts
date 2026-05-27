@@ -93,7 +93,7 @@ export async function getSessionDetail(sessionId: string) {
       where: eq(sessions.id, sessionId),
       with: {
         table: true,
-        guests: { with: { pricingTier: true } },
+        guests: { with: { pricingTile: true } },
         payment: true,
       },
     });

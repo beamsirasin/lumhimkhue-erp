@@ -121,7 +121,7 @@ export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) 
 
 function baseTotal(session: PosSession): number {
   return session.guests.reduce(
-    (sum, g) => sum + Number(g.pricingTier.price) * g.quantity,
+    (sum, g) => sum + Number(g.pricingTile.price) * g.quantity,
     0,
   );
 }
@@ -250,9 +250,9 @@ function PaymentPanel({
     for (const g of session.guests) {
       if (g.quantity > 0) {
         receiptItems.push({
-          name: g.pricingTier.name,
+          name: g.pricingTile.name,
           quantity: g.quantity,
-          total: Number(g.pricingTier.price) * g.quantity,
+          total: Number(g.pricingTile.price) * g.quantity,
         });
       }
     }
@@ -353,10 +353,10 @@ function PaymentPanel({
             g.quantity > 0 && (
               <div key={g.id} className="flex justify-between text-sm">
                 <span className="text-slate-600">
-                  {g.pricingTier.name} {g.quantity} คน × ฿{Number(g.pricingTier.price).toLocaleString('th-TH')}
+                  {g.pricingTile.name} {g.quantity} คน × ฿{Number(g.pricingTile.price).toLocaleString('th-TH')}
                 </span>
                 <span className="tabular-nums font-medium text-slate-900">
-                  ฿{(Number(g.pricingTier.price) * g.quantity).toLocaleString('th-TH')}
+                  ฿{(Number(g.pricingTile.price) * g.quantity).toLocaleString('th-TH')}
                 </span>
               </div>
             )

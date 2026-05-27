@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const guestRowSchema = z.object({
-  pricingTierId: z.string().uuid(),
+  pricingTileId: z.string().uuid(),
   quantity: z.number().int().min(0),
 });
 

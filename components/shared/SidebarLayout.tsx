@@ -20,51 +20,91 @@ import {
   LogOut,
   Printer,
   History,
+  ChevronDown,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { logoutAction } from '@/lib/actions/auth';
 import type { Role } from '@/lib/auth/permissions';
 
 /* ─── Types ─────────────────────────────────────────────────── */
 
 type NavItem = { href: string; label: string; Icon: LucideIcon };
-type NavSection = { heading?: string; items: NavItem[] };
+type NavSection = {
+  heading?: string;
+  items: (NavItem | NavGroup)[];
+};
+type NavGroup = {
+  label: string;
+  Icon: LucideIcon;
+  matchPrefix: string; // used to detect active group
+  children: NavItem[];
+};
+
+function isNavGroup(item: NavItem | NavGroup): item is NavGroup {
+  return 'children' in item;
+}
 
 /* ─── Nav config per role ────────────────────────────────────── */
+
+const tableGroup: NavGroup = {
+  label: 'จัดการโต๊ะ',
+  Icon: Grid3X3,
+  matchPrefix: '/tables',
+  children: [
+    { href: '/tables',         label: 'ดูโต๊ะ',     Icon: Grid3X3 },
+    { href: '/tables/history', label: 'ประวัติโต๊ะ', Icon: History },
+  ],
+};
 
 const NAV: Record<Role, NavSection[]> = {
   owner: [
     {
       items: [
-        { href: '/dashboard',       label: 'แดชบอร์ด',           Icon: LayoutDashboard },
-        { href: '/pos',             label: 'POS',                Icon: ShoppingCart },
-        { href: '/kds',             label: 'ครัว',                Icon: ChefHat },
-        { href: '/queue',           label: 'คิว',                 Icon: UsersRound },
-        { href: '/tables',          label: 'โต๊ะ',                Icon: Grid3X3 },
-        { href: '/tables/history',  label: 'ประวัติ',             Icon: History },
+        { href: '/dashboard', label: 'แดชบอร์ด', Icon: LayoutDashboard },
+        { href: '/pos',       label: 'POS',       Icon: ShoppingCart },
+        { href: '/kds',       label: 'ครัว',       Icon: ChefHat },
+        { href: '/queue',     label: 'คิว',        Icon: UsersRound },
+        tableGroup,
       ],
     },
     {
       heading: 'จัดการ',
       items: [
-        { href: '/menu',     label: 'เมนูอาหาร',          Icon: UtensilsCrossed },
-        { href: '/pricing',  label: 'ราคาตามประเภทคน',     Icon: Tag },
-        { href: '/users',    label: 'พนักงาน',              Icon: Users },
-        { href: '/reports',  label: 'รายงาน',               Icon: BarChart3 },
-        { href: '/settings', label: 'ตั้งค่า',              Icon: Settings },
-        { href: '/printers', label: 'เครื่องพิมพ์',         Icon: Printer },
+        { href: '/menu',                label: 'เมนูอาหาร',     Icon: UtensilsCrossed },
+        { href: '/admin/pricing-tiles', label: 'Pricing Tiles', Icon: Tag },
+        { href: '/users',               label: 'พนักงาน',        Icon: Users },
+        { href: '/reports',             label: 'รายงาน',         Icon: BarChart3 },
+        { href: '/settings',            label: 'ตั้งค่า',         Icon: Settings },
+        { href: '/printers',            label: 'เครื่องพิมพ์',   Icon: Printer },
+      ],
+    },
+  ],
+  manager: [
+    {
+      items: [
+        { href: '/pos',   label: 'POS',  Icon: ShoppingCart },
+        { href: '/kds',   label: 'ครัว',  Icon: ChefHat },
+        { href: '/queue', label: 'คิว',   Icon: UsersRound },
+        tableGroup,
+      ],
+    },
+    {
+      heading: 'จัดการ',
+      items: [
+        { href: '/admin/pricing-tiles', label: 'Pricing Tiles', Icon: Tag },
+        { href: '/printers',            label: 'เครื่องพิมพ์',   Icon: Printer },
       ],
     },
   ],
   cashier: [
     {
       items: [
-        { href: '/pos',            label: 'POS',          Icon: ShoppingCart },
-        { href: '/kds',            label: 'ครัว',          Icon: ChefHat },
-        { href: '/tables',         label: 'โต๊ะ',           Icon: Grid3X3 },
-        { href: '/tables/history', label: 'ประวัติ',       Icon: History },
-        { href: '/queue',          label: 'คิว',            Icon: UsersRound },
-        { href: '/printers',       label: 'เครื่องพิมพ์',   Icon: Printer },
+        { href: '/pos',      label: 'POS',          Icon: ShoppingCart },
+        { href: '/kds',      label: 'ครัว',          Icon: ChefHat },
+        tableGroup,
+        { href: '/queue',    label: 'คิว',            Icon: UsersRound },
+        { href: '/printers', label: 'เครื่องพิมพ์',   Icon: Printer },
       ],
     },
   ],
@@ -72,7 +112,7 @@ const NAV: Record<Role, NavSection[]> = {
     {
       items: [
         { href: '/kds',      label: 'ครัว',          Icon: ChefHat },
-        { href: '/tables',   label: 'โต๊ะ',           Icon: Grid3X3 },
+        tableGroup,
         { href: '/queue',    label: 'คิว',            Icon: UsersRound },
         { href: '/printers', label: 'เครื่องพิมพ์',   Icon: Printer },
       ],
@@ -83,22 +123,23 @@ const NAV: Record<Role, NavSection[]> = {
 /* ─── Page title map ─────────────────────────────────────────── */
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard':      'แดชบอร์ด',
-  '/pos':            'POS / แคชเชียร์',
-  '/kds':            'ครัว (KDS)',
-  '/queue':          'จัดการคิว',
-  '/tables':         'จัดการโต๊ะ',
-  '/tables/history': 'ประวัติ session',
-  '/menu':           'เมนูอาหาร',
-  '/pricing':        'ราคาตามประเภทคน',
-  '/users':          'พนักงาน',
-  '/reports':        'รายงาน',
-  '/settings':       'ตั้งค่า',
-  '/printers':       'เครื่องพิมพ์',
+  '/dashboard':             'แดชบอร์ด',
+  '/pos':                   'POS / แคชเชียร์',
+  '/kds':                   'ครัว (KDS)',
+  '/queue':                 'จัดการคิว',
+  '/tables':                'จัดการโต๊ะ',
+  '/tables/history':        'ประวัติ session',
+  '/menu':                  'เมนูอาหาร',
+  '/admin/pricing-tiles':   'Pricing Tiles',
+  '/users':                 'พนักงาน',
+  '/reports':               'รายงาน',
+  '/settings':              'ตั้งค่า',
+  '/printers':              'เครื่องพิมพ์',
 };
 
 const ROLE_LABEL: Record<Role, string> = {
   owner:   'เจ้าของร้าน',
+  manager: 'ผู้จัดการ',
   cashier: 'แคชเชียร์',
   kitchen: 'ครัว',
 };
@@ -106,12 +147,66 @@ const ROLE_LABEL: Record<Role, string> = {
 function getPageTitle(pathname: string): string {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
   const key = Object.keys(PAGE_TITLES)
-    .sort((a, b) => b.length - a.length) // longest match first
+    .sort((a, b) => b.length - a.length)
     .find((k) => k.length > 1 && pathname.startsWith(k + '/'));
   return key ? PAGE_TITLES[key] : '';
 }
 
-/* ─── Sub-components (defined outside to avoid re-mount) ────── */
+/* ─── NavGroup component (collapsible) ──────────────────────── */
+
+function NavGroupItem({
+  group,
+  pathname,
+  onNavigate,
+}: {
+  group: NavGroup;
+  pathname: string;
+  onNavigate?: () => void;
+}) {
+  const isGroupActive = pathname === group.matchPrefix || pathname.startsWith(group.matchPrefix + '/');
+  const [open, setOpen] = useState(isGroupActive);
+  const { Icon } = group;
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+        isGroupActive
+          ? 'bg-slate-800 text-white'
+          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+      }`}>
+        <Icon className="size-4 shrink-0" />
+        <span className="flex-1 text-left">{group.label}</span>
+        <ChevronDown className={`size-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mt-0.5 ml-4 border-l border-slate-200 pl-3 space-y-0.5">
+          {group.children.map(({ href, label, Icon: ChildIcon }) => {
+            const isActive = href === '/tables'
+              ? pathname === '/tables'
+              : pathname === href || pathname.startsWith(href + '/');
+            return (
+              <Link
+                key={href}
+                href={href}
+                onClick={onNavigate}
+                className={`flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-slate-700 text-white'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                <ChildIcon className="size-3.5 shrink-0" />
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/* ─── NavItems ───────────────────────────────────────────────── */
 
 function NavItems({
   sections,
@@ -132,22 +227,27 @@ function NavItems({
             </p>
           )}
           <div className="space-y-0.5">
-            {section.items.map(({ href, label, Icon }) => {
-              const isActive =
-                pathname === href || (href.length > 1 && pathname.startsWith(href + '/') && href !== '/tables');
-              // Special: /tables/history is active only at that exact path
-              const isActiveExact = href === '/tables/history'
-                ? pathname === '/tables/history' || pathname.startsWith('/tables/history/')
-                : href === '/tables'
-                  ? pathname === '/tables'
-                  : isActive;
+            {section.items.map((item) => {
+              if (isNavGroup(item)) {
+                return (
+                  <NavGroupItem
+                    key={item.matchPrefix}
+                    group={item}
+                    pathname={pathname}
+                    onNavigate={onNavigate}
+                  />
+                );
+              }
+
+              const { href, label, Icon } = item;
+              const isActive = pathname === href || (href.length > 1 && pathname.startsWith(href + '/'));
               return (
                 <Link
                   key={href}
                   href={href}
                   onClick={onNavigate}
                   className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                    isActiveExact
+                    isActive
                       ? 'bg-slate-800 text-white'
                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                   }`}

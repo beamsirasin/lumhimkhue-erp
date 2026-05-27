@@ -1,121 +1,234 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { eq } from 'drizzle-orm';
+import { eq, asc, and } from 'drizzle-orm';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
-import { pricingTiers } from '@/lib/db/schema';
-import { pricingTierSchema, updatePricingTierSchema } from '@/lib/validations/pricing';
+import { pricingTiles, sessionGuests } from '@/lib/db/schema';
+import {
+  pricingTileSchema,
+  updatePricingTileSchema,
+  reorderTilesSchema,
+  type TileCategory,
+} from '@/lib/validations/pricing';
 
-export async function getPricingTiers() {
+export async function getPricingTiles(category?: TileCategory) {
   const authSession = await auth();
   if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
-  if (!can(authSession.user.role, 'manage_menu'))
-    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  const conditions = category
+    ? and(eq(pricingTiles.category, category))
+    : undefined;
 
   const data = await db
     .select()
-    .from(pricingTiers)
-    .orderBy(pricingTiers.sortOrder);
+    .from(pricingTiles)
+    .where(conditions)
+    .orderBy(asc(pricingTiles.sortOrder), asc(pricingTiles.name));
 
   return { ok: true as const, data };
 }
 
-export type PricingTierRow = NonNullable<
-  Extract<Awaited<ReturnType<typeof getPricingTiers>>, { ok: true }>['data']
->[number];
-
-export async function createPricingTier(input: unknown) {
+export async function getActivePricingTiles(category?: TileCategory) {
   const authSession = await auth();
   if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
-  if (!can(authSession.user.role, 'manage_menu'))
+
+  const conditions = category
+    ? and(eq(pricingTiles.isActive, true), eq(pricingTiles.category, category))
+    : eq(pricingTiles.isActive, true);
+
+  const data = await db
+    .select()
+    .from(pricingTiles)
+    .where(conditions)
+    .orderBy(asc(pricingTiles.sortOrder), asc(pricingTiles.name));
+
+  return { ok: true as const, data };
+}
+
+export type PricingTileRow = NonNullable<
+  Extract<Awaited<ReturnType<typeof getPricingTiles>>, { ok: true }>['data']
+>[number];
+
+export async function createPricingTile(input: unknown) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'pricing_tile:edit'))
     return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
 
-  const parsed = pricingTierSchema.safeParse(input);
-  if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง: ' + parsed.error.issues[0]?.message };
+  const parsed = pricingTileSchema.safeParse(input);
+  if (!parsed.success)
+    return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง: ' + parsed.error.issues[0]?.message };
+
+  const d = parsed.data;
+
+  // Validate discount fields
+  if (d.category === 'discount') {
+    if (!d.discountType)
+      return { ok: false as const, error: 'กรุณาระบุประเภทส่วนลด' };
+    if (d.discountValue == null || d.discountValue <= 0)
+      return { ok: false as const, error: 'กรุณาระบุจำนวนส่วนลด' };
+  }
 
   try {
-    await db.insert(pricingTiers).values({
-      code: parsed.data.code,
-      name: parsed.data.name,
-      price: String(parsed.data.price),
-      vatIncluded: parsed.data.vatIncluded,
-      vatRate: String(parsed.data.vatRate),
-      sortOrder: parsed.data.sortOrder,
-      isActive: parsed.data.isActive,
-      notes: parsed.data.notes ?? null,
-    });
+    const [tile] = await db
+      .insert(pricingTiles)
+      .values({
+        code: d.code,
+        name: d.name,
+        category: d.category,
+        imageUrl: d.imageUrl ?? null,
+        price: String(d.price),
+        vatIncluded: d.vatIncluded,
+        vatRate: String(d.vatRate),
+        discountType: d.discountType ?? null,
+        discountValue: d.discountValue != null ? String(d.discountValue) : null,
+        color: d.color ?? null,
+        sortOrder: d.sortOrder,
+        isActive: d.isActive,
+        notes: d.notes ?? null,
+      })
+      .returning({ id: pricingTiles.id });
 
-    revalidatePath('/pricing');
-    return { ok: true as const };
+    revalidatePath('/admin/pricing-tiles');
+    return { ok: true as const, data: { id: tile.id } };
   } catch (e) {
-    console.error('[createPricingTier]', e);
-    const msg = e instanceof Error && e.message.includes('unique')
-      ? 'รหัส (code) นี้มีอยู่แล้ว'
-      : 'เกิดข้อผิดพลาด กรุณาลองใหม่';
+    console.error('[createPricingTile]', e);
+    const msg =
+      e instanceof Error && e.message.includes('unique')
+        ? 'รหัส (code) นี้มีอยู่แล้ว'
+        : 'เกิดข้อผิดพลาด กรุณาลองใหม่';
     return { ok: false as const, error: msg };
   }
 }
 
-export async function updatePricingTier(input: unknown) {
+export async function updatePricingTile(input: unknown) {
   const authSession = await auth();
   if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
-  if (!can(authSession.user.role, 'manage_menu'))
+  if (!can(authSession.user.role, 'pricing_tile:edit'))
     return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
 
-  const parsed = updatePricingTierSchema.safeParse(input);
+  const parsed = updatePricingTileSchema.safeParse(input);
+  if (!parsed.success)
+    return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง: ' + parsed.error.issues[0]?.message };
+
+  const d = parsed.data;
+
+  // Validate discount fields
+  if (d.category === 'discount') {
+    if (!d.discountType)
+      return { ok: false as const, error: 'กรุณาระบุประเภทส่วนลด' };
+    if (d.discountValue == null || d.discountValue <= 0)
+      return { ok: false as const, error: 'กรุณาระบุจำนวนส่วนลด' };
+  }
+
+  try {
+    await db
+      .update(pricingTiles)
+      .set({
+        name: d.name,
+        imageUrl: d.imageUrl ?? null,
+        price: String(d.price),
+        vatIncluded: d.vatIncluded,
+        vatRate: String(d.vatRate),
+        discountType: d.discountType ?? null,
+        discountValue: d.discountValue != null ? String(d.discountValue) : null,
+        color: d.color ?? null,
+        sortOrder: d.sortOrder,
+        isActive: d.isActive,
+        notes: d.notes ?? null,
+        // code and category are immutable after creation
+      })
+      .where(eq(pricingTiles.id, d.id));
+
+    revalidatePath('/admin/pricing-tiles');
+    return { ok: true as const };
+  } catch (e) {
+    console.error('[updatePricingTile]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
+  }
+}
+
+export async function togglePricingTileActive(id: string) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'pricing_tile:edit'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  try {
+    const [tile] = await db
+      .select({ isActive: pricingTiles.isActive })
+      .from(pricingTiles)
+      .where(eq(pricingTiles.id, id))
+      .limit(1);
+    if (!tile) return { ok: false as const, error: 'ไม่พบข้อมูล' };
+
+    await db
+      .update(pricingTiles)
+      .set({ isActive: !tile.isActive })
+      .where(eq(pricingTiles.id, id));
+
+    revalidatePath('/admin/pricing-tiles');
+    return { ok: true as const };
+  } catch (e) {
+    console.error('[togglePricingTileActive]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+export async function deletePricingTile(id: string) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'pricing_tile:edit'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  // Check if tile is referenced in any session_guests
+  const [usageCheck] = await db
+    .select({ id: sessionGuests.id })
+    .from(sessionGuests)
+    .where(eq(sessionGuests.pricingTileId, id))
+    .limit(1);
+
+  if (usageCheck) {
+    return {
+      ok: false as const,
+      error: 'ไม่สามารถลบ tile นี้ได้เนื่องจากมีการใช้งานแล้ว กรุณาปิด active แทน',
+    };
+  }
+
+  try {
+    await db.delete(pricingTiles).where(eq(pricingTiles.id, id));
+    revalidatePath('/admin/pricing-tiles');
+    return { ok: true as const };
+  } catch (e) {
+    console.error('[deletePricingTile]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+export async function reorderPricingTiles(input: unknown) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'pricing_tile:reorder'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  const parsed = reorderTilesSchema.safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
 
   try {
-    await db
-      .update(pricingTiers)
-      .set({
-        code: parsed.data.code,
-        name: parsed.data.name,
-        price: String(parsed.data.price),
-        vatIncluded: parsed.data.vatIncluded,
-        vatRate: String(parsed.data.vatRate),
-        sortOrder: parsed.data.sortOrder,
-        isActive: parsed.data.isActive,
-        notes: parsed.data.notes ?? null,
-      })
-      .where(eq(pricingTiers.id, parsed.data.id));
-
-    revalidatePath('/pricing');
+    await Promise.all(
+      parsed.data.map(({ id, sortOrder }) =>
+        db
+          .update(pricingTiles)
+          .set({ sortOrder })
+          .where(eq(pricingTiles.id, id)),
+      ),
+    );
+    revalidatePath('/admin/pricing-tiles');
     return { ok: true as const };
   } catch (e) {
-    console.error('[updatePricingTier]', e);
-    const msg = e instanceof Error && e.message.includes('unique')
-      ? 'รหัส (code) นี้มีอยู่แล้ว'
-      : 'เกิดข้อผิดพลาด กรุณาลองใหม่';
-    return { ok: false as const, error: msg };
-  }
-}
-
-export async function togglePricingTierActive(id: string) {
-  const authSession = await auth();
-  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
-  if (!can(authSession.user.role, 'manage_menu'))
-    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
-
-  try {
-    const [tier] = await db
-      .select({ isActive: pricingTiers.isActive })
-      .from(pricingTiers)
-      .where(eq(pricingTiers.id, id))
-      .limit(1);
-    if (!tier) return { ok: false as const, error: 'ไม่พบข้อมูล' };
-
-    await db
-      .update(pricingTiers)
-      .set({ isActive: !tier.isActive })
-      .where(eq(pricingTiers.id, id));
-
-    revalidatePath('/pricing');
-    return { ok: true as const };
-  } catch (e) {
-    console.error('[togglePricingTierActive]', e);
+    console.error('[reorderPricingTiles]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
   }
 }

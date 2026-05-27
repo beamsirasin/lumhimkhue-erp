@@ -25,13 +25,15 @@ import {
 import type { StaffMember } from '@/lib/actions/staff';
 
 const ROLE_LABEL: Record<string, string> = {
-  owner: 'เจ้าของ',
+  owner:   'เจ้าของ',
+  manager: 'ผู้จัดการ',
   cashier: 'แคชเชียร์',
   kitchen: 'ครัว',
 };
 
 const ROLE_COLOR: Record<string, string> = {
-  owner: 'bg-purple-100 text-purple-700',
+  owner:   'bg-purple-100 text-purple-700',
+  manager: 'bg-indigo-100 text-indigo-700',
   cashier: 'bg-blue-100 text-blue-700',
   kitchen: 'bg-orange-100 text-orange-700',
 };

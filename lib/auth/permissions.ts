@@ -1,20 +1,21 @@
-export type Role = 'owner' | 'cashier' | 'kitchen';
+export type Role = 'owner' | 'manager' | 'cashier' | 'kitchen';
 
 export type Action =
   | 'manage_menu'
-  | 'manage_packages'
   | 'manage_users'
   | 'view_reports'
   | 'manage_settings'
   | 'process_payment'
   | 'manage_tables'
   | 'view_kds'
-  | 'manage_queue';
+  | 'manage_queue'
+  | 'pricing_tile:edit'
+  | 'pricing_tile:reorder'
+  | 'table:layout_edit';
 
 const PERMISSIONS: Record<Role, Action[]> = {
   owner: [
     'manage_menu',
-    'manage_packages',
     'manage_users',
     'view_reports',
     'manage_settings',
@@ -22,6 +23,19 @@ const PERMISSIONS: Record<Role, Action[]> = {
     'manage_tables',
     'view_kds',
     'manage_queue',
+    'pricing_tile:edit',
+    'pricing_tile:reorder',
+    'table:layout_edit',
+  ],
+  manager: [
+    'manage_menu',
+    'process_payment',
+    'manage_tables',
+    'view_kds',
+    'manage_queue',
+    'pricing_tile:edit',
+    'pricing_tile:reorder',
+    'table:layout_edit',
   ],
   cashier: ['process_payment', 'manage_tables', 'manage_queue', 'view_kds'],
   kitchen: ['view_kds', 'manage_queue', 'manage_tables'],

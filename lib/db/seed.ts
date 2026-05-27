@@ -31,6 +31,13 @@ async function seed() {
       isActive: true,
     },
     {
+      email: 'manager@shabu.local',
+      passwordHash,
+      name: 'ผู้จัดการ',
+      role: 'manager',
+      isActive: true,
+    },
+    {
       email: 'cashier@shabu.local',
       passwordHash,
       name: 'แคชเชียร์',
@@ -45,13 +52,14 @@ async function seed() {
       isActive: true,
     },
   ]);
-  console.log('✅ Users created');
+  console.log('✅ Users created (owner, manager, cashier, kitchen)');
 
-  // ── Pricing Tiers ─────────────────────────────────────────────────────────
-  await db.insert(schema.pricingTiers).values([
+  // ── Pricing Tiles (category=guest) ───────────────────────────────────────
+  await db.insert(schema.pricingTiles).values([
     {
       code: 'adult',
       name: 'ผู้ใหญ่',
+      category: 'guest',
       price: '266.00',
       vatIncluded: true,
       vatRate: '7.00',
@@ -61,6 +69,7 @@ async function seed() {
     {
       code: 'child',
       name: 'เด็ก',
+      category: 'guest',
       price: '159.00',
       vatIncluded: true,
       vatRate: '7.00',
@@ -70,6 +79,7 @@ async function seed() {
     {
       code: 'toddler',
       name: 'เด็กเล็ก',
+      category: 'guest',
       price: '0.00',
       vatIncluded: true,
       vatRate: '7.00',
@@ -80,6 +90,7 @@ async function seed() {
     {
       code: 'staff',
       name: 'พนักงาน',
+      category: 'guest',
       price: '0.00',
       vatIncluded: true,
       vatRate: '7.00',
@@ -90,6 +101,7 @@ async function seed() {
     {
       code: 'staff_guest_first',
       name: 'พนักงานพา (คนแรก)',
+      category: 'guest',
       price: '199.00',
       vatIncluded: true,
       vatRate: '7.00',
@@ -98,7 +110,7 @@ async function seed() {
       notes: 'แขกที่พนักงานพามา คนแรก (คนถัดไปคิดราคาผู้ใหญ่)',
     },
   ]);
-  console.log('✅ Pricing tiers created (5 tiers)');
+  console.log('✅ Pricing tiles created (5 guest tiles)');
 
   // ── Tables ────────────────────────────────────────────────────────────────
   // 10 tables arranged in a 5-column grid (spacing 120px, 20px margin)
@@ -109,7 +121,7 @@ async function seed() {
     const col = i % 5;
     const row = Math.floor(i / 5);
     return {
-      label: String(i + 1),          // "1" … "10"
+      label: String(i + 1),
       capacity: 4,
       zone: i >= 7 ? 'VIP' : 'ทั่วไป',
       status: 'available' as const,
@@ -195,7 +207,7 @@ async function seed() {
     { categoryId: catMap['น้ำจิ้ม'], name: 'น้ำจิ้มซีฟู้ด', isBuffet: true, maxPerOrder: 3 },
     { categoryId: catMap['น้ำจิ้ม'], name: 'ซอสงา',          isBuffet: true, maxPerOrder: 3 },
 
-    // Extra — คิดเงินเพิ่ม (ไม่ใช่ buffet)
+    // Extra — คิดเงินเพิ่ม
     {
       categoryId: catMap['เนื้อ'],
       name: 'เนื้อวากิว A5',
@@ -234,10 +246,11 @@ async function seed() {
   console.log('');
   console.log('Login credentials:');
   console.log('  owner@shabu.local   / password123  (role: owner)');
+  console.log('  manager@shabu.local / password123  (role: manager)');
   console.log('  cashier@shabu.local / password123  (role: cashier)');
   console.log('  kitchen@shabu.local / password123  (role: kitchen)');
   console.log('');
-  console.log('Pricing tiers seeded:');
+  console.log('Pricing tiles seeded (category=guest):');
   console.log('  adult             ฿266  ผู้ใหญ่');
   console.log('  child             ฿159  เด็ก');
   console.log('  toddler           ฿0    เด็กเล็ก');

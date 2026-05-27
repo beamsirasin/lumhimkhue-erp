@@ -102,10 +102,10 @@ export function SessionDetailDialog({ sessionId, onClose }: SessionDetailDialogP
                   {data.session.guests.map((g) => (
                     <div key={g.id} className="flex justify-between text-sm">
                       <span className="text-slate-700">
-                        {g.pricingTier.name} ×{g.quantity}
+                        {g.pricingTile.name} ×{g.quantity}
                       </span>
                       <span className="tabular-nums font-medium text-slate-900">
-                        ฿{(Number(g.pricingTier.price) * g.quantity).toLocaleString('th-TH')}
+                        ฿{(Number(g.pricingTile.price) * g.quantity).toLocaleString('th-TH')}
                       </span>
                     </div>
                   ))}
@@ -113,7 +113,7 @@ export function SessionDetailDialog({ sessionId, onClose }: SessionDetailDialogP
                     <span className="text-slate-700">รวม</span>
                     <span className="tabular-nums text-slate-900">
                       ฿{data.session.guests
-                        .reduce((s, g) => s + Number(g.pricingTier.price) * g.quantity, 0)
+                        .reduce((s, g) => s + Number(g.pricingTile.price) * g.quantity, 0)
                         .toLocaleString('th-TH')}
                     </span>
                   </div>

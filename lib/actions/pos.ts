@@ -8,11 +8,8 @@ import { db } from '@/lib/db';
 import {
   sessions,
   orders,
-  orderItems,
   tables,
   payments,
-  sessionGuests,
-  pricingTiers,
 } from '@/lib/db/schema';
 import { processPaymentSchema } from '@/lib/validations/pos';
 
@@ -29,7 +26,7 @@ export async function getPosSessionsForPos() {
       with: {
         table: true,
         guests: {
-          with: { pricingTier: true },
+          with: { pricingTile: true },
         },
       },
     });
@@ -56,7 +53,7 @@ export async function getPosSessionDetail(sessionId: string) {
       with: {
         table: true,
         guests: {
-          with: { pricingTier: true },
+          with: { pricingTile: true },
         },
       },
     });
@@ -73,7 +70,7 @@ export async function getPosSessionDetail(sessionId: string) {
     });
 
     const baseAmount = session.guests.reduce(
-      (sum, g) => sum + Number(g.pricingTier.price) * g.quantity,
+      (sum, g) => sum + Number(g.pricingTile.price) * g.quantity,
       0,
     );
 
@@ -119,7 +116,7 @@ export async function processPayment(input: unknown) {
       where: eq(sessions.id, sessionId),
       with: {
         table: true,
-        guests: { with: { pricingTier: true } },
+        guests: { with: { pricingTile: true } },
       },
     });
     if (!session || session.status === 'closed')
@@ -143,7 +140,7 @@ export async function processPayment(input: unknown) {
     });
 
     const baseAmount = session.guests.reduce(
-      (sum, g) => sum + Number(g.pricingTier.price) * g.quantity,
+      (sum, g) => sum + Number(g.pricingTile.price) * g.quantity,
       0,
     );
 
@@ -180,7 +177,7 @@ export async function processPayment(input: unknown) {
       .set({ status: 'closed', closedAt: new Date() })
       .where(eq(sessions.id, sessionId));
 
-    // Table goes to available (not cleaning) after payment
+    // Table goes to available after payment
     await db
       .update(tables)
       .set({ status: 'available' })
