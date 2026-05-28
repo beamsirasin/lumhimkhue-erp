@@ -381,26 +381,44 @@ function StandardSidebarLayout({
   );
 }
 
-/* ─── Cashier bottom-tab layout ──────────────────────────────── */
+/* ─── Bottom-tab layout (cashier + kitchen) ───────────────────── */
 
-const CASHIER_TABS: { href: string; label: string; Icon: LucideIcon }[] = [
-  { href: '/pos',    label: 'POS',  Icon: ShoppingCart },
-  { href: '/kds',    label: 'ครัว', Icon: ChefHat },
-  { href: '/tables', label: 'โต๊ะ', Icon: Grid3X3 },
-  { href: '/queue',  label: 'คิว',  Icon: UsersRound },
-];
+type TabItem     = { href: string; label: string; Icon: LucideIcon };
+type MoreItem    = { href: string; label: string; Icon: LucideIcon };
 
-const CASHIER_MORE_ITEMS: { href: string; label: string; Icon: LucideIcon }[] = [
-  { href: '/tables/history', label: 'ประวัติโต๊ะ',    Icon: History },
-  { href: '/pos/history',    label: 'ประวัติชำระเงิน', Icon: CreditCard },
-  { href: '/printers',       label: 'เครื่องพิมพ์',    Icon: Printer },
-];
+const BOTTOM_TABS: Record<'cashier' | 'kitchen', TabItem[]> = {
+  cashier: [
+    { href: '/pos',    label: 'POS',  Icon: ShoppingCart },
+    { href: '/kds',    label: 'ครัว', Icon: ChefHat },
+    { href: '/tables', label: 'โต๊ะ', Icon: Grid3X3 },
+    { href: '/queue',  label: 'คิว',  Icon: UsersRound },
+  ],
+  kitchen: [
+    { href: '/kds',    label: 'ครัว', Icon: ChefHat },
+    { href: '/tables', label: 'โต๊ะ', Icon: Grid3X3 },
+    { href: '/queue',  label: 'คิว',  Icon: UsersRound },
+  ],
+};
+
+const BOTTOM_MORE_ITEMS: Record<'cashier' | 'kitchen', MoreItem[]> = {
+  cashier: [
+    { href: '/tables/history', label: 'ประวัติโต๊ะ',    Icon: History },
+    { href: '/pos/history',    label: 'ประวัติชำระเงิน', Icon: CreditCard },
+    { href: '/printers',       label: 'เครื่องพิมพ์',    Icon: Printer },
+  ],
+  kitchen: [
+    { href: '/tables/history', label: 'ประวัติโต๊ะ',  Icon: History },
+    { href: '/printers',       label: 'เครื่องพิมพ์', Icon: Printer },
+  ],
+};
 
 function CashierLayout({
+  role,
   userName,
   children,
   pathname,
 }: {
+  role: 'cashier' | 'kitchen';
   userName: string;
   children: React.ReactNode;
   pathname: string;
@@ -458,7 +476,7 @@ function CashierLayout({
       {/* Bottom tab bar */}
       <nav className="relative flex h-[60px] shrink-0 items-stretch border-t border-slate-200 bg-white">
         {/* Nav tabs */}
-        {CASHIER_TABS.map(({ href, label, Icon: TabIcon }) => {
+        {BOTTOM_TABS[role].map(({ href, label, Icon: TabIcon }) => {
           const isActive =
             href === '/tables'
               ? pathname === '/tables' || pathname.startsWith('/tables/')
@@ -522,7 +540,7 @@ function CashierLayout({
               aria-hidden="true"
             />
             <div className="absolute bottom-[calc(100%+6px)] right-0 z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
-              {CASHIER_MORE_ITEMS.map(({ href, label, Icon: ItemIcon }) => {
+              {BOTTOM_MORE_ITEMS[role].map(({ href, label, Icon: ItemIcon }) => {
                 const isActive = pathname === href || pathname.startsWith(href + '/');
                 return (
                   <Link
@@ -569,9 +587,9 @@ interface SidebarLayoutProps {
 export function SidebarLayout({ role, userName, children }: SidebarLayoutProps) {
   const pathname = usePathname();
 
-  if (role === 'cashier') {
+  if (role === 'cashier' || role === 'kitchen') {
     return (
-      <CashierLayout userName={userName} pathname={pathname}>
+      <CashierLayout role={role} userName={userName} pathname={pathname}>
         {children}
       </CashierLayout>
     );
