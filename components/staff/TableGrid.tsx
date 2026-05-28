@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, CSSProperties } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors, type Modifier } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
 import { toast } from 'sonner';
 import {
@@ -1328,12 +1328,26 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
+  const GRID = 20;
+
+  // Live snap modifier — snaps drag transform so the tile visually snaps to the 20px dot-grid
+  const snapModifier = useCallback<Modifier>(({ transform, active }) => {
+    if (!active) return transform;
+    const table = tables.find((t) => t.id === String(active.id));
+    if (!table) return transform;
+    return {
+      ...transform,
+      x: Math.round((table.positionX + transform.x) / GRID) * GRID - table.positionX,
+      y: Math.round((table.positionY + transform.y) / GRID) * GRID - table.positionY,
+    };
+  }, [tables]);
+
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, delta } = event;
     const table = tables.find((t) => t.id === active.id);
     if (!table) return;
-    const newX = Math.max(0, table.positionX + Math.round(delta.x));
-    const newY = Math.max(0, table.positionY + Math.round(delta.y));
+    const newX = Math.max(0, Math.round((table.positionX + delta.x) / GRID) * GRID);
+    const newY = Math.max(0, Math.round((table.positionY + delta.y) / GRID) * GRID);
     await updateTablePosition({ tableId: table.id, positionX: newX, positionY: newY });
     refetch();
   };
@@ -1435,7 +1449,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
         <div className="flex-1 overflow-auto bg-slate-100">
           {/* min-w-max prevents clipping when canvas > viewport; justify-center centers when canvas < viewport */}
           <div className="flex min-h-full items-start justify-center p-4" style={{ minWidth: 'max-content' }}>
-          <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+          <DndContext sensors={sensors} modifiers={[snapModifier]} onDragEnd={handleDragEnd}>
             <div
               className="relative bg-white rounded-xl shadow-inner border border-slate-200"
               style={{ width: canvasW, height: canvasH }}
