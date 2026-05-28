@@ -313,7 +313,7 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
             เปิดโต๊ะ {table.label}
@@ -328,23 +328,59 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
         )}
 
         {step === 'tiles' && (
-          <div className="space-y-4">
-            <TilePicker
-              tiles={pricingTiles}
-              quantities={quantities}
-              onChange={(id, qty) => setQuantities((p) => ({ ...p, [id]: qty }))}
-            />
-            {totalGuests > 0 && (
-              <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
-                <span className="text-slate-500">รวม </span>
-                <span className="font-semibold text-slate-900">{totalGuests} คน</span>
-                <span className="ml-2 text-slate-400">ยอดประมาณ </span>
-                <span className="font-semibold text-slate-900">฿{totalAmount.toLocaleString('th-TH')}</span>
+          <div className="flex gap-5">
+            {/* ── Left: tile picker + notes ── */}
+            <div className="flex-1 space-y-4 min-w-0">
+              <TilePicker
+                tiles={pricingTiles}
+                quantities={quantities}
+                onChange={(id, qty) => setQuantities((p) => ({ ...p, [id]: qty }))}
+              />
+              <div className="space-y-1.5">
+                <Label htmlFor="open-notes">หมายเหตุ (ไม่บังคับ)</Label>
+                <Input id="open-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="เช่น ลูกค้า VIP" />
               </div>
-            )}
-            <div className="space-y-1.5">
-              <Label htmlFor="open-notes">หมายเหตุ (ไม่บังคับ)</Label>
-              <Input id="open-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="เช่น ลูกค้า VIP" />
+            </div>
+
+            {/* ── Right: order summary ── */}
+            <div className="w-44 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 flex flex-col">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">รายการ</p>
+              {totalGuests === 0 ? (
+                <p className="flex-1 flex items-center justify-center text-xs text-slate-400">ยังไม่ได้เลือก</p>
+              ) : (
+                <div className="flex-1 space-y-2">
+                  {pricingTiles
+                    .filter((t) => (quantities[t.id] ?? 0) > 0)
+                    .map((t) => {
+                      const qty = quantities[t.id] ?? 0;
+                      const subtotal = Number(t.price) * qty;
+                      return (
+                        <div key={t.id} className="rounded-lg bg-white border border-slate-100 px-3 py-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-slate-800 truncate">{t.name}</span>
+                            <span className="ml-1 shrink-0 text-sm font-bold text-slate-900">{qty} คน</span>
+                          </div>
+                          <div className="flex items-center justify-between mt-0.5">
+                            <span className="text-[11px] text-slate-400">฿{Number(t.price).toLocaleString('th-TH')} / คน</span>
+                            <span className="text-xs font-medium text-slate-600">฿{subtotal.toLocaleString('th-TH')}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+              {totalGuests > 0 && (
+                <div className="mt-3 border-t border-slate-200 pt-3 space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500">รวม</span>
+                    <span className="font-bold text-slate-900">{totalGuests} คน</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500">ยอดรวม</span>
+                    <span className="font-bold text-slate-900">฿{totalAmount.toLocaleString('th-TH')}</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
