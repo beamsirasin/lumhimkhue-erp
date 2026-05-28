@@ -1346,7 +1346,9 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
 
       {/* Canvas + Edit Panel */}
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex-1 overflow-auto bg-slate-100 p-4">
+        <div className="flex-1 overflow-auto bg-slate-100">
+          {/* min-w-max prevents clipping when canvas > viewport; justify-center centers when canvas < viewport */}
+          <div className="flex min-h-full items-start justify-center p-4" style={{ minWidth: 'max-content' }}>
           <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
             <div
               className="relative bg-white rounded-xl shadow-inner border border-slate-200"
@@ -1398,6 +1400,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
               ))}
             </div>
           </DndContext>
+          </div>
         </div>
 
         {editMode && editingTable && (
