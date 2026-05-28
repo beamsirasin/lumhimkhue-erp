@@ -3,7 +3,7 @@
 import { Users, Package, Tag } from 'lucide-react';
 import type { PricingTile as PricingTileType } from '@/lib/db/schema';
 
-export type TileMode = 'select' | 'edit' | 'display';
+export type TileMode = 'select' | 'edit' | 'display' | 'tap';
 
 interface PricingTileProps {
   tile: PricingTileType;
@@ -53,14 +53,20 @@ export function PricingTile({
 }: PricingTileProps) {
   const Icon = CATEGORY_ICON[tile.category];
   const bg = tile.color ?? DEFAULT_BG[tile.category] ?? '#f8fafc';
-  const isSelected = mode === 'select' && quantity > 0;
+  const isSelected = (mode === 'select' || mode === 'tap') && quantity > 0;
   const priceText = formatPrice(tile);
   const isDiscount = tile.category === 'discount';
+  const isTap = mode === 'tap';
 
   return (
     <div
+      role={isTap ? 'button' : undefined}
+      tabIndex={isTap ? 0 : undefined}
+      onClick={isTap ? onIncrement : undefined}
+      onKeyDown={isTap ? (e) => { if (e.key === 'Enter' || e.key === ' ') onIncrement?.(); } : undefined}
       className={`relative flex flex-col items-center rounded-xl border-2 transition-all select-none
         ${isSelected ? 'border-slate-800 shadow-md' : 'border-transparent'}
+        ${isTap ? 'cursor-pointer hover:brightness-95 active:scale-95' : ''}
         ${!tile.isActive ? 'opacity-50' : ''}
       `}
       style={{ width: 120, height: 120, backgroundColor: bg }}

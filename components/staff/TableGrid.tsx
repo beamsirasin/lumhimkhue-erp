@@ -123,12 +123,85 @@ function TilePicker({ tiles, quantities, onChange }: TilePickerProps) {
         <PricingTile
           key={tile.id}
           tile={tile}
-          mode="select"
+          mode="tap"
           quantity={quantities[tile.id] ?? 0}
           onIncrement={() => onChange(tile.id, (quantities[tile.id] ?? 0) + 1)}
-          onDecrement={() => onChange(tile.id, Math.max(0, (quantities[tile.id] ?? 0) - 1))}
         />
       ))}
+    </div>
+  );
+}
+
+/* ─── Tile Summary Panel (shared by open + edit dialogs) ───────────── */
+
+interface TileSummaryPanelProps {
+  pricingTiles: PricingTileData[];
+  quantities: Record<string, number>;
+  onChange: (tileId: string, qty: number) => void;
+}
+
+function TileSummaryPanel({ pricingTiles, quantities, onChange }: TileSummaryPanelProps) {
+  const totalGuests = Object.values(quantities).reduce((s, q) => s + q, 0);
+  const totalAmount = pricingTiles.reduce((s, t) => s + Number(t.price) * (quantities[t.id] ?? 0), 0);
+  const selected = pricingTiles.filter((t) => (quantities[t.id] ?? 0) > 0);
+
+  return (
+    <div className="w-44 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 flex flex-col">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">รายการ</p>
+      {selected.length === 0 ? (
+        <p className="flex-1 flex items-center justify-center text-center text-xs text-slate-400 leading-relaxed">
+          แตะ tile<br />เพื่อเพิ่ม
+        </p>
+      ) : (
+        <div className="flex-1 space-y-2">
+          {selected.map((t) => {
+            const qty = quantities[t.id] ?? 0;
+            const subtotal = Number(t.price) * qty;
+            return (
+              <div key={t.id} className="rounded-lg bg-white border border-slate-100 px-2.5 py-2">
+                <div className="flex items-center gap-1">
+                  <span className="flex-1 text-sm font-medium text-slate-800 truncate min-w-0">{t.name}</span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      aria-label="ลด"
+                      onClick={() => onChange(t.id, Math.max(0, qty - 1))}
+                      className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-700 hover:bg-red-100 hover:text-red-700 transition-colors"
+                    >
+                      −
+                    </button>
+                    <span className="w-5 text-center text-xs font-bold text-slate-900">{qty}</span>
+                    <button
+                      type="button"
+                      aria-label="เพิ่ม"
+                      onClick={() => onChange(t.id, qty + 1)}
+                      className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-800 text-xs font-bold text-white hover:bg-slate-700 transition-colors"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-[11px] text-slate-400">฿{Number(t.price).toLocaleString('th-TH')} / คน</span>
+                  <span className="text-xs font-medium text-slate-600">฿{subtotal.toLocaleString('th-TH')}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {totalGuests > 0 && (
+        <div className="mt-3 border-t border-slate-200 pt-3 space-y-1">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-slate-500">รวม</span>
+            <span className="font-bold text-slate-900">{totalGuests} คน</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-slate-500">ยอดรวม</span>
+            <span className="font-bold text-slate-900">฿{totalAmount.toLocaleString('th-TH')}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -342,46 +415,12 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
               </div>
             </div>
 
-            {/* ── Right: order summary ── */}
-            <div className="w-44 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 flex flex-col">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">รายการ</p>
-              {totalGuests === 0 ? (
-                <p className="flex-1 flex items-center justify-center text-xs text-slate-400">ยังไม่ได้เลือก</p>
-              ) : (
-                <div className="flex-1 space-y-2">
-                  {pricingTiles
-                    .filter((t) => (quantities[t.id] ?? 0) > 0)
-                    .map((t) => {
-                      const qty = quantities[t.id] ?? 0;
-                      const subtotal = Number(t.price) * qty;
-                      return (
-                        <div key={t.id} className="rounded-lg bg-white border border-slate-100 px-3 py-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-slate-800 truncate">{t.name}</span>
-                            <span className="ml-1 shrink-0 text-sm font-bold text-slate-900">{qty} คน</span>
-                          </div>
-                          <div className="flex items-center justify-between mt-0.5">
-                            <span className="text-[11px] text-slate-400">฿{Number(t.price).toLocaleString('th-TH')} / คน</span>
-                            <span className="text-xs font-medium text-slate-600">฿{subtotal.toLocaleString('th-TH')}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-              )}
-              {totalGuests > 0 && (
-                <div className="mt-3 border-t border-slate-200 pt-3 space-y-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-500">รวม</span>
-                    <span className="font-bold text-slate-900">{totalGuests} คน</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-500">ยอดรวม</span>
-                    <span className="font-bold text-slate-900">฿{totalAmount.toLocaleString('th-TH')}</span>
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* ── Right: shared summary panel with +/- ── */}
+            <TileSummaryPanel
+              pricingTiles={pricingTiles}
+              quantities={quantities}
+              onChange={(id, qty) => setQuantities((p) => ({ ...p, [id]: qty }))}
+            />
           </div>
         )}
 
@@ -643,7 +682,6 @@ function EditGuestsDialog({ open, sessionId, currentGuests, pricingTiles, onClos
   }, [open, currentGuests]);
 
   const totalGuests = Object.values(quantities).reduce((s, q) => s + q, 0);
-  const totalAmount = pricingTiles.reduce((s, t) => s + Number(t.price) * (quantities[t.id] ?? 0), 0);
 
   const handleSubmit = async () => {
     if (!sessionId) return;
@@ -676,46 +714,12 @@ function EditGuestsDialog({ open, sessionId, currentGuests, pricingTiles, onClos
             />
           </div>
 
-          {/* ── Right: order summary ── */}
-          <div className="w-44 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 flex flex-col">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">รายการ</p>
-            {totalGuests === 0 ? (
-              <p className="flex-1 flex items-center justify-center text-xs text-slate-400">ยังไม่ได้เลือก</p>
-            ) : (
-              <div className="flex-1 space-y-2">
-                {pricingTiles
-                  .filter((t) => (quantities[t.id] ?? 0) > 0)
-                  .map((t) => {
-                    const qty = quantities[t.id] ?? 0;
-                    const subtotal = Number(t.price) * qty;
-                    return (
-                      <div key={t.id} className="rounded-lg bg-white border border-slate-100 px-3 py-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-slate-800 truncate">{t.name}</span>
-                          <span className="ml-1 shrink-0 text-sm font-bold text-slate-900">{qty} คน</span>
-                        </div>
-                        <div className="flex items-center justify-between mt-0.5">
-                          <span className="text-[11px] text-slate-400">฿{Number(t.price).toLocaleString('th-TH')} / คน</span>
-                          <span className="text-xs font-medium text-slate-600">฿{subtotal.toLocaleString('th-TH')}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            )}
-            {totalGuests > 0 && (
-              <div className="mt-3 border-t border-slate-200 pt-3 space-y-1">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">รวม</span>
-                  <span className="font-bold text-slate-900">{totalGuests} คน</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">ยอดรวม</span>
-                  <span className="font-bold text-slate-900">฿{totalAmount.toLocaleString('th-TH')}</span>
-                </div>
-              </div>
-            )}
-          </div>
+          {/* ── Right: shared summary panel with +/- ── */}
+          <TileSummaryPanel
+            pricingTiles={pricingTiles}
+            quantities={quantities}
+            onChange={(id, qty) => setQuantities((p) => ({ ...p, [id]: qty }))}
+          />
         </div>
         <DialogFooter>
           <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">ยกเลิก</button>
