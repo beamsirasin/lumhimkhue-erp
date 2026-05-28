@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,9 +10,11 @@ import {
   getMenuCRUDData,
   createCategory,
   updateCategory,
+  deleteCategory,
   toggleCategoryActive,
   createMenuItem,
   updateMenuItem,
+  deleteMenuItem,
   toggleMenuItemAvailable,
 } from '@/lib/actions/menu';
 import {
@@ -76,6 +79,25 @@ export function MenuPage({ initialData }: MenuPageProps) {
     onSuccess: (r) => { if (!r.ok) toast.error(r.error); else invalidate(); },
   });
 
+  const { mutate: deleteCat } = useMutation({
+    mutationFn: (id: string) => deleteCategory(id),
+    onSuccess: (r, id) => {
+      if (!r.ok) { toast.error(r.error); return; }
+      toast.success('ลบหมวดแล้ว');
+      if (selectedCatId === id) setSelectedCatId(null);
+      invalidate();
+    },
+  });
+
+  const { mutate: deleteItem } = useMutation({
+    mutationFn: (id: string) => deleteMenuItem(id),
+    onSuccess: (r) => {
+      if (!r.ok) { toast.error(r.error); return; }
+      toast.success('ลบเมนูแล้ว');
+      invalidate();
+    },
+  });
+
   const selectedCat = categories.find((c) => c.id === selectedCatId);
 
   return (
@@ -95,26 +117,38 @@ export function MenuPage({ initialData }: MenuPageProps) {
         {/* Category list */}
         <div className="lg:col-span-1 space-y-1">
           {categories.map((cat) => (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => setSelectedCatId(cat.id)}
-              className={`w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
-                selectedCatId === cat.id
-                  ? 'bg-slate-800 text-white'
-                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-              } ${!cat.isActive ? 'opacity-50' : ''}`}
-            >
-              <div className="flex items-center justify-between gap-1">
-                <span className="font-medium truncate">{cat.name}</span>
-                <span className={`text-xs shrink-0 ${selectedCatId === cat.id ? 'text-slate-300' : 'text-slate-400'}`}>
-                  {cat.menuItems.length}
+            <div key={cat.id} className="group relative">
+              <button
+                type="button"
+                onClick={() => setSelectedCatId(cat.id)}
+                className={`w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
+                  selectedCatId === cat.id
+                    ? 'bg-slate-800 text-white'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                } ${!cat.isActive ? 'opacity-50' : ''}`}
+              >
+                <div className="flex items-center justify-between gap-1 pr-5">
+                  <span className="font-medium truncate">{cat.name}</span>
+                  <span className={`text-xs shrink-0 ${selectedCatId === cat.id ? 'text-slate-300' : 'text-slate-400'}`}>
+                    {cat.menuItems.length}
+                  </span>
+                </div>
+                <span className={`text-xs ${selectedCatId === cat.id ? 'text-slate-300' : 'text-slate-400'}`}>
+                  {STATION_LABEL[cat.station]}
                 </span>
-              </div>
-              <span className={`text-xs ${selectedCatId === cat.id ? 'text-slate-300' : 'text-slate-400'}`}>
-                {STATION_LABEL[cat.station]}
-              </span>
-            </button>
+              </button>
+              <button
+                type="button"
+                aria-label="ลบหมวด"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirm(`ลบหมวด "${cat.name}"?`)) deleteCat(cat.id);
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center justify-center h-6 w-6 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            </div>
           ))}
           {categories.length === 0 && (
             <p className="text-sm text-slate-400 text-center py-8">ยังไม่มีหมวด</p>
@@ -197,13 +231,23 @@ export function MenuPage({ initialData }: MenuPageProps) {
                           </button>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setModal({ type: 'editItem', item, categoryId: selectedCat.id })}
-                            className="text-xs text-slate-400 hover:text-slate-700"
-                          >
-                            แก้ไข
-                          </button>
+                          <div className="flex items-center justify-end gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setModal({ type: 'editItem', item, categoryId: selectedCat.id })}
+                              className="text-xs text-slate-400 hover:text-slate-700"
+                            >
+                              แก้ไข
+                            </button>
+                            <button
+                              type="button"
+                              aria-label="ลบเมนู"
+                              onClick={() => { if (confirm(`ลบ "${item.name}"?`)) deleteItem(item.id); }}
+                              className="text-slate-300 hover:text-red-600 transition-colors"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

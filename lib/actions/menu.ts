@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, count } from 'drizzle-orm';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
@@ -117,6 +117,36 @@ export async function updateMenuItem(input: unknown) {
     return { ok: true as const };
   } catch (e) {
     console.error('[updateMenuItem]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+export async function deleteMenuItem(id: string) {
+  if (!await requireManageMenu()) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+  try {
+    await db.delete(menuItems).where(eq(menuItems.id, id));
+    revalidatePath('/menu');
+    return { ok: true as const };
+  } catch (e) {
+    console.error('[deleteMenuItem]', e);
+    return { ok: false as const, error: 'ไม่สามารถลบได้ (อาจมีออเดอร์ที่เชื่อมอยู่)' };
+  }
+}
+
+export async function deleteCategory(id: string) {
+  if (!await requireManageMenu()) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+  try {
+    const [{ itemCount }] = await db
+      .select({ itemCount: count(menuItems.id) })
+      .from(menuItems)
+      .where(eq(menuItems.categoryId, id));
+    if (itemCount > 0)
+      return { ok: false as const, error: `กรุณาลบเมนูทั้ง ${itemCount} รายการในหมวดนี้ก่อน` };
+    await db.delete(categories).where(eq(categories.id, id));
+    revalidatePath('/menu');
+    return { ok: true as const };
+  } catch (e) {
+    console.error('[deleteCategory]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
   }
 }
