@@ -222,7 +222,7 @@ export const menuItems = pgTable('menu_items', {
     .references(() => categories.id),
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description'),
-  imageUrl: varchar('image_url', { length: 500 }),
+  imageUrl: text('image_url'),
   isBuffet: boolean('is_buffet').notNull().default(true),
   extraPrice: numeric('extra_price', { precision: 10, scale: 2 })
     .notNull()

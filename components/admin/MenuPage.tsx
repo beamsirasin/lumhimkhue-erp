@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Trash2, ImagePlus, X } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -358,6 +358,31 @@ function CategoryForm({
   );
 }
 
+/** Compress + resize an image File to a base64 data URL (max 480px wide, JPEG 80%). */
+function compressImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    img.onload = () => {
+      const MAX = 480;
+      const scale = img.width > MAX ? MAX / img.width : 1;
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 function MenuItemForm({
   categoryId,
   initial,
@@ -370,7 +395,7 @@ function MenuItemForm({
   onSaved: () => void;
 }) {
   const schema = initial ? updateMenuItemSchema : createMenuItemSchema;
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<
     CreateMenuItemInput | UpdateMenuItemInput
   >({
     resolver: zodResolver(schema) as Resolver<CreateMenuItemInput | UpdateMenuItemInput>,
@@ -380,6 +405,7 @@ function MenuItemForm({
           categoryId,
           name: initial.name,
           description: initial.description ?? '',
+          imageUrl: initial.imageUrl ?? null,
           isBuffet: initial.isBuffet,
           extraPrice: Number(initial.extraPrice),
           maxPerOrder: initial.maxPerOrder ?? undefined,
@@ -388,7 +414,22 @@ function MenuItemForm({
       : { categoryId, isBuffet: true, extraPrice: 0, cooldownSeconds: 0 },
   });
 
+  const imageUrl = watch('imageUrl' as unknown as never) as unknown as string | null | undefined;
   const isBuffet = watch('isBuffet');
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function handleImageFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error('ไฟล์ใหญ่เกิน 5MB'); return; }
+    try {
+      const dataUrl = await compressImage(file);
+      setValue('imageUrl' as never, dataUrl as never);
+    } catch {
+      toast.error('อ่านไฟล์ไม่ได้');
+    }
+    e.target.value = '';
+  }
 
   async function onSubmit(data: CreateMenuItemInput | UpdateMenuItemInput) {
     const result = initial ? await updateMenuItem(data) : await createMenuItem(data);
@@ -404,6 +445,42 @@ function MenuItemForm({
         <button type="button" aria-label="ปิด" onClick={onClose} className="text-slate-400 hover:text-slate-600">×</button>
       </div>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
+        {/* Image upload */}
+        <Field label="รูปเมนู">
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
+          {imageUrl ? (
+            <div className="relative w-full h-36 rounded-lg overflow-hidden border border-slate-200">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={imageUrl} alt="preview" className="w-full h-full object-cover" />
+              <button
+                type="button"
+                aria-label="ลบรูป"
+                onClick={() => setValue('imageUrl' as never, null as never)}
+                className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+              >
+                <X className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="absolute bottom-1.5 right-1.5 rounded-md bg-black/50 px-2 py-1 text-[11px] text-white hover:bg-black/70 transition-colors"
+              >
+                เปลี่ยนรูป
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-200 py-6 text-slate-400 hover:border-slate-400 hover:text-slate-600 transition-colors"
+            >
+              <ImagePlus className="size-6" />
+              <span className="text-xs">คลิกเพื่ออัปโหลดรูป</span>
+              <span className="text-[11px] text-slate-300">PNG, JPG ไม่เกิน 5MB</span>
+            </button>
+          )}
+        </Field>
+
         <Field label="ชื่อเมนู" error={errors.name?.message}>
           <input {...register('name')} className={INPUT} />
         </Field>

@@ -24,6 +24,7 @@ export const createMenuItemSchema = z.object({
   categoryId: z.string().uuid(),
   name: z.string().min(1, 'กรุณากรอกชื่อเมนู').max(255),
   description: z.string().max(1000).optional(),
+  imageUrl: z.string().nullable().optional(),
   isBuffet: z.boolean().default(true),
   extraPrice: z.number().min(0).default(0),
   maxPerOrder: z.number().int().min(1).nullable().optional(),
