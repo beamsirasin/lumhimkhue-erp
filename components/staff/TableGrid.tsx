@@ -153,7 +153,7 @@ function TileSummaryPanel({ pricingTiles, quantities, onChange }: TileSummaryPan
           แตะ tile<br />เพื่อเพิ่ม
         </p>
       ) : (
-        <div className="flex-1 space-y-2">
+        <div className="flex-1 overflow-y-auto space-y-2 max-h-52 pr-0.5">
           {selected.map((t) => {
             const qty = quantities[t.id] ?? 0;
             const subtotal = Number(t.price) * qty;
