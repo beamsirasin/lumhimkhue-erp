@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { differenceInSeconds } from 'date-fns';
 import { useCartStore, selectTotalItems, selectTotalExtra } from '@/lib/store/cart';
-import { placeOrder, callStaff, requestBill } from '@/lib/actions/orders';
+import { placeOrder } from '@/lib/actions/orders';
 import type { SessionData, MenuCategoriesData } from '@/lib/actions/orders';
 
 /* ─── Elapsed time display (counts up from session start) ─────────────────── */
@@ -76,18 +76,6 @@ export function CustomerMenuPage({
     } else {
       toast.error(result.error);
     }
-  }
-
-  async function handleCallStaff() {
-    const result = await callStaff(sessionToken);
-    if (result.ok) toast.success('เรียกพนักงานแล้ว กรุณารอสักครู่');
-    else toast.error(result.error);
-  }
-
-  async function handleRequestBill() {
-    const result = await requestBill(sessionToken);
-    if (result.ok) toast.success('แจ้งพนักงานรับบิลแล้ว กรุณารอสักครู่');
-    else toast.error(result.error);
   }
 
   const isClosed = session.status === 'closing' || session.status === 'closed';
@@ -223,26 +211,6 @@ export function CustomerMenuPage({
           })}
         </div>
       </main>
-
-      {/* Action buttons */}
-      <div className="fixed bottom-20 right-4 z-20 flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={handleCallStaff}
-          disabled={isClosed}
-          className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow hover:bg-slate-50 disabled:opacity-40"
-        >
-          เรียกพนักงาน
-        </button>
-        <button
-          type="button"
-          onClick={handleRequestBill}
-          disabled={isClosed}
-          className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow hover:bg-slate-50 disabled:opacity-40"
-        >
-          เรียกเก็บเงิน
-        </button>
-      </div>
 
       {/* Cart bar */}
       {totalItems > 0 && (
