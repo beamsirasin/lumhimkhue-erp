@@ -49,6 +49,7 @@ import {
   closeSession,
   moveSession,
   updateSessionGuests,
+  setTableAvailable,
 } from '@/lib/actions/sessions';
 import { createReservation, cancelReservation } from '@/lib/actions/reservations';
 import { print as printTableQr } from '@/lib/printer/service';
@@ -1014,6 +1015,21 @@ function TableSheet({
                       <p className="font-semibold">เปิดโต๊ะ</p>
                     </div>
                     <ChevronRight className="size-5 shrink-0" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={async () => {
+                      if (!confirm(`ยกเลิกการจองโต๊ะ ${table.label}?`)) return;
+                      setBusy(true);
+                      const r = await setTableAvailable({ tableId: table.id });
+                      setBusy(false);
+                      if (r.ok) { toast.success('ยกเลิกการจองแล้ว'); onClose(); onRefetch(); }
+                      else toast.error(r.error);
+                    }}
+                    className="w-full rounded-xl border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                  >
+                    ยกเลิกจอง
                   </button>
                 </div>
               )}
