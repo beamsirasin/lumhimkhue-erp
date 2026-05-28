@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import { eq, inArray, asc } from 'drizzle-orm';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
@@ -261,7 +261,7 @@ export async function processPayment(input: unknown) {
       .where(inArray(tables.id, allTableIds));
 
     revalidatePath('/pos');
-    revalidatePath('/tables');
+    updateTag('tables');
     return { ok: true as const, data: { total, changeAmount } };
   } catch (e) {
     console.error('[processPayment]', e);

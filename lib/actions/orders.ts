@@ -2,6 +2,7 @@
 
 import { eq, and, gte, desc, asc, inArray } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
+import { updateTag } from 'next/cache';
 import { db } from '@/lib/db';
 import {
   sessions,
@@ -155,6 +156,7 @@ export async function placeOrder(input: unknown) {
       })),
     );
 
+    updateTag('kds');
     return { ok: true as const };
   } catch (e) {
     console.error('[placeOrder]', e);

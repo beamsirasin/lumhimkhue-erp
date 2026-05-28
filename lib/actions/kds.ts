@@ -1,12 +1,39 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { updateTag, unstable_cache } from 'next/cache';
 import { eq, and, inArray, asc } from 'drizzle-orm';
 import { z } from 'zod';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
 import { orderItems, orders, sessions, tables, menuItems } from '@/lib/db/schema';
+
+const _fetchKdsItems = async () =>
+  db
+    .select({
+      id: orderItems.id,
+      quantity: orderItems.quantity,
+      notes: orderItems.notes,
+      station: orderItems.station,
+      status: orderItems.status,
+      orderedAt: orders.createdAt,
+      menuItemName: menuItems.name,
+      tableNumber: tables.label,
+    })
+    .from(orderItems)
+    .innerJoin(orders, eq(orderItems.orderId, orders.id))
+    .innerJoin(sessions, eq(orders.sessionId, sessions.id))
+    .innerJoin(tables, eq(sessions.tableId, tables.id))
+    .innerJoin(menuItems, eq(orderItems.menuItemId, menuItems.id))
+    .where(
+      and(
+        inArray(orderItems.status, ['pending', 'preparing', 'ready']),
+        inArray(sessions.status, ['active', 'closing']),
+      ),
+    )
+    .orderBy(asc(orders.createdAt), asc(orderItems.id));
+
+const _cachedKdsQuery = unstable_cache(_fetchKdsItems, ['kds-items'], { tags: ['kds'] });
 
 export async function getKdsItems() {
   const authSession = await auth();
@@ -15,31 +42,8 @@ export async function getKdsItems() {
     return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
 
   try {
-    const items = await db
-      .select({
-        id: orderItems.id,
-        quantity: orderItems.quantity,
-        notes: orderItems.notes,
-        station: orderItems.station,
-        status: orderItems.status,
-        orderedAt: orders.createdAt,
-        menuItemName: menuItems.name,
-        tableNumber: tables.label,
-      })
-      .from(orderItems)
-      .innerJoin(orders, eq(orderItems.orderId, orders.id))
-      .innerJoin(sessions, eq(orders.sessionId, sessions.id))
-      .innerJoin(tables, eq(sessions.tableId, tables.id))
-      .innerJoin(menuItems, eq(orderItems.menuItemId, menuItems.id))
-      .where(
-        and(
-          inArray(orderItems.status, ['pending', 'preparing', 'ready']),
-          inArray(sessions.status, ['active', 'closing']),
-        ),
-      )
-      .orderBy(asc(orders.createdAt), asc(orderItems.id));
-
-    return { ok: true as const, data: items };
+    const data = await _cachedKdsQuery();
+    return { ok: true as const, data };
   } catch (e) {
     console.error('[getKdsItems]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
@@ -77,7 +81,7 @@ export async function updateItemStatus(input: unknown) {
       })
       .where(eq(orderItems.id, itemId));
 
-    revalidatePath('/kds');
+    updateTag('kds');
     return { ok: true as const };
   } catch (e) {
     console.error('[updateItemStatus]', e);

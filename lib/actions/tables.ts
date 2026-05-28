@@ -1,98 +1,152 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
-import { eq, isNull } from 'drizzle-orm';
+import { updateTag, unstable_cache } from 'next/cache';
+import { eq, isNull, inArray, asc } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
-import { tables, pricingTiles } from '@/lib/db/schema';
+import { tables, pricingTiles, sessions, sessionGuests, reservations } from '@/lib/db/schema';
 
 /* ─── Queries ─────────────────────────────────────────────────────────────── */
+
+// Raw DB fetch — 2 parallel rounds instead of 5 sequential Drizzle sub-queries.
+// Cached by tag 'tables'; invalidated by revalidateTag('tables') on any mutation.
+const _fetchTablesWithSessions = async () => {
+  // Round 1 (parallel): tables + active sessions + pending reservations
+  const [tableRows, sessionRows, reservationRows] = await Promise.all([
+    db.select().from(tables).where(isNull(tables.deletedAt)).orderBy(asc(tables.label)),
+    db.select().from(sessions).where(inArray(sessions.status, ['active', 'closing'])),
+    db.select().from(reservations).where(eq(reservations.status, 'pending')),
+  ]);
+
+  // Round 2 (parallel): session guests + pricing tile names/prices
+  const activeSessionIds = sessionRows.map((s) => s.id);
+  type TileRow = { id: string; code: string; name: string; price: string };
+  let guestRows: (typeof sessionGuests.$inferSelect)[] = [];
+  let tileRows: TileRow[] = [];
+
+  if (activeSessionIds.length > 0) {
+    [guestRows, tileRows] = await Promise.all([
+      db.select().from(sessionGuests).where(inArray(sessionGuests.sessionId, activeSessionIds)),
+      db
+        .select({
+          id: pricingTiles.id,
+          code: pricingTiles.code,
+          name: pricingTiles.name,
+          price: pricingTiles.price,
+        })
+        .from(pricingTiles)
+        .where(eq(pricingTiles.isActive, true)),
+    ]);
+  }
+
+  // Build lookup maps
+  const tilesById = new Map(tileRows.map((t) => [t.id, t]));
+
+  const guestsBySessionId = new Map<string, (typeof guestRows)[number][]>();
+  for (const g of guestRows) {
+    const arr = guestsBySessionId.get(g.sessionId) ?? [];
+    arr.push(g);
+    guestsBySessionId.set(g.sessionId, arr);
+  }
+
+  // Most-recent active/closing session per table
+  const sessionByTableId = new Map<string, (typeof sessionRows)[number]>();
+  for (const s of sessionRows) {
+    const existing = sessionByTableId.get(s.tableId);
+    if (!existing || s.startedAt > existing.startedAt) {
+      sessionByTableId.set(s.tableId, s);
+    }
+  }
+
+  // Earliest pending reservation per table
+  const reservationByTableId = new Map<string, (typeof reservationRows)[number]>();
+  for (const r of reservationRows) {
+    const existing = reservationByTableId.get(r.tableId);
+    if (!existing || r.reservedAt < existing.reservedAt) {
+      reservationByTableId.set(r.tableId, r);
+    }
+  }
+
+  return tableRows.map((row) => {
+    const s = sessionByTableId.get(row.id);
+    const r = reservationByTableId.get(row.id);
+
+    let activeSession = null;
+    if (s) {
+      const rawGuests = guestsBySessionId.get(s.id) ?? [];
+      const guests = rawGuests
+        .map((g) => {
+          const tile = tilesById.get(g.pricingTileId);
+          if (!tile) return null;
+          return {
+            id: g.id,
+            quantity: g.quantity,
+            pricingTile: { id: tile.id, code: tile.code, name: tile.name, price: tile.price },
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null);
+
+      activeSession = {
+        id: s.id,
+        status: s.status,
+        startedAt: s.startedAt,
+        sessionToken: s.sessionToken,
+        parentSessionId: s.parentSessionId,
+        notes: s.notes,
+        guests,
+        totalGuests: guests.reduce((sum, g) => sum + g.quantity, 0),
+        baseAmount: guests.reduce(
+          (sum, g) => sum + Number(g.pricingTile.price) * g.quantity,
+          0,
+        ),
+      };
+    }
+
+    return {
+      id: row.id,
+      label: row.label,
+      capacity: row.capacity,
+      zone: row.zone,
+      status: row.status,
+      qrToken: row.qrToken,
+      positionX: row.positionX,
+      positionY: row.positionY,
+      width: row.width,
+      height: row.height,
+      shape: row.shape,
+      activeSession,
+      activeReservation: r
+        ? {
+            id: r.id,
+            customerName: r.customerName,
+            customerPhone: r.customerPhone,
+            reservedAt: r.reservedAt,
+            partySize: r.partySize,
+            notes: r.notes,
+            status: r.status,
+          }
+        : null,
+    };
+  });
+};
+
+const _cachedTablesQuery = unstable_cache(_fetchTablesWithSessions, ['tables-with-sessions'], {
+  tags: ['tables'],
+});
 
 export async function getTablesWithSessions() {
   const session = await auth();
   if (!session?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
-
-  const rows = await db.query.tables.findMany({
-    where: isNull(tables.deletedAt),
-    orderBy: (t, { asc }) => [asc(t.label)],
-    with: {
-      sessions: {
-        where: (s, { inArray }) => inArray(s.status, ['active', 'closing']),
-        limit: 1,
-        orderBy: (s, { desc }) => [desc(s.startedAt)],
-        with: {
-          guests: {
-            with: { pricingTile: true },
-          },
-        },
-      },
-      reservations: {
-        where: (r, { inArray }) => inArray(r.status, ['pending']),
-        limit: 1,
-        orderBy: (r, { asc }) => [asc(r.reservedAt)],
-      },
-    },
-  });
-
-  return {
-    ok: true as const,
-    data: rows.map((row) => {
-      const s = row.sessions[0];
-      const r = row.reservations[0];
-      return {
-        id: row.id,
-        label: row.label,
-        capacity: row.capacity,
-        zone: row.zone,
-        status: row.status,
-        qrToken: row.qrToken,
-        positionX: row.positionX,
-        positionY: row.positionY,
-        width: row.width,
-        height: row.height,
-        shape: row.shape,
-        activeSession: s
-          ? {
-              id: s.id,
-              status: s.status,
-              startedAt: s.startedAt,
-              sessionToken: s.sessionToken,
-              parentSessionId: s.parentSessionId,
-              notes: s.notes,
-              guests: s.guests.map((g) => ({
-                id: g.id,
-                quantity: g.quantity,
-                pricingTile: {
-                  id: g.pricingTile.id,
-                  code: g.pricingTile.code,
-                  name: g.pricingTile.name,
-                  price: g.pricingTile.price,
-                },
-              })),
-              totalGuests: s.guests.reduce((sum, g) => sum + g.quantity, 0),
-              baseAmount: s.guests.reduce(
-                (sum, g) => sum + Number(g.pricingTile.price) * g.quantity,
-                0,
-              ),
-            }
-          : null,
-        activeReservation: r
-          ? {
-              id: r.id,
-              customerName: r.customerName,
-              customerPhone: r.customerPhone,
-              reservedAt: r.reservedAt,
-              partySize: r.partySize,
-              notes: r.notes,
-              status: r.status,
-            }
-          : null,
-      };
-    }),
-  };
+  try {
+    const data = await _cachedTablesQuery();
+    return { ok: true as const, data };
+  } catch (e) {
+    console.error('[getTablesWithSessions]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
 }
 
 export type TableData = NonNullable<
@@ -106,15 +160,10 @@ export async function getActivePricingTiles(category?: 'guest' | 'addon' | 'disc
   const rows = await db
     .select()
     .from(pricingTiles)
-    .where(
-      category
-        ? eq(pricingTiles.isActive, true) // we filter in the query builder below
-        : eq(pricingTiles.isActive, true),
-    )
+    .where(eq(pricingTiles.isActive, true))
     .orderBy(pricingTiles.sortOrder);
 
   const data = category ? rows.filter((r) => r.category === category) : rows;
-
   return { ok: true as const, data };
 }
 
@@ -154,7 +203,7 @@ export async function createTable(input: unknown) {
       })
       .returning({ id: tables.id });
 
-    revalidatePath('/tables');
+    updateTag('tables');
     return { ok: true as const, data: { id: newTable.id } };
   } catch (e) {
     console.error('[createTable]', e);
@@ -183,7 +232,7 @@ export async function updateTablePosition(input: unknown) {
       .set({ positionX: parsed.data.positionX, positionY: parsed.data.positionY })
       .where(eq(tables.id, parsed.data.tableId));
 
-    revalidatePath('/tables');
+    updateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[updateTablePosition]', e);
@@ -223,7 +272,7 @@ export async function updateTableMeta(input: unknown) {
       })
       .where(eq(tables.id, parsed.data.tableId));
 
-    revalidatePath('/tables');
+    updateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[updateTableMeta]', e);
@@ -253,7 +302,7 @@ export async function softDeleteTable(input: { tableId: string }) {
       .set({ deletedAt: new Date() })
       .where(eq(tables.id, input.tableId));
 
-    revalidatePath('/tables');
+    updateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[softDeleteTable]', e);
@@ -269,7 +318,7 @@ export async function setTableReserved(input: { tableId: string }) {
 
   try {
     await db.update(tables).set({ status: 'reserved' }).where(eq(tables.id, input.tableId));
-    revalidatePath('/tables');
+    updateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[setTableReserved]', e);

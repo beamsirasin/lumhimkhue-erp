@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { updateTag } from 'next/cache';
 import { eq, inArray } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { auth } from '@/auth';
@@ -44,11 +44,16 @@ export async function openSession(input: unknown) {
   const nonZeroGuests = guests.filter((g) => g.quantity > 0);
 
   try {
-    // Verify all tables
-    const tableRows = await db
-      .select({ id: tables.id, status: tables.status, label: tables.label, qrToken: tables.qrToken })
-      .from(tables)
-      .where(inArray(tables.id, allTableIds));
+    // Verify tables + pricing tiles in parallel
+    const [tableRows, activeTiles] = await Promise.all([
+      db
+        .select({ id: tables.id, status: tables.status, label: tables.label, qrToken: tables.qrToken })
+        .from(tables)
+        .where(inArray(tables.id, allTableIds)),
+      nonZeroGuests.length > 0
+        ? db.select({ id: pricingTiles.id }).from(pricingTiles).where(eq(pricingTiles.isActive, true))
+        : Promise.resolve([] as { id: string }[]),
+    ]);
 
     for (const t of tableRows) {
       if (t.id === tableId && t.status !== 'available' && t.status !== 'reserved')
@@ -60,15 +65,9 @@ export async function openSession(input: unknown) {
     const primaryTableRow = tableRows.find((t) => t.id === tableId);
     if (!primaryTableRow) return { ok: false as const, error: 'ไม่พบโต๊ะ' };
 
-    // Verify pricing tiles
-    const tileIds = nonZeroGuests.map((g) => g.pricingTileId);
-    const activeTiles = await db
-      .select({ id: pricingTiles.id })
-      .from(pricingTiles)
-      .where(eq(pricingTiles.isActive, true));
     const activeTileIds = new Set(activeTiles.map((t) => t.id));
-    for (const tileId of tileIds) {
-      if (!activeTileIds.has(tileId))
+    for (const g of nonZeroGuests) {
+      if (!activeTileIds.has(g.pricingTileId))
         return { ok: false as const, error: 'ไม่พบประเภทราคา' };
     }
 
@@ -112,24 +111,16 @@ export async function openSession(input: unknown) {
       await db.insert(sessions).values(linkedSessionRows);
     }
 
-    // Mark primary table as occupied
-    await db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, tableId));
-
-    // Mark linked tables as linked
-    if (linkedTableIds.length > 0) {
-      await db
-        .update(tables)
-        .set({ status: 'linked' })
-        .where(inArray(tables.id, linkedTableIds));
-    }
-
-    // If opened from a reservation, mark it arrived
-    if (reservationId) {
-      await db
-        .update(reservations)
-        .set({ status: 'arrived' })
-        .where(eq(reservations.id, reservationId));
-    }
+    // Update table statuses (and optional reservation) in parallel
+    await Promise.all([
+      db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, tableId)),
+      linkedTableIds.length > 0
+        ? db.update(tables).set({ status: 'linked' }).where(inArray(tables.id, linkedTableIds))
+        : Promise.resolve(),
+      reservationId
+        ? db.update(reservations).set({ status: 'arrived' }).where(eq(reservations.id, reservationId))
+        : Promise.resolve(),
+    ]);
 
     const thLocale: Intl.DateTimeFormatOptions = {
       dateStyle: 'short',
@@ -147,7 +138,7 @@ export async function openSession(input: unknown) {
       };
     });
 
-    revalidatePath('/tables');
+    updateTag('tables');
     return {
       ok: true as const,
       data: {
@@ -213,7 +204,7 @@ export async function closeSession(input: { sessionId: string }) {
       .set({ status: 'available' })
       .where(inArray(tables.id, allTableIds));
 
-    revalidatePath('/tables');
+    updateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[closeSession]', e);
@@ -252,7 +243,7 @@ export async function requestBillFromTable(input: { sessionId: string }) {
       .set({ status: 'closing' })
       .where(inArray(sessions.id, allIds));
 
-    revalidatePath('/tables');
+    updateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[requestBillFromTable]', e);
@@ -270,7 +261,7 @@ export async function setTableAvailable(input: { tableId: string }) {
 
   try {
     await db.update(tables).set({ status: 'available' }).where(eq(tables.id, input.tableId));
-    revalidatePath('/tables');
+    updateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[setTableAvailable]', e);
@@ -313,7 +304,7 @@ export async function updateSessionGuests(input: unknown) {
         })),
       );
     }
-    revalidatePath('/tables');
+    updateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[updateSessionGuests]', e);
@@ -362,7 +353,7 @@ export async function moveSession(input: { sessionId: string; newTableId: string
     await db.update(tables).set({ status: 'available' }).where(eq(tables.id, oldTableId));
     await db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, input.newTableId));
 
-    revalidatePath('/tables');
+    updateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[moveSession]', e);
