@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, CSSProperties } from 'react';
+import { useState, useEffect, useCallback, useRef, CSSProperties } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors, type Modifier } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
@@ -1328,26 +1328,56 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
-  const GRID = 20;
+  // Auto-fit: measure the canvas container and compute a scale so all tables are visible
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
 
-  // Live snap modifier — snaps drag transform so the tile visually snaps to the 20px dot-grid
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setContainerSize({ w: width, h: height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const GRID = 20;
+  const PAD = 24; // breathing room around the canvas
+
+  const canvasW = Math.max(1000, ...tables.map((t) => t.positionX + t.width + 40));
+  const canvasH = Math.max(600,  ...tables.map((t) => t.positionY + t.height + 40));
+
+  const scale = containerSize.w > 0 && containerSize.h > 0
+    ? Math.min(
+        (containerSize.w - PAD) / canvasW,
+        (containerSize.h - PAD) / canvasH,
+        1,          // never scale up beyond 100%
+      )
+    : 1;
+
+  // Live snap modifier — delta is in screen coords; convert to logical, snap, convert back
   const snapModifier = useCallback<Modifier>(({ transform, active }) => {
     if (!active) return transform;
     const table = tables.find((t) => t.id === String(active.id));
     if (!table) return transform;
+    const logX = table.positionX + transform.x / scale;
+    const logY = table.positionY + transform.y / scale;
     return {
       ...transform,
-      x: Math.round((table.positionX + transform.x) / GRID) * GRID - table.positionX,
-      y: Math.round((table.positionY + transform.y) / GRID) * GRID - table.positionY,
+      x: Math.round(logX / GRID) * GRID - table.positionX,
+      y: Math.round(logY / GRID) * GRID - table.positionY,
     };
-  }, [tables]);
+  }, [tables, scale]);
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, delta } = event;
     const table = tables.find((t) => t.id === active.id);
     if (!table) return;
-    const newX = Math.max(0, Math.round((table.positionX + delta.x) / GRID) * GRID);
-    const newY = Math.max(0, Math.round((table.positionY + delta.y) / GRID) * GRID);
+    // delta is in screen px; divide by scale to get logical px
+    const newX = Math.max(0, Math.round((table.positionX + delta.x / scale) / GRID) * GRID);
+    const newY = Math.max(0, Math.round((table.positionY + delta.y / scale) / GRID) * GRID);
     await updateTablePosition({ tableId: table.id, positionX: newX, positionY: newY });
     refetch();
   };
@@ -1364,9 +1394,6 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
       toast.error(r.error);
     }
   };
-
-  const canvasW = Math.max(1000, ...tables.map((t) => t.positionX + t.width + 40));
-  const canvasH = Math.max(600, ...tables.map((t) => t.positionY + t.height + 40));
 
   const counts = tables.reduce<Record<string, number>>((acc, t) => {
     const key = t.activeSession ? 'occupied' : t.status;
@@ -1446,13 +1473,14 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
 
       {/* Canvas + Edit Panel */}
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex-1 overflow-auto bg-slate-100">
-          {/* min-w-max prevents clipping when canvas > viewport; justify-center centers when canvas < viewport */}
-          <div className="flex min-h-full items-start justify-center p-4" style={{ minWidth: 'max-content' }}>
+        {/* Canvas area: measures itself, scales canvas to fit without scrolling */}
+        <div ref={containerRef} className="flex-1 overflow-hidden bg-slate-100 flex items-center justify-center">
+          {/* Spacer: occupies the scaled dimensions so centering works correctly */}
+          <div style={{ width: canvasW * scale, height: canvasH * scale, flexShrink: 0 }}>
           <DndContext sensors={sensors} modifiers={[snapModifier]} onDragEnd={handleDragEnd}>
             <div
               className="relative bg-white rounded-xl shadow-inner border border-slate-200"
-              style={{ width: canvasW, height: canvasH }}
+              style={{ width: canvasW, height: canvasH, transform: `scale(${scale})`, transformOrigin: 'top left' }}
               onClick={editMode ? (e) => { if (e.target === e.currentTarget) setEditingTable(null); } : undefined}
             >
               <svg className="absolute inset-0 pointer-events-none" width={canvasW} height={canvasH}>
