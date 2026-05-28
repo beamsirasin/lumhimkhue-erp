@@ -146,14 +146,14 @@ function TileSummaryPanel({ pricingTiles, quantities, onChange }: TileSummaryPan
   const selected = pricingTiles.filter((t) => (quantities[t.id] ?? 0) > 0);
 
   return (
-    <div className="w-44 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 flex flex-col">
+    <div className="w-44 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 flex flex-col h-full">
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">รายการ</p>
       {selected.length === 0 ? (
         <p className="flex-1 flex items-center justify-center text-center text-xs text-slate-400 leading-relaxed">
           แตะ tile<br />เพื่อเพิ่ม
         </p>
       ) : (
-        <div className="flex-1 overflow-y-auto space-y-2 max-h-52 pr-0.5">
+        <div className="flex-1 overflow-y-auto space-y-2 pr-0.5">
           {selected.map((t) => {
             const qty = quantities[t.id] ?? 0;
             const subtotal = Number(t.price) * qty;
@@ -401,9 +401,9 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
         )}
 
         {step === 'tiles' && (
-          <div className="flex gap-5">
+          <div className="flex gap-5 h-[380px]">
             {/* ── Left: tile picker + notes ── */}
-            <div className="flex-1 space-y-4 min-w-0">
+            <div className="flex-1 min-w-0 overflow-y-auto space-y-4 pr-1">
               <TilePicker
                 tiles={pricingTiles}
                 quantities={quantities}
@@ -704,9 +704,9 @@ function EditGuestsDialog({ open, sessionId, currentGuests, pricingTiles, onClos
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader><DialogTitle>แก้ไขประเภทผู้เข้าใช้</DialogTitle></DialogHeader>
-        <div className="flex gap-5">
+        <div className="flex gap-5 h-[380px]">
           {/* ── Left: tile picker ── */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 overflow-y-auto pr-1">
             <TilePicker
               tiles={pricingTiles}
               quantities={quantities}
