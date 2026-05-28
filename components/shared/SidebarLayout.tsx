@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -21,6 +21,10 @@ import {
   Printer,
   History,
   ChevronDown,
+  Maximize2,
+  Minimize2,
+  MoreHorizontal,
+  CreditCard,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -37,7 +41,7 @@ type NavSection = {
 type NavGroup = {
   label: string;
   Icon: LucideIcon;
-  matchPrefix: string; // used to detect active group
+  matchPrefix: string;
   children: NavItem[];
 };
 
@@ -125,6 +129,7 @@ const NAV: Record<Role, NavSection[]> = {
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard':             'แดชบอร์ด',
   '/pos':                   'POS / แคชเชียร์',
+  '/pos/history':           'ประวัติชำระเงิน',
   '/kds':                   'ครัว (KDS)',
   '/queue':                 'จัดการคิว',
   '/tables':                'จัดการโต๊ะ',
@@ -319,35 +324,35 @@ function SidebarInner({
   );
 }
 
-/* ─── Main export ────────────────────────────────────────────── */
+/* ─── Standard sidebar layout (owner / manager / kitchen) ───── */
 
-interface SidebarLayoutProps {
+function StandardSidebarLayout({
+  role,
+  userName,
+  children,
+  pathname,
+}: {
   role: Role;
   userName: string;
   children: React.ReactNode;
-}
-
-export function SidebarLayout({ role, userName, children }: SidebarLayoutProps) {
-  const pathname = usePathname();
+  pathname: string;
+}) {
   const [mobileOpen, setMobileOpen] = useState(false);
-
   const sections = NAV[role] ?? [];
   const pageTitle = getPageTitle(pathname);
-
   const innerProps = { role, userName, sections, pathname };
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
-      {/* ── Desktop sidebar (fixed) ── */}
+      {/* Desktop sidebar */}
       <aside className="hidden lg:block fixed inset-y-0 left-0 z-20 w-64 border-r border-slate-200">
         <SidebarInner {...innerProps} />
       </aside>
 
-      {/* ── Right content area ── */}
+      {/* Right content area */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden lg:pl-64">
         {/* Top bar */}
         <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4">
-          {/* Mobile hamburger + sheet drawer */}
           <Sheet open={mobileOpen} onOpenChange={(open) => setMobileOpen(open)}>
             <SheetTrigger
               aria-label="เปิดเมนู"
@@ -363,17 +368,218 @@ export function SidebarLayout({ role, userName, children }: SidebarLayoutProps) 
             </SheetContent>
           </Sheet>
 
-          {/* Page title */}
           {pageTitle && (
             <h1 className="text-sm font-semibold text-slate-900">{pageTitle}</h1>
           )}
         </header>
 
-        {/* Page content */}
         <main className="flex-1 overflow-y-auto">
           {children}
         </main>
       </div>
     </div>
+  );
+}
+
+/* ─── Cashier bottom-tab layout ──────────────────────────────── */
+
+const CASHIER_TABS: { href: string; label: string; Icon: LucideIcon }[] = [
+  { href: '/pos',    label: 'POS',  Icon: ShoppingCart },
+  { href: '/kds',    label: 'ครัว', Icon: ChefHat },
+  { href: '/tables', label: 'โต๊ะ', Icon: Grid3X3 },
+  { href: '/queue',  label: 'คิว',  Icon: UsersRound },
+];
+
+const CASHIER_MORE_ITEMS: { href: string; label: string; Icon: LucideIcon }[] = [
+  { href: '/tables/history', label: 'ประวัติโต๊ะ',    Icon: History },
+  { href: '/pos/history',    label: 'ประวัติชำระเงิน', Icon: CreditCard },
+  { href: '/printers',       label: 'เครื่องพิมพ์',    Icon: Printer },
+];
+
+function CashierLayout({
+  userName,
+  children,
+  pathname,
+}: {
+  userName: string;
+  children: React.ReactNode;
+  pathname: string;
+}) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const sync = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+
+  const pageTitle = getPageTitle(pathname);
+
+  return (
+    <div className="flex h-screen flex-col overflow-hidden bg-slate-50">
+      {/* Thin top header */}
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-4">
+        <Image
+          src="/images/logo.png"
+          alt="ERP"
+          width={22}
+          height={22}
+          className="rounded object-contain shrink-0"
+        />
+        <h1 className="flex-1 truncate text-sm font-semibold text-slate-900">
+          {pageTitle || 'ร้านชาบู ERP'}
+        </h1>
+        <span className="shrink-0 text-xs text-slate-400">{userName}</span>
+        <form action={logoutAction}>
+          <button
+            type="submit"
+            aria-label="ออกจากระบบ"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+          >
+            <LogOut className="size-4" />
+          </button>
+        </form>
+      </header>
+
+      {/* Page content */}
+      <main className="flex-1 overflow-hidden">
+        {children}
+      </main>
+
+      {/* Bottom tab bar */}
+      <nav className="relative flex h-[60px] shrink-0 items-stretch border-t border-slate-200 bg-white">
+        {/* Nav tabs */}
+        {CASHIER_TABS.map(({ href, label, Icon: TabIcon }) => {
+          const isActive =
+            href === '/tables'
+              ? pathname === '/tables' || pathname.startsWith('/tables/')
+              : pathname === href || pathname.startsWith(href + '/');
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors ${
+                isActive ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'
+              }`}
+            >
+              {isActive && (
+                <span className="absolute inset-x-3 top-0 h-0.5 rounded-b-full bg-slate-800" />
+              )}
+              <TabIcon className="size-[22px]" />
+              <span className="text-[10px] font-medium leading-none">{label}</span>
+            </Link>
+          );
+        })}
+
+        {/* Fullscreen toggle */}
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          aria-label={isFullscreen ? 'ออกจากเต็มจอ' : 'เปิดเต็มจอ'}
+          className="relative flex flex-1 flex-col items-center justify-center gap-0.5 text-slate-400 hover:text-slate-600 transition-colors"
+        >
+          {isFullscreen ? (
+            <Minimize2 className="size-[22px]" />
+          ) : (
+            <Maximize2 className="size-[22px]" />
+          )}
+          <span className="text-[10px] font-medium leading-none">
+            {isFullscreen ? 'ย่อจอ' : 'เต็มจอ'}
+          </span>
+        </button>
+
+        {/* More button */}
+        <button
+          type="button"
+          onClick={() => setMoreOpen((o) => !o)}
+          aria-label="เมนูเพิ่มเติม"
+          className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors ${
+            moreOpen ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          {moreOpen && (
+            <span className="absolute inset-x-3 top-0 h-0.5 rounded-b-full bg-slate-800" />
+          )}
+          <MoreHorizontal className="size-[22px]" />
+          <span className="text-[10px] font-medium leading-none">เพิ่มเติม</span>
+        </button>
+
+        {/* More popover — floats above the tab bar */}
+        {moreOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setMoreOpen(false)}
+              aria-hidden="true"
+            />
+            <div className="absolute bottom-[calc(100%+6px)] right-0 z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+              {CASHIER_MORE_ITEMS.map(({ href, label, Icon: ItemIcon }) => {
+                const isActive = pathname === href || pathname.startsWith(href + '/');
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={() => setMoreOpen(false)}
+                    className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium transition-colors ${
+                      isActive
+                        ? 'bg-slate-50 text-slate-900'
+                        : 'text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <ItemIcon className="size-4 shrink-0 text-slate-500" />
+                    {label}
+                  </Link>
+                );
+              })}
+              <div className="border-t border-slate-100" />
+              <form action={logoutAction} onSubmit={() => setMoreOpen(false)}>
+                <button
+                  type="submit"
+                  className="flex w-full items-center gap-3 px-4 py-3.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
+                >
+                  <LogOut className="size-4 shrink-0" />
+                  ออกจากระบบ
+                </button>
+              </form>
+            </div>
+          </>
+        )}
+      </nav>
+    </div>
+  );
+}
+
+/* ─── Main export ────────────────────────────────────────────── */
+
+interface SidebarLayoutProps {
+  role: Role;
+  userName: string;
+  children: React.ReactNode;
+}
+
+export function SidebarLayout({ role, userName, children }: SidebarLayoutProps) {
+  const pathname = usePathname();
+
+  if (role === 'cashier') {
+    return (
+      <CashierLayout userName={userName} pathname={pathname}>
+        {children}
+      </CashierLayout>
+    );
+  }
+
+  return (
+    <StandardSidebarLayout role={role} userName={userName} pathname={pathname}>
+      {children}
+    </StandardSidebarLayout>
   );
 }
