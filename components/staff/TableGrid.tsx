@@ -76,6 +76,18 @@ const STATUS_CONFIG: Record<VisualStatus, {
   linked:    { bg: 'bg-violet-100', border: 'border-violet-400', text: 'text-violet-800', label: 'เชื่อมโยง', dot: 'bg-violet-500' },
 };
 
+/* Color palette for linked-table groups — each group gets a unique color */
+const LINK_PALETTE = [
+  { bg: 'bg-violet-100', border: 'border-violet-500', text: 'text-violet-900', dot: 'bg-violet-500', hex: '#8b5cf6' },
+  { bg: 'bg-orange-100', border: 'border-orange-500', text: 'text-orange-900', dot: 'bg-orange-500', hex: '#f97316' },
+  { bg: 'bg-teal-100',   border: 'border-teal-500',   text: 'text-teal-900',   dot: 'bg-teal-500',   hex: '#14b8a6' },
+  { bg: 'bg-pink-100',   border: 'border-pink-500',   text: 'text-pink-900',   dot: 'bg-pink-500',   hex: '#ec4899' },
+  { bg: 'bg-amber-100',  border: 'border-amber-500',  text: 'text-amber-900',  dot: 'bg-amber-500',  hex: '#d97706' },
+  { bg: 'bg-cyan-100',   border: 'border-cyan-500',   text: 'text-cyan-900',   dot: 'bg-cyan-500',   hex: '#06b6d4' },
+] as const;
+
+type LinkColor = typeof LINK_PALETTE[number];
+
 function getVisualStatus(table: TableData): VisualStatus {
   if (table.status === 'linked') return 'linked';
   if (table.activeSession) return 'occupied';
@@ -783,6 +795,60 @@ function TableSheet({
                 {sess.notes && <p className="text-xs text-slate-400 italic">{sess.notes}</p>}
               </div>
 
+              {/* Quick-access: Link + Print QR for primary table and every linked table */}
+              {(() => {
+                const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
+                const startedAtStr = new Date(sess.startedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Bangkok' });
+
+                // Build entries: primary first, then children
+                const linkedChildren = allTables.filter(
+                  (t) => t.activeSession?.parentSessionId === sess.id,
+                );
+                const entries = [
+                  { label: table.label, qrToken: table.qrToken, sessionToken: sess.sessionToken },
+                  ...linkedChildren.map((t) => ({
+                    label: t.label,
+                    qrToken: t.qrToken,
+                    sessionToken: t.activeSession!.sessionToken,
+                  })),
+                ];
+                const isMultiple = entries.length > 1;
+
+                return (
+                  <div className="space-y-1.5">
+                    {entries.map((entry) => {
+                      const url = `${appUrl}/t/${entry.qrToken}/s/${entry.sessionToken}`;
+                      return (
+                        <div key={entry.sessionToken} className="flex items-center gap-2">
+                          {isMultiple && (
+                            <span className="w-12 shrink-0 text-xs font-medium text-slate-500">
+                              โต๊ะ {entry.label}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => window.open(url, '_blank')}
+                            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                          >
+                            <Link2 className="size-3.5" />Link
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const qrPrint: TableQrData = { tableNumber: entry.label, url, startedAt: startedAtStr };
+                              void printTableQr({ type: 'table_qr', table: qrPrint });
+                            }}
+                            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                          >
+                            <Printer className="size-3.5" />พิมพ์ QR
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
               <div className="space-y-2">
                 <button
                   type="button"
@@ -927,6 +993,8 @@ interface TableNodeProps {
   table: TableData;
   editMode: boolean;
   moveMode: boolean;
+  /** Per-group color override for linked table sets */
+  colorOverride?: LinkColor;
   /** Labels of child (linked) tables — shown on the primary occupied table */
   linkedTableLabels?: string[];
   /** Label of the primary table — shown on a linked child table */
@@ -936,14 +1004,14 @@ interface TableNodeProps {
   onClickMove: (table: TableData) => void;
 }
 
-function TableNode({ table, editMode, moveMode, linkedTableLabels, linkedToLabel, onClickSession, onClickEdit, onClickMove }: TableNodeProps) {
+function TableNode({ table, editMode, moveMode, colorOverride, linkedTableLabels, linkedToLabel, onClickSession, onClickEdit, onClickMove }: TableNodeProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: table.id,
     disabled: !editMode,
   });
 
   const vs = getVisualStatus(table);
-  const cfg = STATUS_CONFIG[vs] ?? STATUS_CONFIG.available;
+  const cfg = colorOverride ?? STATUS_CONFIG[vs] ?? STATUS_CONFIG.available;
   const isMoveTarget = moveMode && table.status === 'available';
 
   const style: CSSProperties = {
@@ -991,7 +1059,7 @@ function TableNode({ table, editMode, moveMode, linkedTableLabels, linkedToLabel
 
       {/* Link badge — shown on primary (has children) and on linked children */}
       {(linkedToLabel || (linkedTableLabels && linkedTableLabels.length > 0)) && (
-        <div className="mt-0.5 flex items-center gap-0.5 text-[9px] font-bold leading-tight text-violet-700">
+        <div className={`mt-0.5 flex items-center gap-0.5 text-[9px] font-bold leading-tight ${colorOverride ? colorOverride.text : 'text-violet-700'}`}>
           <Link2 className="size-2.5 shrink-0" />
           <span>{linkedToLabel ?? linkedTableLabels!.join(', ')}</span>
         </div>
@@ -1207,18 +1275,26 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
   }, {});
 
   // Compute linked-table relationships for SVG lines + node badges
-  const linkPairs: { from: TableData; to: TableData }[] = [];
+  const linkPairs: { from: TableData; to: TableData; colorHex: string }[] = [];
   const sessionLinkedLabels = new Map<string, string[]>(); // primarySessionId → child labels
   const sessionLinkedFromLabel = new Map<string, string>(); // childSessionId → primary label
+  const tableColorOverride = new Map<string, LinkColor>(); // tableId → per-group color
 
+  let paletteIdx = 0;
   for (const t of tables) {
     if (!t.activeSession || t.activeSession.parentSessionId) continue;
     const children = tables.filter(
       (lt) => lt.activeSession?.parentSessionId === t.activeSession!.id,
     );
     if (children.length > 0) {
+      const color = LINK_PALETTE[paletteIdx % LINK_PALETTE.length];
+      paletteIdx++;
       sessionLinkedLabels.set(t.activeSession.id, children.map((c) => c.label));
-      for (const c of children) linkPairs.push({ from: t, to: c });
+      tableColorOverride.set(t.id, color);
+      for (const c of children) {
+        linkPairs.push({ from: t, to: c, colorHex: color.hex });
+        tableColorOverride.set(c.id, color);
+      }
     }
   }
   for (const t of tables) {
@@ -1280,15 +1356,15 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
               <svg className="absolute inset-0 pointer-events-none" width={canvasW} height={canvasH}>
                 <defs><pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.8" fill="#e2e8f0" /></pattern></defs>
                 <rect width="100%" height="100%" fill="url(#grid)" />
-                {/* Dashed violet lines connecting linked table groups */}
-                {linkPairs.map(({ from, to }) => (
+                {/* Dashed lines connecting linked table groups — color per group */}
+                {linkPairs.map(({ from, to, colorHex }) => (
                   <line
                     key={`link-${from.id}-${to.id}`}
                     x1={from.positionX + from.width / 2}
                     y1={from.positionY + from.height / 2}
                     x2={to.positionX + to.width / 2}
                     y2={to.positionY + to.height / 2}
-                    stroke="#8b5cf6"
+                    stroke={colorHex}
                     strokeWidth={2.5}
                     strokeDasharray="8 4"
                     strokeLinecap="round"
@@ -1301,6 +1377,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
                   table={table}
                   editMode={editMode}
                   moveMode={!!moveSessionId}
+                  colorOverride={tableColorOverride.get(table.id)}
                   linkedTableLabels={
                     table.activeSession && !table.activeSession.parentSessionId
                       ? sessionLinkedLabels.get(table.activeSession.id)
