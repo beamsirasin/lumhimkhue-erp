@@ -76,7 +76,7 @@ const NAV: Record<Role, NavSection[]> = {
       heading: 'จัดการ',
       items: [
         { href: '/menu',                label: 'เมนูอาหาร',     Icon: UtensilsCrossed },
-        { href: '/admin/pricing-tiles', label: 'Pricing Tiles', Icon: Tag },
+        { href: '/pricing-tiles', label: 'Pricing Tiles', Icon: Tag },
         { href: '/users',               label: 'พนักงาน',        Icon: Users },
         { href: '/reports',             label: 'รายงาน',         Icon: BarChart3 },
         { href: '/settings',            label: 'ตั้งค่า',         Icon: Settings },
@@ -96,7 +96,7 @@ const NAV: Record<Role, NavSection[]> = {
     {
       heading: 'จัดการ',
       items: [
-        { href: '/admin/pricing-tiles', label: 'Pricing Tiles', Icon: Tag },
+        { href: '/pricing-tiles', label: 'Pricing Tiles', Icon: Tag },
         { href: '/printers',            label: 'เครื่องพิมพ์',   Icon: Printer },
       ],
     },
@@ -135,7 +135,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/tables':                'จัดการโต๊ะ',
   '/tables/history':        'ประวัติ session',
   '/menu':                  'เมนูอาหาร',
-  '/admin/pricing-tiles':   'Pricing Tiles',
+  '/pricing-tiles':   'Pricing Tiles',
   '/users':                 'พนักงาน',
   '/reports':               'รายงาน',
   '/settings':              'ตั้งค่า',
