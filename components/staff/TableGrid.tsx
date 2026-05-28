@@ -17,6 +17,7 @@ import {
   Users,
   Clock,
   BadgeCheck,
+  Pencil,
 } from 'lucide-react';
 import {
   Sheet,
@@ -53,6 +54,7 @@ import {
   openSession,
   closeSession,
   moveSession,
+  updateSessionGuests,
 } from '@/lib/actions/sessions';
 import { createReservation, cancelReservation } from '@/lib/actions/reservations';
 import { print as printTableQr } from '@/lib/printer/service';
@@ -167,49 +169,65 @@ function LinkedTablePicker({ tables, primaryTableId, selected, onToggle }: Linke
 
 /* ─── QR Dialog ────────────────────────────────────────────────────── */
 
-function QrImage({ url }: { url: string }) {
-  const [src, setSrc] = useState('');
-  useEffect(() => {
-    import('qrcode').then(({ default: QRCode }) => {
-      QRCode.toDataURL(url, { width: 200, margin: 2, color: { dark: '#0f172a', light: '#ffffff' } })
-        .then(setSrc).catch(() => setSrc(''));
-    });
-  }, [url]);
-  if (!src) return <div className="mx-auto h-[200px] w-[200px] animate-pulse rounded-lg bg-slate-100" />;
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={src} alt="QR Code" width={200} height={200} className="mx-auto rounded-lg" />;
-}
-
 interface QrDialogProps {
   open: boolean;
-  data: { sessionToken: string; tableQrToken: string; tableLabel: string; startedAt: string } | null;
+  data: SessionOpenResult | null;
   onClose: () => void;
 }
 
 function SessionQrDialog({ open, data, onClose }: QrDialogProps) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
-  const sessionUrl = data ? `${appUrl}/t/${data.tableQrToken}/s/${data.sessionToken}` : '';
+  if (!data) return null;
+
+  const allEntries: TableQrEntry[] = [
+    { sessionToken: data.sessionToken, tableQrToken: data.tableQrToken, tableLabel: data.tableLabel },
+    ...data.linkedTables,
+  ];
+
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="sm:max-w-sm">
-        <DialogHeader><DialogTitle>โต๊ะ {data?.tableLabel} พร้อมแล้ว</DialogTitle></DialogHeader>
-        <div className="space-y-4">
-          <p className="text-center text-sm text-slate-500">ให้ลูกค้าสแกน QR นี้เพื่อสั่งอาหาร</p>
-          <QrImage url={sessionUrl} />
-          <div className="rounded-lg bg-slate-50 px-3 py-2">
-            <p className="break-all text-center font-mono text-xs text-slate-600 select-all">{sessionUrl}</p>
-          </div>
+        <DialogHeader>
+          <DialogTitle>
+            โต๊ะ {allEntries.map((e) => e.tableLabel).join(', ')} พร้อมแล้ว
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-2">
+          {allEntries.map((entry) => {
+            const url = `${appUrl}/t/${entry.tableQrToken}/s/${entry.sessionToken}`;
+            return (
+              <div
+                key={entry.sessionToken}
+                className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3"
+              >
+                <span className="flex-1 text-sm font-semibold text-slate-800">โต๊ะ {entry.tableLabel}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(url).catch(() => {});
+                    toast.success('คัดลอก URL แล้ว');
+                  }}
+                >
+                  <Link2 className="mr-1.5 size-3.5" />Link
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const qrPrint: TableQrData = { tableNumber: entry.tableLabel, url, startedAt: data.startedAt };
+                    void printTableQr({ type: 'table_qr', table: qrPrint });
+                  }}
+                >
+                  <Printer className="mr-1.5 size-3.5" />พิมพ์ QR
+                </Button>
+              </div>
+            );
+          })}
         </div>
+
         <DialogFooter>
-          <Button variant="outline" onClick={async () => { await navigator.clipboard.writeText(sessionUrl).catch(() => {}); toast.success('คัดลอก URL แล้ว'); }}>คัดลอก URL</Button>
-          {data && (
-            <Button variant="outline" onClick={() => {
-              const qrData: TableQrData = { tableNumber: data.tableLabel, url: sessionUrl, startedAt: data.startedAt };
-              void printTableQr({ type: 'table_qr', table: qrData });
-            }}>
-              <Printer className="mr-1.5 size-4" />พิมพ์ QR
-            </Button>
-          )}
           <Button onClick={onClose}>ปิด</Button>
         </DialogFooter>
       </DialogContent>
@@ -221,6 +239,17 @@ function SessionQrDialog({ open, data, onClose }: QrDialogProps) {
 
 type OpenStep = 'tiles' | 'link';
 
+interface TableQrEntry {
+  sessionToken: string;
+  tableQrToken: string;
+  tableLabel: string;
+}
+
+interface SessionOpenResult extends TableQrEntry {
+  startedAt: string;
+  linkedTables: TableQrEntry[];
+}
+
 interface OpenTableFlowProps {
   open: boolean;
   table: TableData | null;
@@ -229,7 +258,7 @@ interface OpenTableFlowProps {
   reservationId?: string;     // if opening from reservation
   prefillGuests?: Record<string, number>;
   onClose: () => void;
-  onSuccess: (data: { sessionToken: string; tableQrToken: string; tableLabel: string; startedAt: string }) => void;
+  onSuccess: (data: SessionOpenResult) => void;
 }
 
 function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, prefillGuests, onClose, onSuccess }: OpenTableFlowProps) {
@@ -548,6 +577,79 @@ function MoveTableBanner({ sessionLabel, onCancel }: { sessionLabel: string; onC
   );
 }
 
+/* ─── Edit Session Guests Dialog ───────────────────────────────────── */
+
+interface EditGuestsDialogProps {
+  open: boolean;
+  sessionId: string | null;
+  currentGuests: { pricingTileId: string; quantity: number }[];
+  pricingTiles: PricingTileData[];
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function EditGuestsDialog({ open, sessionId, currentGuests, pricingTiles, onClose, onSuccess }: EditGuestsDialogProps) {
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      const init: Record<string, number> = {};
+      for (const g of currentGuests) init[g.pricingTileId] = g.quantity;
+      setQuantities(init);
+    }
+  }, [open, currentGuests]);
+
+  const totalGuests = Object.values(quantities).reduce((s, q) => s + q, 0);
+  const totalAmount = pricingTiles.reduce((s, t) => s + Number(t.price) * (quantities[t.id] ?? 0), 0);
+
+  const handleSubmit = async () => {
+    if (!sessionId) return;
+    setSubmitting(true);
+    const guests = pricingTiles
+      .map((t) => ({ pricingTileId: t.id, quantity: quantities[t.id] ?? 0 }))
+      .filter((g) => g.quantity > 0);
+    const result = await updateSessionGuests({ sessionId, guests });
+    setSubmitting(false);
+    if (result.ok) {
+      toast.success('แก้ไขข้อมูลลูกค้าแล้ว');
+      onSuccess();
+      onClose();
+    } else {
+      toast.error(result.error);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader><DialogTitle>แก้ไขประเภทผู้เข้าใช้</DialogTitle></DialogHeader>
+        <div className="space-y-4">
+          <TilePicker
+            tiles={pricingTiles}
+            quantities={quantities}
+            onChange={(id, qty) => setQuantities((p) => ({ ...p, [id]: qty }))}
+          />
+          {totalGuests > 0 && (
+            <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
+              <span className="text-slate-500">รวม </span>
+              <span className="font-semibold text-slate-900">{totalGuests} คน</span>
+              <span className="ml-2 text-slate-400">ยอดประมาณ </span>
+              <span className="font-semibold text-slate-900">฿{totalAmount.toLocaleString('th-TH')}</span>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">ยกเลิก</button>
+          <Button onClick={handleSubmit} disabled={submitting || totalGuests === 0}>
+            {submitting ? 'กำลังบันทึก...' : 'บันทึก'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /* ─── Table Sheet Panel ────────────────────────────────────────────── */
 
 interface TableSheetProps {
@@ -560,6 +662,7 @@ interface TableSheetProps {
   onOpenTable: (table: TableData, reservationId?: string, prefillGuests?: Record<string, number>) => void;
   onReserveTable: (table: TableData) => void;
   onMoveTable: (sessionId: string, tableLabel: string) => void;
+  onEditGuests: (sessionId: string, currentGuests: { pricingTileId: string; quantity: number }[]) => void;
 }
 
 function TableSheet({
@@ -572,6 +675,7 @@ function TableSheet({
   onOpenTable,
   onReserveTable,
   onMoveTable,
+  onEditGuests,
 }: TableSheetProps) {
   const [busy, setBusy] = useState(false);
 
@@ -680,6 +784,17 @@ function TableSheet({
               </div>
 
               <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onEditGuests(sess.id, sess.guests.map((g) => ({ pricingTileId: g.pricingTile.id, quantity: g.quantity })));
+                  }}
+                  disabled={busy}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                >
+                  <span className="flex items-center justify-center gap-2"><Pencil className="size-4" />แก้ไข</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => { onClose(); onMoveTable(sess.id, table.label); }}
@@ -812,12 +927,16 @@ interface TableNodeProps {
   table: TableData;
   editMode: boolean;
   moveMode: boolean;
+  /** Labels of child (linked) tables — shown on the primary occupied table */
+  linkedTableLabels?: string[];
+  /** Label of the primary table — shown on a linked child table */
+  linkedToLabel?: string;
   onClickSession: (table: TableData) => void;
   onClickEdit: (table: TableData) => void;
   onClickMove: (table: TableData) => void;
 }
 
-function TableNode({ table, editMode, moveMode, onClickSession, onClickEdit, onClickMove }: TableNodeProps) {
+function TableNode({ table, editMode, moveMode, linkedTableLabels, linkedToLabel, onClickSession, onClickEdit, onClickMove }: TableNodeProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: table.id,
     disabled: !editMode,
@@ -868,6 +987,14 @@ function TableNode({ table, editMode, moveMode, onClickSession, onClickEdit, onC
       <span className={`mt-0.5 h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
       {table.activeSession && !table.activeSession.parentSessionId && (
         <ElapsedBadge startedAt={table.activeSession.startedAt} />
+      )}
+
+      {/* Link badge — shown on primary (has children) and on linked children */}
+      {(linkedToLabel || (linkedTableLabels && linkedTableLabels.length > 0)) && (
+        <div className="mt-0.5 flex items-center gap-0.5 text-[9px] font-bold leading-tight text-violet-700">
+          <Link2 className="size-2.5 shrink-0" />
+          <span>{linkedToLabel ?? linkedTableLabels!.join(', ')}</span>
+        </div>
       )}
 
       {editMode && (
@@ -1023,10 +1150,12 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
   const [moveSessionId, setMoveSessionId] = useState<string | null>(null);
   const [moveSessionLabel, setMoveSessionLabel] = useState('');
 
+  // Edit session guests
+  const [editGuestsSessionId, setEditGuestsSessionId] = useState<string | null>(null);
+  const [editGuestsCurrentGuests, setEditGuestsCurrentGuests] = useState<{ pricingTileId: string; quantity: number }[]>([]);
+
   // QR dialog
-  const [qrData, setQrData] = useState<{
-    sessionToken: string; tableQrToken: string; tableLabel: string; startedAt: string;
-  } | null>(null);
+  const [qrData, setQrData] = useState<SessionOpenResult | null>(null);
 
   const { data: tables = initialTables } = useQuery({
     queryKey: ['tables'],
@@ -1076,6 +1205,27 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
     acc[key] = (acc[key] ?? 0) + 1;
     return acc;
   }, {});
+
+  // Compute linked-table relationships for SVG lines + node badges
+  const linkPairs: { from: TableData; to: TableData }[] = [];
+  const sessionLinkedLabels = new Map<string, string[]>(); // primarySessionId → child labels
+  const sessionLinkedFromLabel = new Map<string, string>(); // childSessionId → primary label
+
+  for (const t of tables) {
+    if (!t.activeSession || t.activeSession.parentSessionId) continue;
+    const children = tables.filter(
+      (lt) => lt.activeSession?.parentSessionId === t.activeSession!.id,
+    );
+    if (children.length > 0) {
+      sessionLinkedLabels.set(t.activeSession.id, children.map((c) => c.label));
+      for (const c of children) linkPairs.push({ from: t, to: c });
+    }
+  }
+  for (const t of tables) {
+    if (!t.activeSession?.parentSessionId) continue;
+    const primary = tables.find((pt) => pt.activeSession?.id === t.activeSession!.parentSessionId);
+    if (primary) sessionLinkedFromLabel.set(t.activeSession.id, primary.label);
+  }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -1130,6 +1280,20 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
               <svg className="absolute inset-0 pointer-events-none" width={canvasW} height={canvasH}>
                 <defs><pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.8" fill="#e2e8f0" /></pattern></defs>
                 <rect width="100%" height="100%" fill="url(#grid)" />
+                {/* Dashed violet lines connecting linked table groups */}
+                {linkPairs.map(({ from, to }) => (
+                  <line
+                    key={`link-${from.id}-${to.id}`}
+                    x1={from.positionX + from.width / 2}
+                    y1={from.positionY + from.height / 2}
+                    x2={to.positionX + to.width / 2}
+                    y2={to.positionY + to.height / 2}
+                    stroke="#8b5cf6"
+                    strokeWidth={2.5}
+                    strokeDasharray="8 4"
+                    strokeLinecap="round"
+                  />
+                ))}
               </svg>
               {tables.map((table) => (
                 <TableNode
@@ -1137,6 +1301,16 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
                   table={table}
                   editMode={editMode}
                   moveMode={!!moveSessionId}
+                  linkedTableLabels={
+                    table.activeSession && !table.activeSession.parentSessionId
+                      ? sessionLinkedLabels.get(table.activeSession.id)
+                      : undefined
+                  }
+                  linkedToLabel={
+                    table.activeSession?.parentSessionId
+                      ? sessionLinkedFromLabel.get(table.activeSession.id)
+                      : undefined
+                  }
                   onClickSession={(t) => {
                     setSheetTable(t);
                     setSheetOpen(true);
@@ -1182,6 +1356,20 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
           setMoveSessionId(sessionId);
           setMoveSessionLabel(label);
         }}
+        onEditGuests={(sessionId, guests) => {
+          setEditGuestsSessionId(sessionId);
+          setEditGuestsCurrentGuests(guests);
+        }}
+      />
+
+      {/* Edit Session Guests Dialog */}
+      <EditGuestsDialog
+        open={!!editGuestsSessionId}
+        sessionId={editGuestsSessionId}
+        currentGuests={editGuestsCurrentGuests}
+        pricingTiles={pricingTiles}
+        onClose={() => setEditGuestsSessionId(null)}
+        onSuccess={refetch}
       />
 
       {/* Open Table Flow */}

@@ -88,26 +88,28 @@ export async function openSession(input: unknown) {
       })
       .returning({ id: sessions.id, sessionToken: sessions.sessionToken });
 
-    // Insert session guests on primary session
-    await db.insert(sessionGuests).values(
-      nonZeroGuests.map((g) => ({
-        sessionId: newSession.id,
-        pricingTileId: g.pricingTileId,
-        quantity: g.quantity,
-      })),
-    );
-
-    // Create child sessions for linked tables
-    if (linkedTableIds.length > 0) {
-      await db.insert(sessions).values(
-        linkedTableIds.map((ltId) => ({
-          tableId: ltId,
-          startedAt,
-          sessionToken: nanoid(12),
-          status: 'active' as const,
-          parentSessionId: newSession.id,
+    // Insert session guests on primary session (skip if none — Drizzle errors on empty values)
+    if (nonZeroGuests.length > 0) {
+      await db.insert(sessionGuests).values(
+        nonZeroGuests.map((g) => ({
+          sessionId: newSession.id,
+          pricingTileId: g.pricingTileId,
+          quantity: g.quantity,
         })),
       );
+    }
+
+    // Pre-generate linked session rows (tokens captured for return value)
+    const linkedSessionRows = linkedTableIds.map((ltId) => ({
+      tableId: ltId,
+      startedAt,
+      sessionToken: nanoid(12),
+      status: 'active' as const,
+      parentSessionId: newSession.id,
+    }));
+
+    if (linkedSessionRows.length > 0) {
+      await db.insert(sessions).values(linkedSessionRows);
     }
 
     // Mark primary table as occupied
@@ -135,6 +137,16 @@ export async function openSession(input: unknown) {
       timeZone: 'Asia/Bangkok',
     };
 
+    // Build linked table QR data for the success dialog
+    const linkedTables = linkedSessionRows.map((ls) => {
+      const tableRow = tableRows.find((t) => t.id === ls.tableId);
+      return {
+        tableQrToken: tableRow?.qrToken ?? '',
+        tableLabel: tableRow?.label ?? '',
+        sessionToken: ls.sessionToken,
+      };
+    });
+
     revalidatePath('/tables');
     return {
       ok: true as const,
@@ -143,6 +155,7 @@ export async function openSession(input: unknown) {
         tableQrToken: primaryTableRow.qrToken,
         tableLabel: primaryTableRow.label,
         startedAt: startedAt.toLocaleString('th-TH', thLocale),
+        linkedTables,
       },
     };
   } catch (e) {
