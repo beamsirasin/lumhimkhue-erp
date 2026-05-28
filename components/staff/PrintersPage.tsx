@@ -48,6 +48,7 @@ interface FormState {
   /* step 3 */
   name: string;
   paperWidth: 58 | 80;
+  thaiCodepage: number;
   isDefault: boolean;
 }
 
@@ -67,6 +68,7 @@ function defaultForm(mode: 'add' | 'edit', existing?: PrinterConfig): FormState 
       port: String(existing.port ?? 9100),
       name: existing.name,
       paperWidth: existing.paperWidth,
+      thaiCodepage: existing.thaiCodepage ?? 21,
       isDefault: existing.isDefault,
     };
   }
@@ -74,7 +76,7 @@ function defaultForm(mode: 'add' | 'edit', existing?: PrinterConfig): FormState 
     mode: 'add', step: 1, type: null,
     usbVendorId: null, usbProductId: null, usbLabel: '',
     ipAddress: '', port: '9100',
-    name: '', paperWidth: 80, isDefault: false,
+    name: '', paperWidth: 80, thaiCodepage: 21, isDefault: false,
   };
 }
 
@@ -147,6 +149,7 @@ export function PrintersPage() {
       name: name.trim(),
       type,
       paperWidth,
+      thaiCodepage: form.thaiCodepage,
       isDefault,
       ...(type === 'usb' && form.usbVendorId != null
         ? { usbVendorId: form.usbVendorId, usbProductId: form.usbProductId ?? undefined }
@@ -337,10 +340,12 @@ export function PrintersPage() {
             <StepGeneral
               name={form.name}
               paperWidth={form.paperWidth}
+              thaiCodepage={form.thaiCodepage}
               isDefault={form.isDefault}
               saving={saving}
               onNameChange={(v) => setForm((f) => ({ ...f, name: v }))}
               onPaperWidthChange={(v) => setForm((f) => ({ ...f, paperWidth: v }))}
+              onThaiCodepageChange={(v) => setForm((f) => ({ ...f, thaiCodepage: v }))}
               onDefaultChange={(v) => setForm((f) => ({ ...f, isDefault: v }))}
               onSave={() => handleSave(false)}
               onSaveAndTest={() => handleSave(true)}
@@ -551,21 +556,31 @@ function StepBrowser({ onNext }: { onNext: () => void }) {
   );
 }
 
+const THAI_CODEPAGE_PRESETS = [
+  { value: 21, label: 'หน้า 21 — Epson / ทั่วไป (แนะนำ)' },
+  { value: 13, label: 'หน้า 13 — Star Micronics' },
+  { value: 18, label: 'หน้า 18 — Citizen / Bixolon' },
+];
+
 function StepGeneral({
-  name, paperWidth, isDefault, saving,
-  onNameChange, onPaperWidthChange, onDefaultChange,
+  name, paperWidth, thaiCodepage, isDefault, saving,
+  onNameChange, onPaperWidthChange, onThaiCodepageChange, onDefaultChange,
   onSave, onSaveAndTest,
 }: {
   name: string;
   paperWidth: 58 | 80;
+  thaiCodepage: number;
   isDefault: boolean;
   saving: boolean;
   onNameChange: (v: string) => void;
   onPaperWidthChange: (v: 58 | 80) => void;
+  onThaiCodepageChange: (v: number) => void;
   onDefaultChange: (v: boolean) => void;
   onSave: () => void;
   onSaveAndTest: () => void;
 }) {
+  const isCustom = !THAI_CODEPAGE_PRESETS.some((p) => p.value === thaiCodepage);
+
   return (
     <div className="space-y-4 py-1">
       <div>
@@ -593,6 +608,38 @@ function StepGeneral({
             </label>
           ))}
         </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-slate-700 mb-1">
+          Codepage ภาษาไทย (CP874)
+        </label>
+        <select
+          value={isCustom ? 'custom' : thaiCodepage}
+          onChange={(e) => {
+            if (e.target.value !== 'custom') onThaiCodepageChange(Number(e.target.value));
+          }}
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500 bg-white"
+        >
+          {THAI_CODEPAGE_PRESETS.map((p) => (
+            <option key={p.value} value={p.value}>{p.label}</option>
+          ))}
+          {isCustom && <option value="custom">กำหนดเอง: {thaiCodepage}</option>}
+        </select>
+        <div className="mt-1.5 flex items-center gap-2">
+          <span className="text-[11px] text-slate-400">หรือกำหนดเลขเอง:</span>
+          <input
+            type="number"
+            min={0}
+            max={255}
+            value={thaiCodepage}
+            onChange={(e) => onThaiCodepageChange(Number(e.target.value))}
+            className="w-20 rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-slate-400"
+          />
+        </div>
+        <p className="mt-1 text-[11px] text-slate-400">
+          หากตัวอักษรภาษาไทยออกมาเป็น ??? ให้ลองเปลี่ยนหน้านี้
+        </p>
       </div>
 
       <label className="flex items-center gap-2 cursor-pointer">

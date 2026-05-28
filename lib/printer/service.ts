@@ -111,12 +111,15 @@ export async function testPrint(config: PrinterConfig): Promise<PrintResult> {
     const cols = config.paperWidth === 80 ? 48 : 32;
     const sep = '-'.repeat(cols);
 
+    const cp = config.thaiCodepage ?? 21;
     const bytes = new ReceiptPrinterEncoder({
       language: 'esc-pos',
       columns: cols,
       errors: 'relaxed',
+      codepageMapping: { cp874: cp } as unknown as string,
     })
       .initialize()
+      .codepage('cp874')
       .align('center')
       .bold(true).line('ทดสอบการพิมพ์').bold(false)
       .line('Test Print')
@@ -152,11 +155,12 @@ export async function testPrint(config: PrinterConfig): Promise<PrintResult> {
 
 function buildBytes(job: PrintJob, config: PrinterConfig): Uint8Array {
   const w = config.paperWidth;
+  const cp = config.thaiCodepage ?? 21;
   switch (job.type) {
-    case 'receipt':       return buildReceipt(job.payment, w);
-    case 'table_qr':      return buildTableQr(job.table, w);
-    case 'queue_qr':      return buildQueueQr(job.queueEntry, w);
-    case 'kitchen_order': return buildKitchenOrder(job.order, w);
+    case 'receipt':       return buildReceipt(job.payment, w, cp);
+    case 'table_qr':      return buildTableQr(job.table, w, cp);
+    case 'queue_qr':      return buildQueueQr(job.queueEntry, w, cp);
+    case 'kitchen_order': return buildKitchenOrder(job.order, w, cp);
   }
 }
 

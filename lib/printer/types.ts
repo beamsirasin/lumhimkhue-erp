@@ -15,6 +15,12 @@ export type PrinterConfig = {
   /** Network: port (default 9100) */
   port?: number;
   paperWidth: 58 | 80;
+  /**
+   * ESC/POS codepage number for Thai (CP874).
+   * Epson / most generic printers: 21 (default).
+   * Star Micronics: 13.  Citizen: 21.
+   */
+  thaiCodepage: number;
   isDefault: boolean;
   /** ISO string of last successful test */
   testedAt?: string;

@@ -27,12 +27,16 @@ const STATION_LABEL: Record<string, string> = {
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
 
-function makeEncoder(paperWidth: 58 | 80): ReceiptPrinterEncoder {
+function makeEncoder(paperWidth: 58 | 80, thaiCodepage: number): ReceiptPrinterEncoder {
   return new ReceiptPrinterEncoder({
     language: 'esc-pos',
     columns: COLS[paperWidth],
     imageMode: 'raster',
     errors: 'relaxed',
+    // Map cp874 (Thai) to the printer's ESC/POS page number.
+    // Page 21 = Epson / most generics. Page 13 = Star Micronics.
+    // Library runtime accepts object form; cast bypasses the string-only typedef.
+    codepageMapping: { cp874: thaiCodepage } as unknown as string,
   });
 }
 
@@ -56,10 +60,11 @@ function sep(cols: number): string {
 
 /* ─── Receipt ────────────────────────────────────────────────────────────── */
 
-export function buildReceipt(data: ReceiptData, paperWidth: 58 | 80): Uint8Array {
+export function buildReceipt(data: ReceiptData, paperWidth: 58 | 80, thaiCodepage = 21): Uint8Array {
   const cols = COLS[paperWidth];
-  let e = makeEncoder(paperWidth)
+  let e = makeEncoder(paperWidth, thaiCodepage)
     .initialize()
+    .codepage('cp874')
     /* Shop header */
     .align('center')
     .bold(true).size(2, 2).line(data.shopName).size(1, 1).bold(false);
@@ -109,10 +114,11 @@ export function buildReceipt(data: ReceiptData, paperWidth: 58 | 80): Uint8Array
 
 /* ─── Table QR ───────────────────────────────────────────────────────────── */
 
-export function buildTableQr(data: TableQrData, paperWidth: 58 | 80): Uint8Array {
+export function buildTableQr(data: TableQrData, paperWidth: 58 | 80, thaiCodepage = 21): Uint8Array {
   const cols = COLS[paperWidth];
-  return makeEncoder(paperWidth)
+  return makeEncoder(paperWidth, thaiCodepage)
     .initialize()
+    .codepage('cp874')
     .align('center')
     .bold(true).size(2, 2).line(`โต๊ะ ${data.tableNumber}`).size(1, 1).bold(false)
     .line('สแกน QR เพื่อสั่งอาหาร')
@@ -130,10 +136,11 @@ export function buildTableQr(data: TableQrData, paperWidth: 58 | 80): Uint8Array
 
 /* ─── Queue QR ───────────────────────────────────────────────────────────── */
 
-export function buildQueueQr(data: QueueQrData, paperWidth: 58 | 80): Uint8Array {
+export function buildQueueQr(data: QueueQrData, paperWidth: 58 | 80, thaiCodepage = 21): Uint8Array {
   const cols = COLS[paperWidth];
-  return makeEncoder(paperWidth)
+  return makeEncoder(paperWidth, thaiCodepage)
     .initialize()
+    .codepage('cp874')
     .align('center')
     .bold(true).line('ตั๋วคิว').bold(false)
     .size(2, 2).bold(true).line(data.queueNumber).bold(false).size(1, 1)
@@ -150,10 +157,11 @@ export function buildQueueQr(data: QueueQrData, paperWidth: 58 | 80): Uint8Array
 
 /* ─── Kitchen Order ──────────────────────────────────────────────────────── */
 
-export function buildKitchenOrder(data: KitchenOrderData, paperWidth: 58 | 80): Uint8Array {
+export function buildKitchenOrder(data: KitchenOrderData, paperWidth: 58 | 80, thaiCodepage = 21): Uint8Array {
   const cols = COLS[paperWidth];
-  let e = makeEncoder(paperWidth)
+  let e = makeEncoder(paperWidth, thaiCodepage)
     .initialize()
+    .codepage('cp874')
     .align('center')
     .bold(true).size(2, 1).line('*** ORDER ***').size(1, 1).bold(false)
     .line(sep(cols))
