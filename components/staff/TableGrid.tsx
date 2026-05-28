@@ -1431,7 +1431,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden">
       {/* Toolbar */}
       <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-3 gap-4">
         <div className="flex items-center gap-4">
