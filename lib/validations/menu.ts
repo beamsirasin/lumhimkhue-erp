@@ -23,6 +23,7 @@ export const updateCategorySchema = createCategorySchema.extend({
 export const createMenuItemSchema = z.object({
   categoryId: z.string().uuid(),
   name: z.string().min(1, 'กรุณากรอกชื่อเมนู').max(255),
+  nameEn: z.string().max(255).optional().nullable(),
   description: z.string().max(1000).optional(),
   imageUrl: z.string().nullable().optional(),
   isBuffet: z.boolean().default(true),

@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { Trash2, ImagePlus, X } from 'lucide-react';
+import { useState, useRef, useCallback } from 'react';
+import Cropper from 'react-easy-crop';
+import type { Area } from 'react-easy-crop';
+import { Trash2, ImagePlus, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -358,30 +360,48 @@ function CategoryForm({
   );
 }
 
-/** Compress + resize an image File to a base64 data URL (max 480px wide, JPEG 80%). */
-function compressImage(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
+/** Load an image from a data URL into an HTMLImageElement. */
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((res, rej) => {
     const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = src;
+  });
+}
+
+/** Read a File as a base64 data URL. */
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((res, rej) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
-      img.src = e.target?.result as string;
-    };
-    reader.onerror = reject;
-    img.onload = () => {
-      const MAX = 480;
-      const scale = img.width > MAX ? MAX / img.width : 1;
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', 0.82));
-    };
-    img.onerror = reject;
+    reader.onload = (e) => res(e.target!.result as string);
+    reader.onerror = rej;
     reader.readAsDataURL(file);
   });
 }
+
+/** Crop + compress an image given croppedAreaPixels from react-easy-crop. */
+async function applyCrop(imageSrc: string, crop: Area): Promise<string> {
+  const img = await loadImage(imageSrc);
+  const canvas = document.createElement('canvas');
+  const MAX = 480;
+  const scale = crop.width > MAX ? MAX / crop.width : 1;
+  canvas.width  = Math.round(crop.width  * scale);
+  canvas.height = Math.round(crop.height * scale);
+  canvas.getContext('2d')!.drawImage(
+    img,
+    crop.x, crop.y, crop.width, crop.height,
+    0, 0, canvas.width, canvas.height,
+  );
+  return canvas.toDataURL('image/jpeg', 0.82);
+}
+
+const ASPECT_OPTIONS = [
+  { label: '1:1', value: 1 },
+  { label: '4:3', value: 4 / 3 },
+  { label: '16:9', value: 16 / 9 },
+  { label: 'อิสระ', value: undefined },
+] as const;
 
 function MenuItemForm({
   categoryId,
@@ -401,9 +421,9 @@ function MenuItemForm({
     resolver: zodResolver(schema) as Resolver<CreateMenuItemInput | UpdateMenuItemInput>,
     defaultValues: initial
       ? {
-          id: initial.id,
-          categoryId,
+          id: initial.id, categoryId,
           name: initial.name,
+          nameEn: (initial as Item & { nameEn?: string }).nameEn ?? '',
           description: initial.description ?? '',
           imageUrl: initial.imageUrl ?? null,
           isBuffet: initial.isBuffet,
@@ -418,17 +438,37 @@ function MenuItemForm({
   const isBuffet = watch('isBuffet');
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Crop state
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [aspect, setAspect] = useState<number | undefined>(1);
+  const [croppedArea, setCroppedArea] = useState<Area | null>(null);
+
+  const onCropComplete = useCallback((_: Area, pixels: Area) => {
+    setCroppedArea(pixels);
+  }, []);
+
   async function handleImageFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { toast.error('ไฟล์ใหญ่เกิน 5MB'); return; }
     try {
-      const dataUrl = await compressImage(file);
-      setValue('imageUrl' as never, dataUrl as never);
-    } catch {
-      toast.error('อ่านไฟล์ไม่ได้');
-    }
+      const dataUrl = await readFileAsDataUrl(file);
+      setCropSrc(dataUrl);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+    } catch { toast.error('อ่านไฟล์ไม่ได้'); }
     e.target.value = '';
+  }
+
+  async function handleCropConfirm() {
+    if (!cropSrc || !croppedArea) return;
+    try {
+      const result = await applyCrop(cropSrc, croppedArea);
+      setValue('imageUrl' as never, result as never);
+    } catch { toast.error('ครอบรูปไม่ได้'); }
+    setCropSrc(null);
   }
 
   async function onSubmit(data: CreateMenuItemInput | UpdateMenuItemInput) {
@@ -438,8 +478,81 @@ function MenuItemForm({
     onSaved();
   }
 
+  /* ── Crop screen ── */
+  if (cropSrc) {
+    return (
+      <div className="w-[520px] rounded-xl bg-white shadow-xl overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
+          <h2 className="text-sm font-semibold text-slate-900">ครอบรูป</h2>
+          <button type="button" onClick={() => setCropSrc(null)} className="text-slate-400 hover:text-slate-600">×</button>
+        </div>
+
+        {/* Crop area */}
+        <div className="relative bg-slate-900" style={{ height: 320 }}>
+          <Cropper
+            image={cropSrc}
+            crop={crop}
+            zoom={zoom}
+            aspect={aspect}
+            onCropChange={setCrop}
+            onZoomChange={setZoom}
+            onCropComplete={onCropComplete}
+          />
+        </div>
+
+        {/* Controls */}
+        <div className="px-5 py-3 space-y-3 border-t border-slate-100">
+          {/* Zoom */}
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => setZoom(z => Math.max(1, z - 0.1))} className="text-slate-500 hover:text-slate-800">
+              <ZoomOut className="size-4" />
+            </button>
+            <input
+              type="range" min={1} max={3} step={0.05} value={zoom}
+              onChange={(e) => setZoom(Number(e.target.value))}
+              className="flex-1 accent-slate-800"
+            />
+            <button type="button" onClick={() => setZoom(z => Math.min(3, z + 0.1))} className="text-slate-500 hover:text-slate-800">
+              <ZoomIn className="size-4" />
+            </button>
+          </div>
+
+          {/* Aspect ratio */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">สัดส่วน:</span>
+            {ASPECT_OPTIONS.map((opt) => (
+              <button
+                key={opt.label}
+                type="button"
+                onClick={() => setAspect(opt.value)}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  aspect === opt.value
+                    ? 'bg-slate-800 text-white'
+                    : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Buttons */}
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={() => setCropSrc(null)} className="flex-1 rounded-lg border border-slate-200 py-2 text-sm text-slate-700 hover:bg-slate-50">
+              ยกเลิก
+            </button>
+            <button type="button" onClick={handleCropConfirm} className="flex-1 rounded-lg bg-slate-800 py-2 text-sm font-medium text-white hover:bg-slate-700">
+              ยืนยัน
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Normal form ── */
   return (
-    <div className="w-96 rounded-xl bg-white p-5 shadow-xl max-h-[90vh] overflow-y-auto">
+    <div className="w-[420px] rounded-xl bg-white p-5 shadow-xl max-h-[90vh] overflow-y-auto">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-900">{initial ? 'แก้ไขเมนู' : 'เพิ่มเมนู'}</h2>
         <button type="button" aria-label="ปิด" onClick={onClose} className="text-slate-400 hover:text-slate-600">×</button>
@@ -449,12 +562,11 @@ function MenuItemForm({
         <Field label="รูปเมนู">
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
           {imageUrl ? (
-            <div className="relative w-full h-36 rounded-lg overflow-hidden border border-slate-200">
+            <div className="relative w-full h-36 rounded-lg overflow-hidden border border-slate-200 bg-slate-100">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={imageUrl} alt="preview" className="w-full h-full object-cover" />
               <button
-                type="button"
-                aria-label="ลบรูป"
+                type="button" aria-label="ลบรูป"
                 onClick={() => setValue('imageUrl' as never, null as never)}
                 className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
               >
@@ -481,9 +593,14 @@ function MenuItemForm({
           )}
         </Field>
 
-        <Field label="ชื่อเมนู" error={errors.name?.message}>
-          <input {...register('name')} className={INPUT} />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="ชื่อเมนู (ไทย)" error={errors.name?.message}>
+            <input {...register('name')} className={INPUT} placeholder="เช่น สันคอหมู" />
+          </Field>
+          <Field label="ชื่อเมนู (อังกฤษ)">
+            <input {...register('nameEn' as never)} className={INPUT} placeholder="e.g. Pork Neck" />
+          </Field>
+        </div>
         <Field label="คำอธิบาย">
           <input {...register('description')} className={INPUT} />
         </Field>
@@ -496,12 +613,14 @@ function MenuItemForm({
             <input {...register('extraPrice', { valueAsNumber: true })} type="number" min={0} step="0.01" className={INPUT} />
           </Field>
         )}
-        <Field label="สั่งได้สูงสุด (ต่อรอบ)">
-          <input {...register('maxPerOrder', { setValueAs: v => v === '' || v === null ? null : Number(v) })} type="number" min={1} placeholder="ไม่จำกัด" className={INPUT} />
-        </Field>
-        <Field label="Cooldown (วินาที)">
-          <input {...register('cooldownSeconds', { valueAsNumber: true })} type="number" min={0} className={INPUT} />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="สั่งได้สูงสุด (ต่อรอบ)">
+            <input {...register('maxPerOrder', { setValueAs: v => v === '' || v === null ? null : Number(v) })} type="number" min={1} placeholder="ไม่จำกัด" className={INPUT} />
+          </Field>
+          <Field label="Cooldown (วินาที)">
+            <input {...register('cooldownSeconds', { valueAsNumber: true })} type="number" min={0} className={INPUT} />
+          </Field>
+        </div>
         <button type="submit" disabled={isSubmitting} className={BTN}>
           {isSubmitting ? 'กำลังบันทึก…' : 'บันทึก'}
         </button>

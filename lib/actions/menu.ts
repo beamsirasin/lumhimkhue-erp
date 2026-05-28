@@ -91,6 +91,7 @@ export async function createMenuItem(input: unknown) {
   try {
     await db.insert(menuItems).values({
       ...parsed.data,
+      nameEn: parsed.data.nameEn ?? null,
       imageUrl: parsed.data.imageUrl ?? null,
       extraPrice: String(parsed.data.extraPrice),
       maxPerOrder: parsed.data.maxPerOrder ?? null,
@@ -111,6 +112,7 @@ export async function updateMenuItem(input: unknown) {
   try {
     await db.update(menuItems).set({
       ...data,
+      nameEn: data.nameEn ?? null,
       imageUrl: data.imageUrl ?? null,
       extraPrice: String(data.extraPrice),
       maxPerOrder: data.maxPerOrder ?? null,
