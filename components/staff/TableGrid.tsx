@@ -20,12 +20,6 @@ import {
   Pencil,
 } from 'lucide-react';
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
-import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -717,22 +711,22 @@ function TableSheet({
   };
 
   return (
-    <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent side="right" className="w-80 sm:max-w-sm overflow-y-auto p-0">
-        <SheetHeader className="border-b border-slate-200 px-5 py-4">
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-sm p-0 flex flex-col max-h-[85vh]">
+        <DialogHeader className="shrink-0 border-b border-slate-200 px-5 py-4 pr-12">
           <div className="flex items-center gap-2">
             <span className={`h-2.5 w-2.5 rounded-full ${STATUS_CONFIG[visualStatus].dot}`} />
-            <SheetTitle className="text-base">
+            <DialogTitle className="text-base">
               โต๊ะ {table.label}
               {table.zone !== 'ทั่วไป' && <span className="ml-1.5 text-sm font-normal text-slate-500">({table.zone})</span>}
-            </SheetTitle>
+            </DialogTitle>
             <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CONFIG[visualStatus].bg} ${STATUS_CONFIG[visualStatus].text}`}>
               {STATUS_CONFIG[visualStatus].label}
             </span>
           </div>
-        </SheetHeader>
+        </DialogHeader>
 
-        <div className="space-y-4 px-5 py-4">
+        <div className="flex-1 overflow-y-auto space-y-4 px-5 py-4">
           {/* ── AVAILABLE ── */}
           {visualStatus === 'available' && (
             <>
@@ -982,8 +976,8 @@ function TableSheet({
             </>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
 
