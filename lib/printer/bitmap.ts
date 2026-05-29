@@ -64,7 +64,12 @@ async function drawToCanvas(lines: Ln[], paperWidth: 58 | 80): Promise<HTMLCanva
   ctx.fillRect(0, 0, W, h);
   ctx.fillStyle = '#000000';
 
-  let y = PAD_Y;
+  // Debug marker — a solid black bar at the very top confirms bitmap mode is active
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, W, 4);
+  ctx.fillStyle = '#000000';
+
+  let y = PAD_Y + 4;
 
   for (const ln of lines) {
     if (ln.t === 'hr') {

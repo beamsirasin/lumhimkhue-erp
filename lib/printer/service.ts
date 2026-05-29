@@ -66,6 +66,7 @@ export async function print(
       const bytes = config.thaiImageMode
         ? await buildBitmapBytes(job, config)
         : buildBytes(job, config);
+      console.log('[print] mode:', config.thaiImageMode ? 'BITMAP' : 'ESCPOS', 'bytes:', bytes.length);
       await sendUSB(device, bytes);
       return { ok: true };
     }
