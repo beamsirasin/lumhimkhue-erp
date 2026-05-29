@@ -138,7 +138,8 @@ export async function openSession(input: unknown) {
       };
     });
 
-    revalidatePath('/', 'layout');
+    revalidatePath('/tables');
+    revalidatePath('/pos');
     return {
       ok: true as const,
       data: {
@@ -204,7 +205,8 @@ export async function closeSession(input: { sessionId: string }) {
       .set({ status: 'available' })
       .where(inArray(tables.id, allTableIds));
 
-    revalidatePath('/', 'layout');
+    revalidatePath('/tables');
+    revalidatePath('/pos');
     return { ok: true as const };
   } catch (e) {
     console.error('[closeSession]', e);
@@ -243,7 +245,8 @@ export async function requestBillFromTable(input: { sessionId: string }) {
       .set({ status: 'closing' })
       .where(inArray(sessions.id, allIds));
 
-    revalidatePath('/', 'layout');
+    revalidatePath('/tables');
+    revalidatePath('/pos');
     return { ok: true as const };
   } catch (e) {
     console.error('[requestBillFromTable]', e);
@@ -261,7 +264,8 @@ export async function setTableAvailable(input: { tableId: string }) {
 
   try {
     await db.update(tables).set({ status: 'available' }).where(eq(tables.id, input.tableId));
-    revalidatePath('/', 'layout');
+    revalidatePath('/tables');
+    revalidatePath('/pos');
     return { ok: true as const };
   } catch (e) {
     console.error('[setTableAvailable]', e);
@@ -304,7 +308,8 @@ export async function updateSessionGuests(input: unknown) {
         })),
       );
     }
-    revalidatePath('/', 'layout');
+    revalidatePath('/tables');
+    revalidatePath('/pos');
     return { ok: true as const };
   } catch (e) {
     console.error('[updateSessionGuests]', e);
@@ -353,7 +358,8 @@ export async function moveSession(input: { sessionId: string; newTableId: string
     await db.update(tables).set({ status: 'available' }).where(eq(tables.id, oldTableId));
     await db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, input.newTableId));
 
-    revalidatePath('/', 'layout');
+    revalidatePath('/tables');
+    revalidatePath('/pos');
     return { ok: true as const };
   } catch (e) {
     console.error('[moveSession]', e);

@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath, unstable_cache } from 'next/cache';
+import { revalidatePath } from 'next/cache';
 import { eq, isNull, inArray, asc } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
@@ -11,8 +11,6 @@ import { tables, pricingTiles, sessions, sessionGuests, reservations } from '@/l
 
 /* โ”€โ”€โ”€ Queries โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€ */
 
-// Raw DB fetch โ€” 2 parallel rounds instead of 5 sequential Drizzle sub-queries.
-// Cached by tag 'tables'; invalidated by revalidatePath('/', 'layout') on any mutation.
 const _fetchTablesWithSessions = async () => {
   // Round 1 (parallel): tables + active sessions + pending reservations
   const [tableRows, sessionRows, reservationRows] = await Promise.all([
@@ -133,15 +131,11 @@ const _fetchTablesWithSessions = async () => {
   });
 };
 
-const _cachedTablesQuery = unstable_cache(_fetchTablesWithSessions, ['tables-with-sessions'], {
-  tags: ['tables'],
-});
-
 export async function getTablesWithSessions() {
   const session = await auth();
   if (!session?.user) return { ok: false as const, error: 'เธเธฃเธธเธ“เธฒเน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ' };
   try {
-    const data = await _cachedTablesQuery();
+    const data = await _fetchTablesWithSessions();
     return { ok: true as const, data };
   } catch (e) {
     console.error('[getTablesWithSessions]', e);
@@ -203,7 +197,8 @@ export async function createTable(input: unknown) {
       })
       .returning({ id: tables.id });
 
-    revalidatePath('/', 'layout');
+    revalidatePath('/tables');
+    revalidatePath('/pos');
     return { ok: true as const, data: { id: newTable.id } };
   } catch (e) {
     console.error('[createTable]', e);
@@ -232,7 +227,8 @@ export async function updateTablePosition(input: unknown) {
       .set({ positionX: parsed.data.positionX, positionY: parsed.data.positionY })
       .where(eq(tables.id, parsed.data.tableId));
 
-    revalidatePath('/', 'layout');
+    revalidatePath('/tables');
+    revalidatePath('/pos');
     return { ok: true as const };
   } catch (e) {
     console.error('[updateTablePosition]', e);
@@ -272,7 +268,8 @@ export async function updateTableMeta(input: unknown) {
       })
       .where(eq(tables.id, parsed.data.tableId));
 
-    revalidatePath('/', 'layout');
+    revalidatePath('/tables');
+    revalidatePath('/pos');
     return { ok: true as const };
   } catch (e) {
     console.error('[updateTableMeta]', e);
@@ -302,7 +299,8 @@ export async function softDeleteTable(input: { tableId: string }) {
       .set({ deletedAt: new Date() })
       .where(eq(tables.id, input.tableId));
 
-    revalidatePath('/', 'layout');
+    revalidatePath('/tables');
+    revalidatePath('/pos');
     return { ok: true as const };
   } catch (e) {
     console.error('[softDeleteTable]', e);
@@ -318,7 +316,8 @@ export async function setTableReserved(input: { tableId: string }) {
 
   try {
     await db.update(tables).set({ status: 'reserved' }).where(eq(tables.id, input.tableId));
-    revalidatePath('/', 'layout');
+    revalidatePath('/tables');
+    revalidatePath('/pos');
     return { ok: true as const };
   } catch (e) {
     console.error('[setTableReserved]', e);

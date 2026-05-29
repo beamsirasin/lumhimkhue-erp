@@ -271,7 +271,8 @@ export async function processPayment(input: unknown) {
       .where(inArray(tables.id, allTableIds));
 
     revalidatePath('/pos');
-    revalidatePath('/', 'layout');
+    revalidatePath('/tables');
+    revalidatePath('/dashboard');
     return { ok: true as const, data: { total, changeAmount } };
   } catch (e) {
     console.error('[processPayment]', e);
