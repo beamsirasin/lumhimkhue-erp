@@ -1,6 +1,6 @@
-﻿'use server';
+'use server';
 
-import { revalidateTag } from 'next/cache';
+import { revalidatePath } from 'next/cache';
 import { eq, inArray } from 'drizzle-orm';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
@@ -144,7 +144,7 @@ export async function createReservation(input: unknown) {
       .set({ status: 'reserved' })
       .where(inArray(tables.id, allTableIds));
 
-    revalidateTag('tables');
+    revalidatePath('/', 'layout');
     return { ok: true as const, data: { id: primaryRes.id } };
   } catch (e) {
     console.error('[createReservation]', e);
@@ -206,7 +206,7 @@ export async function cancelReservation(reservationId: string) {
       .set({ status: 'available' })
       .where(inArray(tables.id, [...new Set(allTableIds)]));
 
-    revalidateTag('tables');
+    revalidatePath('/', 'layout');
     return { ok: true as const };
   } catch (e) {
     console.error('[cancelReservation]', e);
@@ -251,7 +251,7 @@ export async function updateReservation(input: unknown) {
       );
     }
 
-    revalidateTag('tables');
+    revalidatePath('/', 'layout');
     return { ok: true as const };
   } catch (e) {
     console.error('[updateReservation]', e);

@@ -1,8 +1,8 @@
-﻿'use server';
+'use server';
 
 import { eq, and, gte, desc, asc, inArray, ne } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
-import { revalidateTag } from 'next/cache';
+import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import {
   sessions,
@@ -175,7 +175,7 @@ export async function placeOrder(input: unknown) {
       })),
     );
 
-    revalidateTag('kds');
+    revalidatePath('/kds', 'layout');
     return { ok: true as const };
   } catch (e) {
     console.error('[placeOrder]', e);

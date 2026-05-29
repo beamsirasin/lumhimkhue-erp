@@ -1,6 +1,6 @@
-﻿'use server';
+'use server';
 
-import { revalidateTag, unstable_cache } from 'next/cache';
+import { revalidatePath, unstable_cache } from 'next/cache';
 import { eq, and, inArray, asc, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { auth } from '@/auth';
@@ -73,7 +73,7 @@ export async function serveGroup(input: unknown) {
       .update(orderItems)
       .set({ status: 'served', servedAt: now })
       .where(inArray(orderItems.id, parsed.data.itemIds));
-    revalidateTag('kds');
+    revalidatePath('/kds', 'layout');
     return { ok: true as const };
   } catch (e) {
     console.error('[serveGroup]', e);
@@ -108,7 +108,7 @@ export async function updateItemStatus(input: unknown) {
         ...(status === 'served' ? { servedAt: now } : {}),
       })
       .where(eq(orderItems.id, itemId));
-    revalidateTag('kds');
+    revalidatePath('/kds', 'layout');
     return { ok: true as const };
   } catch (e) {
     console.error('[updateItemStatus]', e);
