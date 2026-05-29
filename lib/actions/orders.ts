@@ -115,6 +115,38 @@ export async function placeOrder(input: unknown) {
 
     const menuItemMap = new Map(menuItemRows.map((m) => [m.id, m]));
 
+    // Batch cooldown check — 1 query instead of N queries (one per item with cooldown)
+    const cooldownMenuItemIds = [
+      ...new Set(
+        items
+          .filter((i) => (menuItemMap.get(i.menuItemId)?.cooldownSeconds ?? 0) > 0)
+          .map((i) => i.menuItemId),
+      ),
+    ];
+    const recentOrderedAt = new Map<string, Date>();
+    if (cooldownMenuItemIds.length > 0) {
+      const maxCooldown = Math.max(
+        ...cooldownMenuItemIds.map((id) => menuItemMap.get(id)!.cooldownSeconds),
+      );
+      const earliestSince = new Date(Date.now() - maxCooldown * 1000);
+      const recentRows = await db
+        .select({ menuItemId: orderItems.menuItemId, orderedAt: orders.createdAt })
+        .from(orderItems)
+        .innerJoin(orders, eq(orderItems.orderId, orders.id))
+        .where(
+          and(
+            eq(orders.sessionId, session.id),
+            inArray(orderItems.menuItemId, cooldownMenuItemIds),
+            gte(orders.createdAt, earliestSince),
+          ),
+        );
+      for (const r of recentRows) {
+        if (!r.menuItemId) continue;
+        const existing = recentOrderedAt.get(r.menuItemId);
+        if (!existing || r.orderedAt > existing) recentOrderedAt.set(r.menuItemId, r.orderedAt);
+      }
+    }
+
     for (const item of items) {
       const mi = menuItemMap.get(item.menuItemId);
       if (!mi) return { ok: false as const, error: 'เนเธกเนเธเธเน€เธกเธเธน' };
@@ -122,20 +154,9 @@ export async function placeOrder(input: unknown) {
         return { ok: false as const, error: `${mi.name} เนเธกเนเธกเธตเนเธซเนเธเธฃเธดเธเธฒเธฃเนเธเธเธ“เธฐเธเธตเน` };
 
       if (mi.cooldownSeconds > 0) {
+        const lastOrdered = recentOrderedAt.get(item.menuItemId);
         const cooldownSince = new Date(Date.now() - mi.cooldownSeconds * 1000);
-        const [recent] = await db
-          .select({ id: orderItems.id })
-          .from(orderItems)
-          .innerJoin(orders, eq(orderItems.orderId, orders.id))
-          .where(
-            and(
-              eq(orders.sessionId, session.id),
-              eq(orderItems.menuItemId, item.menuItemId),
-              gte(orders.createdAt, cooldownSince),
-            ),
-          )
-          .limit(1);
-        if (recent)
+        if (lastOrdered && lastOrdered >= cooldownSince)
           return { ok: false as const, error: `${mi.name} เธขเธฑเธเนเธกเนเธเธฃเนเธญเธกเธชเธฑเนเธเธญเธตเธเธเธฃเธฑเนเธ` };
       }
 
