@@ -14,7 +14,7 @@ import {
 import { getAllPrinters, savePrinter, deletePrinter, setDefaultPrinter } from '@/lib/printer/store';
 import { getCapabilities, isLocalhost } from '@/lib/printer/capabilities';
 import { requestUSBDevice } from '@/lib/printer/transports/usb';
-import { testPrint, testThaiCodepage, printByteMap } from '@/lib/printer/service';
+import { testPrint, printByteMap } from '@/lib/printer/service';
 import type { PrinterConfig, PrinterType } from '@/lib/printer/types';
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
@@ -130,17 +130,6 @@ export function PrintersPage() {
     toast.success(`ตั้ง "${p.name}" เป็นค่าเริ่มต้นแล้ว`);
   }
 
-  async function handleThaiTest(p: PrinterConfig) {
-    setTesting(`thai-${p.id}`);
-    const result = await testThaiCodepage(p);
-    setTesting(null);
-    if (result.ok) {
-      toast.success('ส่งทดสอบภาษาไทยแล้ว — ดูว่าอ่านออกมั้ย');
-    } else {
-      toast.error(`ทดสอบไม่สำเร็จ: ${result.error}`);
-    }
-  }
-
   async function handleTest(p: PrinterConfig) {
     setTesting(p.id);
     const result = await testPrint(p);
@@ -254,16 +243,6 @@ export function PrintersPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleThaiTest(p)}
-                        disabled={!!testing}
-                        className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 disabled:opacity-50"
-                        title="พิมพ์ทดสอบภาษาไทยเพื่อเช็ค Codepage"
-                      >
-                        <FlaskConical className="size-3" />
-                        {testing === `thai-${p.id}` ? 'ทดสอบ…' : 'ทดสอบไทย'}
-                      </button>
                       <button
                         type="button"
                         onClick={() => handleTest(p)}

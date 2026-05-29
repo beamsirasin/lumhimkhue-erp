@@ -7,9 +7,9 @@
  *
  * Resolution order:
  *   1. Use printerId if supplied, else load default printer
- *   2. No config → browser fallback (window.print)
+ *   2. No config → toast error, return { ok: false }
  *   3. USB / Network → ESC/POS bytes
- *   4. Any transport error → toast + automatic browser fallback
+ *   4. Any transport error → toast error, return { ok: false }
  */
 
 import { toast } from 'sonner';
@@ -42,7 +42,7 @@ export type PrintResult = { ok: true } | { ok: false; error: string };
 
 /**
  * Print a job using the specified printer, or the default printer.
- * Falls back to browser print silently on transport failure.
+ * Returns { ok: false } with a toast on failure — no browser fallback.
  */
 export async function print(
   job: PrintJob,
@@ -52,9 +52,9 @@ export async function print(
     ? await getPrinter(printerId)
     : await getDefaultPrinter();
 
-  // No printer configured → go straight to browser
   if (!config) {
-    return printViaBrowser(job);
+    toast.error('ไม่พบการตั้งค่าเครื่องพิมพ์ — กรุณาตั้งค่าเครื่องพิมพ์ในหน้า Settings');
+    return { ok: false, error: 'ไม่พบการตั้งค่าเครื่องพิมพ์' };
   }
 
   try {
@@ -84,8 +84,8 @@ export async function print(
     return printViaBrowser(job);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'พิมพ์ไม่สำเร็จ';
-    toast.error(`${msg} — ใช้การพิมพ์ผ่าน Browser แทน`);
-    return printViaBrowser(job);
+    toast.error(msg);
+    return { ok: false, error: msg };
   }
 }
 
@@ -233,7 +233,7 @@ export async function printByteMap(config: PrinterConfig): Promise<PrintResult> 
 
 /**
  * Send a test-print to verify a printer config works.
- * Uses ESC/POS for USB/Network, browser print for browser type.
+ * Respects thaiImageMode — uses bitmap when enabled, text mode otherwise.
  */
 export async function testPrint(config: PrinterConfig): Promise<PrintResult> {
   const now = new Date().toLocaleString('th-TH', {
@@ -256,35 +256,58 @@ export async function testPrint(config: PrinterConfig): Promise<PrintResult> {
   }
 
   try {
-    const cols = config.paperWidth === 80 ? 48 : 32;
-    const sep = '-'.repeat(cols);
+    let bytes: Uint8Array;
 
-    const cp = config.thaiCodepage ?? 21;
-    const cpName = cp === 20 ? 'thai42' : cp === 21 ? 'thai11' : cp === 27 ? 'thai13' : 'cp874';
-    const bytes = new ReceiptPrinterEncoder({
-      language: 'esc-pos',
-      columns: cols,
-      errors: 'relaxed',
-      codepageMapping: { [cpName]: cp } as unknown as string,
-    })
-      .initialize()
-      .codepage(cpName)
-      .align('center')
-      .bold(true).line('ทดสอบการพิมพ์').bold(false)
-      .line('Test Print')
-      .line(now)
-      .line(sep)
-      .line(config.name)
-      .line(sep)
-      .line('Printer OK')
-      .newline(3)
-      .cut('partial')
-      .encode();
+    if (config.thaiImageMode) {
+      // Bitmap mode — same path as real printing, Thai text rendered by browser
+      bytes = await buildBitmapReceipt({
+        receiptType: 'bill',
+        shopNameTh: 'ทดสอบการพิมพ์',
+        tableNumber: 'Test',
+        cashierName: config.name,
+        paidAt: now,
+        sessionId: 'test',
+        items: [
+          { name: 'ทดสอบภาษาไทย กขคงจฉชซ', quantity: 1, total: 99 },
+          { name: 'สระ อา อิ อี อู เอ แอ โอ', quantity: 1, total: 99 },
+        ],
+        subtotal: 198,
+        discount: 0,
+        serviceCharge: 0,
+        total: 198,
+        receivedAmount: 0,
+        changeAmount: 0,
+        paymentMethod: 'Bitmap Mode ✓',
+      }, config.paperWidth);
+    } else {
+      // Text mode with Thai codepage
+      const cols = config.paperWidth === 80 ? 48 : 32;
+      const sep  = '-'.repeat(cols);
+      const cp   = config.thaiCodepage ?? 21;
+      const cpName = cp === 20 ? 'thai42' : cp === 21 ? 'thai11' : cp === 27 ? 'thai13' : 'cp874';
+      bytes = new ReceiptPrinterEncoder({
+        language: 'esc-pos',
+        columns: cols,
+        errors: 'relaxed',
+        codepageMapping: { [cpName]: cp } as unknown as string,
+      })
+        .initialize()
+        .codepage(cpName)
+        .align('center')
+        .bold(true).line('ทดสอบการพิมพ์').bold(false)
+        .line('Test Print')
+        .line(now)
+        .line(sep)
+        .line(config.name)
+        .line(sep)
+        .line('Printer OK')
+        .newline(3)
+        .cut('partial')
+        .encode();
+    }
 
     if (config.type === 'usb') {
-      if (!config.usbVendorId || !config.usbProductId) {
-        throw new Error('ไม่พบข้อมูล USB');
-      }
+      if (!config.usbVendorId || !config.usbProductId) throw new Error('ไม่พบข้อมูล USB');
       const device = await findPairedDevice(config.usbVendorId, config.usbProductId);
       if (!device) throw new Error('ไม่พบ printer USB');
       await sendUSB(device, bytes);

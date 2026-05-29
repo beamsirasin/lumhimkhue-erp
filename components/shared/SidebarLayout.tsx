@@ -343,7 +343,7 @@ function StandardSidebarLayout({
   const innerProps = { role, userName, sections, pathname };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex h-dvh overflow-hidden bg-slate-50">
       {/* Desktop sidebar */}
       <aside className="hidden lg:block fixed inset-y-0 left-0 z-20 w-64 border-r border-slate-200">
         <SidebarInner {...innerProps} />
@@ -443,7 +443,7 @@ function CashierLayout({
   const pageTitle = getPageTitle(pathname);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-slate-50">
+    <div className="flex h-dvh flex-col overflow-hidden bg-slate-50">
       {/* Thin top header */}
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-4">
         <Image
