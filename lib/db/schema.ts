@@ -218,26 +218,30 @@ export const categories = pgTable('categories', {
   maxPerSession: integer('max_per_session'),
 });
 
-export const menuItems = pgTable('menu_items', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  categoryId: uuid('category_id')
-    .notNull()
-    .references(() => categories.id),
-  name: varchar('name', { length: 255 }).notNull(),
-  nameEn: varchar('name_en', { length: 255 }),
-  description: text('description'),
-  descriptionEn: text('description_en'),
-  imageUrl: text('image_url'),
-  isBuffet: boolean('is_buffet').notNull().default(true),
-  extraPrice: numeric('extra_price', { precision: 10, scale: 2 })
-    .notNull()
-    .default('0'),
-  maxPerOrder: integer('max_per_order'),
-  cooldownSeconds: integer('cooldown_seconds').notNull().default(0),
-  isAvailable: boolean('is_available').notNull().default(true),
-  allergens: jsonb('allergens').notNull().default([]),
-  sortOrder: integer('sort_order').notNull().default(0),
-});
+export const menuItems = pgTable(
+  'menu_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    categoryId: uuid('category_id')
+      .notNull()
+      .references(() => categories.id),
+    name: varchar('name', { length: 255 }).notNull(),
+    nameEn: varchar('name_en', { length: 255 }),
+    description: text('description'),
+    descriptionEn: text('description_en'),
+    imageUrl: text('image_url'),
+    isBuffet: boolean('is_buffet').notNull().default(true),
+    extraPrice: numeric('extra_price', { precision: 10, scale: 2 })
+      .notNull()
+      .default('0'),
+    maxPerOrder: integer('max_per_order'),
+    cooldownSeconds: integer('cooldown_seconds').notNull().default(0),
+    isAvailable: boolean('is_available').notNull().default(true),
+    allergens: jsonb('allergens').notNull().default([]),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [index('menu_items_category_id_idx').on(t.categoryId)],
+);
 
 export const orders = pgTable(
   'orders',
@@ -251,7 +255,10 @@ export const orders = pgTable(
     createdAt: timestamp('created_at').notNull().defaultNow(),
     servedAt: timestamp('served_at'),
   },
-  (t) => [index('orders_session_id_idx').on(t.sessionId)],
+  (t) => [
+    index('orders_session_id_idx').on(t.sessionId),
+    index('orders_created_at_idx').on(t.createdAt),
+  ],
 );
 
 export const orderItems = pgTable(
@@ -292,37 +299,44 @@ export const queueEntries = pgTable(
     calledAt: timestamp('called_at'),
     seatedAt: timestamp('seated_at'),
   },
-  (t) => [index('queue_entries_public_token_idx').on(t.publicToken)],
+  (t) => [
+    index('queue_entries_public_token_idx').on(t.publicToken),
+    index('queue_entries_status_created_at_idx').on(t.status, t.createdAt),
+  ],
 );
 
-export const payments = pgTable('payments', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  sessionId: uuid('session_id')
-    .notNull()
-    .references(() => sessions.id)
-    .unique(),
-  subtotal: numeric('subtotal', { precision: 10, scale: 2 }).notNull(),
-  serviceCharge: numeric('service_charge', { precision: 10, scale: 2 })
-    .notNull()
-    .default('0'),
-  discount: numeric('discount', { precision: 10, scale: 2 })
-    .notNull()
-    .default('0'),
-  total: numeric('total', { precision: 10, scale: 2 }).notNull(),
-  paymentMethod: paymentMethodEnum('payment_method').notNull(),
-  receivedAmount: numeric('received_amount', {
-    precision: 10,
-    scale: 2,
-  }).notNull(),
-  changeAmount: numeric('change_amount', { precision: 10, scale: 2 })
-    .notNull()
-    .default('0'),
-  paidAt: timestamp('paid_at').notNull().defaultNow(),
-  processedBy: uuid('processed_by')
-    .notNull()
-    .references(() => users.id),
-  notes: text('notes'),
-});
+export const payments = pgTable(
+  'payments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => sessions.id)
+      .unique(),
+    subtotal: numeric('subtotal', { precision: 10, scale: 2 }).notNull(),
+    serviceCharge: numeric('service_charge', { precision: 10, scale: 2 })
+      .notNull()
+      .default('0'),
+    discount: numeric('discount', { precision: 10, scale: 2 })
+      .notNull()
+      .default('0'),
+    total: numeric('total', { precision: 10, scale: 2 }).notNull(),
+    paymentMethod: paymentMethodEnum('payment_method').notNull(),
+    receivedAmount: numeric('received_amount', {
+      precision: 10,
+      scale: 2,
+    }).notNull(),
+    changeAmount: numeric('change_amount', { precision: 10, scale: 2 })
+      .notNull()
+      .default('0'),
+    paidAt: timestamp('paid_at').notNull().defaultNow(),
+    processedBy: uuid('processed_by')
+      .notNull()
+      .references(() => users.id),
+    notes: text('notes'),
+  },
+  (t) => [index('payments_paid_at_idx').on(t.paidAt)],
+);
 
 /**
  * Line items for a payment — addons and discounts applied at checkout.
