@@ -14,7 +14,7 @@ import {
 import { getAllPrinters, savePrinter, deletePrinter, setDefaultPrinter } from '@/lib/printer/store';
 import { getCapabilities, isLocalhost } from '@/lib/printer/capabilities';
 import { requestUSBDevice } from '@/lib/printer/transports/usb';
-import { testPrint } from '@/lib/printer/service';
+import { testPrint, testThaiCodepage } from '@/lib/printer/service';
 import type { PrinterConfig, PrinterType } from '@/lib/printer/types';
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
@@ -126,6 +126,17 @@ export function PrintersPage() {
     await setDefaultPrinter(p.id);
     refresh();
     toast.success(`ตั้ง "${p.name}" เป็นค่าเริ่มต้นแล้ว`);
+  }
+
+  async function handleThaiTest(p: PrinterConfig) {
+    setTesting(`thai-${p.id}`);
+    const result = await testThaiCodepage(p);
+    setTesting(null);
+    if (result.ok) {
+      toast.success('ส่งทดสอบภาษาไทยแล้ว — ดูว่าอ่านออกมั้ย');
+    } else {
+      toast.error(`ทดสอบไม่สำเร็จ: ${result.error}`);
+    }
   }
 
   async function handleTest(p: PrinterConfig) {
@@ -242,8 +253,18 @@ export function PrintersPage() {
                     <div className="flex items-center justify-end gap-2">
                       <button
                         type="button"
+                        onClick={() => handleThaiTest(p)}
+                        disabled={!!testing}
+                        className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 disabled:opacity-50"
+                        title="พิมพ์ทดสอบภาษาไทยเพื่อเช็ค Codepage"
+                      >
+                        <FlaskConical className="size-3" />
+                        {testing === `thai-${p.id}` ? 'ทดสอบ…' : 'ทดสอบไทย'}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleTest(p)}
-                        disabled={testing === p.id}
+                        disabled={!!testing}
                         className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-700 disabled:opacity-50"
                       >
                         <FlaskConical className="size-3" />
@@ -562,8 +583,10 @@ function StepBrowser({ onNext }: { onNext: () => void }) {
 
 const THAI_CODEPAGE_PRESETS = [
   { value: 21, label: 'หน้า 21 — Epson / ทั่วไป (แนะนำ)' },
+  { value: 20, label: 'หน้า 20 — Xprinter / Generic จีน' },
   { value: 13, label: 'หน้า 13 — Star Micronics' },
   { value: 18, label: 'หน้า 18 — Citizen / Bixolon' },
+  { value: 27, label: 'หน้า 27 — Epson Thai13' },
 ];
 
 function StepGeneral({
@@ -642,7 +665,7 @@ function StepGeneral({
           />
         </div>
         <p className="mt-1 text-[11px] text-slate-400">
-          หากตัวอักษรภาษาไทยออกมาเป็น ??? ให้ลองเปลี่ยนหน้านี้
+          ถ้าภาษาไทยออกมาเป็นตัวอักษรแปลก ให้ลองหน้า 20 หรือ 21 สลับกัน
         </p>
       </div>
 

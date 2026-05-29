@@ -84,6 +84,71 @@ export async function print(
 /* ─── Test print ─────────────────────────────────────────────────────────── */
 
 /**
+ * Print only Thai characters to verify the Thai codepage setting is correct.
+ */
+export async function testThaiCodepage(config: PrinterConfig): Promise<PrintResult> {
+  if (config.type === 'browser') {
+    printBrowser(`
+      <div class="center big">ทดสอบภาษาไทย</div>
+      <hr />
+      <div class="center">กขคงจฉชซญดตถทนบปผฝพฟภมยรลวสหอฮ</div>
+      <div class="center">อักขระพิเศษ: ฿ ๐๑๒๓๔๕๖๗๘๙</div>
+      <div class="center">ไก่จิกเด็กตายบนปากโอ่ง</div>
+      <hr />
+      <div class="center small">Codepage หน้า ${config.thaiCodepage}</div>
+    `);
+    return { ok: true };
+  }
+
+  try {
+    const cols = config.paperWidth === 80 ? 48 : 32;
+    const sep = '-'.repeat(cols);
+    const cp = config.thaiCodepage ?? 21;
+
+    const { default: ReceiptPrinterEncoder } = await import('@point-of-sale/receipt-printer-encoder');
+    const bytes = new ReceiptPrinterEncoder({
+      language: 'esc-pos',
+      columns: cols,
+      errors: 'relaxed',
+      codepageMapping: { cp874: cp } as unknown as string,
+    })
+      .initialize()
+      .codepage('cp874')
+      .align('center')
+      .bold(true).line('ทดสอบ Codepage ภาษาไทย').bold(false)
+      .line(sep)
+      .line('กขคงจฉชซญดตถทนบปผฝพฟภมยรลวสหอฮ')
+      .line('ฤฦฯ ะ า ิ ี ึ ื ุ ู')
+      .line('เแโใไ ็่้๊๋์ํ๎')
+      .line('฿ ๐๑๒๓๔๕๖๗๘๙')
+      .line(sep)
+      .align('left')
+      .line(`Codepage: หน้า ${cp}`)
+      .line('ถ้าอ่านได้ — ตั้งค่าถูกต้องแล้ว')
+      .line('ถ้าเป็นตัวแปลก — ลองเปลี่ยนหน้า')
+      .newline(3)
+      .cut('partial')
+      .encode();
+
+    if (config.type === 'usb') {
+      const { findPairedDevice, sendUSB } = await import('./transports/usb');
+      if (!config.usbVendorId || !config.usbProductId) throw new Error('ไม่พบข้อมูล USB');
+      const device = await findPairedDevice(config.usbVendorId, config.usbProductId);
+      if (!device) throw new Error('ไม่พบ printer USB');
+      await sendUSB(device, bytes);
+    } else {
+      const { sendNetwork } = await import('./transports/network');
+      if (!config.ipAddress) throw new Error('ไม่พบ IP address');
+      await sendNetwork(config.ipAddress, config.port ?? 9100, bytes);
+    }
+    return { ok: true };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : 'ทดสอบไม่สำเร็จ';
+    return { ok: false, error };
+  }
+}
+
+/**
  * Send a test-print to verify a printer config works.
  * Uses ESC/POS for USB/Network, browser print for browser type.
  */

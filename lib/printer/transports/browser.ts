@@ -64,17 +64,22 @@ export function printBrowser(html: string): void {
 <head>
   <meta charset="utf-8" />
   <title>พิมพ์</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500&display=swap" rel="stylesheet" />
   <style>${PRINT_CSS}</style>
 </head>
 <body>${html}</body>
 </html>`);
   win.document.close();
 
-  // Small delay to let fonts + images load before the print dialog
-  setTimeout(() => {
-    win.print();
-    win.close();
-  }, 400);
+  // Wait for fonts to load before triggering print dialog
+  const trigger = () => { win.print(); win.close(); };
+  if (win.document.fonts?.ready) {
+    win.document.fonts.ready.then(trigger);
+  } else {
+    setTimeout(trigger, 800);
+  }
 }
 
 /** Expose the CSS so HTML templates can reuse the same class names */
