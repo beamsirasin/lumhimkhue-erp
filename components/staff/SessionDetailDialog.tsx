@@ -177,7 +177,7 @@ export function SessionDetailDialog({ sessionId, onClose }: SessionDetailDialogP
                     o.items.map((item) => (
                       <div key={item.id} className="flex justify-between text-xs text-slate-700">
                         <span>
-                          {item.menuItem.name}
+                          {item.menuItem?.name ?? (item as typeof item & { itemName?: string | null }).itemName ?? '-'}
                           {item.notes && (
                             <span className="ml-1 text-slate-400">({item.notes})</span>
                           )}
@@ -187,9 +187,9 @@ export function SessionDetailDialog({ sessionId, onClose }: SessionDetailDialogP
                         </span>
                         <div className="flex gap-2 shrink-0">
                           <span className="tabular-nums text-slate-500">×{item.quantity}</span>
-                          {!item.menuItem.isBuffet && (
+                          {!item.menuItem?.isBuffet && (
                             <span className="tabular-nums text-red-600">
-                              +฿{(Number(item.menuItem.extraPrice) * item.quantity).toLocaleString('th-TH')}
+                              +฿{(Number(item.menuItem?.extraPrice ?? 0) * item.quantity).toLocaleString('th-TH')}
                             </span>
                           )}
                         </div>

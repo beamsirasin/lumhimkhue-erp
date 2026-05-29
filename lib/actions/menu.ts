@@ -27,7 +27,7 @@ export async function getMenuCRUDData() {
     const cats = await db.query.categories.findMany({
       orderBy: [asc(categories.sortOrder), asc(categories.name)],
       with: {
-        menuItems: { orderBy: [asc(menuItems.name)] },
+        menuItems: { orderBy: [asc(menuItems.sortOrder), asc(menuItems.name)] },
       },
     });
     return { ok: true as const, data: cats };
@@ -92,6 +92,7 @@ export async function createMenuItem(input: unknown) {
     await db.insert(menuItems).values({
       ...parsed.data,
       nameEn: parsed.data.nameEn ?? null,
+      descriptionEn: parsed.data.descriptionEn ?? null,
       imageUrl: parsed.data.imageUrl ?? null,
       extraPrice: String(parsed.data.extraPrice),
       maxPerOrder: parsed.data.maxPerOrder ?? null,
@@ -113,6 +114,7 @@ export async function updateMenuItem(input: unknown) {
     await db.update(menuItems).set({
       ...data,
       nameEn: data.nameEn ?? null,
+      descriptionEn: data.descriptionEn ?? null,
       imageUrl: data.imageUrl ?? null,
       extraPrice: String(data.extraPrice),
       maxPerOrder: data.maxPerOrder ?? null,
@@ -133,7 +135,7 @@ export async function deleteMenuItem(id: string) {
     return { ok: true as const };
   } catch (e) {
     console.error('[deleteMenuItem]', e);
-    return { ok: false as const, error: 'ไม่สามารถลบได้ (อาจมีออเดอร์ที่เชื่อมอยู่)' };
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
   }
 }
 
@@ -165,6 +167,26 @@ export async function toggleMenuItemAvailable(id: string) {
     return { ok: true as const };
   } catch (e) {
     console.error('[toggleMenuItemAvailable]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+export async function swapMenuItemOrder(idA: string, idB: string) {
+  if (!await requireManageMenu()) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+  try {
+    const [a, b] = await Promise.all([
+      db.select({ id: menuItems.id, sortOrder: menuItems.sortOrder }).from(menuItems).where(eq(menuItems.id, idA)).limit(1),
+      db.select({ id: menuItems.id, sortOrder: menuItems.sortOrder }).from(menuItems).where(eq(menuItems.id, idB)).limit(1),
+    ]);
+    if (!a[0] || !b[0]) return { ok: false as const, error: 'ไม่พบเมนู' };
+    await Promise.all([
+      db.update(menuItems).set({ sortOrder: b[0].sortOrder }).where(eq(menuItems.id, idA)),
+      db.update(menuItems).set({ sortOrder: a[0].sortOrder }).where(eq(menuItems.id, idB)),
+    ]);
+    revalidatePath('/menu');
+    return { ok: true as const };
+  } catch (e) {
+    console.error('[swapMenuItemOrder]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
   }
 }

@@ -59,7 +59,7 @@ export function OrderList({ sessionToken, initialOrders }: OrderListProps) {
               <li key={item.id} className="px-4 py-3 flex items-center justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-900 truncate">
-                    {item.menuItem.name}
+                    {item.menuItem?.name ?? item.itemName ?? '-'}
                   </p>
                   {item.notes && (
                     <p className="text-xs text-slate-400 truncate">{item.notes}</p>

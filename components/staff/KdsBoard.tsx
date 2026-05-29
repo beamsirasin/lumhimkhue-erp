@@ -5,11 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { toast } from 'sonner';
-import { Printer } from 'lucide-react';
-import { getKdsItems, updateItemStatus } from '@/lib/actions/kds';
+import { getKdsItems, serveGroup } from '@/lib/actions/kds';
 import type { KdsItem } from '@/lib/actions/kds';
-import { print as printKitchen } from '@/lib/printer/service';
-import type { KitchenOrderData } from '@/lib/printer/types';
 
 type Station = KdsItem['station'];
 
@@ -23,32 +20,49 @@ const STATION_LABEL: Record<Station, string> = {
   sauce: 'ซอส',
 };
 
-const STATUS_CONFIG = {
-  pending: {
-    card: 'border-amber-300 bg-amber-50',
-    badge: 'bg-amber-100 text-amber-800',
-    label: 'รอทำ',
-    nextStatus: 'preparing' as const,
-    actionLabel: 'เริ่มทำ',
-    actionClass: 'bg-blue-600 hover:bg-blue-700 text-white',
-  },
-  preparing: {
-    card: 'border-blue-300 bg-blue-50',
-    badge: 'bg-blue-100 text-blue-800',
-    label: 'กำลังทำ',
-    nextStatus: 'ready' as const,
-    actionLabel: 'พร้อมเสิร์ฟ',
-    actionClass: 'bg-green-600 hover:bg-green-700 text-white',
-  },
-  ready: {
-    card: 'border-green-300 bg-green-50',
-    badge: 'bg-green-100 text-green-800',
-    label: 'พร้อมแล้ว',
-    nextStatus: 'served' as const,
-    actionLabel: 'เสิร์ฟแล้ว',
-    actionClass: 'bg-slate-600 hover:bg-slate-700 text-white',
-  },
-} as const;
+const STATION_ORDER: Record<Station, number> = {
+  meat: 0,
+  seafood: 1,
+  vegetable: 2,
+  noodle: 3,
+  drink: 4,
+  dessert: 5,
+  sauce: 6,
+};
+
+interface KdsGroup {
+  groupKey: string;
+  orderId: string;
+  tableNumber: string;
+  station: Station;
+  orderedAt: Date;
+  items: KdsItem[];
+}
+
+function groupItems(items: KdsItem[]): KdsGroup[] {
+  const map = new Map<string, KdsGroup>();
+  for (const item of items) {
+    const key = `${item.orderId}__${item.station}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        groupKey: key,
+        orderId: item.orderId,
+        tableNumber: item.tableNumber,
+        station: item.station,
+        orderedAt: new Date(item.orderedAt),
+        items: [],
+      });
+    }
+    map.get(key)!.items.push(item);
+  }
+  return [...map.values()].sort((a, b) => {
+    const timeDiff = a.orderedAt.getTime() - b.orderedAt.getTime();
+    if (timeDiff !== 0) return timeDiff;
+    const tableCompare = a.tableNumber.localeCompare(b.tableNumber, undefined, { numeric: true });
+    if (tableCompare !== 0) return tableCompare;
+    return STATION_ORDER[a.station] - STATION_ORDER[b.station];
+  });
+}
 
 interface KdsBoardProps {
   initialItems: KdsItem[];
@@ -66,29 +80,28 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
     staleTime: 1_000,
   });
 
-  const { mutate: advance, isPending } = useMutation({
-    mutationFn: (vars: { itemId: string; status: 'preparing' | 'ready' | 'served' }) =>
-      updateItemStatus(vars),
+  const { mutate: serve, isPending } = useMutation({
+    mutationFn: (itemIds: string[]) => serveGroup({ itemIds }),
     onSuccess: (result) => {
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
-      }
+      if (!result.ok) { toast.error(result.error); return; }
       queryClient.invalidateQueries({ queryKey: ['kds-items'] });
     },
     onError: () => toast.error('เกิดข้อผิดพลาด'),
   });
 
-  const visibleItems =
-    activeStation === 'all' ? items : items.filter((i) => i.station === activeStation);
+  const groups = groupItems(items);
+  const visibleGroups =
+    activeStation === 'all'
+      ? groups
+      : groups.filter((g) => g.station === activeStation);
 
-  const stationCounts = items.reduce<Record<string, number>>((acc, i) => {
-    acc[i.station] = (acc[i.station] ?? 0) + 1;
+  // count groups per station (not items)
+  const stationGroupCount = groups.reduce<Record<string, number>>((acc, g) => {
+    acc[g.station] = (acc[g.station] ?? 0) + 1;
     return acc;
   }, {});
-
-  const stationsWithItems = (Object.keys(STATION_LABEL) as Station[]).filter(
-    (s) => (stationCounts[s] ?? 0) > 0,
+  const stationsWithGroups = (Object.keys(STATION_LABEL) as Station[]).filter(
+    (s) => (stationGroupCount[s] ?? 0) > 0,
   );
 
   return (
@@ -97,10 +110,10 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
       <header className="flex items-center justify-between border-b border-slate-700 bg-slate-800 px-6 py-3">
         <div>
           <h1 className="text-lg font-semibold text-white">Kitchen Display</h1>
-          <p className="text-xs text-slate-400">{items.length} รายการที่รอดำเนินการ</p>
+          <p className="text-xs text-slate-400">{groups.length} ออเดอร์ที่รอเสิร์ฟ</p>
         </div>
         {/* Station tabs */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
           <button
             type="button"
             onClick={() => setActiveStation('all')}
@@ -111,11 +124,11 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
             }`}
           >
             ทั้งหมด
-            {items.length > 0 && (
-              <span className="ml-1.5 tabular-nums">({items.length})</span>
+            {groups.length > 0 && (
+              <span className="ml-1.5 tabular-nums">({groups.length})</span>
             )}
           </button>
-          {stationsWithItems.map((s) => (
+          {stationsWithGroups.map((s) => (
             <button
               key={s}
               type="button"
@@ -127,7 +140,7 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
               }`}
             >
               {STATION_LABEL[s]}
-              <span className="ml-1.5 tabular-nums">({stationCounts[s]})</span>
+              <span className="ml-1.5 tabular-nums">({stationGroupCount[s]})</span>
             </button>
           ))}
         </div>
@@ -135,99 +148,78 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
 
       {/* Cards */}
       <main className="flex-1 overflow-y-auto p-4">
-        {visibleItems.length === 0 ? (
+        {visibleGroups.length === 0 ? (
           <div className="flex h-full items-center justify-center">
-            <p className="text-slate-500">ไม่มีรายการที่รอดำเนินการ</p>
+            <p className="text-slate-500">ไม่มีรายการที่รอเสิร์ฟ</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {visibleItems.map((item) => {
-              const cfg = STATUS_CONFIG[item.status as keyof typeof STATUS_CONFIG];
-              if (!cfg) return null;
-              return (
-                <div
-                  key={item.id}
-                  className={`flex flex-col rounded-lg border-2 p-3 ${cfg.card}`}
-                >
-                  {/* Header */}
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-base font-bold tabular-nums text-slate-900">
-                      โต๊ะ {item.tableNumber}
-                    </span>
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cfg.badge}`}>
-                      {cfg.label}
-                    </span>
-                  </div>
-
-                  {/* Station */}
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    {STATION_LABEL[item.station]}
-                  </p>
-
-                  {/* Item name + qty */}
-                  <p className="mt-2 flex-1 text-sm font-semibold leading-snug text-slate-900">
-                    {item.menuItemName}
-                  </p>
-                  <p className="mt-0.5 text-xl font-bold tabular-nums text-slate-900">
-                    ×{item.quantity}
-                  </p>
-
-                  {/* Notes */}
-                  {item.notes && (
-                    <p className="mt-1 rounded bg-white/60 px-2 py-1 text-xs text-slate-600">
-                      {item.notes}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {visibleGroups.map((group) => (
+              <div
+                key={group.groupKey}
+                className="flex flex-col overflow-hidden rounded-xl border-2 border-amber-300 bg-amber-50"
+              >
+                {/* Card header */}
+                <div className="flex items-center justify-between px-4 py-3 bg-amber-100 border-b border-amber-200">
+                  <div>
+                    <p className="text-base font-bold text-slate-900">
+                      โต๊ะ {group.tableNumber}
                     </p>
-                  )}
-
-                  {/* Elapsed time */}
-                  <p className="mt-2 text-xs text-slate-500">
-                    {formatDistanceToNowStrict(new Date(item.orderedAt), {
+                    <p className="text-xs font-medium text-amber-700">
+                      {STATION_LABEL[group.station]}
+                    </p>
+                  </div>
+                  <p className="text-xs text-slate-500 text-right">
+                    {formatDistanceToNowStrict(group.orderedAt, {
                       locale: th,
                       addSuffix: true,
                     })}
                   </p>
+                </div>
 
-                  {/* Action button */}
+                {/* Item list */}
+                <ul className="flex-1 divide-y divide-amber-100 px-3 py-2">
+                  {group.items.map((item) => (
+                    <li key={item.id} className="flex items-center gap-2.5 py-2">
+                      {/* Thumbnail */}
+                      {item.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={item.imageUrl}
+                          alt={item.menuItemName}
+                          className="h-10 w-10 rounded-md object-cover shrink-0 border border-amber-200"
+                        />
+                      ) : (
+                        <div className="h-10 w-10 rounded-md bg-amber-200 shrink-0" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold leading-tight text-slate-900 truncate">
+                          {item.menuItemName}
+                        </p>
+                        {item.notes && (
+                          <p className="mt-0.5 text-xs text-slate-500 truncate">{item.notes}</p>
+                        )}
+                      </div>
+                      <span className="shrink-0 text-lg font-bold tabular-nums text-slate-800">
+                        ×{item.quantity}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+
+                {/* Serve button */}
+                <div className="px-3 pb-3">
                   <button
                     type="button"
                     disabled={isPending}
-                    onClick={() =>
-                      advance({ itemId: item.id, status: cfg.nextStatus })
-                    }
-                    className={`mt-3 w-full rounded-md py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${cfg.actionClass}`}
+                    onClick={() => serve(group.items.map((i) => i.id))}
+                    className="w-full rounded-lg bg-green-600 py-2.5 text-sm font-bold text-white hover:bg-green-700 active:bg-green-800 disabled:opacity-50 transition-colors"
                   >
-                    {cfg.actionLabel}
-                  </button>
-
-                  {/* Print kitchen slip */}
-                  <button
-                    type="button"
-                    aria-label="พิมพ์สลิปครัว"
-                    onClick={() => {
-                      const order: KitchenOrderData = {
-                        tableNumber: item.tableNumber,
-                        station: item.station,
-                        orderedAt: new Date(item.orderedAt).toLocaleString('th-TH', {
-                          dateStyle: 'short',
-                          timeStyle: 'short',
-                          timeZone: 'Asia/Bangkok',
-                        }),
-                        items: [{
-                          name: item.menuItemName,
-                          quantity: item.quantity,
-                          notes: item.notes ?? undefined,
-                        }],
-                      };
-                      void printKitchen({ type: 'kitchen_order', order });
-                    }}
-                    className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-md border border-current py-1 text-xs text-slate-500 opacity-60 hover:opacity-100 transition-opacity"
-                  >
-                    <Printer className="size-3" />
-                    พิมพ์สลิป
+                    เสิร์ฟ
                   </button>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         )}
       </main>

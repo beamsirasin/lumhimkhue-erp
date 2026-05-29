@@ -17,6 +17,7 @@ import {
   Users,
   Clock,
   BadgeCheck,
+  CheckCircle2,
   Pencil,
 } from 'lucide-react';
 import {
@@ -60,7 +61,7 @@ import { PricingTile } from '@/components/staff/PricingTile';
 
 /* ─── Status config ────────────────────────────────────────────────── */
 
-type VisualStatus = 'available' | 'occupied' | 'reserved' | 'linked';
+type VisualStatus = 'available' | 'occupied' | 'reserved' | 'linked' | 'paid';
 
 const STATUS_CONFIG: Record<VisualStatus, {
   bg: string; border: string; text: string; label: string; dot: string;
@@ -69,6 +70,7 @@ const STATUS_CONFIG: Record<VisualStatus, {
   occupied:  { bg: 'bg-red-100',    border: 'border-red-400',    text: 'text-red-800',    label: 'มีลูกค้า',  dot: 'bg-red-500' },
   reserved:  { bg: 'bg-blue-100',   border: 'border-blue-400',   text: 'text-blue-800',   label: 'จอง',       dot: 'bg-blue-500' },
   linked:    { bg: 'bg-violet-100', border: 'border-violet-400', text: 'text-violet-800', label: 'เชื่อมโยง', dot: 'bg-violet-500' },
+  paid:      { bg: 'bg-red-100',    border: 'border-red-400',    text: 'text-red-800',    label: 'จ่ายแล้ว',  dot: 'bg-red-500' },
 };
 
 /* Color palette for linked-table groups — each group gets a unique color */
@@ -85,6 +87,7 @@ type LinkColor = typeof LINK_PALETTE[number];
 
 function getVisualStatus(table: TableData): VisualStatus {
   if (table.status === 'linked') return 'linked';
+  if (table.status === 'paid') return 'paid';
   if (table.activeSession) return 'occupied';
   return table.status as VisualStatus;
 }
@@ -769,7 +772,7 @@ function TableSheet({
 
   const handleForceClose = async () => {
     if (!sess) return;
-    if (!confirm(`บังคับปิดโต๊ะ ${table.label}?`)) return;
+    if (visualStatus !== 'paid' && !confirm(`บังคับปิดโต๊ะ ${table.label}?`)) return;
     setBusy(true);
     const r = await closeSession({ sessionId: sess.id });
     setBusy(false);
@@ -797,7 +800,11 @@ function TableSheet({
               โต๊ะ {table.label}
               {table.zone !== 'ทั่วไป' && <span className="ml-1.5 text-sm font-normal text-slate-500">({table.zone})</span>}
             </DialogTitle>
-            <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CONFIG[visualStatus].bg} ${STATUS_CONFIG[visualStatus].text}`}>
+            <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${
+              visualStatus === 'paid'
+                ? 'bg-emerald-100 text-emerald-700'
+                : `${STATUS_CONFIG[visualStatus].bg} ${STATUS_CONFIG[visualStatus].text}`
+            }`}>
               {STATUS_CONFIG[visualStatus].label}
             </span>
           </div>
@@ -1036,6 +1043,42 @@ function TableSheet({
             </>
           )}
 
+          {/* ── PAID ── */}
+          {visualStatus === 'paid' && (
+            <>
+              <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3 space-y-2 text-sm">
+                <div className="flex items-center gap-2 text-emerald-700 font-medium">
+                  <CheckCircle2 className="size-4 shrink-0" />
+                  ชำระเงินแล้ว — รอเคลียร์โต๊ะ
+                </div>
+                {sess && (
+                  <>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">เริ่ม</span>
+                      <span className="font-medium">{new Date(sess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">จำนวนคน</span>
+                      <span className="font-medium">{sess.totalGuests} คน</span>
+                    </div>
+                    <div className="flex justify-between text-xs border-t border-emerald-100 pt-1.5">
+                      <span className="text-slate-500">ยอดรวม</span>
+                      <span className="font-semibold text-emerald-800">฿{sess.baseAmount.toLocaleString('th-TH')}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleForceClose}
+                disabled={busy}
+                className="w-full rounded-xl border-2 border-slate-800 bg-slate-800 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+              >
+                ปิดโต๊ะ / เคลียร์โต๊ะ
+              </button>
+            </>
+          )}
+
           {/* ── LINKED ── */}
           {visualStatus === 'linked' && sess && (
             <>
@@ -1139,8 +1182,14 @@ function TableNode({ table, editMode, moveMode, colorOverride, linkedTableLabels
     >
       <span className={`text-lg font-bold tabular-nums ${cfg.text}`}>{table.label}</span>
       <span className={`mt-0.5 h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
-      {table.activeSession && !table.activeSession.parentSessionId && (
-        <ElapsedBadge startedAt={table.activeSession.startedAt} />
+      {vs === 'paid' ? (
+        <span className="mt-0.5 rounded-sm bg-red-200 px-1 py-0.5 text-[8px] font-bold leading-none text-red-700">
+          จ่ายแล้ว
+        </span>
+      ) : (
+        table.activeSession && !table.activeSession.parentSessionId && (
+          <ElapsedBadge startedAt={table.activeSession.startedAt} />
+        )
       )}
 
       {/* Link badge — shown on primary (has children) and on linked children */}

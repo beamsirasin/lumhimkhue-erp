@@ -1,6 +1,6 @@
-'use server';
+﻿'use server';
 
-import { updateTag } from 'next/cache';
+import { revalidateTag } from 'next/cache';
 import { eq, inArray } from 'drizzle-orm';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
@@ -13,7 +13,7 @@ import {
 } from '@/lib/db/schema';
 import { z } from 'zod';
 
-/* ─── Schemas ────────────────────────────────────────────────────────── */
+/* โ”€โ”€โ”€ Schemas โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€ */
 
 const guestRowSchema = z.object({
   pricingTileId: z.string().uuid(),
@@ -41,17 +41,17 @@ const updateReservationSchema = z.object({
   guests: z.array(guestRowSchema).default([]),
 });
 
-/* ─── Actions ────────────────────────────────────────────────────────── */
+/* โ”€โ”€โ”€ Actions โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€ */
 
 export async function createReservation(input: unknown) {
   const authSession = await auth();
-  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!authSession?.user) return { ok: false as const, error: 'เธเธฃเธธเธ“เธฒเน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ' };
   if (!can(authSession.user.role, 'manage_tables'))
-    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+    return { ok: false as const, error: 'เนเธกเนเธกเธตเธชเธดเธ—เธเธดเนเธ”เธณเน€เธเธดเธเธเธฒเธฃ' };
 
   const parsed = createReservationSchema.safeParse(input);
   if (!parsed.success)
-    return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' };
+    return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'เธเนเธญเธกเธนเธฅเนเธกเนเธ–เธนเธเธ•เนเธญเธ' };
 
   const {
     primaryTableId,
@@ -75,7 +75,7 @@ export async function createReservation(input: unknown) {
 
     for (const t of tableRows) {
       if (t.status !== 'available')
-        return { ok: false as const, error: `โต๊ะ ${t.label} ไม่ว่างในขณะนี้` };
+        return { ok: false as const, error: `เนเธ•เนเธฐ ${t.label} เนเธกเนเธงเนเธฒเธเนเธเธเธ“เธฐเธเธตเน` };
     }
 
     // Verify active tile IDs
@@ -89,7 +89,7 @@ export async function createReservation(input: unknown) {
       const activeSet = new Set(activeTiles.map((t) => t.id));
       for (const tid of tileIds) {
         if (!activeSet.has(tid))
-          return { ok: false as const, error: 'ไม่พบประเภทราคาที่ระบุ' };
+          return { ok: false as const, error: 'เนเธกเนเธเธเธเธฃเธฐเน€เธ เธ—เธฃเธฒเธเธฒเธ—เธตเนเธฃเธฐเธเธธ' };
       }
     }
 
@@ -144,19 +144,19 @@ export async function createReservation(input: unknown) {
       .set({ status: 'reserved' })
       .where(inArray(tables.id, allTableIds));
 
-    updateTag('tables');
+    revalidateTag('tables');
     return { ok: true as const, data: { id: primaryRes.id } };
   } catch (e) {
     console.error('[createReservation]', e);
-    return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ” เธเธฃเธธเธ“เธฒเธฅเธญเธเนเธซเธกเน' };
   }
 }
 
 export async function cancelReservation(reservationId: string) {
   const authSession = await auth();
-  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!authSession?.user) return { ok: false as const, error: 'เธเธฃเธธเธ“เธฒเน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ' };
   if (!can(authSession.user.role, 'manage_tables'))
-    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+    return { ok: false as const, error: 'เนเธกเนเธกเธตเธชเธดเธ—เธเธดเนเธ”เธณเน€เธเธดเธเธเธฒเธฃ' };
 
   try {
     // Find primary reservation (could receive primary or linked id)
@@ -166,7 +166,7 @@ export async function cancelReservation(reservationId: string) {
       .where(eq(reservations.id, reservationId))
       .limit(1);
 
-    if (!res) return { ok: false as const, error: 'ไม่พบข้อมูลการจอง' };
+    if (!res) return { ok: false as const, error: 'เนเธกเนเธเธเธเนเธญเธกเธนเธฅเธเธฒเธฃเธเธญเธ' };
 
     const primaryId = res.parentReservationId ?? res.id;
 
@@ -206,23 +206,23 @@ export async function cancelReservation(reservationId: string) {
       .set({ status: 'available' })
       .where(inArray(tables.id, [...new Set(allTableIds)]));
 
-    updateTag('tables');
+    revalidateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[cancelReservation]', e);
-    return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ” เธเธฃเธธเธ“เธฒเธฅเธญเธเนเธซเธกเน' };
   }
 }
 
 export async function updateReservation(input: unknown) {
   const authSession = await auth();
-  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!authSession?.user) return { ok: false as const, error: 'เธเธฃเธธเธ“เธฒเน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ' };
   if (!can(authSession.user.role, 'manage_tables'))
-    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+    return { ok: false as const, error: 'เนเธกเนเธกเธตเธชเธดเธ—เธเธดเนเธ”เธณเน€เธเธดเธเธเธฒเธฃ' };
 
   const parsed = updateReservationSchema.safeParse(input);
   if (!parsed.success)
-    return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' };
+    return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'เธเนเธญเธกเธนเธฅเนเธกเนเธ–เธนเธเธ•เนเธญเธ' };
 
   const { id, customerName, customerPhone, partySize, reservedAt, notes, guests } = parsed.data;
 
@@ -251,10 +251,11 @@ export async function updateReservation(input: unknown) {
       );
     }
 
-    updateTag('tables');
+    revalidateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[updateReservation]', e);
-    return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ” เธเธฃเธธเธ“เธฒเธฅเธญเธเนเธซเธกเน' };
   }
 }
+

@@ -1,6 +1,6 @@
 'use server';
 
-import { updateTag } from 'next/cache';
+import { revalidateTag } from 'next/cache';
 import { eq, inArray } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { auth } from '@/auth';
@@ -138,7 +138,7 @@ export async function openSession(input: unknown) {
       };
     });
 
-    updateTag('tables');
+    revalidateTag('tables');
     return {
       ok: true as const,
       data: {
@@ -204,7 +204,7 @@ export async function closeSession(input: { sessionId: string }) {
       .set({ status: 'available' })
       .where(inArray(tables.id, allTableIds));
 
-    updateTag('tables');
+    revalidateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[closeSession]', e);
@@ -243,7 +243,7 @@ export async function requestBillFromTable(input: { sessionId: string }) {
       .set({ status: 'closing' })
       .where(inArray(sessions.id, allIds));
 
-    updateTag('tables');
+    revalidateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[requestBillFromTable]', e);
@@ -261,7 +261,7 @@ export async function setTableAvailable(input: { tableId: string }) {
 
   try {
     await db.update(tables).set({ status: 'available' }).where(eq(tables.id, input.tableId));
-    updateTag('tables');
+    revalidateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[setTableAvailable]', e);
@@ -304,7 +304,7 @@ export async function updateSessionGuests(input: unknown) {
         })),
       );
     }
-    updateTag('tables');
+    revalidateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[updateSessionGuests]', e);
@@ -353,7 +353,7 @@ export async function moveSession(input: { sessionId: string; newTableId: string
     await db.update(tables).set({ status: 'available' }).where(eq(tables.id, oldTableId));
     await db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, input.newTableId));
 
-    updateTag('tables');
+    revalidateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[moveSession]', e);

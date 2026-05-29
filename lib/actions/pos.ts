@@ -1,14 +1,14 @@
 'use server';
 
-import { revalidatePath, updateTag } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { eq, inArray, asc } from 'drizzle-orm';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
 import {
   sessions,
-  orders,
   tables,
+  orders,
   payments,
   paymentLineItems,
   pricingTiles,
@@ -23,7 +23,7 @@ export async function getPosSessionsForPos() {
 
   try {
     const result = await db.query.sessions.findMany({
-      where: inArray(sessions.status, ['active', 'closing']),
+      where: inArray(sessions.status, ['active', 'closing', 'paid']),
       orderBy: [asc(sessions.startedAt)],
       with: {
         table: true,
@@ -54,21 +54,19 @@ export async function getPosSessionDetail(sessionId: string) {
       where: eq(sessions.id, sessionId),
       with: {
         table: true,
-        guests: {
-          with: { pricingTile: true },
-        },
+        guests: { with: { pricingTile: true } },
+        linkedSessions: { with: { table: true } },
       },
     });
     if (!session) return { ok: false as const, error: 'ไม่พบ session' };
 
+    // Group bill: include orders from linked sessions
+    const linkedSessionIds = session.linkedSessions.map((s) => s.id);
+    const allSessionIds = [sessionId, ...linkedSessionIds];
     const sessionOrders = await db.query.orders.findMany({
-      where: eq(orders.sessionId, sessionId),
+      where: inArray(orders.sessionId, allSessionIds),
       orderBy: [asc(orders.createdAt)],
-      with: {
-        items: {
-          with: { menuItem: true },
-        },
-      },
+      with: { items: { with: { menuItem: true } } },
     });
 
     const baseAmount = session.guests.reduce(
@@ -78,10 +76,12 @@ export async function getPosSessionDetail(sessionId: string) {
 
     const extraAmount = sessionOrders
       .flatMap((o) => o.items)
-      .filter((i) => i.status !== 'cancelled' && !i.menuItem.isBuffet)
-      .reduce((sum, i) => sum + Number(i.menuItem.extraPrice) * i.quantity, 0);
+      .filter((i) => i.status !== 'cancelled' && !i.menuItem?.isBuffet)
+      .reduce((sum, i) => sum + Number(i.menuItem?.extraPrice ?? 0) * i.quantity, 0);
 
     const subtotal = baseAmount + extraAmount;
+    const isGroupBill = linkedSessionIds.length > 0;
+    const linkedTableLabels = session.linkedSessions.map((s) => s.table.label);
 
     return {
       ok: true as const,
@@ -89,6 +89,8 @@ export async function getPosSessionDetail(sessionId: string) {
         session,
         orders: sessionOrders,
         totals: { baseAmount, extraAmount, subtotal, total: subtotal },
+        isGroupBill,
+        linkedTableLabels,
       },
     };
   } catch (e) {
@@ -117,6 +119,7 @@ export async function getActiveTilesForPos() {
     return {
       ok: true as const,
       data: {
+        guests: addonTiles.filter((t) => t.category === 'guest'),
         addons: addonTiles.filter((t) => t.category === 'addon'),
         discounts: addonTiles.filter((t) => t.category === 'discount'),
       },
@@ -148,19 +151,30 @@ export async function processPayment(input: unknown) {
         linkedSessions: true,
       },
     });
-    if (!session || session.status === 'closed')
-      return { ok: false as const, error: 'session ไม่ถูกต้องหรือชำระเงินแล้ว' };
+    if (!session) return { ok: false as const, error: 'session ไม่ถูกต้อง' };
 
-    const [existingPayment] = await db
-      .select({ id: payments.id })
-      .from(payments)
-      .where(eq(payments.sessionId, sessionId))
-      .limit(1);
-    if (existingPayment) return { ok: false as const, error: 'session นี้ชำระเงินแล้ว' };
+    // Idempotency: if payment already exists (e.g. previous attempt succeeded in DB but threw before returning), return it
+    const existingPayment = await db.query.payments.findFirst({
+      where: eq(payments.sessionId, sessionId),
+    });
+    if (existingPayment) {
+      return {
+        ok: true as const,
+        data: {
+          total: Number(existingPayment.total),
+          changeAmount: Number(existingPayment.changeAmount),
+        },
+      };
+    }
 
-    // Compute base + extra from orders
+    if (session.status === 'closed' || session.status === 'paid')
+      return { ok: false as const, error: 'session ปิดแล้ว' };
+
+    // Compute base + extra from all sessions in group (primary + linked)
+    const linkedSessionIds = session.linkedSessions.map((s) => s.id);
+    const allSessionIds = [sessionId, ...linkedSessionIds];
     const sessionOrders = await db.query.orders.findMany({
-      where: eq(orders.sessionId, sessionId),
+      where: inArray(orders.sessionId, allSessionIds),
       with: { items: { with: { menuItem: true } } },
     });
 
@@ -170,8 +184,8 @@ export async function processPayment(input: unknown) {
     );
     const extraAmount = sessionOrders
       .flatMap((o) => o.items)
-      .filter((i) => i.status !== 'cancelled' && !i.menuItem.isBuffet)
-      .reduce((sum, i) => sum + Number(i.menuItem.extraPrice) * i.quantity, 0);
+      .filter((i) => i.status !== 'cancelled' && !i.menuItem?.isBuffet)
+      .reduce((sum, i) => sum + Number(i.menuItem?.extraPrice ?? 0) * i.quantity, 0);
 
     // Resolve line items: fetch tiles to re-derive amounts server-side
     let addonTotal = 0;
@@ -244,24 +258,20 @@ export async function processPayment(input: unknown) {
       );
     }
 
-    // Close primary session + linked sessions
-    const linkedSessionIds = session.linkedSessions.map((s) => s.id);
-    const allSessionIds = [sessionId, ...linkedSessionIds];
-
+    // Mark session as paid (table cleared by staff separately)
     await db
       .update(sessions)
-      .set({ status: 'closed', closedAt: new Date() })
+      .set({ status: 'paid', closedAt: new Date() })
       .where(inArray(sessions.id, allSessionIds));
 
-    // Release all related tables
-    const allTableIds = [session.table.id, ...session.linkedSessions.map((s) => s.tableId)];
+    const allTableIds = [session.tableId, ...session.linkedSessions.map((s) => s.tableId)];
     await db
       .update(tables)
-      .set({ status: 'available' })
+      .set({ status: 'paid' })
       .where(inArray(tables.id, allTableIds));
 
     revalidatePath('/pos');
-    updateTag('tables');
+    revalidateTag('tables');
     return { ok: true as const, data: { total, changeAmount } };
   } catch (e) {
     console.error('[processPayment]', e);

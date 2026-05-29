@@ -67,10 +67,17 @@ export function buildReceipt(data: ReceiptData, paperWidth: 58 | 80, thaiCodepag
     .codepage('cp874')
     /* Shop header */
     .align('center')
-    .bold(true).size(2, 2).line(data.shopName).size(1, 1).bold(false);
+    .bold(true).size(2, 2).line(data.shopNameTh).size(1, 1).bold(false);
 
+  if (data.shopNameEn)  e = e.line(data.shopNameEn);
+  if (data.companyName) e = e.line(data.companyName);
   if (data.shopAddress) e = e.line(data.shopAddress);
-  if (data.taxId)       e = e.line(`เลขที่ผู้เสียภาษี: ${data.taxId}`);
+  if (data.phone)       e = e.line(`โทร: ${data.phone}`);
+  if (data.receiptType === 'receipt') {
+    if (data.taxId)     e = e.line(`เลขผู้เสียภาษี: ${data.taxId}`);
+    if (data.branch)    e = e.line(`สาขา: ${data.branch}`);
+    if (data.registerNo)e = e.line(`Register No: ${data.registerNo}`);
+  }
 
   e = e
     .line(sep(cols))
@@ -96,18 +103,30 @@ export function buildReceipt(data: ReceiptData, paperWidth: 58 | 80, thaiCodepag
   if (data.serviceCharge > 0) {
     e = e.line(row('ค่าบริการ', `+฿${data.serviceCharge.toFixed(2)}`, cols));
   }
+  if (data.receiptType === 'receipt') {
+    const vat = data.vatPercent ?? 7;
+    const vatAmt = data.total * vat / (100 + vat);
+    e = e.line(row(`ภาษีมูลค่าเพิ่ม ${vat}% (รวม)`, vatAmt.toFixed(2), cols));
+  }
+  e = e.bold(true).line(row('ทั้งหมด', `฿${data.total.toFixed(2)}`, cols)).bold(false);
+
+  if (data.receiptType === 'receipt') {
+    e = e
+      .line(row(data.paymentMethod, `฿${data.receivedAmount.toFixed(2)}`, cols));
+    if (data.changeAmount > 0)
+      e = e.line(row('เงินทอน', `฿${data.changeAmount.toFixed(2)}`, cols));
+  }
+
   e = e
-    .bold(true).line(row('ยอดชำระ', `฿${data.total.toFixed(2)}`, cols)).bold(false)
-    .line(row('รับเงิน', `฿${data.receivedAmount.toFixed(2)}`, cols))
-    .line(row('ทอน', `฿${data.changeAmount.toFixed(2)}`, cols))
-    .line(`ชำระด้วย: ${data.paymentMethod}`)
     .line(sep(cols))
-    /* QR + footer */
     .align('center')
-    .qrcode(data.sessionId, 2, 4, 'm')
-    .line('ขอบคุณที่ใช้บริการ')
-    .newline(3)
-    .cut('partial');
+    .line(data.footerNote ?? 'ขอบคุณและขอให้โชคดี');
+
+  if (data.receiptType === 'receipt') {
+    e = e.qrcode(data.sessionId, 2, 4, 'm');
+  }
+
+  e = e.newline(3).cut('partial');
 
   return e.encode();
 }

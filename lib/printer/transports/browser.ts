@@ -40,6 +40,15 @@ const PRINT_CSS = `
   }
   .qr-wrap { text-align: center; margin: 6px 0; }
   .qr-wrap img { width: 120px; height: 120px; }
+  .small { font-size: 10px; }
+  .item-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 4px;
+  }
+  .item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .item-qty  { width: 24px; text-align: center; flex-shrink: 0; }
+  .item-total{ width: 52px; text-align: right; flex-shrink: 0; tabular-nums: initial; }
 `;
 
 export function printBrowser(html: string): void {

@@ -6,6 +6,7 @@ export interface CartMenuItem {
   extraPrice: number;
   isBuffet: boolean;
   maxPerOrder: number | null;
+  categoryId: string;
 }
 
 interface CartItem extends CartMenuItem {

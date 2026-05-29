@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from 'react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
-import { Trash2, ImagePlus, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { Trash2, ImagePlus, X, ZoomIn, ZoomOut, ChevronUp, ChevronDown } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -18,6 +18,7 @@ import {
   updateMenuItem,
   deleteMenuItem,
   toggleMenuItemAvailable,
+  swapMenuItemOrder,
 } from '@/lib/actions/menu';
 import {
   createCategorySchema,
@@ -100,6 +101,11 @@ export function MenuPage({ initialData }: MenuPageProps) {
     },
   });
 
+  const { mutate: swapOrder } = useMutation({
+    mutationFn: ({ idA, idB }: { idA: string; idB: string }) => swapMenuItemOrder(idA, idB),
+    onSuccess: (r) => { if (!r.ok) toast.error(r.error); else invalidate(); },
+  });
+
   const selectedCat = categories.find((c) => c.id === selectedCatId);
 
   return (
@@ -135,9 +141,14 @@ export function MenuPage({ initialData }: MenuPageProps) {
                     {cat.menuItems.length}
                   </span>
                 </div>
-                <span className={`text-xs ${selectedCatId === cat.id ? 'text-slate-300' : 'text-slate-400'}`}>
-                  {STATION_LABEL[cat.station]}
-                </span>
+                <div className={`flex items-center gap-2 text-xs ${selectedCatId === cat.id ? 'text-slate-300' : 'text-slate-400'}`}>
+                  <span>{STATION_LABEL[cat.station]}</span>
+                  {cat.maxPerSession !== null && cat.maxPerSession !== undefined && (
+                    <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+                      จำกัด {cat.maxPerSession} จาน/ครั้ง
+                    </span>
+                  )}
+                </div>
               </button>
               <button
                 type="button"
@@ -167,6 +178,11 @@ export function MenuPage({ initialData }: MenuPageProps) {
                   <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
                     {STATION_LABEL[selectedCat.station]}
                   </span>
+                  {selectedCat.maxPerSession !== null && selectedCat.maxPerSession !== undefined && (
+                    <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                      จำกัด {selectedCat.maxPerSession} จาน/ครั้ง
+                    </span>
+                  )}
                   {!selectedCat.isActive && (
                     <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">ปิดใช้งาน</span>
                   )}
@@ -210,7 +226,7 @@ export function MenuPage({ initialData }: MenuPageProps) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {selectedCat.menuItems.map((item) => (
+                    {selectedCat.menuItems.map((item, idx, arr) => (
                       <tr key={item.id} className={`hover:bg-slate-50 ${!item.isAvailable ? 'opacity-50' : ''}`}>
                         <td className="px-4 py-3 font-medium text-slate-900">{item.name}</td>
                         <td className="px-4 py-3 text-slate-500">
@@ -233,11 +249,30 @@ export function MenuPage({ initialData }: MenuPageProps) {
                           </button>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-3">
+                          <div className="flex items-center justify-end gap-1">
+                            {/* Up / Down */}
+                            <button
+                              type="button"
+                              aria-label="เลื่อนขึ้น"
+                              disabled={idx === 0}
+                              onClick={() => swapOrder({ idA: item.id, idB: arr[idx - 1].id })}
+                              className="p-1 text-slate-300 hover:text-slate-700 disabled:opacity-20 transition-colors"
+                            >
+                              <ChevronUp className="size-4" />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label="เลื่อนลง"
+                              disabled={idx === arr.length - 1}
+                              onClick={() => swapOrder({ idA: item.id, idB: arr[idx + 1].id })}
+                              className="p-1 text-slate-300 hover:text-slate-700 disabled:opacity-20 transition-colors"
+                            >
+                              <ChevronDown className="size-4" />
+                            </button>
                             <button
                               type="button"
                               onClick={() => setModal({ type: 'editItem', item, categoryId: selectedCat.id })}
-                              className="text-xs text-slate-400 hover:text-slate-700"
+                              className="ml-1 text-xs text-slate-400 hover:text-slate-700"
                             >
                               แก้ไข
                             </button>
@@ -322,8 +357,8 @@ function CategoryForm({
   >({
     resolver: zodResolver(schema) as Resolver<CreateCategoryInput | UpdateCategoryInput>,
     defaultValues: initial
-      ? { id: initial.id, name: initial.name, sortOrder: initial.sortOrder, station: initial.station }
-      : { sortOrder: 0 },
+      ? { id: initial.id, name: initial.name, sortOrder: initial.sortOrder, station: initial.station, maxPerSession: initial.maxPerSession ?? null }
+      : { sortOrder: 0, maxPerSession: null },
   });
 
   async function onSubmit(data: CreateCategoryInput | UpdateCategoryInput) {
@@ -351,6 +386,12 @@ function CategoryForm({
         </Field>
         <Field label="ลำดับ">
           <input {...register('sortOrder', { valueAsNumber: true })} type="number" min={0} className={INPUT} />
+        </Field>
+        <Field label="จำกัดต่อครั้งที่สั่ง (จาน)" error={(errors as Record<string, { message?: string }>).maxPerSession?.message}>
+          <input
+            {...register('maxPerSession', { setValueAs: (v) => (v === '' || v === null || v === undefined ? null : Number(v)) })}
+            type="number" min={1} placeholder="ไม่จำกัด" className={INPUT}
+          />
         </Field>
         <button type="submit" disabled={isSubmitting} className={BTN}>
           {isSubmitting ? 'กำลังบันทึก…' : 'บันทึก'}
@@ -425,6 +466,7 @@ function MenuItemForm({
           name: initial.name,
           nameEn: (initial as Item & { nameEn?: string }).nameEn ?? '',
           description: initial.description ?? '',
+          descriptionEn: (initial as Item & { descriptionEn?: string }).descriptionEn ?? '',
           imageUrl: initial.imageUrl ?? null,
           isBuffet: initial.isBuffet,
           extraPrice: Number(initial.extraPrice),
@@ -601,9 +643,14 @@ function MenuItemForm({
             <input {...register('nameEn' as never)} className={INPUT} placeholder="e.g. Pork Neck" />
           </Field>
         </div>
-        <Field label="คำอธิบาย">
-          <input {...register('description')} className={INPUT} />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="คำอธิบาย (ไทย)">
+            <input {...register('description')} className={INPUT} placeholder="เช่น 4-6 ชิ้น / จาน" />
+          </Field>
+          <Field label="คำอธิบาย (อังกฤษ)">
+            <input {...register('descriptionEn' as never)} className={INPUT} placeholder="e.g. 4-6 slices / plate" />
+          </Field>
+        </div>
         <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
           <input {...register('isBuffet')} type="checkbox" className="rounded" />
           รายการบุฟเฟ่ต์

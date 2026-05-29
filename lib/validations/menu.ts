@@ -14,6 +14,7 @@ export const createCategorySchema = z.object({
   name: z.string().min(1, 'กรุณากรอกชื่อหมวด').max(255),
   sortOrder: z.number().int().min(0).default(0),
   station: stationEnum,
+  maxPerSession: z.number().int().min(1).nullable().optional(),
 });
 
 export const updateCategorySchema = createCategorySchema.extend({
@@ -25,6 +26,7 @@ export const createMenuItemSchema = z.object({
   name: z.string().min(1, 'กรุณากรอกชื่อเมนู').max(255),
   nameEn: z.string().max(255).optional().nullable(),
   description: z.string().max(1000).optional(),
+  descriptionEn: z.string().max(1000).optional().nullable(),
   imageUrl: z.string().nullable().optional(),
   isBuffet: z.boolean().default(true),
   extraPrice: z.number().min(0).default(0),

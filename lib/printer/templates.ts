@@ -1,21 +1,12 @@
 /**
- * HTML templates for the browser (window.print) fallback.
- * All functions are async because QR code generation is async.
- * The returned HTML is injected into the print window by printBrowser().
- *
- * CSS classes (center / right / bold / big / xl / row / name / value / hr / qr-wrap)
- * are defined in lib/printer/transports/browser.ts → PRINT_CSS.
+ * HTML templates for browser (window.print) fallback.
  */
 
 import QRCode from 'qrcode';
 import type { ReceiptData, TableQrData, QueueQrData, KitchenOrderData } from './types';
 
-/* ─── QR helper ─────────────────────────────────────────────────────────── */
-
 const QR_OPTS: QRCode.QRCodeToDataURLOptions = {
-  width: 240,
-  margin: 1,
-  errorCorrectionLevel: 'M',
+  width: 200, margin: 1, errorCorrectionLevel: 'M',
   color: { dark: '#000000', light: '#ffffff' },
 };
 
@@ -24,75 +15,96 @@ async function qrImg(text: string): Promise<string> {
   return `<div class="qr-wrap"><img src="${dataUrl}" alt="QR" /></div>`;
 }
 
-/* ─── Shared helpers ─────────────────────────────────────────────────────── */
-
-function row(name: string, value: string, bold = false): string {
-  const cls = bold ? ' bold' : '';
-  return `<div class="row${cls}"><span class="name">${esc(name)}</span><span class="value">${esc(value)}</span></div>`;
-}
-
-function hr(): string {
-  return '<hr />';
-}
-
-/** Escape HTML special characters */
 function esc(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function hr(): string { return '<hr />'; }
+
+/** Two-column row */
+function row(label: string, value: string, bold = false): string {
+  const cls = bold ? ' bold' : '';
+  return `<div class="row${cls}"><span class="name">${esc(label)}</span><span class="value">${esc(value)}</span></div>`;
+}
+
+/** Three-column table row: name | qty | total */
+function itemRow(name: string, qty: number, total: number): string {
+  return `<div class="item-row"><span class="item-name">${esc(name)}</span><span class="item-qty">${qty}</span><span class="item-total">${total.toFixed(2)}</span></div>`;
 }
 
 const STATION_LABEL: Record<string, string> = {
-  meat:      'เนื้อสัตว์',
-  seafood:   'ทะเล',
-  vegetable: 'ผัก',
-  noodle:    'เส้น',
-  dessert:   'ของหวาน',
-  drink:     'เครื่องดื่ม',
-  sauce:     'ซอส',
+  meat: 'เนื้อสัตว์', seafood: 'ทะเล', vegetable: 'ผัก',
+  noodle: 'เส้น', dessert: 'ของหวาน', drink: 'เครื่องดื่ม', sauce: 'ซอส',
 };
 
-/* ─── Receipt ────────────────────────────────────────────────────────────── */
+/* ─── Receipt / Bill ────────────────────────────────────────────────────── */
 
 export async function renderReceiptHTML(data: ReceiptData): Promise<string> {
-  const qr = await qrImg(data.sessionId);
+  const isReceipt = data.receiptType === 'receipt';
+  const vat = data.vatPercent ?? 7;
+  const vatAmount = isReceipt ? data.total * vat / (100 + vat) : 0;
 
-  const itemRows = data.items
-    .map((i) => row(i.name, `x${i.quantity}  ฿${i.total.toFixed(2)}`))
-    .join('\n');
+  /* Header block */
+  const header = `
+<div class="center">
+  <div class="big bold">${esc(data.shopNameTh)}</div>
+  ${data.shopNameEn ? `<div>${esc(data.shopNameEn)}</div>` : ''}
+  ${data.companyName ? `<div>${esc(data.companyName)}</div>` : ''}
+  ${data.shopAddress ? `<div class="small">${esc(data.shopAddress)}</div>` : ''}
+  ${data.phone ? `<div>โทรศัพท์: ${esc(data.phone)}</div>` : ''}
+  ${isReceipt && data.taxId ? `<div class="small">เลขประจำตัวผู้เสียภาษีอากร: ${esc(data.taxId)}</div>` : ''}
+  ${isReceipt && data.branch ? `<div>สาขา: ${esc(data.branch)}</div>` : ''}
+  ${isReceipt && data.registerNo ? `<div class="small">Register No: ${esc(data.registerNo)}</div>` : ''}
+</div>`;
 
-  const discountRow =
-    data.discount > 0 ? row('ส่วนลด', `-฿${data.discount.toFixed(2)}`) : '';
-  const serviceRow =
-    data.serviceCharge > 0
-      ? row('ค่าบริการ', `+฿${data.serviceCharge.toFixed(2)}`)
-      : '';
+  /* Document type label */
+  const docLabel = isReceipt
+    ? `<div class="center bold">ใบเสร็จรับเงิน / ใบกำกับภาษีอย่างย่อ</div>
+       <div class="center small">ราคารวมภาษีมูลค่าเพิ่มแล้ว</div>`
+    : `<div class="center bold">บิลรายการอาหาร</div>`;
+
+  /* Transaction details */
+  const txDetails = `
+${data.receiptNo ? row('เลขที่', data.receiptNo) : ''}
+${row(`โต๊ะ`, data.tableNumber)}
+${isReceipt ? row('แคชเชียร์', data.cashierName) : ''}
+${row('วันที่/เวลา', data.paidAt)}`;
+
+  /* Items */
+  const itemHeader = `<div class="item-row bold"><span class="item-name">สินค้า</span><span class="item-qty">Qty</span><span class="item-total">ราคารวม</span></div>`;
+  const itemRows = data.items.map((i) => itemRow(i.name, i.quantity, i.total)).join('\n');
+
+  /* Totals */
+  const discountRow = data.discount > 0 ? row('ส่วนลด', `-฿${data.discount.toFixed(2)}`) : '';
+  const totalsBlock = `
+${row('ยอดรวม', `${data.subtotal.toFixed(2)}`)}
+${discountRow}
+${isReceipt && vatAmount > 0 ? row(`ภาษีมูลค่าเพิ่ม ${vat}% (รวม)`, vatAmount.toFixed(2)) : ''}
+${row('ทั้งหมด', `฿${data.total.toFixed(2)}`, true)}`;
+
+  /* Payment (receipt only) */
+  const paymentBlock = isReceipt ? `
+${hr()}
+${row(data.paymentMethod, `฿${data.receivedAmount.toFixed(2)}`)}
+${data.changeAmount > 0 ? row('เงินทอน', `฿${data.changeAmount.toFixed(2)}`) : ''}` : '';
+
+  /* Footer */
+  const footer = `<div class="center">${esc(data.footerNote ?? 'ขอบคุณและขอให้โชคดี')}</div>`;
 
   return `
-<div class="center">
-  <div class="big">${esc(data.shopName)}</div>
-  ${data.shopAddress ? `<div>${esc(data.shopAddress)}</div>` : ''}
-  ${data.taxId ? `<div>เลขที่ผู้เสียภาษี: ${esc(data.taxId)}</div>` : ''}
-</div>
+${header}
 ${hr()}
-<div>โต๊ะ: ${data.tableNumber}&nbsp;&nbsp; พนักงาน: ${esc(data.cashierName)}</div>
-<div>วันที่: ${esc(data.paidAt)}</div>
+${docLabel}
 ${hr()}
+${txDetails}
+${hr()}
+${itemHeader}
 ${itemRows}
 ${hr()}
-${row('รวม', `฿${data.subtotal.toFixed(2)}`)}
-${discountRow}
-${serviceRow}
-${row('ยอดชำระ', `฿${data.total.toFixed(2)}`, true)}
+${totalsBlock}
+${paymentBlock}
 ${hr()}
-${row('รับเงิน', `฿${data.receivedAmount.toFixed(2)}`)}
-${row('ทอน', `฿${data.changeAmount.toFixed(2)}`)}
-<div>ชำระด้วย: ${esc(data.paymentMethod)}</div>
-${hr()}
-${qr}
-<div class="center">ขอบคุณที่ใช้บริการ</div>
+${footer}
 `.trim();
 }
 
@@ -100,7 +112,6 @@ ${qr}
 
 export async function renderTableQrHTML(data: TableQrData): Promise<string> {
   const qr = await qrImg(data.url);
-
   return `
 <div class="center">
   <div class="big">โต๊ะ ${data.tableNumber}</div>
@@ -119,7 +130,6 @@ ${data.durationMinutes != null ? `<div>${row('บุฟเฟ่ต์', `${data
 
 export async function renderQueueQrHTML(data: QueueQrData): Promise<string> {
   const qr = await qrImg(data.url);
-
   return `
 <div class="center">
   <div class="bold">ตั๋วคิว</div>
@@ -138,13 +148,10 @@ ${hr()}
 
 export async function renderKitchenOrderHTML(data: KitchenOrderData): Promise<string> {
   const stationLabel = STATION_LABEL[data.station] ?? data.station;
-
   const itemRows = data.items
     .map((i) => {
-      const noteRow = i.notes
-        ? `<div style="padding-left:8px;color:#555;">→ ${esc(i.notes)}</div>`
-        : '';
-      return row(i.name, `x${i.quantity}`) + noteRow;
+      const note = i.notes ? `<div style="padding-left:8px;color:#555;">→ ${esc(i.notes)}</div>` : '';
+      return row(i.name, `x${i.quantity}`) + note;
     })
     .join('\n');
 

@@ -22,6 +22,7 @@ export const tableStatusEnum = pgEnum('table_status', [
   'occupied',
   'reserved',
   'linked',
+  'paid',
 ]);
 
 export const tableShapeEnum = pgEnum('table_shape', ['square', 'rectangle']);
@@ -30,6 +31,7 @@ export const sessionStatusEnum = pgEnum('session_status', [
   'active',
   'closing',
   'closed',
+  'paid',
 ]);
 
 export const orderStatusEnum = pgEnum('order_status', [
@@ -213,6 +215,7 @@ export const categories = pgTable('categories', {
   sortOrder: integer('sort_order').notNull().default(0),
   station: stationEnum('station').notNull(),
   isActive: boolean('is_active').notNull().default(true),
+  maxPerSession: integer('max_per_session'),
 });
 
 export const menuItems = pgTable('menu_items', {
@@ -223,6 +226,7 @@ export const menuItems = pgTable('menu_items', {
   name: varchar('name', { length: 255 }).notNull(),
   nameEn: varchar('name_en', { length: 255 }),
   description: text('description'),
+  descriptionEn: text('description_en'),
   imageUrl: text('image_url'),
   isBuffet: boolean('is_buffet').notNull().default(true),
   extraPrice: numeric('extra_price', { precision: 10, scale: 2 })
@@ -232,6 +236,7 @@ export const menuItems = pgTable('menu_items', {
   cooldownSeconds: integer('cooldown_seconds').notNull().default(0),
   isAvailable: boolean('is_available').notNull().default(true),
   allergens: jsonb('allergens').notNull().default([]),
+  sortOrder: integer('sort_order').notNull().default(0),
 });
 
 export const orders = pgTable(
@@ -257,8 +262,8 @@ export const orderItems = pgTable(
       .notNull()
       .references(() => orders.id),
     menuItemId: uuid('menu_item_id')
-      .notNull()
-      .references(() => menuItems.id),
+      .references(() => menuItems.id, { onDelete: 'set null' }),
+    itemName: varchar('item_name', { length: 255 }),
     quantity: integer('quantity').notNull(),
     notes: text('notes'),
     station: stationEnum('station').notNull(),
@@ -535,6 +540,41 @@ export const reservationGuestsRelations = relations(reservationGuests, ({ one })
   }),
 }));
 
+/* ─── Store Settings (singleton row, id = 1) ─────────────────────────────── */
+
+export type BillConfig = {
+  shopNameTh?: string;
+  shopNameEn?: string;
+  companyName?: string;
+  address?: string;
+  phone?: string;
+  taxId?: string;
+  branch?: string;
+  registerNo?: string;
+  footerNote?: string;
+  vatPercent?: number;
+  /** Fields explicitly hidden from this bill type (even if global has a value) */
+  hiddenFields?: string[];
+};
+
+export const storeSettings = pgTable('store_settings', {
+  id: integer('id').primaryKey().default(1),
+  shopNameTh: varchar('shop_name_th', { length: 255 }).notNull().default('ร้านชาบู'),
+  shopNameEn: varchar('shop_name_en', { length: 255 }).notNull().default('Shabu Buffet'),
+  companyName: varchar('company_name', { length: 255 }),
+  address: text('address'),
+  phone: varchar('phone', { length: 50 }),
+  taxId: varchar('tax_id', { length: 30 }),
+  branch: varchar('branch', { length: 100 }).default('สำนักงานใหญ่'),
+  registerNo: varchar('register_no', { length: 50 }),
+  footerNote: varchar('footer_note', { length: 255 }).default('ขอบคุณและขอให้โชคดี'),
+  vatPercent: integer('vat_percent').notNull().default(7),
+  /** Per-bill-type overrides (null = fall back to global fields above) */
+  billPreviewConfig: jsonb('bill_preview_config').$type<BillConfig>(),
+  billMainConfig: jsonb('bill_main_config').$type<BillConfig>(),
+  billSecondaryConfig: jsonb('bill_secondary_config').$type<BillConfig>(),
+});
+
 // ─── Inferred Types ───────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;
@@ -567,3 +607,4 @@ export type Reservation = typeof reservations.$inferSelect;
 export type NewReservation = typeof reservations.$inferInsert;
 export type ReservationGuest = typeof reservationGuests.$inferSelect;
 export type NewReservationGuest = typeof reservationGuests.$inferInsert;
+export type StoreSettings = typeof storeSettings.$inferSelect;

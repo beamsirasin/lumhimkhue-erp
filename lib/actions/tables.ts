@@ -1,6 +1,6 @@
-'use server';
+﻿'use server';
 
-import { updateTag, unstable_cache } from 'next/cache';
+import { revalidateTag, unstable_cache } from 'next/cache';
 import { eq, isNull, inArray, asc } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
@@ -9,15 +9,15 @@ import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
 import { tables, pricingTiles, sessions, sessionGuests, reservations } from '@/lib/db/schema';
 
-/* ─── Queries ─────────────────────────────────────────────────────────────── */
+/* โ”€โ”€โ”€ Queries โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€ */
 
-// Raw DB fetch — 2 parallel rounds instead of 5 sequential Drizzle sub-queries.
+// Raw DB fetch โ€” 2 parallel rounds instead of 5 sequential Drizzle sub-queries.
 // Cached by tag 'tables'; invalidated by revalidateTag('tables') on any mutation.
 const _fetchTablesWithSessions = async () => {
   // Round 1 (parallel): tables + active sessions + pending reservations
   const [tableRows, sessionRows, reservationRows] = await Promise.all([
     db.select().from(tables).where(isNull(tables.deletedAt)).orderBy(asc(tables.label)),
-    db.select().from(sessions).where(inArray(sessions.status, ['active', 'closing'])),
+    db.select().from(sessions).where(inArray(sessions.status, ['active', 'closing', 'paid'])),
     db.select().from(reservations).where(eq(reservations.status, 'pending')),
   ]);
 
@@ -139,13 +139,13 @@ const _cachedTablesQuery = unstable_cache(_fetchTablesWithSessions, ['tables-wit
 
 export async function getTablesWithSessions() {
   const session = await auth();
-  if (!session?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!session?.user) return { ok: false as const, error: 'เธเธฃเธธเธ“เธฒเน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ' };
   try {
     const data = await _cachedTablesQuery();
     return { ok: true as const, data };
   } catch (e) {
     console.error('[getTablesWithSessions]', e);
-    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”' };
   }
 }
 
@@ -155,7 +155,7 @@ export type TableData = NonNullable<
 
 export async function getActivePricingTiles(category?: 'guest' | 'addon' | 'discount') {
   const session = await auth();
-  if (!session?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!session?.user) return { ok: false as const, error: 'เธเธฃเธธเธ“เธฒเน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ' };
 
   const rows = await db
     .select()
@@ -171,12 +171,12 @@ export type PricingTileData = NonNullable<
   Extract<Awaited<ReturnType<typeof getActivePricingTiles>>, { ok: true }>['data']
 >[number];
 
-/* ─── Floor Plan CRUD ─────────────────────────────────────────────────────── */
+/* โ”€โ”€โ”€ Floor Plan CRUD โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€ */
 
 const createTableSchema = z.object({
   label: z.string().min(1).max(50),
   capacity: z.number().int().min(1).max(50).default(4),
-  zone: z.string().min(1).max(100).default('ทั่วไป'),
+  zone: z.string().min(1).max(100).default('เธ—เธฑเนเธงเนเธ'),
   positionX: z.number().int().min(0).default(20),
   positionY: z.number().int().min(0).default(20),
   width: z.number().int().min(40).max(400).default(80),
@@ -186,12 +186,12 @@ const createTableSchema = z.object({
 
 export async function createTable(input: unknown) {
   const authSession = await auth();
-  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!authSession?.user) return { ok: false as const, error: 'เธเธฃเธธเธ“เธฒเน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ' };
   if (!can(authSession.user.role, 'manage_tables'))
-    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+    return { ok: false as const, error: 'เนเธกเนเธกเธตเธชเธดเธ—เธเธดเนเธ”เธณเน€เธเธดเธเธเธฒเธฃ' };
 
   const parsed = createTableSchema.safeParse(input);
-  if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
+  if (!parsed.success) return { ok: false as const, error: 'เธเนเธญเธกเธนเธฅเนเธกเนเธ–เธนเธเธ•เนเธญเธ' };
 
   try {
     const [newTable] = await db
@@ -203,11 +203,11 @@ export async function createTable(input: unknown) {
       })
       .returning({ id: tables.id });
 
-    updateTag('tables');
+    revalidateTag('tables');
     return { ok: true as const, data: { id: newTable.id } };
   } catch (e) {
     console.error('[createTable]', e);
-    return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ” เธเธฃเธธเธ“เธฒเธฅเธญเธเนเธซเธกเน' };
   }
 }
 
@@ -219,12 +219,12 @@ const updatePositionSchema = z.object({
 
 export async function updateTablePosition(input: unknown) {
   const authSession = await auth();
-  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!authSession?.user) return { ok: false as const, error: 'เธเธฃเธธเธ“เธฒเน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ' };
   if (!can(authSession.user.role, 'manage_tables'))
-    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+    return { ok: false as const, error: 'เนเธกเนเธกเธตเธชเธดเธ—เธเธดเนเธ”เธณเน€เธเธดเธเธเธฒเธฃ' };
 
   const parsed = updatePositionSchema.safeParse(input);
-  if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
+  if (!parsed.success) return { ok: false as const, error: 'เธเนเธญเธกเธนเธฅเนเธกเนเธ–เธนเธเธ•เนเธญเธ' };
 
   try {
     await db
@@ -232,11 +232,11 @@ export async function updateTablePosition(input: unknown) {
       .set({ positionX: parsed.data.positionX, positionY: parsed.data.positionY })
       .where(eq(tables.id, parsed.data.tableId));
 
-    updateTag('tables');
+    revalidateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[updateTablePosition]', e);
-    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”' };
   }
 }
 
@@ -252,12 +252,12 @@ const updateTableMetaSchema = z.object({
 
 export async function updateTableMeta(input: unknown) {
   const authSession = await auth();
-  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!authSession?.user) return { ok: false as const, error: 'เธเธฃเธธเธ“เธฒเน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ' };
   if (!can(authSession.user.role, 'manage_tables'))
-    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+    return { ok: false as const, error: 'เนเธกเนเธกเธตเธชเธดเธ—เธเธดเนเธ”เธณเน€เธเธดเธเธเธฒเธฃ' };
 
   const parsed = updateTableMetaSchema.safeParse(input);
-  if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
+  if (!parsed.success) return { ok: false as const, error: 'เธเนเธญเธกเธนเธฅเนเธกเนเธ–เธนเธเธ•เนเธญเธ' };
 
   try {
     await db
@@ -272,19 +272,19 @@ export async function updateTableMeta(input: unknown) {
       })
       .where(eq(tables.id, parsed.data.tableId));
 
-    updateTag('tables');
+    revalidateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[updateTableMeta]', e);
-    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”' };
   }
 }
 
 export async function softDeleteTable(input: { tableId: string }) {
   const authSession = await auth();
-  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!authSession?.user) return { ok: false as const, error: 'เธเธฃเธธเธ“เธฒเน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ' };
   if (!can(authSession.user.role, 'manage_tables'))
-    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+    return { ok: false as const, error: 'เนเธกเนเธกเธตเธชเธดเธ—เธเธดเนเธ”เธณเน€เธเธดเธเธเธฒเธฃ' };
 
   try {
     const [table] = await db
@@ -293,35 +293,36 @@ export async function softDeleteTable(input: { tableId: string }) {
       .where(eq(tables.id, input.tableId))
       .limit(1);
 
-    if (!table) return { ok: false as const, error: 'ไม่พบโต๊ะ' };
+    if (!table) return { ok: false as const, error: 'เนเธกเนเธเธเนเธ•เนเธฐ' };
     if (table.status !== 'available')
-      return { ok: false as const, error: 'ไม่สามารถลบโต๊ะที่กำลังใช้งานอยู่ได้' };
+      return { ok: false as const, error: 'เนเธกเนเธชเธฒเธกเธฒเธฃเธ–เธฅเธเนเธ•เนเธฐเธ—เธตเนเธเธณเธฅเธฑเธเนเธเนเธเธฒเธเธญเธขเธนเนเนเธ”เน' };
 
     await db
       .update(tables)
       .set({ deletedAt: new Date() })
       .where(eq(tables.id, input.tableId));
 
-    updateTag('tables');
+    revalidateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[softDeleteTable]', e);
-    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”' };
   }
 }
 
 export async function setTableReserved(input: { tableId: string }) {
   const authSession = await auth();
-  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!authSession?.user) return { ok: false as const, error: 'เธเธฃเธธเธ“เธฒเน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ' };
   if (!can(authSession.user.role, 'manage_tables'))
-    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+    return { ok: false as const, error: 'เนเธกเนเธกเธตเธชเธดเธ—เธเธดเนเธ”เธณเน€เธเธดเธเธเธฒเธฃ' };
 
   try {
     await db.update(tables).set({ status: 'reserved' }).where(eq(tables.id, input.tableId));
-    updateTag('tables');
+    revalidateTag('tables');
     return { ok: true as const };
   } catch (e) {
     console.error('[setTableReserved]', e);
-    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”' };
   }
 }
+

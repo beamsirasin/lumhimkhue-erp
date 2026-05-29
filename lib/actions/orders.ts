@@ -1,8 +1,8 @@
-'use server';
+﻿'use server';
 
-import { eq, and, gte, desc, asc, inArray } from 'drizzle-orm';
+import { eq, and, gte, desc, asc, inArray, ne } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
-import { updateTag } from 'next/cache';
+import { revalidateTag } from 'next/cache';
 import { db } from '@/lib/db';
 import {
   sessions,
@@ -21,7 +21,7 @@ export async function getSessionData(tableToken: string, sessionToken: string) {
       .from(tables)
       .where(eq(tables.qrToken, tableToken))
       .limit(1);
-    if (!table) return { ok: false as const, error: 'ไม่พบโต๊ะ' };
+    if (!table) return { ok: false as const, error: 'เนเธกเนเธเธเนเธ•เนเธฐ' };
 
     const session = await db.query.sessions.findFirst({
       where: and(
@@ -30,12 +30,12 @@ export async function getSessionData(tableToken: string, sessionToken: string) {
       ),
     });
     if (!session || session.status === 'closed')
-      return { ok: false as const, error: 'session ไม่ถูกต้องหรือหมดอายุแล้ว' };
+      return { ok: false as const, error: 'session เนเธกเนเธ–เธนเธเธ•เนเธญเธเธซเธฃเธทเธญเธซเธกเธ”เธญเธฒเธขเธธเนเธฅเนเธง' };
 
     return { ok: true as const, data: { table, session } };
   } catch (e) {
     console.error('[getSessionData]', e);
-    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”' };
   }
 }
 
@@ -54,7 +54,7 @@ export async function getMenuCategories() {
     return { ok: true as const, data: result };
   } catch (e) {
     console.error('[getMenuCategories]', e);
-    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”' };
   }
 }
 
@@ -68,7 +68,7 @@ export type SessionData = NonNullable<
 
 export async function placeOrder(input: unknown) {
   const parsed = placeOrderSchema.safeParse(input);
-  if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
+  if (!parsed.success) return { ok: false as const, error: 'เธเนเธญเธกเธนเธฅเนเธกเนเธ–เธนเธเธ•เนเธญเธ' };
 
   const { sessionToken, items } = parsed.data;
 
@@ -80,7 +80,22 @@ export async function placeOrder(input: unknown) {
       .limit(1);
 
     if (!session || session.status !== 'active')
-      return { ok: false as const, error: 'session ไม่ถูกต้องหรือหมดเวลาแล้ว' };
+      return { ok: false as const, error: 'session เนเธกเนเธ–เธนเธเธ•เนเธญเธเธซเธฃเธทเธญเธซเธกเธ”เน€เธงเธฅเธฒเนเธฅเนเธง' };
+
+    // Block new order if any items from previous orders are not yet served
+    const [unserved] = await db
+      .select({ id: orderItems.id })
+      .from(orderItems)
+      .innerJoin(orders, eq(orderItems.orderId, orders.id))
+      .where(
+        and(
+          eq(orders.sessionId, session.id),
+          inArray(orderItems.status, ['pending', 'preparing', 'ready']),
+        ),
+      )
+      .limit(1);
+    if (unserved)
+      return { ok: false as const, error: 'เธเธฃเธธเธ“เธฒเธฃเธญเธเธฃเธฑเธงเน€เธชเธดเธฃเนเธเธญเธญเน€เธ”เธญเธฃเนเธเนเธญเธ' };
 
     const menuItemIds = [...new Set(items.map((i) => i.menuItemId))];
     const menuItemRows = await db
@@ -91,6 +106,8 @@ export async function placeOrder(input: unknown) {
         cooldownSeconds: menuItems.cooldownSeconds,
         maxPerOrder: menuItems.maxPerOrder,
         station: categories.station,
+        categoryId: menuItems.categoryId,
+        maxPerSession: categories.maxPerSession,
       })
       .from(menuItems)
       .innerJoin(categories, eq(menuItems.categoryId, categories.id))
@@ -100,9 +117,9 @@ export async function placeOrder(input: unknown) {
 
     for (const item of items) {
       const mi = menuItemMap.get(item.menuItemId);
-      if (!mi) return { ok: false as const, error: 'ไม่พบเมนู' };
+      if (!mi) return { ok: false as const, error: 'เนเธกเนเธเธเน€เธกเธเธน' };
       if (!mi.isAvailable)
-        return { ok: false as const, error: `${mi.name} ไม่มีให้บริการในขณะนี้` };
+        return { ok: false as const, error: `${mi.name} เนเธกเนเธกเธตเนเธซเนเธเธฃเธดเธเธฒเธฃเนเธเธเธ“เธฐเธเธตเน` };
 
       if (mi.cooldownSeconds > 0) {
         const cooldownSince = new Date(Date.now() - mi.cooldownSeconds * 1000);
@@ -119,24 +136,25 @@ export async function placeOrder(input: unknown) {
           )
           .limit(1);
         if (recent)
-          return { ok: false as const, error: `${mi.name} ยังไม่พร้อมสั่งอีกครั้ง` };
+          return { ok: false as const, error: `${mi.name} เธขเธฑเธเนเธกเนเธเธฃเนเธญเธกเธชเธฑเนเธเธญเธตเธเธเธฃเธฑเนเธ` };
       }
 
-      if (mi.maxPerOrder !== null) {
-        const [row] = await db
-          .select({
-            total: sql<number>`coalesce(sum(${orderItems.quantity}), 0)`,
-          })
-          .from(orderItems)
-          .innerJoin(orders, eq(orderItems.orderId, orders.id))
-          .where(
-            and(
-              eq(orders.sessionId, session.id),
-              eq(orderItems.menuItemId, item.menuItemId),
-            ),
-          );
-        if ((row?.total ?? 0) + item.quantity > mi.maxPerOrder)
-          return { ok: false as const, error: `${mi.name} เกินจำนวนที่สั่งได้ต่อรอบ` };
+      if (mi.maxPerOrder !== null && item.quantity > mi.maxPerOrder)
+        return { ok: false as const, error: `${mi.name} เน€เธเธดเธเธเธณเธเธงเธเธ—เธตเนเธชเธฑเนเธเนเธ”เนเธ•เนเธญเธฃเธญเธ (เธชเธนเธเธชเธธเธ” ${mi.maxPerOrder} เธเธฒเธ)` };
+    }
+
+    // Category-level limit enforcement (per order round, not per session)
+    const incomingByCat = new Map<string, { limit: number; incoming: number }>();
+    for (const item of items) {
+      const mi = menuItemMap.get(item.menuItemId)!;
+      if (mi.maxPerSession === null) continue;
+      const entry = incomingByCat.get(mi.categoryId) ?? { limit: mi.maxPerSession, incoming: 0 };
+      entry.incoming += item.quantity;
+      incomingByCat.set(mi.categoryId, entry);
+    }
+    for (const [, { limit, incoming }] of incomingByCat) {
+      if (incoming > limit) {
+        return { ok: false as const, error: `เน€เธเธดเธเธเธณเธเธงเธเธชเธนเธเธชเธธเธ”เธ•เนเธญเธเธฃเธฑเนเธเธเธญเธเธซเธกเธงเธ” (เธชเธนเธเธชเธธเธ” ${limit} เธเธฒเธ)` };
       }
     }
 
@@ -149,6 +167,7 @@ export async function placeOrder(input: unknown) {
       items.map((item) => ({
         orderId: newOrder.id,
         menuItemId: item.menuItemId,
+        itemName: menuItemMap.get(item.menuItemId)!.name,
         quantity: item.quantity,
         notes: item.notes,
         station: menuItemMap.get(item.menuItemId)!.station,
@@ -156,11 +175,73 @@ export async function placeOrder(input: unknown) {
       })),
     );
 
-    updateTag('kds');
+    revalidateTag('kds');
     return { ok: true as const };
   } catch (e) {
     console.error('[placeOrder]', e);
-    return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ” เธเธฃเธธเธ“เธฒเธฅเธญเธเนเธซเธกเน' };
+  }
+}
+
+export async function hasUnservedItems(sessionToken: string) {
+  try {
+    const [session] = await db
+      .select({ id: sessions.id })
+      .from(sessions)
+      .where(eq(sessions.sessionToken, sessionToken))
+      .limit(1);
+    if (!session) return { ok: false as const, error: 'เนเธกเนเธเธ session' };
+
+    const [row] = await db
+      .select({ id: orderItems.id })
+      .from(orderItems)
+      .innerJoin(orders, eq(orderItems.orderId, orders.id))
+      .where(
+        and(
+          eq(orders.sessionId, session.id),
+          inArray(orderItems.status, ['pending', 'preparing', 'ready']),
+        ),
+      )
+      .limit(1);
+
+    return { ok: true as const, data: { hasUnserved: !!row } };
+  } catch (e) {
+    console.error('[hasUnservedItems]', e);
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”' };
+  }
+}
+
+export async function getCategoryOrderedQty(sessionToken: string) {
+  try {
+    const [session] = await db
+      .select({ id: sessions.id })
+      .from(sessions)
+      .where(eq(sessions.sessionToken, sessionToken))
+      .limit(1);
+    if (!session) return { ok: false as const, error: 'เนเธกเนเธเธ session' };
+
+    const rows = await db
+      .select({
+        categoryId: menuItems.categoryId,
+        total: sql<number>`coalesce(sum(${orderItems.quantity}), 0)::int`,
+      })
+      .from(orderItems)
+      .innerJoin(orders, eq(orderItems.orderId, orders.id))
+      .innerJoin(menuItems, eq(orderItems.menuItemId, menuItems.id))
+      .where(
+        and(
+          eq(orders.sessionId, session.id),
+          ne(orderItems.status, 'cancelled'),
+        ),
+      )
+      .groupBy(menuItems.categoryId);
+
+    const data: Record<string, number> = {};
+    for (const row of rows) data[row.categoryId] = row.total;
+    return { ok: true as const, data };
+  } catch (e) {
+    console.error('[getCategoryOrderedQty]', e);
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”' };
   }
 }
 
@@ -171,7 +252,7 @@ export async function getSessionOrders(sessionToken: string) {
       .from(sessions)
       .where(eq(sessions.sessionToken, sessionToken))
       .limit(1);
-    if (!session) return { ok: false as const, error: 'ไม่พบ session' };
+    if (!session) return { ok: false as const, error: 'เนเธกเนเธเธ session' };
 
     const result = await db.query.orders.findMany({
       where: eq(orders.sessionId, session.id),
@@ -186,7 +267,7 @@ export async function getSessionOrders(sessionToken: string) {
     return { ok: true as const, data: result };
   } catch (e) {
     console.error('[getSessionOrders]', e);
-    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”' };
   }
 }
 
@@ -206,11 +287,11 @@ export async function callStaff(sessionToken: string) {
         ),
       )
       .limit(1);
-    if (!session) return { ok: false as const, error: 'session ไม่ถูกต้อง' };
+    if (!session) return { ok: false as const, error: 'session เนเธกเนเธ–เธนเธเธ•เนเธญเธ' };
     return { ok: true as const };
   } catch (e) {
     console.error('[callStaff]', e);
-    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”' };
   }
 }
 
@@ -226,7 +307,7 @@ export async function requestBill(sessionToken: string) {
         ),
       )
       .limit(1);
-    if (!session) return { ok: false as const, error: 'session ไม่ถูกต้อง' };
+    if (!session) return { ok: false as const, error: 'session เนเธกเนเธ–เธนเธเธ•เนเธญเธ' };
 
     await db
       .update(sessions)
@@ -236,6 +317,7 @@ export async function requestBill(sessionToken: string) {
     return { ok: true as const };
   } catch (e) {
     console.error('[requestBill]', e);
-    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+    return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ”' };
   }
 }
+
