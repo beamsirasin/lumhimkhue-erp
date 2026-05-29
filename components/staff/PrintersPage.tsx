@@ -58,7 +58,7 @@ function defaultForm(mode: 'add' | 'edit', existing?: PrinterConfig): FormState 
   if (mode === 'edit' && existing) {
     return {
       mode: 'edit',
-      step: 2,
+      step: 3,
       editingId: existing.id,
       type: existing.type,
       usbVendorId: existing.usbVendorId ?? null,
