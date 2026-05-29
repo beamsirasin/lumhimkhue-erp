@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath, unstable_cache } from 'next/cache';
+import { revalidatePath } from 'next/cache';
 import { eq, and, inArray, asc, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { auth } from '@/auth';
@@ -35,8 +35,6 @@ const _fetchKdsItems = async () =>
     )
     .orderBy(asc(orders.createdAt), asc(sql`coalesce(${menuItems.sortOrder}, 0)`), asc(orderItems.id));
 
-const _cachedKdsQuery = unstable_cache(_fetchKdsItems, ['kds-items'], { tags: ['kds'] });
-
 export async function getKdsItems() {
   const authSession = await auth();
   if (!authSession?.user) return { ok: false as const, error: 'เธเธฃเธธเธ“เธฒเน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ' };
@@ -44,7 +42,7 @@ export async function getKdsItems() {
     return { ok: false as const, error: 'เนเธกเนเธกเธตเธชเธดเธ—เธเธดเนเธ”เธณเน€เธเธดเธเธเธฒเธฃ' };
 
   try {
-    const data = await _cachedKdsQuery();
+    const data = await _fetchKdsItems();
     return { ok: true as const, data };
   } catch (e) {
     console.error('[getKdsItems]', e);
