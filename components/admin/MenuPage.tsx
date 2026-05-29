@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import { useConfirm } from '@/components/shared/ConfirmDialog';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import { Trash2, ImagePlus, X, ZoomIn, ZoomOut, ChevronUp, ChevronDown } from 'lucide-react';
@@ -106,10 +107,13 @@ export function MenuPage({ initialData }: MenuPageProps) {
     onSuccess: (r) => { if (!r.ok) toast.error(r.error); else invalidate(); },
   });
 
+  const { openConfirm, dialog: confirmDialog } = useConfirm();
+
   const selectedCat = categories.find((c) => c.id === selectedCatId);
 
   return (
     <div className="p-6 space-y-6">
+      {confirmDialog}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-slate-900">จัดการเมนู</h1>
         <button
@@ -156,7 +160,7 @@ export function MenuPage({ initialData }: MenuPageProps) {
                 disabled={isDeletingCat && deleteCatVar === cat.id}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (confirm(`ลบหมวด "${cat.name}"?`)) deleteCat(cat.id);
+                  openConfirm(`ลบหมวด "${cat.name}"?`, () => deleteCat(cat.id));
                 }}
                 className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center justify-center h-6 w-6 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
               >
@@ -283,7 +287,7 @@ export function MenuPage({ initialData }: MenuPageProps) {
                               type="button"
                               aria-label="ลบเมนู"
                               disabled={isDeletingItem && deleteItemVar === item.id}
-                              onClick={() => { if (confirm(`ลบ "${item.name}"?`)) deleteItem(item.id); }}
+                              onClick={() => openConfirm(`ลบ "${item.name}"?`, () => deleteItem(item.id))}
                               className="text-slate-300 hover:text-red-600 transition-colors disabled:opacity-50"
                             >
                               <Trash2 className="size-3.5" />

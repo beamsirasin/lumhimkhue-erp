@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { useConfirm } from '@/components/shared/ConfirmDialog';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -505,6 +506,7 @@ function TabPanel({ category, tiles, onRefetch }: TabPanelProps) {
   const [editing, setEditing] = useState<PricingTileRow | null>(null);
   const [localTiles, setLocalTiles] = useState<PricingTileRow[]>(tiles);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const { openConfirm, dialog: confirmDialog } = useConfirm();
 
   // Sync when server data updates
   if (tiles !== localTiles && !dialogOpen) {
@@ -546,17 +548,21 @@ function TabPanel({ category, tiles, onRefetch }: TabPanelProps) {
     }
   };
 
-  const handleDelete = async (tile: PricingTileRow) => {
-    if (!confirm(`ลบ "${tile.name}" ออก? ถ้ามีการใช้งานอยู่จะไม่สามารถลบได้`)) return;
-    setPendingId(tile.id);
-    const result = await deletePricingTile(tile.id);
-    setPendingId(null);
-    if (result.ok) {
-      toast.success('ลบแล้ว');
-      onRefetch();
-    } else {
-      toast.error(result.error);
-    }
+  const handleDelete = (tile: PricingTileRow) => {
+    openConfirm(
+      `ลบ "${tile.name}" ออก? ถ้ามีการใช้งานอยู่จะไม่สามารถลบได้`,
+      async () => {
+        setPendingId(tile.id);
+        const result = await deletePricingTile(tile.id);
+        setPendingId(null);
+        if (result.ok) {
+          toast.success('ลบแล้ว');
+          onRefetch();
+        } else {
+          toast.error(result.error);
+        }
+      },
+    );
   };
 
   const openCreate = () => {
@@ -571,6 +577,7 @@ function TabPanel({ category, tiles, onRefetch }: TabPanelProps) {
 
   return (
     <>
+      {confirmDialog}
       <div className="mb-4 flex items-center justify-end">
         <Button size="sm" onClick={openCreate}>
           <Plus className="mr-1.5 size-4" />

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useConfirm } from '@/components/shared/ConfirmDialog';
 import { nanoid } from 'nanoid';
 import { toast } from 'sonner';
 import {
@@ -92,6 +93,7 @@ export function PrintersPage() {
 
   const caps = getCapabilities();
   const onLocalhost = isLocalhost();
+  const { openConfirm, dialog: confirmDialog } = useConfirm();
 
   /* Load from IndexedDB */
   useEffect(() => {
@@ -112,11 +114,12 @@ export function PrintersPage() {
     setModalOpen(true);
   }
 
-  async function handleDelete(p: PrinterConfig) {
-    if (!confirm(`ลบ "${p.name}" ออกจากรายการ?`)) return;
-    await deletePrinter(p.id);
-    refresh();
-    toast.success('ลบเครื่องพิมพ์แล้ว');
+  function handleDelete(p: PrinterConfig) {
+    openConfirm(`ลบ "${p.name}" ออกจากรายการ?`, async () => {
+      await deletePrinter(p.id);
+      refresh();
+      toast.success('ลบเครื่องพิมพ์แล้ว');
+    });
   }
 
   async function handleSetDefault(p: PrinterConfig) {
@@ -174,6 +177,7 @@ export function PrintersPage() {
 
   return (
     <div className="p-6 space-y-6">
+      {confirmDialog}
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-slate-900">เครื่องพิมพ์</h1>

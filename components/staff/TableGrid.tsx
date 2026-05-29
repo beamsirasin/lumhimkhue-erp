@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, CSSProperties } from 'react';
+import { useConfirm } from '@/components/shared/ConfirmDialog';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors, type Modifier } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
@@ -764,34 +765,44 @@ function TableSheet({
   onEditGuests,
 }: TableSheetProps) {
   const [busy, setBusy] = useState(false);
+  const { openConfirm, dialog: confirmDialog } = useConfirm();
 
   if (!table) return null;
   const sess = table.activeSession;
   const resv = table.activeReservation;
   const visualStatus = getVisualStatus(table);
 
-  const handleForceClose = async () => {
+  const handleForceClose = () => {
     if (!sess) return;
-    if (visualStatus !== 'paid' && !confirm(`บังคับปิดโต๊ะ ${table.label}?`)) return;
-    setBusy(true);
-    const r = await closeSession({ sessionId: sess.id });
-    setBusy(false);
-    if (r.ok) { toast.success(`ปิดโต๊ะ ${table.label} แล้ว`); onClose(); onRefetch(); }
-    else toast.error(r.error);
+    const doClose = async () => {
+      setBusy(true);
+      const r = await closeSession({ sessionId: sess.id });
+      setBusy(false);
+      if (r.ok) { toast.success(`ปิดโต๊ะ ${table.label} แล้ว`); onClose(); onRefetch(); }
+      else toast.error(r.error);
+    };
+    if (visualStatus !== 'paid') {
+      openConfirm(`บังคับปิดโต๊ะ ${table.label}?`, doClose);
+    } else {
+      doClose();
+    }
   };
 
-  const handleCancelReservation = async () => {
+  const handleCancelReservation = () => {
     if (!resv) return;
-    if (!confirm(`ยกเลิกการจองโต๊ะ ${table.label}?`)) return;
-    setBusy(true);
-    const r = await cancelReservation(resv.id);
-    setBusy(false);
-    if (r.ok) { toast.success('ยกเลิกการจองแล้ว'); onClose(); onRefetch(); }
-    else toast.error(r.error);
+    openConfirm(`ยกเลิกการจองโต๊ะ ${table.label}?`, async () => {
+      setBusy(true);
+      const r = await cancelReservation(resv.id);
+      setBusy(false);
+      if (r.ok) { toast.success('ยกเลิกการจองแล้ว'); onClose(); onRefetch(); }
+      else toast.error(r.error);
+    });
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+    <>
+      {confirmDialog}
+      <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="sm:max-w-sm p-0 flex flex-col max-h-[85vh]">
         <DialogHeader className="shrink-0 border-b border-slate-200 px-5 py-4 pr-12">
           <div className="flex items-center gap-2">
@@ -1026,14 +1037,13 @@ function TableSheet({
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={async () => {
-                      if (!confirm(`ยกเลิกการจองโต๊ะ ${table.label}?`)) return;
+                    onClick={() => openConfirm(`ยกเลิกการจองโต๊ะ ${table.label}?`, async () => {
                       setBusy(true);
                       const r = await setTableAvailable({ tableId: table.id });
                       setBusy(false);
                       if (r.ok) { toast.success('ยกเลิกการจองแล้ว'); onClose(); onRefetch(); }
                       else toast.error(r.error);
-                    }}
+                    })}
                     className="w-full rounded-xl border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
                   >
                     ยกเลิกจอง
@@ -1113,6 +1123,7 @@ function TableSheet({
         </div>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
 
@@ -1232,6 +1243,7 @@ function TableEditPanel({ table, onClose, onSaved, onDeleted }: TableEditPanelPr
   const [height, setHeight] = useState(String(table.height));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const { openConfirm, dialog: confirmDialog } = useConfirm();
 
   const handleSave = async () => {
     setSaving(true);
@@ -1241,17 +1253,20 @@ function TableEditPanel({ table, onClose, onSaved, onDeleted }: TableEditPanelPr
     else toast.error(r.error);
   };
 
-  const handleDelete = async () => {
-    if (!confirm(`ลบโต๊ะ ${table.label} ออกจากผัง?`)) return;
-    setDeleting(true);
-    const r = await softDeleteTable({ tableId: table.id });
-    setDeleting(false);
-    if (r.ok) { toast.success('ลบโต๊ะแล้ว'); onDeleted(); }
-    else toast.error(r.error);
+  const handleDelete = () => {
+    openConfirm(`ลบโต๊ะ ${table.label} ออกจากผัง?`, async () => {
+      setDeleting(true);
+      const r = await softDeleteTable({ tableId: table.id });
+      setDeleting(false);
+      if (r.ok) { toast.success('ลบโต๊ะแล้ว'); onDeleted(); }
+      else toast.error(r.error);
+    });
   };
 
   return (
-    <div className="w-64 shrink-0 border-l border-slate-200 bg-white p-4 space-y-4 overflow-y-auto">
+    <>
+      {confirmDialog}
+      <div className="w-64 shrink-0 border-l border-slate-200 bg-white p-4 space-y-4 overflow-y-auto">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-slate-800">แก้ไขโต๊ะ {table.label}</p>
         <button type="button" aria-label="ปิด" onClick={onClose} className="rounded p-0.5 hover:bg-slate-100"><X className="h-4 w-4 text-slate-500" /></button>
@@ -1278,6 +1293,7 @@ function TableEditPanel({ table, onClose, onSaved, onDeleted }: TableEditPanelPr
         <button type="button" onClick={handleDelete} disabled={deleting} className="w-full rounded-lg border border-red-200 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50">ลบโต๊ะนี้ออกจากผัง</button>
       )}
     </div>
+    </>
   );
 }
 
