@@ -72,17 +72,17 @@ export function MenuPage({ initialData }: MenuPageProps) {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['menu-crud'] });
 
-  const { mutate: toggleCat } = useMutation({
+  const { mutate: toggleCat, isPending: isTogglingCat, variables: toggleCatVar } = useMutation({
     mutationFn: (id: string) => toggleCategoryActive(id),
     onSuccess: (r) => { if (!r.ok) toast.error(r.error); else invalidate(); },
   });
 
-  const { mutate: toggleItem } = useMutation({
+  const { mutate: toggleItem, isPending: isTogglingItem, variables: toggleItemVar } = useMutation({
     mutationFn: (id: string) => toggleMenuItemAvailable(id),
     onSuccess: (r) => { if (!r.ok) toast.error(r.error); else invalidate(); },
   });
 
-  const { mutate: deleteCat } = useMutation({
+  const { mutate: deleteCat, isPending: isDeletingCat, variables: deleteCatVar } = useMutation({
     mutationFn: (id: string) => deleteCategory(id),
     onSuccess: (r, id) => {
       if (!r.ok) { toast.error(r.error); return; }
@@ -92,7 +92,7 @@ export function MenuPage({ initialData }: MenuPageProps) {
     },
   });
 
-  const { mutate: deleteItem } = useMutation({
+  const { mutate: deleteItem, isPending: isDeletingItem, variables: deleteItemVar } = useMutation({
     mutationFn: (id: string) => deleteMenuItem(id),
     onSuccess: (r) => {
       if (!r.ok) { toast.error(r.error); return; }
@@ -101,7 +101,7 @@ export function MenuPage({ initialData }: MenuPageProps) {
     },
   });
 
-  const { mutate: swapOrder } = useMutation({
+  const { mutate: swapOrder, isPending: isSwapping, variables: swapVars } = useMutation({
     mutationFn: ({ idA, idB }: { idA: string; idB: string }) => swapMenuItemOrder(idA, idB),
     onSuccess: (r) => { if (!r.ok) toast.error(r.error); else invalidate(); },
   });
@@ -153,11 +153,12 @@ export function MenuPage({ initialData }: MenuPageProps) {
               <button
                 type="button"
                 aria-label="ลบหมวด"
+                disabled={isDeletingCat && deleteCatVar === cat.id}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (confirm(`ลบหมวด "${cat.name}"?`)) deleteCat(cat.id);
                 }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center justify-center h-6 w-6 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center justify-center h-6 w-6 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
               >
                 <Trash2 className="size-3.5" />
               </button>
@@ -197,10 +198,11 @@ export function MenuPage({ initialData }: MenuPageProps) {
                   </button>
                   <button
                     type="button"
+                    disabled={isTogglingCat && toggleCatVar === selectedCat.id}
                     onClick={() => toggleCat(selectedCat.id)}
-                    className="text-xs text-slate-500 hover:text-slate-700 border border-slate-200 rounded px-2 py-1"
+                    className="text-xs text-slate-500 hover:text-slate-700 border border-slate-200 rounded px-2 py-1 disabled:opacity-50"
                   >
-                    {selectedCat.isActive ? 'ปิด' : 'เปิด'}
+                    {isTogglingCat && toggleCatVar === selectedCat.id ? '...' : selectedCat.isActive ? 'ปิด' : 'เปิด'}
                   </button>
                   <button
                     type="button"
@@ -238,14 +240,15 @@ export function MenuPage({ initialData }: MenuPageProps) {
                         <td className="px-4 py-3 text-center">
                           <button
                             type="button"
+                            disabled={isTogglingItem && toggleItemVar === item.id}
                             onClick={() => toggleItem(item.id)}
-                            className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            className={`rounded-full px-2.5 py-0.5 text-xs font-medium disabled:opacity-50 ${
                               item.isAvailable
                                 ? 'bg-green-100 text-green-700 hover:bg-green-200'
                                 : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                             }`}
                           >
-                            {item.isAvailable ? 'มี' : 'หมด'}
+                            {isTogglingItem && toggleItemVar === item.id ? '...' : item.isAvailable ? 'มี' : 'หมด'}
                           </button>
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -254,7 +257,7 @@ export function MenuPage({ initialData }: MenuPageProps) {
                             <button
                               type="button"
                               aria-label="เลื่อนขึ้น"
-                              disabled={idx === 0}
+                              disabled={idx === 0 || (isSwapping && (swapVars?.idA === item.id || swapVars?.idB === item.id))}
                               onClick={() => swapOrder({ idA: item.id, idB: arr[idx - 1].id })}
                               className="p-1 text-slate-300 hover:text-slate-700 disabled:opacity-20 transition-colors"
                             >
@@ -263,7 +266,7 @@ export function MenuPage({ initialData }: MenuPageProps) {
                             <button
                               type="button"
                               aria-label="เลื่อนลง"
-                              disabled={idx === arr.length - 1}
+                              disabled={idx === arr.length - 1 || (isSwapping && (swapVars?.idA === item.id || swapVars?.idB === item.id))}
                               onClick={() => swapOrder({ idA: item.id, idB: arr[idx + 1].id })}
                               className="p-1 text-slate-300 hover:text-slate-700 disabled:opacity-20 transition-colors"
                             >
@@ -279,8 +282,9 @@ export function MenuPage({ initialData }: MenuPageProps) {
                             <button
                               type="button"
                               aria-label="ลบเมนู"
+                              disabled={isDeletingItem && deleteItemVar === item.id}
                               onClick={() => { if (confirm(`ลบ "${item.name}"?`)) deleteItem(item.id); }}
-                              className="text-slate-300 hover:text-red-600 transition-colors"
+                              className="text-slate-300 hover:text-red-600 transition-colors disabled:opacity-50"
                             >
                               <Trash2 className="size-3.5" />
                             </button>

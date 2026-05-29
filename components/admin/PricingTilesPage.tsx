@@ -89,9 +89,10 @@ interface SortableTileCardProps {
   onEdit: (t: PricingTileRow) => void;
   onToggle: (t: PricingTileRow) => void;
   onDelete: (t: PricingTileRow) => void;
+  isPending?: boolean;
 }
 
-function SortableTileCard({ tile, onEdit, onToggle, onDelete }: SortableTileCardProps) {
+function SortableTileCard({ tile, onEdit, onToggle, onDelete, isPending }: SortableTileCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tile.id,
   });
@@ -167,13 +168,14 @@ function SortableTileCard({ tile, onEdit, onToggle, onDelete }: SortableTileCard
         <button
           type="button"
           aria-label={tile.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
+          disabled={isPending}
           onClick={() => onToggle(tile)}
-          className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800"
+          className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800 disabled:opacity-50"
         >
           {tile.isActive ? (
-            <><ToggleRight className="size-4 text-green-500" /><span className="text-green-600">เปิด</span></>
+            <><ToggleRight className="size-4 text-green-500" /><span className="text-green-600">{isPending ? '...' : 'เปิด'}</span></>
           ) : (
-            <><ToggleLeft className="size-4" /><span>ปิด</span></>
+            <><ToggleLeft className="size-4" /><span>{isPending ? '...' : 'ปิด'}</span></>
           )}
         </button>
         <div className="flex gap-1">
@@ -188,8 +190,9 @@ function SortableTileCard({ tile, onEdit, onToggle, onDelete }: SortableTileCard
           <button
             type="button"
             aria-label={`ลบ ${tile.name}`}
+            disabled={isPending}
             onClick={() => onDelete(tile)}
-            className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+            className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
           >
             <Trash2 className="size-3.5" />
           </button>
@@ -501,6 +504,7 @@ function TabPanel({ category, tiles, onRefetch }: TabPanelProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<PricingTileRow | null>(null);
   const [localTiles, setLocalTiles] = useState<PricingTileRow[]>(tiles);
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
   // Sync when server data updates
   if (tiles !== localTiles && !dialogOpen) {
@@ -531,7 +535,9 @@ function TabPanel({ category, tiles, onRefetch }: TabPanelProps) {
   };
 
   const handleToggle = async (tile: PricingTileRow) => {
+    setPendingId(tile.id);
     const result = await togglePricingTileActive(tile.id);
+    setPendingId(null);
     if (result.ok) {
       toast.success(tile.isActive ? 'ปิดใช้งานแล้ว' : 'เปิดใช้งานแล้ว');
       onRefetch();
@@ -542,7 +548,9 @@ function TabPanel({ category, tiles, onRefetch }: TabPanelProps) {
 
   const handleDelete = async (tile: PricingTileRow) => {
     if (!confirm(`ลบ "${tile.name}" ออก? ถ้ามีการใช้งานอยู่จะไม่สามารถลบได้`)) return;
+    setPendingId(tile.id);
     const result = await deletePricingTile(tile.id);
+    setPendingId(null);
     if (result.ok) {
       toast.success('ลบแล้ว');
       onRefetch();
@@ -585,6 +593,7 @@ function TabPanel({ category, tiles, onRefetch }: TabPanelProps) {
                   onEdit={openEdit}
                   onToggle={handleToggle}
                   onDelete={handleDelete}
+                  isPending={pendingId === tile.id}
                 />
               ))}
             </div>

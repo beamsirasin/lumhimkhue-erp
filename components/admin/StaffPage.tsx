@@ -59,7 +59,7 @@ export function StaffPage({ initialData }: StaffPageProps) {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['staff-list'] });
 
-  const { mutate: toggleActive } = useMutation({
+  const { mutate: toggleActive, isPending: isTogglingActive, variables: toggleActiveVar } = useMutation({
     mutationFn: (id: string) => toggleStaffActive(id),
     onSuccess: (r) => { if (!r.ok) toast.error(r.error); else invalidate(); },
   });
@@ -105,12 +105,13 @@ export function StaffPage({ initialData }: StaffPageProps) {
                 <td className="px-4 py-3 text-center">
                   <button
                     type="button"
+                    disabled={isTogglingActive && toggleActiveVar === member.id}
                     onClick={() => toggleActive(member.id)}
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium disabled:opacity-50 ${
                       member.isActive ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                     }`}
                   >
-                    {member.isActive ? 'เปิด' : 'ปิด'}
+                    {isTogglingActive && toggleActiveVar === member.id ? '...' : member.isActive ? 'เปิด' : 'ปิด'}
                   </button>
                 </td>
                 <td className="px-4 py-3">
