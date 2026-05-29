@@ -17,6 +17,12 @@ import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder';
 
 import { getDefaultPrinter, getPrinter } from './store';
 import { buildReceipt, buildTableQr, buildQueueQr, buildKitchenOrder } from './escpos';
+import {
+  buildBitmapReceipt,
+  buildBitmapKitchenOrder,
+  buildBitmapQueueQr,
+  buildBitmapTableQr,
+} from './bitmap';
 import { findPairedDevice, sendUSB } from './transports/usb';
 import { sendNetwork } from './transports/network';
 import { printBrowser } from './transports/browser';
@@ -53,21 +59,22 @@ export async function print(
 
   try {
     if (config.type === 'usb') {
-      const bytes = buildBytes(job, config);
-
-      if (!config.usbVendorId || !config.usbProductId) {
+      if (!config.usbVendorId || !config.usbProductId)
         throw new Error('ไม่พบข้อมูล USB (vendorId / productId)');
-      }
       const device = await findPairedDevice(config.usbVendorId, config.usbProductId);
       if (!device) throw new Error('ไม่พบ printer USB ที่จับคู่ไว้ กรุณาเสียบสาย OTG');
-
+      const bytes = config.thaiImageMode
+        ? await buildBitmapBytes(job, config)
+        : buildBytes(job, config);
       await sendUSB(device, bytes);
       return { ok: true };
     }
 
     if (config.type === 'network') {
       if (!config.ipAddress) throw new Error('ไม่พบ IP address ของ printer');
-      const bytes = buildBytes(job, config);
+      const bytes = config.thaiImageMode
+        ? await buildBitmapBytes(job, config)
+        : buildBytes(job, config);
       await sendNetwork(config.ipAddress, config.port ?? 9100, bytes);
       return { ok: true };
     }
@@ -132,6 +139,78 @@ export async function testThaiCodepage(config: PrinterConfig): Promise<PrintResu
       .newline(3)
       .cut('partial')
       .encode();
+
+    if (config.type === 'usb') {
+      const { findPairedDevice, sendUSB } = await import('./transports/usb');
+      if (!config.usbVendorId || !config.usbProductId) throw new Error('ไม่พบข้อมูล USB');
+      const device = await findPairedDevice(config.usbVendorId, config.usbProductId);
+      if (!device) throw new Error('ไม่พบ printer USB');
+      await sendUSB(device, bytes);
+    } else {
+      const { sendNetwork } = await import('./transports/network');
+      if (!config.ipAddress) throw new Error('ไม่พบ IP address');
+      await sendNetwork(config.ipAddress, config.port ?? 9100, bytes);
+    }
+    return { ok: true };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : 'ทดสอบไม่สำเร็จ';
+    return { ok: false, error };
+  }
+}
+
+/**
+ * Print a byte map: shows every byte 0xA0–0xFF on the printer at the configured
+ * Thai page, labelled with its hex value.  Use this to identify where vowels and
+ * tone marks actually live in the printer's character table.
+ */
+export async function printByteMap(config: PrinterConfig): Promise<PrintResult> {
+  if (config.type === 'browser') {
+    return { ok: false, error: 'Byte map ใช้ได้เฉพาะ USB / Network' };
+  }
+
+  try {
+    const cp = config.thaiCodepage ?? 21;
+    const cols = config.paperWidth === 80 ? 48 : 32;
+    const colsPerRow = 8;
+
+    // Build raw ESC/POS bytes manually — bypass the encoder's charset conversion
+    // so we can send exact byte values without any Unicode re-encoding.
+    const cmds: number[] = [];
+
+    // ESC @ — initialize
+    cmds.push(0x1B, 0x40);
+    // ESC t <page> — select Thai codepage
+    cmds.push(0x1B, 0x74, cp);
+
+    // Header
+    const header = `Byte map  page ${cp}\n`;
+    for (const c of header) cmds.push(c.charCodeAt(0));
+    cmds.push(...Array.from('-'.repeat(cols)).map(c => c.charCodeAt(0)), 0x0A);
+
+    // Print rows of 8 bytes: "A0:[char] A1:[char] ..."
+    for (let base = 0xA0; base <= 0xF0; base += colsPerRow) {
+      // Label row: "A0 A1 A2 ..."
+      let label = '';
+      for (let i = 0; i < colsPerRow && base + i <= 0xFF; i++) {
+        label += (base + i).toString(16).toUpperCase().padStart(2, '0') + ' ';
+      }
+      for (const c of label.trimEnd() + '\n') cmds.push(c.charCodeAt(0));
+
+      // Character row: send actual bytes
+      for (let i = 0; i < colsPerRow && base + i <= 0xFF; i++) {
+        cmds.push(base + i, 0x20, 0x20); // byte + 2 spaces
+      }
+      cmds.push(0x0A, 0x0A); // blank line between rows
+
+      if ((base - 0xA0) % 0x20 === 0x10) {
+        cmds.push(...Array.from('-'.repeat(Math.min(cols, 24))).map(c => c.charCodeAt(0)), 0x0A);
+      }
+    }
+
+    // Feed and cut
+    cmds.push(0x0A, 0x0A, 0x0A, 0x1D, 0x56, 0x01);
+
+    const bytes = new Uint8Array(cmds);
 
     if (config.type === 'usb') {
       const { findPairedDevice, sendUSB } = await import('./transports/usb');
@@ -230,6 +309,16 @@ function buildBytes(job: PrintJob, config: PrinterConfig): Uint8Array {
     case 'table_qr':      return buildTableQr(job.table, w, cp);
     case 'queue_qr':      return buildQueueQr(job.queueEntry, w, cp);
     case 'kitchen_order': return buildKitchenOrder(job.order, w, cp);
+  }
+}
+
+async function buildBitmapBytes(job: PrintJob, config: PrinterConfig): Promise<Uint8Array> {
+  const w = config.paperWidth;
+  switch (job.type) {
+    case 'receipt':       return buildBitmapReceipt(job.payment, w);
+    case 'kitchen_order': return buildBitmapKitchenOrder(job.order, w);
+    case 'queue_qr':      return buildBitmapQueueQr(job.queueEntry, w);
+    case 'table_qr':      return buildBitmapTableQr(job.table, w);
   }
 }
 

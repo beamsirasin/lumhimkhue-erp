@@ -12,6 +12,9 @@ export type PrinterConfig = {
   port?: number;
   paperWidth: 58 | 80;
   thaiCodepage: number;
+  /** Render Thai text as bitmap image instead of codepage bytes.
+   *  Use when the printer lacks Thai glyph shaping (raw character rendering). */
+  thaiImageMode?: boolean;
   isDefault: boolean;
   testedAt?: string;
 };

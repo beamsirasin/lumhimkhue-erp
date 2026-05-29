@@ -14,7 +14,7 @@ import {
 import { getAllPrinters, savePrinter, deletePrinter, setDefaultPrinter } from '@/lib/printer/store';
 import { getCapabilities, isLocalhost } from '@/lib/printer/capabilities';
 import { requestUSBDevice } from '@/lib/printer/transports/usb';
-import { testPrint, testThaiCodepage } from '@/lib/printer/service';
+import { testPrint, testThaiCodepage, printByteMap } from '@/lib/printer/service';
 import type { PrinterConfig, PrinterType } from '@/lib/printer/types';
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
@@ -50,6 +50,7 @@ interface FormState {
   name: string;
   paperWidth: 58 | 80;
   thaiCodepage: number;
+  thaiImageMode: boolean;
   isDefault: boolean;
 }
 
@@ -70,6 +71,7 @@ function defaultForm(mode: 'add' | 'edit', existing?: PrinterConfig): FormState 
       name: existing.name,
       paperWidth: existing.paperWidth,
       thaiCodepage: existing.thaiCodepage ?? 21,
+      thaiImageMode: existing.thaiImageMode ?? false,
       isDefault: existing.isDefault,
     };
   }
@@ -77,7 +79,7 @@ function defaultForm(mode: 'add' | 'edit', existing?: PrinterConfig): FormState 
     mode: 'add', step: 1, type: null,
     usbVendorId: null, usbProductId: null, usbLabel: '',
     ipAddress: '', port: '9100',
-    name: '', paperWidth: 80, thaiCodepage: 21, isDefault: false,
+    name: '', paperWidth: 80, thaiCodepage: 21, thaiImageMode: false, isDefault: false,
   };
 }
 
@@ -164,6 +166,7 @@ export function PrintersPage() {
       type,
       paperWidth,
       thaiCodepage: form.thaiCodepage,
+      thaiImageMode: form.thaiImageMode,
       isDefault,
       ...(type === 'usb' && form.usbVendorId != null
         ? { usbVendorId: form.usbVendorId, usbProductId: form.usbProductId ?? undefined }
@@ -366,11 +369,13 @@ export function PrintersPage() {
               name={form.name}
               paperWidth={form.paperWidth}
               thaiCodepage={form.thaiCodepage}
+              thaiImageMode={form.thaiImageMode}
               isDefault={form.isDefault}
               saving={saving}
               onNameChange={(v) => setForm((f) => ({ ...f, name: v }))}
               onPaperWidthChange={(v) => setForm((f) => ({ ...f, paperWidth: v }))}
               onThaiCodepageChange={(v) => setForm((f) => ({ ...f, thaiCodepage: v }))}
+              onThaiImageModeChange={(v) => setForm((f) => ({ ...f, thaiImageMode: v }))}
               onDefaultChange={(v) => setForm((f) => ({ ...f, isDefault: v }))}
               onSave={() => handleSave(false)}
               onSaveAndTest={() => handleSave(true)}
@@ -590,18 +595,20 @@ const THAI_CODEPAGE_PRESETS = [
 ];
 
 function StepGeneral({
-  name, paperWidth, thaiCodepage, isDefault, saving,
-  onNameChange, onPaperWidthChange, onThaiCodepageChange, onDefaultChange,
+  name, paperWidth, thaiCodepage, thaiImageMode, isDefault, saving,
+  onNameChange, onPaperWidthChange, onThaiCodepageChange, onThaiImageModeChange, onDefaultChange,
   onSave, onSaveAndTest,
 }: {
   name: string;
   paperWidth: 58 | 80;
   thaiCodepage: number;
+  thaiImageMode: boolean;
   isDefault: boolean;
   saving: boolean;
   onNameChange: (v: string) => void;
   onPaperWidthChange: (v: 58 | 80) => void;
   onThaiCodepageChange: (v: number) => void;
+  onThaiImageModeChange: (v: boolean) => void;
   onDefaultChange: (v: boolean) => void;
   onSave: () => void;
   onSaveAndTest: () => void;
@@ -668,6 +675,21 @@ function StepGeneral({
           ถ้าภาษาไทยออกมาเป็นตัวอักษรแปลก ให้ลองหน้า 20 หรือ 21 สลับกัน
         </p>
       </div>
+
+      <label className="flex items-start gap-2 cursor-pointer rounded-lg border border-amber-200 bg-amber-50 p-3">
+        <input
+          type="checkbox"
+          checked={thaiImageMode}
+          onChange={(e) => onThaiImageModeChange(e.target.checked)}
+          className="mt-0.5 rounded accent-amber-600"
+        />
+        <div>
+          <span className="text-sm font-medium text-amber-800">พิมพ์ไทยแบบ Bitmap (แก้ปัญหาสระ-วรรณยุกต์)</span>
+          <p className="mt-0.5 text-[11px] text-amber-700 leading-relaxed">
+            เปิดเมื่อ printer ไม่มี Thai Glyph Shaping — render ข้อความเป็นรูปภาพในบราวเซอร์ก่อนส่งปริ้น สระและวรรณยุกต์จะซ้อนบน/ล่างถูกต้อง
+          </p>
+        </div>
+      </label>
 
       <label className="flex items-center gap-2 cursor-pointer">
         <input
