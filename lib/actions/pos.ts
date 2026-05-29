@@ -195,7 +195,13 @@ export async function processPayment(input: unknown) {
     if (lineItems.length > 0) {
       const tileIds = lineItems.map((li) => li.pricingTileId);
       const tileFetch = await db
-        .select()
+        .select({
+          id: pricingTiles.id,
+          category: pricingTiles.category,
+          price: pricingTiles.price,
+          discountType: pricingTiles.discountType,
+          discountValue: pricingTiles.discountValue,
+        })
         .from(pricingTiles)
         .where(inArray(pricingTiles.id, tileIds));
       const tileMap = new Map(tileFetch.map((t) => [t.id, t]));
