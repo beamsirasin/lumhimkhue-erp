@@ -27,16 +27,36 @@ const STATION_LABEL: Record<string, string> = {
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
 
+/**
+ * Map ESC/POS page number to the library's internal Thai codepage name.
+ * Each variant has a different byte layout for vowels/tone marks — using
+ * the correct name ensures the encoder encodes characters to the right bytes.
+ *
+ * Epson mapping (also used by Xprinter and many generics):
+ *   Page 20 = thai42, Page 21 = thai11, Page 27 = thai13
+ * Star:
+ *   Page 12-15 = star/cp874 (standard TIS-620)
+ */
+function getThaiCpName(page: number): string {
+  switch (page) {
+    case 20: return 'thai42';
+    case 21: return 'thai11';
+    case 27: return 'thai13';
+    default: return 'cp874';
+  }
+}
+
 function makeEncoder(paperWidth: 58 | 80, thaiCodepage: number): ReceiptPrinterEncoder {
+  const cpName = getThaiCpName(thaiCodepage);
   return new ReceiptPrinterEncoder({
     language: 'esc-pos',
     columns: COLS[paperWidth],
     imageMode: 'raster',
     errors: 'relaxed',
-    // Map cp874 (Thai) to the printer's ESC/POS page number.
-    // Page 21 = Epson / most generics. Page 13 = Star Micronics.
-    // Library runtime accepts object form; cast bypasses the string-only typedef.
-    codepageMapping: { cp874: thaiCodepage } as unknown as string,
+    // Map the correct Thai codepage name to the printer's page number.
+    // Using the exact variant (thai13 vs thai11 vs thai42) ensures vowels and
+    // tone marks are encoded to bytes that match the printer's character table.
+    codepageMapping: { [cpName]: thaiCodepage } as unknown as string,
   });
 }
 
@@ -64,7 +84,7 @@ export function buildReceipt(data: ReceiptData, paperWidth: 58 | 80, thaiCodepag
   const cols = COLS[paperWidth];
   let e = makeEncoder(paperWidth, thaiCodepage)
     .initialize()
-    .codepage('cp874')
+    .codepage(getThaiCpName(thaiCodepage))
     /* Shop header */
     .align('center')
     .bold(true).size(2, 2).line(data.shopNameTh).size(1, 1).bold(false);
@@ -137,7 +157,7 @@ export function buildTableQr(data: TableQrData, paperWidth: 58 | 80, thaiCodepag
   const cols = COLS[paperWidth];
   return makeEncoder(paperWidth, thaiCodepage)
     .initialize()
-    .codepage('cp874')
+    .codepage(getThaiCpName(thaiCodepage))
     .align('center')
     .bold(true).size(2, 2).line(`โต๊ะ ${data.tableNumber}`).size(1, 1).bold(false)
     .line('สแกน QR เพื่อสั่งอาหาร')
@@ -159,7 +179,7 @@ export function buildQueueQr(data: QueueQrData, paperWidth: 58 | 80, thaiCodepag
   const cols = COLS[paperWidth];
   return makeEncoder(paperWidth, thaiCodepage)
     .initialize()
-    .codepage('cp874')
+    .codepage(getThaiCpName(thaiCodepage))
     .align('center')
     .bold(true).line('ตั๋วคิว').bold(false)
     .size(2, 2).bold(true).line(data.queueNumber).bold(false).size(1, 1)
@@ -180,7 +200,7 @@ export function buildKitchenOrder(data: KitchenOrderData, paperWidth: 58 | 80, t
   const cols = COLS[paperWidth];
   let e = makeEncoder(paperWidth, thaiCodepage)
     .initialize()
-    .codepage('cp874')
+    .codepage(getThaiCpName(thaiCodepage))
     .align('center')
     .bold(true).size(2, 1).line('*** ORDER ***').size(1, 1).bold(false)
     .line(sep(cols))

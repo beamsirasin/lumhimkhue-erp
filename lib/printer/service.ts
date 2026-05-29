@@ -105,15 +105,18 @@ export async function testThaiCodepage(config: PrinterConfig): Promise<PrintResu
     const sep = '-'.repeat(cols);
     const cp = config.thaiCodepage ?? 21;
 
+    // Use the correct Thai codepage name matching the page number
+    const cpName = cp === 20 ? 'thai42' : cp === 21 ? 'thai11' : cp === 27 ? 'thai13' : 'cp874';
+
     const { default: ReceiptPrinterEncoder } = await import('@point-of-sale/receipt-printer-encoder');
     const bytes = new ReceiptPrinterEncoder({
       language: 'esc-pos',
       columns: cols,
       errors: 'relaxed',
-      codepageMapping: { cp874: cp } as unknown as string,
+      codepageMapping: { [cpName]: cp } as unknown as string,
     })
       .initialize()
-      .codepage('cp874')
+      .codepage(cpName)
       .align('center')
       .bold(true).line('ทดสอบ Codepage ภาษาไทย').bold(false)
       .line(sep)
@@ -177,14 +180,15 @@ export async function testPrint(config: PrinterConfig): Promise<PrintResult> {
     const sep = '-'.repeat(cols);
 
     const cp = config.thaiCodepage ?? 21;
+    const cpName = cp === 20 ? 'thai42' : cp === 21 ? 'thai11' : cp === 27 ? 'thai13' : 'cp874';
     const bytes = new ReceiptPrinterEncoder({
       language: 'esc-pos',
       columns: cols,
       errors: 'relaxed',
-      codepageMapping: { cp874: cp } as unknown as string,
+      codepageMapping: { [cpName]: cp } as unknown as string,
     })
       .initialize()
-      .codepage('cp874')
+      .codepage(cpName)
       .align('center')
       .bold(true).line('ทดสอบการพิมพ์').bold(false)
       .line('Test Print')
