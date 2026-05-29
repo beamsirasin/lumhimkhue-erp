@@ -16,7 +16,7 @@ import { getStoreSettings } from '@/lib/actions/store';
 import type { StoreSettingsData } from '@/lib/actions/store';
 import { resolveBillConfig } from '@/lib/utils/billConfig';
 import type { PosSession, PosSessionDetail } from '@/lib/actions/pos';
-import { Printer, CheckCircle2, Tag, X } from 'lucide-react';
+import { Printer, CheckCircle2, Tag, Package, X } from 'lucide-react';
 import { PricingTile as PricingTileCard } from '@/components/staff/PricingTile';
 import { print as printReceipt } from '@/lib/printer/service';
 import type { ReceiptData } from '@/lib/printer/types';
