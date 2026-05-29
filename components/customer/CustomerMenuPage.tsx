@@ -141,6 +141,7 @@ export function CustomerMenuPage({
     queryKey: ['unserved', sessionToken],
     queryFn: () => hasUnservedItems(sessionToken).then((r) => (r.ok ? r.data : { hasUnserved: false })),
     refetchInterval: 5_000,
+    staleTime: 2_000,
   });
   const hasUnserved = unservedData?.hasUnserved ?? false;
 
