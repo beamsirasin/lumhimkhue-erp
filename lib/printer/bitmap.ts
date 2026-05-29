@@ -1,271 +1,235 @@
 /**
  * Bitmap-based Thai printing.
  *
- * Renders receipt / kitchen / queue content to an HTML Canvas using the
- * browser's own text engine (which handles Thai glyph shaping correctly),
- * then encodes the result as an ESC/POS GS v 0 raster image command.
+ * Renders content to an HTML Canvas using the browser's own text engine
+ * (which handles Thai glyph shaping correctly: สระ/วรรณยุกต์ stack properly),
+ * then encodes the canvas as an ESC/POS raster image via ReceiptPrinterEncoder.
  *
- * Use this for printers that lack a Thai glyph-shaping engine and produce
- * "raw character rendering" (สระ/วรรณยุกต์ appear as separate characters).
+ * Use for printers that lack Thai glyph shaping ("raw character rendering").
  */
 
+import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder';
 import type { ReceiptData, TableQrData, QueueQrData, KitchenOrderData } from './types';
 
-/* ─── Constants ──────────────────────────────────────────────────────────── */
+/* ─── Layout constants ───────────────────────────────────────────────────── */
 
+// Dots width per paper size at 203 DPI
 const DOTS: Record<58 | 80, number> = { 58: 384, 80: 576 };
-const FONT = '"IBM Plex Sans Thai", "TH Sarabun New", "Tahoma", sans-serif';
-const FS = 22;          // base font size px
-const LH = 30;          // base line height px
-const PAD = 6;          // horizontal padding px
 
-/* ─── Line descriptors ───────────────────────────────────────────────────── */
+const THAI_FONT = '"IBM Plex Sans Thai", "TH Sarabun New", "Tahoma", sans-serif';
+const FONT_SIZE = 24;
+const LINE_H    = 32;
+const PAD_X     = 8;   // horizontal padding
+const PAD_Y     = 8;   // top/bottom padding
 
-type Line =
-  | { k: 'txt'; text: string; align: 'l' | 'c' | 'r'; bold?: boolean; big?: boolean }
-  | { k: 'row'; left: string; right: string; bold?: boolean }
-  | { k: 'hr' }
-  | { k: 'gap'; n?: number };
-
-/* ─── Canvas → ESC/POS GS v 0 ───────────────────────────────────────────── */
-
-function canvasToEscpos(canvas: HTMLCanvasElement): Uint8Array {
-  const ctx = canvas.getContext('2d')!;
-  const { width, height } = canvas;
-  const data = ctx.getImageData(0, 0, width, height).data;
-
-  const widthBytes = Math.ceil(width / 8);
-  const bitmap: number[] = [];
-
-  for (let row = 0; row < height; row++) {
-    for (let col = 0; col < widthBytes; col++) {
-      let byte = 0;
-      for (let bit = 0; bit < 8; bit++) {
-        const x = col * 8 + bit;
-        if (x < width) {
-          const i = (row * width + x) * 4;
-          const lum = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-          if (lum < 180) byte |= 1 << (7 - bit); // dark pixel → print
-        }
-      }
-      bitmap.push(byte);
-    }
-  }
-
-  // GS v 0 (raster image)
-  const xL = widthBytes & 0xff;
-  const xH = (widthBytes >> 8) & 0xff;
-  const yL = height & 0xff;
-  const yH = (height >> 8) & 0xff;
-
-  return new Uint8Array([
-    0x1b, 0x40,                                    // ESC @ — init
-    0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH,       // GS v 0 — raster image
-    ...bitmap,
-    0x0a, 0x0a, 0x0a,                              // feed
-    0x1d, 0x56, 0x01,                              // GS V 1 — partial cut
-  ]);
-}
-
-/* ─── Canvas renderer ────────────────────────────────────────────────────── */
-
-function renderLines(lines: Line[], paperWidth: 58 | 80): Uint8Array {
-  const W = DOTS[paperWidth];
-
-  // Pass 1: measure total height
-  let totalH = PAD;
-  for (const ln of lines) {
-    if (ln.k === 'hr')  totalH += 12;
-    else if (ln.k === 'gap') totalH += (ln.n ?? 1) * LH;
-    else if (ln.k === 'txt' && ln.big) totalH += LH * 2;
-    else totalH += LH;
-  }
-  totalH += PAD;
-
-  // Pass 2: draw
-  const canvas = document.createElement('canvas');
-  canvas.width = W;
-  canvas.height = totalH;
-
-  const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, W, totalH);
-  ctx.fillStyle = '#000';
-
-  let y = PAD;
-
-  for (const ln of lines) {
-    if (ln.k === 'hr') {
-      const mid = y + 6;
-      ctx.save();
-      ctx.setLineDash([3, 3]);
-      ctx.beginPath();
-      ctx.moveTo(PAD, mid);
-      ctx.lineTo(W - PAD, mid);
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.restore();
-      y += 12;
-    } else if (ln.k === 'gap') {
-      y += (ln.n ?? 1) * LH;
-    } else if (ln.k === 'row') {
-      const fs = ln.bold ? `bold ${FS}px ${FONT}` : `${FS}px ${FONT}`;
-      ctx.font = fs;
-      const baseline = y + FS + 2;
-      ctx.textAlign = 'left';
-      ctx.fillText(ln.left,  PAD,     baseline);
-      ctx.textAlign = 'right';
-      ctx.fillText(ln.right, W - PAD, baseline);
-      y += LH;
-    } else {
-      const size = ln.big ? FS * 1.8 : FS;
-      const lh   = ln.big ? LH * 2 : LH;
-      ctx.font = `${ln.bold ? 'bold ' : ''}${size}px ${FONT}`;
-      const baseline = y + size + 2;
-      const x = ln.align === 'c' ? W / 2 : ln.align === 'r' ? W - PAD : PAD;
-      ctx.textAlign = ln.align === 'c' ? 'center' : ln.align === 'r' ? 'right' : 'left';
-      ctx.fillText(ln.text, x, baseline);
-      y += lh;
-    }
-  }
-
-  return canvasToEscpos(canvas);
-}
-
-/* ─── Receipt ────────────────────────────────────────────────────────────── */
-
-export async function buildBitmapReceipt(
-  data: ReceiptData,
-  paperWidth: 58 | 80,
-): Promise<Uint8Array> {
-  await document.fonts.ready;
-
-  const cols = paperWidth === 58 ? 32 : 48;
-  const sep = '-'.repeat(cols);
-  const lines: Line[] = [];
-
-  // Header
-  lines.push({ k: 'txt', text: data.shopNameTh, align: 'c', bold: true, big: true });
-  if (data.shopNameEn)  lines.push({ k: 'txt', text: data.shopNameEn,  align: 'c' });
-  if (data.companyName) lines.push({ k: 'txt', text: data.companyName, align: 'c' });
-  if (data.shopAddress) lines.push({ k: 'txt', text: data.shopAddress, align: 'c' });
-  if (data.phone)       lines.push({ k: 'txt', text: `โทร: ${data.phone}`, align: 'c' });
-  if (data.receiptType === 'receipt') {
-    if (data.taxId)      lines.push({ k: 'txt', text: `เลขผู้เสียภาษี: ${data.taxId}`, align: 'c' });
-    if (data.branch)     lines.push({ k: 'txt', text: `สาขา: ${data.branch}`, align: 'c' });
-  }
-
-  lines.push({ k: 'hr' });
-  lines.push({ k: 'row', left: `โต๊ะ: ${data.tableNumber}`, right: data.cashierName });
-  lines.push({ k: 'txt', text: `วันที่: ${data.paidAt}`, align: 'l' });
-  lines.push({ k: 'hr' });
-
-  // Items
-  for (const item of data.items) {
-    lines.push({
-      k: 'row',
-      left: item.name,
-      right: `x${item.quantity}  ฿${item.total.toFixed(2)}`,
-    });
-  }
-  lines.push({ k: 'hr' });
-
-  // Totals
-  lines.push({ k: 'row', left: 'รวม', right: `฿${data.subtotal.toFixed(2)}` });
-  if (data.discount > 0)
-    lines.push({ k: 'row', left: 'ส่วนลด', right: `-฿${data.discount.toFixed(2)}` });
-  if (data.serviceCharge > 0)
-    lines.push({ k: 'row', left: 'ค่าบริการ', right: `+฿${data.serviceCharge.toFixed(2)}` });
-  if (data.receiptType === 'receipt') {
-    const vat = data.vatPercent ?? 7;
-    const vatAmt = data.total * vat / (100 + vat);
-    lines.push({ k: 'row', left: `VAT ${vat}% (รวม)`, right: vatAmt.toFixed(2) });
-  }
-  lines.push({ k: 'row', left: 'ทั้งหมด', right: `฿${data.total.toFixed(2)}`, bold: true });
-
-  if (data.receiptType === 'receipt') {
-    lines.push({ k: 'hr' });
-    lines.push({ k: 'row', left: data.paymentMethod, right: `฿${data.receivedAmount.toFixed(2)}` });
-    if (data.changeAmount > 0)
-      lines.push({ k: 'row', left: 'เงินทอน', right: `฿${data.changeAmount.toFixed(2)}` });
-  }
-
-  lines.push({ k: 'hr' });
-  lines.push({ k: 'txt', text: data.footerNote ?? 'ขอบคุณและขอให้โชคดี', align: 'c' });
-  lines.push({ k: 'gap', n: 2 });
-
-  return renderLines(lines, paperWidth);
-}
-
-/* ─── Kitchen Order ──────────────────────────────────────────────────────── */
-
-const STATION_LABEL: Record<string, string> = {
+const STATION: Record<string, string> = {
   meat: 'เนื้อสัตว์', seafood: 'ทะเล', vegetable: 'ผัก',
   noodle: 'เส้น', dessert: 'ของหวาน', drink: 'เครื่องดื่ม', sauce: 'ซอส',
 };
 
-export async function buildBitmapKitchenOrder(
-  data: KitchenOrderData,
-  paperWidth: 58 | 80,
-): Promise<Uint8Array> {
-  await document.fonts.ready;
+/* ─── Line descriptor ────────────────────────────────────────────────────── */
 
-  const lines: Line[] = [
-    { k: 'txt', text: '*** ORDER ***', align: 'c', bold: true, big: true },
-    { k: 'hr' },
-    { k: 'row', left: `โต๊ะ: ${data.tableNumber}`, right: STATION_LABEL[data.station] ?? data.station },
-    { k: 'txt', text: `เวลา: ${data.orderedAt}`, align: 'l' },
-    { k: 'hr' },
-  ];
+type Ln =
+  | { t: 'text'; s: string; a: 'l' | 'c' | 'r'; bold?: boolean; big?: boolean }
+  | { t: 'row';  l: string; r: string; bold?: boolean }
+  | { t: 'hr' }
+  | { t: 'sp';   n?: number };
 
-  for (const item of data.items) {
-    lines.push({ k: 'row', left: item.name, right: `x${item.quantity}`, bold: true });
-    if (item.notes) lines.push({ k: 'txt', text: `  → ${item.notes}`, align: 'l' });
+/* ─── Canvas renderer ────────────────────────────────────────────────────── */
+
+async function drawToCanvas(lines: Ln[], paperWidth: 58 | 80): Promise<HTMLCanvasElement> {
+  const W = DOTS[paperWidth];
+
+  // Explicitly load the font so canvas has it before drawing
+  await document.fonts.load(`${FONT_SIZE}px ${THAI_FONT}`);
+  await document.fonts.load(`bold ${FONT_SIZE}px ${THAI_FONT}`);
+  await document.fonts.load(`${FONT_SIZE * 1.8}px ${THAI_FONT}`);
+
+  // Measure total height
+  let h = PAD_Y;
+  for (const ln of lines) {
+    if      (ln.t === 'hr') h += 14;
+    else if (ln.t === 'sp') h += (ln.n ?? 1) * LINE_H;
+    else if (ln.t === 'text' && ln.big) h += Math.round(FONT_SIZE * 1.8) + 8;
+    else h += LINE_H;
+  }
+  h += PAD_Y;
+
+  const canvas = document.createElement('canvas');
+  canvas.width  = W;
+  canvas.height = h;
+
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, h);
+  ctx.fillStyle = '#000000';
+
+  let y = PAD_Y;
+
+  for (const ln of lines) {
+    if (ln.t === 'hr') {
+      const mid = y + 7;
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(PAD_X, mid);
+      ctx.lineTo(W - PAD_X, mid);
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+      y += 14;
+
+    } else if (ln.t === 'sp') {
+      y += (ln.n ?? 1) * LINE_H;
+
+    } else if (ln.t === 'row') {
+      const fs = FONT_SIZE;
+      ctx.font = `${ln.bold ? 'bold ' : ''}${fs}px ${THAI_FONT}`;
+      const baseline = y + fs;
+      ctx.textAlign = 'left';
+      ctx.fillText(ln.l, PAD_X, baseline);
+      ctx.textAlign = 'right';
+      ctx.fillText(ln.r, W - PAD_X, baseline);
+      y += LINE_H;
+
+    } else {
+      // text
+      const fs = ln.big ? Math.round(FONT_SIZE * 1.8) : FONT_SIZE;
+      ctx.font = `${ln.bold ? 'bold ' : ''}${fs}px ${THAI_FONT}`;
+      const baseline = y + fs;
+      ctx.textAlign = ln.a === 'c' ? 'center' : ln.a === 'r' ? 'right' : 'left';
+      const x = ln.a === 'c' ? W / 2 : ln.a === 'r' ? W - PAD_X : PAD_X;
+      ctx.fillText(ln.s, x, baseline);
+      y += ln.big ? fs + 8 : LINE_H;
+    }
   }
 
-  lines.push({ k: 'hr' });
-  lines.push({ k: 'gap', n: 1 });
-
-  return renderLines(lines, paperWidth);
+  return canvas;
 }
 
-/* ─── Queue QR label ─────────────────────────────────────────────────────── */
+/* ─── Canvas → ESC/POS via ReceiptPrinterEncoder ────────────────────────── */
 
-export async function buildBitmapQueueQr(
-  data: QueueQrData,
-  paperWidth: 58 | 80,
-): Promise<Uint8Array> {
-  await document.fonts.ready;
+function encodeCanvasToEscpos(canvas: HTMLCanvasElement, paperWidth: 58 | 80): Uint8Array {
+  const cols = paperWidth === 58 ? 32 : 48;
 
-  const lines: Line[] = [
-    { k: 'txt', text: 'ตั๋วคิว', align: 'c', bold: true },
-    { k: 'txt', text: data.queueNumber, align: 'c', bold: true, big: true },
-    { k: 'txt', text: `จำนวน ${data.partySize} ท่าน`, align: 'c' },
-    { k: 'hr' },
-    { k: 'txt', text: `เวลา: ${data.createdAt}`, align: 'c' },
-    { k: 'gap', n: 1 },
-  ];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const enc = new (ReceiptPrinterEncoder as any)({
+    language: 'esc-pos',
+    columns: cols,
+    imageMode: 'raster',
+    createCanvas: (w: number, hh: number) => {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = hh;
+      return c;
+    },
+  });
 
-  return renderLines(lines, paperWidth);
+  return enc
+    .initialize()
+    .image(canvas, canvas.width, canvas.height, 'threshold')
+    .newline(3)
+    .cut('partial')
+    .encode() as Uint8Array;
 }
 
-/* ─── Table QR label ─────────────────────────────────────────────────────── */
+async function render(lines: Ln[], paperWidth: 58 | 80): Promise<Uint8Array> {
+  const canvas = await drawToCanvas(lines, paperWidth);
+  return encodeCanvasToEscpos(canvas, paperWidth);
+}
 
-export async function buildBitmapTableQr(
-  data: TableQrData,
-  paperWidth: 58 | 80,
-): Promise<Uint8Array> {
-  await document.fonts.ready;
+/* ─── Receipt ────────────────────────────────────────────────────────────── */
 
-  const lines: Line[] = [
-    { k: 'txt', text: `โต๊ะ ${data.tableNumber}`, align: 'c', bold: true, big: true },
-    { k: 'txt', text: 'สแกน QR เพื่อสั่งอาหาร', align: 'c' },
-    { k: 'hr' },
-    { k: 'txt', text: `เริ่ม: ${data.startedAt}`, align: 'l' },
-    ...(data.endsAt ? [{ k: 'txt' as const, text: `หมดเวลา: ${data.endsAt}`, align: 'l' as const }] : []),
-    { k: 'gap', n: 1 },
+export async function buildBitmapReceipt(data: ReceiptData, paperWidth: 58 | 80): Promise<Uint8Array> {
+  const lines: Ln[] = [];
+
+  lines.push({ t: 'text', s: data.shopNameTh, a: 'c', bold: true, big: true });
+  if (data.shopNameEn)  lines.push({ t: 'text', s: data.shopNameEn, a: 'c' });
+  if (data.companyName) lines.push({ t: 'text', s: data.companyName, a: 'c' });
+  if (data.shopAddress) lines.push({ t: 'text', s: data.shopAddress, a: 'c' });
+  if (data.phone)       lines.push({ t: 'text', s: `โทร: ${data.phone}`, a: 'c' });
+  if (data.receiptType === 'receipt') {
+    if (data.taxId)    lines.push({ t: 'text', s: `เลขผู้เสียภาษี: ${data.taxId}`, a: 'c' });
+    if (data.branch)   lines.push({ t: 'text', s: `สาขา: ${data.branch}`, a: 'c' });
+  }
+
+  lines.push({ t: 'hr' });
+  lines.push({ t: 'row', l: `โต๊ะ: ${data.tableNumber}`, r: data.cashierName });
+  lines.push({ t: 'text', s: `วันที่: ${data.paidAt}`, a: 'l' });
+  lines.push({ t: 'hr' });
+
+  for (const item of data.items) {
+    lines.push({ t: 'row', l: item.name, r: `x${item.quantity}  ฿${item.total.toFixed(2)}` });
+  }
+  lines.push({ t: 'hr' });
+
+  lines.push({ t: 'row', l: 'รวม',     r: `฿${data.subtotal.toFixed(2)}` });
+  if (data.discount > 0)
+    lines.push({ t: 'row', l: 'ส่วนลด', r: `-฿${data.discount.toFixed(2)}` });
+  if (data.serviceCharge > 0)
+    lines.push({ t: 'row', l: 'ค่าบริการ', r: `+฿${data.serviceCharge.toFixed(2)}` });
+  if (data.receiptType === 'receipt') {
+    const vat = data.vatPercent ?? 7;
+    const vatAmt = data.total * vat / (100 + vat);
+    lines.push({ t: 'row', l: `VAT ${vat}% (รวม)`, r: vatAmt.toFixed(2) });
+  }
+  lines.push({ t: 'row', l: 'ทั้งหมด', r: `฿${data.total.toFixed(2)}`, bold: true });
+
+  if (data.receiptType === 'receipt') {
+    lines.push({ t: 'hr' });
+    lines.push({ t: 'row', l: data.paymentMethod, r: `฿${data.receivedAmount.toFixed(2)}` });
+    if (data.changeAmount > 0)
+      lines.push({ t: 'row', l: 'เงินทอน', r: `฿${data.changeAmount.toFixed(2)}` });
+  }
+
+  lines.push({ t: 'hr' });
+  lines.push({ t: 'text', s: data.footerNote ?? 'ขอบคุณและขอให้โชคดี', a: 'c' });
+  lines.push({ t: 'sp', n: 1 });
+
+  return render(lines, paperWidth);
+}
+
+/* ─── Kitchen Order ──────────────────────────────────────────────────────── */
+
+export async function buildBitmapKitchenOrder(data: KitchenOrderData, paperWidth: 58 | 80): Promise<Uint8Array> {
+  const lines: Ln[] = [
+    { t: 'text', s: '*** ORDER ***', a: 'c', bold: true, big: true },
+    { t: 'hr' },
+    { t: 'row', l: `โต๊ะ: ${data.tableNumber}`, r: STATION[data.station] ?? data.station },
+    { t: 'text', s: `เวลา: ${data.orderedAt}`, a: 'l' },
+    { t: 'hr' },
   ];
+  for (const item of data.items) {
+    lines.push({ t: 'row', l: item.name, r: `x${item.quantity}`, bold: true });
+    if (item.notes) lines.push({ t: 'text', s: `  → ${item.notes}`, a: 'l' });
+  }
+  lines.push({ t: 'hr' }, { t: 'sp' });
+  return render(lines, paperWidth);
+}
 
-  return renderLines(lines, paperWidth);
+/* ─── Queue QR ───────────────────────────────────────────────────────────── */
+
+export async function buildBitmapQueueQr(data: QueueQrData, paperWidth: 58 | 80): Promise<Uint8Array> {
+  return render([
+    { t: 'text', s: 'ตั๋วคิว',  a: 'c', bold: true },
+    { t: 'text', s: data.queueNumber, a: 'c', bold: true, big: true },
+    { t: 'text', s: `จำนวน ${data.partySize} ท่าน`, a: 'c' },
+    { t: 'hr' },
+    { t: 'text', s: `เวลา: ${data.createdAt}`, a: 'c' },
+    { t: 'sp' },
+  ], paperWidth);
+}
+
+/* ─── Table QR ───────────────────────────────────────────────────────────── */
+
+export async function buildBitmapTableQr(data: TableQrData, paperWidth: 58 | 80): Promise<Uint8Array> {
+  const lines: Ln[] = [
+    { t: 'text', s: `โต๊ะ ${data.tableNumber}`, a: 'c', bold: true, big: true },
+    { t: 'text', s: 'สแกน QR เพื่อสั่งอาหาร', a: 'c' },
+    { t: 'hr' },
+    { t: 'text', s: `เริ่ม: ${data.startedAt}`, a: 'l' },
+  ];
+  if (data.endsAt) lines.push({ t: 'text', s: `หมดเวลา: ${data.endsAt}`, a: 'l' });
+  lines.push({ t: 'sp' });
+  return render(lines, paperWidth);
 }
