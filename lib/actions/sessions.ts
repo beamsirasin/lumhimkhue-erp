@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, or } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
@@ -172,38 +172,22 @@ export async function closeSession(input: { sessionId: string }) {
       .limit(1);
     if (!session) return { ok: false as const, error: 'ไม่พบข้อมูล session' };
 
-    // Resolve primary session id
     const primaryId = session.parentSessionId ?? input.sessionId;
 
-    // Find all sessions in the group (primary + children)
-    const linkedSessions = await db
+    // Single query fetches primary + all children (replaces 2 separate round trips)
+    const groupSessions = await db
       .select({ id: sessions.id, tableId: sessions.tableId })
       .from(sessions)
-      .where(eq(sessions.parentSessionId, primaryId));
+      .where(or(eq(sessions.id, primaryId), eq(sessions.parentSessionId, primaryId)));
 
-    const allSessionIds = [primaryId, ...linkedSessions.map((s) => s.id)];
+    const allSessionIds = groupSessions.map((s) => s.id);
+    const allTableIds = groupSessions.map((s) => s.tableId);
 
-    // Find the primary session's table
-    const [primarySession] = await db
-      .select({ tableId: sessions.tableId })
-      .from(sessions)
-      .where(eq(sessions.id, primaryId))
-      .limit(1);
-
-    const allTableIds = [
-      ...(primarySession ? [primarySession.tableId] : []),
-      ...linkedSessions.map((s) => s.tableId),
-    ];
-
-    await db
-      .update(sessions)
-      .set({ status: 'closed', closedAt: new Date() })
-      .where(inArray(sessions.id, allSessionIds));
-
-    await db
-      .update(tables)
-      .set({ status: 'available' })
-      .where(inArray(tables.id, allTableIds));
+    // Parallel: update sessions and tables simultaneously
+    await Promise.all([
+      db.update(sessions).set({ status: 'closed', closedAt: new Date() }).where(inArray(sessions.id, allSessionIds)),
+      db.update(tables).set({ status: 'available' }).where(inArray(tables.id, allTableIds)),
+    ]);
 
     revalidatePath('/tables');
     revalidatePath('/pos');
