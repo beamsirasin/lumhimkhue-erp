@@ -490,9 +490,11 @@ export async function transferPrimary(input: { newPrimarySessionId: string }) {
         .where(inArray(sessions.id, remainingIds));
     }
 
-    // 5. Update table statuses
-    await db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, newPrimSess.tableId));
-    await db.update(tables).set({ status: 'linked'   }).where(eq(tables.id, oldPrimSess.tableId));
+    // 5. Parallel: update both table statuses simultaneously
+    await Promise.all([
+      db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, newPrimSess.tableId)),
+      db.update(tables).set({ status: 'linked' }).where(eq(tables.id, oldPrimSess.tableId)),
+    ]);
 
     revalidatePath('/tables');
     revalidatePath('/pos');
