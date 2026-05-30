@@ -14,6 +14,10 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
             refetchOnWindowFocus: false,
             refetchOnReconnect: true,
             retry: 1,
+            // Keep polling active during brief network blips (common on restaurant WiFi).
+            // Without this, TanStack Query pauses all refetchInterval timers when it
+            // detects "offline", which stalls KDS/POS updates until the next focus event.
+            networkMode: 'always',
           },
         },
       }),

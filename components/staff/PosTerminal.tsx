@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -52,19 +52,21 @@ export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) 
     }
   }, [sessions, selectedId]);
 
-  const closing = sessions.filter((s) => s.status === 'closing');
-  const active = sessions.filter((s) => s.status === 'active');
+  const closing = useMemo(() => sessions.filter((s) => s.status === 'closing'), [sessions]);
+  const active = useMemo(() => sessions.filter((s) => s.status === 'active'), [sessions]);
 
-  function handlePaid() {
+  const handlePaid = useCallback(() => {
     setSelectedId(null);
     queryClient.invalidateQueries({ queryKey: ['pos-sessions'] });
-  }
+  }, [queryClient]);
 
-  const sortedSessions = [...sessions].sort((a, b) => {
+  const handleSelectSession = useCallback((id: string) => setSelectedId(id), []);
+
+  const sortedSessions = useMemo(() => [...sessions].sort((a, b) => {
     const order = (s: string) => s === 'closing' ? 0 : s === 'active' ? 1 : 2;
     if (order(a.status) !== order(b.status)) return order(a.status) - order(b.status);
     return new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime();
-  });
+  }), [sessions]);
 
   return (
     <div className="p-6">
@@ -85,7 +87,7 @@ export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) 
       ) : (
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {sortedSessions.map((s) => (
-            <SessionCard key={s.id} session={s} selected={selectedId === s.id} onClick={() => setSelectedId(s.id)} />
+            <SessionCard key={s.id} session={s} selected={selectedId === s.id} onSelect={handleSelectSession} />
           ))}
         </div>
       )}
@@ -120,7 +122,8 @@ function baseTotal(session: PosSession): number {
   return session.guests.reduce((sum, g) => sum + Number(g.pricingTile.price) * g.quantity, 0);
 }
 
-function SessionCard({ session, selected, onClick }: { session: PosSession; selected: boolean; onClick: () => void }) {
+const SessionCard = memo(function SessionCard({ session, selected, onSelect }: { session: PosSession; selected: boolean; onSelect: (id: string) => void }) {
+  const handleClick = useCallback(() => onSelect(session.id), [onSelect, session.id]);
   const total = baseTotal(session);
   const isClosing = session.status === 'closing';
   const isPaid = session.status === 'paid';
@@ -138,7 +141,7 @@ function SessionCard({ session, selected, onClick }: { session: PosSession; sele
   }
 
   return (
-    <button type="button" onClick={onClick} className={cardClass}>
+    <button type="button" onClick={handleClick} className={cardClass}>
       <div className="flex items-start justify-between gap-1">
         <span className={`text-base font-bold tabular-nums leading-tight ${selected ? 'text-white' : 'text-slate-900'}`}>
           โต๊ะ {session.table.label}
@@ -163,7 +166,7 @@ function SessionCard({ session, selected, onClick }: { session: PosSession; sele
       </p>
     </button>
   );
-}
+});
 
 function DetailPanel({ sessionId, cashierName, onPaid }: { sessionId: string; cashierName: string; onPaid: () => void }) {
   const { data, isLoading } = useQuery({

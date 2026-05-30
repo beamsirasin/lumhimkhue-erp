@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { getKdsItems, serveGroup, cancelGroup } from '@/lib/actions/kds';
@@ -64,7 +64,7 @@ function groupItems(items: KdsItem[]): KdsGroup[] {
 
 const LATE_SEC = 600;
 
-function KdsCard({
+const KdsCard = memo(function KdsCard({
   group,
   isPending,
   onServe,
@@ -176,7 +176,7 @@ function KdsCard({
       </div>
     </div>
   );
-}
+});
 
 interface KdsBoardProps {
   initialItems: KdsItem[];
@@ -215,19 +215,22 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
 
   const isPending = isServing || isCancelling;
 
-  const groups = groupItems(items);
-  const visibleGroups =
-    activeStation === 'all'
-      ? groups
-      : groups.filter((g) => g.station === activeStation);
+  const groups = useMemo(() => groupItems(items), [items]);
+  const visibleGroups = useMemo(
+    () => activeStation === 'all' ? groups : groups.filter((g) => g.station === activeStation),
+    [groups, activeStation],
+  );
 
-  // count groups per station (not items)
-  const stationGroupCount = groups.reduce<Record<string, number>>((acc, g) => {
-    acc[g.station] = (acc[g.station] ?? 0) + 1;
-    return acc;
-  }, {});
-  const stationsWithGroups = (Object.keys(STATION_LABEL) as Station[]).filter(
-    (s) => (stationGroupCount[s] ?? 0) > 0,
+  const stationGroupCount = useMemo(
+    () => groups.reduce<Record<string, number>>((acc, g) => {
+      acc[g.station] = (acc[g.station] ?? 0) + 1;
+      return acc;
+    }, {}),
+    [groups],
+  );
+  const stationsWithGroups = useMemo(
+    () => (Object.keys(STATION_LABEL) as Station[]).filter((s) => (stationGroupCount[s] ?? 0) > 0),
+    [stationGroupCount],
   );
 
   return (
