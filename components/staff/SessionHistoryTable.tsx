@@ -15,6 +15,8 @@ const METHOD_LABEL: Record<string, string> = {
   card: 'บัตร',
 };
 
+type Filter = 'all' | 'primary' | 'secondary';
+
 interface SessionHistoryTableProps {
   rows: SessionHistoryRow[];
   date: string;
@@ -22,10 +24,20 @@ interface SessionHistoryTableProps {
 
 export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
   const [detailSessionId, setDetailSessionId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>('all');
 
-  const totalRevenue = rows.reduce((s, r) => s + r.totalRevenue, 0);
-  const totalGuests = rows.reduce((s, r) => s + r.guestCount, 0);
-  const paidSessions = rows.filter((r) => r.totalRevenue > 0).length;
+  const primaryCount   = rows.filter((r) => !r.parentSessionId).length;
+  const secondaryCount = rows.filter((r) =>  r.parentSessionId).length;
+
+  const filtered = filter === 'primary'
+    ? rows.filter((r) => !r.parentSessionId)
+    : filter === 'secondary'
+      ? rows.filter((r) =>  r.parentSessionId)
+      : rows;
+
+  const totalRevenue = filtered.reduce((s, r) => s + r.totalRevenue, 0);
+  const totalGuests  = filtered.reduce((s, r) => s + r.guestCount,   0);
+  const paidSessions = filtered.filter((r) => r.totalRevenue > 0).length;
 
   return (
     <div className="p-6 space-y-4">
@@ -39,7 +51,7 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <p className="text-xs text-slate-500">จำนวน session</p>
-          <p className="mt-1 text-xl font-bold text-slate-900">{rows.length}</p>
+          <p className="mt-1 text-xl font-bold text-slate-900">{filtered.length}</p>
           <p className="text-xs text-slate-400">{paidSessions} ที่ชำระแล้ว</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -48,11 +60,40 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
         </div>
       </div>
 
+      {/* Filter tabs */}
+      <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1 w-fit">
+        {([
+          { key: 'all',       label: 'ทั้งหมด',     count: rows.length },
+          { key: 'primary',   label: 'บัญชีหลัก',   count: primaryCount },
+          { key: 'secondary', label: 'บัญชีรอง',    count: secondaryCount },
+        ] as { key: Filter; label: string; count: number }[]).map(({ key, label, count }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setFilter(key)}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              filter === key
+                ? 'bg-slate-800 text-white'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            {label}
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+              filter === key ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+            }`}>
+              {count}
+            </span>
+          </button>
+        ))}
+      </div>
+
       {/* Table */}
       <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-        {rows.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="py-16 text-center text-sm text-slate-400">
-            ไม่มีข้อมูลในวันที่ {format(new Date(date), 'd MMMM yyyy', { locale: th })}
+            {filter === 'all'
+              ? `ไม่มีข้อมูลในวันที่ ${format(new Date(date), 'd MMMM yyyy', { locale: th })}`
+              : `ไม่มี${filter === 'primary' ? 'บัญชีหลัก' : 'บัญชีรอง'}ในวันนี้`}
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -69,13 +110,12 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
-                const durationMin =
-                  row.closedAt
-                    ? differenceInMinutes(new Date(row.closedAt), new Date(row.startedAt))
-                    : null;
-
-                const isOpen = row.status !== 'closed';
+              {filtered.map((row) => {
+                const durationMin = row.closedAt
+                  ? differenceInMinutes(new Date(row.closedAt), new Date(row.startedAt))
+                  : null;
+                const isOpen      = row.status !== 'closed';
+                const isSecondary = !!row.parentSessionId;
 
                 return (
                   <tr
@@ -83,13 +123,26 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
                     className="border-b border-slate-50 last:border-0 hover:bg-slate-50 cursor-pointer"
                     onClick={() => setDetailSessionId(row.sessionId)}
                   >
-                    <td className="px-4 py-3 font-semibold text-slate-900">
-                      {row.tableLabel}
-                      {row.zone !== 'ทั่วไป' && (
-                        <span className="ml-1 text-xs font-normal text-slate-400">
-                          ({row.zone})
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-slate-900">
+                          {row.tableLabel}
+                          {row.zone !== 'ทั่วไป' && (
+                            <span className="ml-1 text-xs font-normal text-slate-400">
+                              ({row.zone})
+                            </span>
+                          )}
                         </span>
-                      )}
+                        {isSecondary ? (
+                          <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                            รอง
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                            หลัก
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 tabular-nums text-slate-600">
                       {format(new Date(row.startedAt), 'HH:mm', { locale: th })}

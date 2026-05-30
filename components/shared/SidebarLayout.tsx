@@ -51,6 +51,16 @@ function isNavGroup(item: NavItem | NavGroup): item is NavGroup {
 
 /* ─── Nav config per role ────────────────────────────────────── */
 
+const kdsGroup: NavGroup = {
+  label: 'ครัว (KDS)',
+  Icon: ChefHat,
+  matchPrefix: '/kds',
+  children: [
+    { href: '/kds',         label: 'หน้าครัว',     Icon: ChefHat },
+    { href: '/kds/history', label: 'ประวัติครัว',  Icon: History },
+  ],
+};
+
 const tableGroup: NavGroup = {
   label: 'จัดการโต๊ะ',
   Icon: Grid3X3,
@@ -67,7 +77,7 @@ const NAV: Record<Role, NavSection[]> = {
       items: [
         { href: '/dashboard', label: 'แดชบอร์ด', Icon: LayoutDashboard },
         { href: '/pos',       label: 'POS',       Icon: ShoppingCart },
-        { href: '/kds',       label: 'ครัว',       Icon: ChefHat },
+        kdsGroup,
         { href: '/queue',     label: 'คิว',        Icon: UsersRound },
         tableGroup,
       ],
@@ -88,7 +98,7 @@ const NAV: Record<Role, NavSection[]> = {
     {
       items: [
         { href: '/pos',   label: 'POS',  Icon: ShoppingCart },
-        { href: '/kds',   label: 'ครัว',  Icon: ChefHat },
+        kdsGroup,
         { href: '/queue', label: 'คิว',   Icon: UsersRound },
         tableGroup,
       ],
@@ -131,6 +141,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/pos':                   'POS / แคชเชียร์',
   '/pos/history':           'ประวัติชำระเงิน',
   '/kds':                   'ครัว (KDS)',
+  '/kds/history':           'ประวัติครัว',
   '/queue':                 'จัดการคิว',
   '/tables':                'จัดการโต๊ะ',
   '/tables/history':        'ประวัติ session',
@@ -402,11 +413,13 @@ const BOTTOM_TABS: Record<'cashier' | 'kitchen', TabItem[]> = {
 
 const BOTTOM_MORE_ITEMS: Record<'cashier' | 'kitchen', MoreItem[]> = {
   cashier: [
+    { href: '/kds/history',    label: 'ประวัติครัว',     Icon: ChefHat },
     { href: '/tables/history', label: 'ประวัติโต๊ะ',    Icon: History },
     { href: '/pos/history',    label: 'ประวัติชำระเงิน', Icon: CreditCard },
     { href: '/printers',       label: 'เครื่องพิมพ์',    Icon: Printer },
   ],
   kitchen: [
+    { href: '/kds/history',    label: 'ประวัติครัว',   Icon: ChefHat },
     { href: '/tables/history', label: 'ประวัติโต๊ะ',  Icon: History },
     { href: '/printers',       label: 'เครื่องพิมพ์', Icon: Printer },
   ],

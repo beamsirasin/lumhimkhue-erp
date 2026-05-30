@@ -49,6 +49,8 @@ import {
 import {
   openSession,
   closeSession,
+  closeSingleSession,
+  transferPrimary,
   moveSession,
   updateSessionGuests,
   setTableAvailable,
@@ -221,32 +223,67 @@ interface LinkedTablePickerProps {
 }
 
 function LinkedTablePicker({ tables, primaryTableId, selected, onToggle }: LinkedTablePickerProps) {
-  const available = tables.filter(
-    (t) => t.id !== primaryTableId && (t.status === 'available' || selected.includes(t.id)),
+  const available = new Set(
+    tables
+      .filter((t) => t.id !== primaryTableId && (t.status === 'available' || selected.includes(t.id)))
+      .map((t) => t.id),
   );
 
-  if (available.length === 0)
+  if (available.size === 0)
     return <p className="text-sm text-slate-400">ไม่มีโต๊ะว่างอื่นให้เชื่อมโยง</p>;
 
+  // Auto-fit: scale canvas so all tables are visible in a fixed 320px-tall container
+  const canvasW = Math.max(600, ...tables.map((t) => t.positionX + t.width  + 20));
+  const canvasH = Math.max(400, ...tables.map((t) => t.positionY + t.height + 20));
+  const CONTAINER_H = 320;
+  const CONTAINER_W_APPROX = 560; // dialog is ~600px wide
+  const scale = Math.min(CONTAINER_W_APPROX / canvasW, CONTAINER_H / canvasH, 1);
+
   return (
-    <div className="flex flex-wrap gap-2">
-      {available.map((t) => {
-        const active = selected.includes(t.id);
-        return (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => onToggle(t.id)}
-            className={`flex h-10 min-w-[48px] items-center justify-center rounded-lg border-2 px-3 text-sm font-semibold transition-colors ${
-              active
-                ? 'border-slate-800 bg-slate-800 text-white'
-                : 'border-slate-200 text-slate-700 hover:border-slate-400'
-            }`}
-          >
-            {t.label}
-          </button>
-        );
-      })}
+    <div
+      className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100"
+      style={{ height: CONTAINER_H }}
+    >
+      {/* scaled canvas */}
+      <div
+        className="absolute top-0 left-0 origin-top-left"
+        style={{ width: canvasW, height: canvasH, transform: `scale(${scale})` }}
+      >
+        {/* dot-grid background */}
+        <svg className="absolute inset-0 pointer-events-none" width={canvasW} height={canvasH}>
+          <defs>
+            <pattern id="lp-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+              <circle cx="1" cy="1" r="0.8" fill="#e2e8f0" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#lp-grid)" />
+        </svg>
+
+        {tables.map((t) => {
+          const isPrimary  = t.id === primaryTableId;
+          const isSelected = selected.includes(t.id);
+          const isPickable = available.has(t.id);
+
+          let bg = 'bg-slate-200 border-slate-300 text-slate-400 cursor-not-allowed'; // occupied / unavailable
+          if (isPrimary)  bg = 'bg-slate-800 border-slate-900 text-white cursor-default';
+          else if (isSelected) bg = 'bg-slate-800 border-slate-900 text-white cursor-pointer ring-2 ring-offset-1 ring-slate-600';
+          else if (isPickable)  bg = 'bg-green-100 border-green-400 text-green-800 cursor-pointer hover:bg-green-200';
+
+          return (
+            <button
+              key={t.id}
+              type="button"
+              disabled={!isPickable && !isPrimary}
+              onClick={() => isPickable && onToggle(t.id)}
+              className={`absolute flex flex-col items-center justify-center rounded-xl border-2 font-semibold transition-colors select-none ${bg}`}
+              style={{ left: t.positionX, top: t.positionY, width: t.width, height: t.height }}
+            >
+              <span className="text-sm leading-tight">{t.label}</span>
+              {isSelected && <span className="text-[10px] mt-0.5 opacity-80">✓</span>}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -772,6 +809,33 @@ function TableSheet({
   const resv = table.activeReservation;
   const visualStatus = getVisualStatus(table);
 
+  // Whether this table is part of a linked group (primary or secondary)
+  const isInLinkedGroup = sess
+    ? !!sess.parentSessionId || allTables.some((t) => t.activeSession?.parentSessionId === sess.id)
+    : false;
+
+  const handleCloseAll = () => {
+    if (!sess) return;
+    openConfirm(`ปิดโต๊ะทั้งกลุ่มพร้อมกัน?`, async () => {
+      setBusy(true);
+      const r = await closeSession({ sessionId: sess.id });
+      setBusy(false);
+      if (r.ok) { toast.success('ปิดทุกโต๊ะในกลุ่มแล้ว'); onClose(); onRefetch(); }
+      else toast.error(r.error);
+    });
+  };
+
+  const handleCloseSingle = () => {
+    if (!sess) return;
+    openConfirm(`ปิดเฉพาะโต๊ะ ${table.label}?`, async () => {
+      setBusy(true);
+      const r = await closeSingleSession({ sessionId: sess.id });
+      setBusy(false);
+      if (r.ok) { toast.success(`ปิดโต๊ะ ${table.label} แล้ว`); onClose(); onRefetch(); }
+      else toast.error(r.error);
+    });
+  };
+
   const handleForceClose = () => {
     if (!sess) return;
     const doClose = async () => {
@@ -786,6 +850,14 @@ function TableSheet({
     } else {
       doClose();
     }
+  };
+
+  const handleTransferPrimary = async (newPrimarySessionId: string) => {
+    setBusy(true);
+    const r = await transferPrimary({ newPrimarySessionId });
+    setBusy(false);
+    if (r.ok) { toast.success('เปลี่ยนโต๊ะหลักแล้ว'); onClose(); onRefetch(); }
+    else toast.error(r.error);
   };
 
   const handleCancelReservation = () => {
@@ -811,13 +883,26 @@ function TableSheet({
               โต๊ะ {table.label}
               {table.zone !== 'ทั่วไป' && <span className="ml-1.5 text-sm font-normal text-slate-500">({table.zone})</span>}
             </DialogTitle>
-            <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${
-              visualStatus === 'paid'
-                ? 'bg-emerald-100 text-emerald-700'
-                : `${STATUS_CONFIG[visualStatus].bg} ${STATUS_CONFIG[visualStatus].text}`
-            }`}>
-              {STATUS_CONFIG[visualStatus].label}
-            </span>
+            {/* เปลี่ยนโต๊ะหลัก — shown only on secondary tables */}
+            {sess?.parentSessionId && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => handleTransferPrimary(sess.id)}
+                className="ml-auto rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-700 hover:bg-violet-200 disabled:opacity-50 transition-colors"
+              >
+                ตั้งเป็นหลัก
+              </button>
+            )}
+            {!sess?.parentSessionId && (
+              <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${
+                visualStatus === 'paid'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : `${STATUS_CONFIG[visualStatus].bg} ${STATUS_CONFIG[visualStatus].text}`
+              }`}>
+                {STATUS_CONFIG[visualStatus].label}
+              </span>
+            )}
           </div>
         </DialogHeader>
 
@@ -854,47 +939,24 @@ function TableSheet({
           {/* ── OCCUPIED ── */}
           {visualStatus === 'occupied' && sess && (
             <>
-              {/* Session info */}
-              <div className="rounded-xl bg-slate-50 p-3 space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="flex items-center gap-1.5 text-slate-500"><Clock className="size-3.5" />เริ่ม</span>
-                  <span className="font-medium">{new Date(sess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">เวลาที่ผ่านมา</span>
-                  <span className="font-medium">{formatDistanceToNowStrict(new Date(sess.startedAt), { locale: th })}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="flex items-center gap-1.5 text-slate-500"><Users className="size-3.5" />จำนวนคน</span>
-                  <span className="font-medium">{sess.totalGuests} คน</span>
-                </div>
-                {sess.guests.map((g) => (
-                  <div key={g.id} className="flex justify-between pl-3 text-xs text-slate-400">
-                    <span>{g.pricingTile.name} ×{g.quantity}</span>
-                    <span>฿{(Number(g.pricingTile.price) * g.quantity).toLocaleString('th-TH')}</span>
-                  </div>
-                ))}
-                <div className="flex justify-between border-t border-slate-200 pt-1.5">
-                  <span className="text-slate-500">ยอดค่าอาหาร</span>
-                  <span className="font-semibold text-slate-900">฿{sess.baseAmount.toLocaleString('th-TH')}</span>
-                </div>
-                {sess.parentSessionId && (
-                  <p className="text-xs text-violet-600 flex items-center gap-1"><Link2 className="size-3" />โต๊ะลิงก์</p>
-                )}
-                {sess.notes && <p className="text-xs text-slate-400 italic">{sess.notes}</p>}
-              </div>
-
-              {/* Quick-access: Link + Print QR for primary table and every linked table */}
               {(() => {
-                const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
-                const startedAtStr = new Date(sess.startedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Bangkok' });
+                // If this is a secondary (linked) table, resolve the primary for display.
+                // Actions (move, edit, close) still use the clicked table's own session.
+                const primaryTable = sess.parentSessionId
+                  ? allTables.find((t) => t.activeSession?.id === sess.parentSessionId) ?? null
+                  : null;
+                const displaySess = primaryTable?.activeSession ?? sess;
+                const displayTable = primaryTable ?? table;
 
-                // Build entries: primary first, then children
+                const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
+                const startedAtStr = new Date(displaySess.startedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Bangkok' });
+
+                // Build Link/QR entries: primary first, then all linked children
                 const linkedChildren = allTables.filter(
-                  (t) => t.activeSession?.parentSessionId === sess.id,
+                  (t) => t.activeSession?.parentSessionId === displaySess.id,
                 );
                 const entries = [
-                  { label: table.label, qrToken: table.qrToken, sessionToken: sess.sessionToken },
+                  { label: displayTable.label, qrToken: displayTable.qrToken, sessionToken: displaySess.sessionToken },
                   ...linkedChildren.map((t) => ({
                     label: t.label,
                     qrToken: t.qrToken,
@@ -904,37 +966,67 @@ function TableSheet({
                 const isMultiple = entries.length > 1;
 
                 return (
-                  <div className="space-y-1.5">
-                    {entries.map((entry) => {
-                      const url = `${appUrl}/t/${entry.qrToken}/s/${entry.sessionToken}`;
-                      return (
-                        <div key={entry.sessionToken} className="flex items-center gap-2">
-                          {isMultiple && (
-                            <span className="w-12 shrink-0 text-xs font-medium text-slate-500">
-                              โต๊ะ {entry.label}
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => window.open(url, '_blank')}
-                            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-                          >
-                            <Link2 className="size-3.5" />Link
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const qrPrint: TableQrData = { tableNumber: entry.label, url, startedAt: startedAtStr };
-                              void printTableQr({ type: 'table_qr', table: qrPrint });
-                            }}
-                            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-                          >
-                            <Printer className="size-3.5" />พิมพ์ QR
-                          </button>
+                  <>
+                    {/* Session info — always from primary */}
+                    <div className="rounded-xl bg-slate-50 p-3 space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="flex items-center gap-1.5 text-slate-500"><Clock className="size-3.5" />เริ่ม</span>
+                        <span className="font-medium">{new Date(displaySess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">เวลาที่ผ่านมา</span>
+                        <span className="font-medium">{formatDistanceToNowStrict(new Date(displaySess.startedAt), { locale: th })}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="flex items-center gap-1.5 text-slate-500"><Users className="size-3.5" />จำนวนคน</span>
+                        <span className="font-medium">{displaySess.totalGuests} คน</span>
+                      </div>
+                      {displaySess.guests.map((g) => (
+                        <div key={g.id} className="flex justify-between pl-3 text-xs text-slate-400">
+                          <span>{g.pricingTile.name} ×{g.quantity}</span>
+                          <span>฿{(Number(g.pricingTile.price) * g.quantity).toLocaleString('th-TH')}</span>
                         </div>
-                      );
-                    })}
-                  </div>
+                      ))}
+                      <div className="flex justify-between border-t border-slate-200 pt-1.5">
+                        <span className="text-slate-500">ยอดค่าอาหาร</span>
+                        <span className="font-semibold text-slate-900">฿{displaySess.baseAmount.toLocaleString('th-TH')}</span>
+                      </div>
+                      {displaySess.notes && <p className="text-xs text-slate-400 italic">{displaySess.notes}</p>}
+                    </div>
+
+                    {/* Link + QR — all tables in the group */}
+                    <div className="space-y-1.5">
+                      {entries.map((entry) => {
+                        const url = `${appUrl}/t/${entry.qrToken}/s/${entry.sessionToken}`;
+                        return (
+                          <div key={entry.sessionToken} className="flex items-center gap-2">
+                            {isMultiple && (
+                              <span className="w-12 shrink-0 text-xs font-medium text-slate-500">
+                                โต๊ะ {entry.label}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => window.open(url, '_blank')}
+                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                            >
+                              <Link2 className="size-3.5" />Link
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const qrPrint: TableQrData = { tableNumber: entry.label, url, startedAt: startedAtStr };
+                                void printTableQr({ type: 'table_qr', table: qrPrint });
+                              }}
+                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                            >
+                              <Printer className="size-3.5" />พิมพ์ QR
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 );
               })()}
 
@@ -953,19 +1045,29 @@ function TableSheet({
                 <button
                   type="button"
                   onClick={() => { onClose(); onMoveTable(sess.id, table.label); }}
-                  disabled={busy || !!sess.parentSessionId}
+                  disabled={busy}
                   className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
                 >
                   <span className="flex items-center justify-center gap-2"><MoveRight className="size-4" />ย้ายโต๊ะ</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={handleForceClose}
-                  disabled={busy}
-                  className="w-full rounded-xl border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
-                >
-                  บังคับปิดโต๊ะ
-                </button>
+
+                {isInLinkedGroup ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={handleCloseSingle} disabled={busy}
+                      className="rounded-xl border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
+                      ปิดโต๊ะนี้
+                    </button>
+                    <button type="button" onClick={handleCloseAll} disabled={busy}
+                      className="rounded-xl border border-red-400 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors">
+                      ปิดทั้งหมด
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={handleForceClose} disabled={busy}
+                    className="w-full rounded-xl border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
+                    บังคับปิดโต๊ะ
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -1089,35 +1191,98 @@ function TableSheet({
             </>
           )}
 
-          {/* ── LINKED ── */}
+          {/* ── LINKED (secondary table) — show same full view as primary ── */}
           {visualStatus === 'linked' && sess && (
             <>
-              <div className="rounded-xl bg-violet-50 p-3 border border-violet-100 space-y-2 text-sm">
-                <div className="flex items-center gap-2">
-                  <Link2 className="size-4 text-violet-600 shrink-0" />
-                  <p className="font-medium text-violet-900">โต๊ะนี้ถูกเชื่อมโยงกับ session อื่น</p>
-                </div>
-                <p className="text-xs text-slate-500">จัดการผ่านโต๊ะหลักที่เปิด session</p>
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-500">เริ่ม</span>
-                  <span className="font-medium">{new Date(sess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-slate-500">เวลาที่ผ่านมา</span>
-                  <span>{formatDistanceToNowStrict(new Date(sess.startedAt), { locale: th })}</span>
+              {(() => {
+                const primaryTable = allTables.find((t) => t.activeSession?.id === sess.parentSessionId) ?? null;
+                const displaySess = primaryTable?.activeSession ?? sess;
+                const displayTable = primaryTable ?? table;
+
+                const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
+                const startedAtStr = new Date(displaySess.startedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Bangkok' });
+                const linkedChildren = allTables.filter((t) => t.activeSession?.parentSessionId === displaySess.id);
+                const entries = [
+                  { label: displayTable.label, qrToken: displayTable.qrToken, sessionToken: displaySess.sessionToken },
+                  ...linkedChildren.map((t) => ({ label: t.label, qrToken: t.qrToken, sessionToken: t.activeSession!.sessionToken })),
+                ];
+                const isMultiple = entries.length > 1;
+
+                return (
+                  <>
+                    <div className="rounded-xl bg-slate-50 p-3 space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="flex items-center gap-1.5 text-slate-500"><Clock className="size-3.5" />เริ่ม</span>
+                        <span className="font-medium">{new Date(displaySess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">เวลาที่ผ่านมา</span>
+                        <span className="font-medium">{formatDistanceToNowStrict(new Date(displaySess.startedAt), { locale: th })}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="flex items-center gap-1.5 text-slate-500"><Users className="size-3.5" />จำนวนคน</span>
+                        <span className="font-medium">{displaySess.totalGuests} คน</span>
+                      </div>
+                      {displaySess.guests.map((g) => (
+                        <div key={g.id} className="flex justify-between pl-3 text-xs text-slate-400">
+                          <span>{g.pricingTile.name} ×{g.quantity}</span>
+                          <span>฿{(Number(g.pricingTile.price) * g.quantity).toLocaleString('th-TH')}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between border-t border-slate-200 pt-1.5">
+                        <span className="text-slate-500">ยอดค่าอาหาร</span>
+                        <span className="font-semibold text-slate-900">฿{displaySess.baseAmount.toLocaleString('th-TH')}</span>
+                      </div>
+                      {displaySess.notes && <p className="text-xs text-slate-400 italic">{displaySess.notes}</p>}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {entries.map((entry) => {
+                        const url = `${appUrl}/t/${entry.qrToken}/s/${entry.sessionToken}`;
+                        return (
+                          <div key={entry.sessionToken} className="flex items-center gap-2">
+                            {isMultiple && <span className="w-12 shrink-0 text-xs font-medium text-slate-500">โต๊ะ {entry.label}</span>}
+                            <button type="button" onClick={() => window.open(url, '_blank')}
+                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+                              <Link2 className="size-3.5" />Link
+                            </button>
+                            <button type="button" onClick={() => { const qr: TableQrData = { tableNumber: entry.label, url, startedAt: startedAtStr }; void printTableQr({ type: 'table_qr', table: qr }); }}
+                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+                              <Printer className="size-3.5" />พิมพ์ QR
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                );
+              })()}
+
+              <div className="space-y-2">
+                <button type="button"
+                  onClick={() => { onClose(); onEditGuests(sess.id, sess.guests.map((g) => ({ pricingTileId: g.pricingTile.id, quantity: g.quantity }))); }}
+                  disabled={busy}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors">
+                  <span className="flex items-center justify-center gap-2"><Pencil className="size-4" />แก้ไข</span>
+                </button>
+                <button type="button"
+                  onClick={() => { onClose(); onMoveTable(sess.id, table.label); }}
+                  disabled={busy}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors">
+                  <span className="flex items-center justify-center gap-2"><MoveRight className="size-4" />ย้ายโต๊ะ</span>
+                </button>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={handleCloseSingle} disabled={busy}
+                    className="rounded-xl border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
+                    ปิดโต๊ะนี้
+                  </button>
+                  <button type="button" onClick={handleCloseAll} disabled={busy}
+                    className="rounded-xl border border-red-400 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors">
+                    ปิดทั้งหมด
+                  </button>
                 </div>
               </div>
-              {/* Find the primary table and highlight it */}
-              {(() => {
-                const primaryTable = allTables.find(
-                  (t) => t.activeSession?.id === sess.parentSessionId,
-                );
-                return primaryTable ? (
-                  <p className="text-xs text-slate-500">
-                    โต๊ะหลัก: <span className="font-semibold text-slate-800">{primaryTable.label}</span>
-                  </p>
-                ) : null;
-              })()}
             </>
           )}
         </div>

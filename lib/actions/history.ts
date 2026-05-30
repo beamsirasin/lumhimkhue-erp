@@ -31,6 +31,7 @@ export async function getSessionHistory(dateStr: string) {
       .select({
         sessionId: sessions.id,
         sessionToken: sessions.sessionToken,
+        parentSessionId: sessions.parentSessionId,
         tableLabel: tables.label,
         zone: tables.zone,
         startedAt: sessions.startedAt,
@@ -61,6 +62,7 @@ export async function getSessionHistory(dateStr: string) {
       data: rows.map((r) => ({
         sessionId: r.sessionId,
         sessionToken: r.sessionToken,
+        parentSessionId: r.parentSessionId,
         tableLabel: r.tableLabel,
         zone: r.zone,
         startedAt: r.startedAt,

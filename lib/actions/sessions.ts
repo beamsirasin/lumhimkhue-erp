@@ -333,10 +333,6 @@ export async function moveSession(input: { sessionId: string; newTableId: string
       .limit(1);
     if (!session) return { ok: false as const, error: 'ไม่พบ session' };
 
-    // Only primary sessions can be moved
-    if (session.parentSessionId)
-      return { ok: false as const, error: 'สามารถย้ายได้เฉพาะโต๊ะหลักเท่านั้น' };
-
     const [newTable] = await db
       .select({ status: tables.status, label: tables.label })
       .from(tables)
@@ -347,6 +343,8 @@ export async function moveSession(input: { sessionId: string; newTableId: string
       return { ok: false as const, error: `โต๊ะ ${newTable.label} ไม่ว่างในขณะนี้` };
 
     const oldTableId = session.tableId;
+    // Secondary sessions keep 'linked' status on their new table
+    const newTableStatus = session.parentSessionId ? 'linked' : 'occupied';
 
     // Move session to new table
     await db
@@ -356,13 +354,165 @@ export async function moveSession(input: { sessionId: string; newTableId: string
 
     // Update table statuses
     await db.update(tables).set({ status: 'available' }).where(eq(tables.id, oldTableId));
-    await db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, input.newTableId));
+    await db.update(tables).set({ status: newTableStatus }).where(eq(tables.id, input.newTableId));
 
     revalidatePath('/tables');
     revalidatePath('/pos');
     return { ok: true as const };
   } catch (e) {
     console.error('[moveSession]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
+  }
+}
+
+/* ─── closeSingleSession ─────────────────────────────────────────────── */
+// Close only this one table/session and detach it from the linked group.
+// If it's the primary, elect the first remaining secondary as the new primary.
+
+export async function closeSingleSession(input: { sessionId: string }) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'manage_tables'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  try {
+    const [sess] = await db
+      .select({ tableId: sessions.tableId, parentSessionId: sessions.parentSessionId })
+      .from(sessions)
+      .where(eq(sessions.id, input.sessionId))
+      .limit(1);
+    if (!sess) return { ok: false as const, error: 'ไม่พบ session' };
+
+    const isPrimary = !sess.parentSessionId;
+
+    if (isPrimary) {
+      // Find all children
+      const children = await db
+        .select({ id: sessions.id, tableId: sessions.tableId })
+        .from(sessions)
+        .where(eq(sessions.parentSessionId, input.sessionId));
+
+      if (children.length > 0) {
+        // Elect first child as new primary
+        const newPrimary = children[0];
+        const rest = children.slice(1);
+
+        // Transfer guests to new primary
+        await db
+          .update(sessionGuests)
+          .set({ sessionId: newPrimary.id })
+          .where(eq(sessionGuests.sessionId, input.sessionId));
+
+        // New primary: clear parentSessionId
+        await db
+          .update(sessions)
+          .set({ parentSessionId: null })
+          .where(eq(sessions.id, newPrimary.id));
+
+        // Remaining children: point to new primary
+        if (rest.length > 0) {
+          await db
+            .update(sessions)
+            .set({ parentSessionId: newPrimary.id })
+            .where(inArray(sessions.id, rest.map((r) => r.id)));
+        }
+
+        // Update table statuses
+        await db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, newPrimary.tableId));
+      }
+    }
+
+    // Close this session and free its table
+    await db
+      .update(sessions)
+      .set({ status: 'closed', closedAt: new Date() })
+      .where(eq(sessions.id, input.sessionId));
+    await db
+      .update(tables)
+      .set({ status: 'available' })
+      .where(eq(tables.id, sess.tableId));
+
+    revalidatePath('/tables');
+    revalidatePath('/pos');
+    return { ok: true as const };
+  } catch (e) {
+    console.error('[closeSingleSession]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
+  }
+}
+
+/* ─── transferPrimary ────────────────────────────────────────────────── */
+// Make a secondary session the new primary of the linked group.
+// Transfers guest (billing) data to the new primary's session.
+
+export async function transferPrimary(input: { newPrimarySessionId: string }) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'manage_tables'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  try {
+    const [newPrimSess] = await db
+      .select({ tableId: sessions.tableId, parentSessionId: sessions.parentSessionId })
+      .from(sessions)
+      .where(eq(sessions.id, input.newPrimarySessionId))
+      .limit(1);
+    if (!newPrimSess) return { ok: false as const, error: 'ไม่พบ session' };
+    if (!newPrimSess.parentSessionId) return { ok: false as const, error: 'โต๊ะนี้เป็นโต๊ะหลักอยู่แล้ว' };
+
+    const oldPrimaryId = newPrimSess.parentSessionId;
+
+    const [oldPrimSess] = await db
+      .select({ tableId: sessions.tableId })
+      .from(sessions)
+      .where(eq(sessions.id, oldPrimaryId))
+      .limit(1);
+    if (!oldPrimSess) return { ok: false as const, error: 'ไม่พบ session หลัก' };
+
+    // All other children (excluding the new primary)
+    const otherChildren = await db
+      .select({ id: sessions.id })
+      .from(sessions)
+      .where(eq(sessions.parentSessionId, oldPrimaryId));
+
+    // 1. Transfer session_guests from old primary to new primary
+    await db
+      .update(sessionGuests)
+      .set({ sessionId: input.newPrimarySessionId })
+      .where(eq(sessionGuests.sessionId, oldPrimaryId));
+
+    // 2. New primary: clear parentSessionId
+    await db
+      .update(sessions)
+      .set({ parentSessionId: null })
+      .where(eq(sessions.id, input.newPrimarySessionId));
+
+    // 3. Old primary becomes secondary → points to new primary
+    await db
+      .update(sessions)
+      .set({ parentSessionId: input.newPrimarySessionId })
+      .where(eq(sessions.id, oldPrimaryId));
+
+    // 4. Remaining children → point to new primary
+    const remainingIds = otherChildren
+      .map((c) => c.id)
+      .filter((id) => id !== input.newPrimarySessionId);
+    if (remainingIds.length > 0) {
+      await db
+        .update(sessions)
+        .set({ parentSessionId: input.newPrimarySessionId })
+        .where(inArray(sessions.id, remainingIds));
+    }
+
+    // 5. Update table statuses
+    await db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, newPrimSess.tableId));
+    await db.update(tables).set({ status: 'linked'   }).where(eq(tables.id, oldPrimSess.tableId));
+
+    revalidatePath('/tables');
+    revalidatePath('/pos');
+    return { ok: true as const };
+  } catch (e) {
+    console.error('[transferPrimary]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
   }
 }

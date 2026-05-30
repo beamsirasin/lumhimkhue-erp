@@ -1,11 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { formatDistanceToNowStrict } from 'date-fns';
-import { th } from 'date-fns/locale';
 import { toast } from 'sonner';
-import { getKdsItems, serveGroup } from '@/lib/actions/kds';
+import { getKdsItems, serveGroup, cancelGroup } from '@/lib/actions/kds';
 import type { KdsItem } from '@/lib/actions/kds';
 
 type Station = KdsItem['station'];
@@ -64,6 +62,122 @@ function groupItems(items: KdsItem[]): KdsGroup[] {
   });
 }
 
+const LATE_SEC = 600;
+
+function KdsCard({
+  group,
+  isPending,
+  onServe,
+  onCancel,
+}: {
+  group: KdsGroup;
+  isPending: boolean;
+  onServe: () => void;
+  onCancel: () => void;
+}) {
+  const [seconds, setSeconds] = useState(0);
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    const tick = () =>
+      setSeconds(Math.floor((Date.now() - group.orderedAt.getTime()) / 1000));
+    tick(); // sync immediately after hydration
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [group.orderedAt]);
+
+  const isLate = seconds >= LATE_SEC;
+
+  return (
+    <div className={`flex flex-col overflow-hidden rounded-xl border-2 ${
+      isLate ? 'border-red-400 bg-red-50' : 'border-amber-300 bg-amber-50'
+    }`}>
+      {/* Card header */}
+      <div className={`flex items-center justify-between px-3 py-2 border-b ${
+        isLate ? 'bg-red-100 border-red-200' : 'bg-amber-100 border-amber-200'
+      }`}>
+        <div>
+          <p className="text-sm font-bold text-slate-900">โต๊ะ {group.tableNumber}</p>
+          <p className={`text-[11px] font-medium ${isLate ? 'text-red-700' : 'text-amber-700'}`}>
+            {STATION_LABEL[group.station]}
+          </p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className={`text-[10px] tabular-nums font-semibold ${isLate ? 'text-red-600' : 'text-slate-500'}`}>
+            {seconds}s
+          </p>
+          {isLate && (
+            <p className="text-[9px] font-bold text-red-500">เสิร์ฟช้า</p>
+          )}
+        </div>
+      </div>
+
+      {/* Item list */}
+      <ul className="flex-1 divide-y divide-amber-100 px-2 py-1">
+        {group.items.map((item) => (
+          <li key={item.id} className="flex items-center gap-1.5 py-1.5">
+            {item.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={item.imageUrl}
+                alt={item.menuItemName}
+                className={`h-7 w-7 rounded object-cover shrink-0 border ${
+                  isLate ? 'border-red-200' : 'border-amber-200'
+                }`}
+              />
+            ) : (
+              <div className={`h-7 w-7 rounded shrink-0 ${isLate ? 'bg-red-200' : 'bg-amber-200'}`} />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold leading-tight text-slate-900 truncate">
+                {item.menuItemName}
+              </p>
+              {item.notes && (
+                <p className="mt-0.5 text-[10px] text-slate-500 truncate">{item.notes}</p>
+              )}
+            </div>
+            <span className="shrink-0 text-sm font-bold tabular-nums text-slate-800">
+              ×{item.quantity}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      {/* Action buttons */}
+      <div className="px-2 pb-2 flex gap-1.5">
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={onServe}
+          className="flex-1 rounded-lg bg-green-600 py-2 text-xs font-bold text-white hover:bg-green-700 active:bg-green-800 disabled:opacity-50 transition-colors"
+        >
+          เสิร์ฟ
+        </button>
+        {confirming ? (
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() => { setConfirming(false); onCancel(); }}
+            className="flex-1 rounded-lg bg-red-600 py-2 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+          >
+            ยืนยัน?
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() => setConfirming(true)}
+            onBlur={() => setConfirming(false)}
+            className="rounded-lg border border-slate-300 px-2.5 py-2 text-xs font-medium text-slate-500 hover:border-red-300 hover:text-red-600 disabled:opacity-50 transition-colors"
+          >
+            ยกเลิก
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface KdsBoardProps {
   initialItems: KdsItem[];
 }
@@ -80,7 +194,7 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
     staleTime: 1_000,
   });
 
-  const { mutate: serve, isPending } = useMutation({
+  const { mutate: serve, isPending: isServing } = useMutation({
     mutationFn: (itemIds: string[]) => serveGroup({ itemIds }),
     onSuccess: (result) => {
       if (!result.ok) { toast.error(result.error); return; }
@@ -88,6 +202,18 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
     },
     onError: () => toast.error('เกิดข้อผิดพลาด'),
   });
+
+  const { mutate: cancel, isPending: isCancelling } = useMutation({
+    mutationFn: (itemIds: string[]) => cancelGroup({ itemIds }),
+    onSuccess: (result) => {
+      if (!result.ok) { toast.error(result.error); return; }
+      toast.success('ยกเลิกออเดอร์แล้ว');
+      queryClient.invalidateQueries({ queryKey: ['kds-items'] });
+    },
+    onError: () => toast.error('เกิดข้อผิดพลาด'),
+  });
+
+  const isPending = isServing || isCancelling;
 
   const groups = groupItems(items);
   const visibleGroups =
@@ -153,72 +279,15 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
             <p className="text-slate-500">ไม่มีรายการที่รอเสิร์ฟ</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid grid-cols-6 gap-4">
             {visibleGroups.map((group) => (
-              <div
+              <KdsCard
                 key={group.groupKey}
-                className="flex flex-col overflow-hidden rounded-xl border-2 border-amber-300 bg-amber-50"
-              >
-                {/* Card header */}
-                <div className="flex items-center justify-between px-4 py-3 bg-amber-100 border-b border-amber-200">
-                  <div>
-                    <p className="text-base font-bold text-slate-900">
-                      โต๊ะ {group.tableNumber}
-                    </p>
-                    <p className="text-xs font-medium text-amber-700">
-                      {STATION_LABEL[group.station]}
-                    </p>
-                  </div>
-                  <p className="text-xs text-slate-500 text-right">
-                    {formatDistanceToNowStrict(group.orderedAt, {
-                      locale: th,
-                      addSuffix: true,
-                    })}
-                  </p>
-                </div>
-
-                {/* Item list */}
-                <ul className="flex-1 divide-y divide-amber-100 px-3 py-2">
-                  {group.items.map((item) => (
-                    <li key={item.id} className="flex items-center gap-2.5 py-2">
-                      {/* Thumbnail */}
-                      {item.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={item.imageUrl}
-                          alt={item.menuItemName}
-                          className="h-10 w-10 rounded-md object-cover shrink-0 border border-amber-200"
-                        />
-                      ) : (
-                        <div className="h-10 w-10 rounded-md bg-amber-200 shrink-0" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold leading-tight text-slate-900 truncate">
-                          {item.menuItemName}
-                        </p>
-                        {item.notes && (
-                          <p className="mt-0.5 text-xs text-slate-500 truncate">{item.notes}</p>
-                        )}
-                      </div>
-                      <span className="shrink-0 text-lg font-bold tabular-nums text-slate-800">
-                        ×{item.quantity}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-
-                {/* Serve button */}
-                <div className="px-3 pb-3">
-                  <button
-                    type="button"
-                    disabled={isPending}
-                    onClick={() => serve(group.items.map((i) => i.id))}
-                    className="w-full rounded-lg bg-green-600 py-2.5 text-sm font-bold text-white hover:bg-green-700 active:bg-green-800 disabled:opacity-50 transition-colors"
-                  >
-                    เสิร์ฟ
-                  </button>
-                </div>
-              </div>
+                group={group}
+                isPending={isPending}
+                onServe={() => serve(group.items.map((i) => i.id))}
+                onCancel={() => cancel(group.items.map((i) => i.id))}
+              />
             ))}
           </div>
         )}

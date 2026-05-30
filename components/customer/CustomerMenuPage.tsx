@@ -173,9 +173,9 @@ export function CustomerMenuPage({
   const isClosed = session.status === 'closing' || session.status === 'closed';
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-28">
+    <div className="min-h-screen bg-slate-50 pt-[88px] pb-28">
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-white border-b border-slate-200">
+      <header className="fixed inset-x-0 top-0 z-10 bg-white border-b border-slate-200">
         <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2">
           {/* Logo + table */}
           <div className="flex items-center gap-2 min-w-0">
