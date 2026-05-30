@@ -204,6 +204,7 @@ function NavGroupItem({
               <Link
                 key={href}
                 href={href}
+                prefetch={false}
                 onClick={onNavigate}
                 className={`flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors ${
                   isActive
@@ -261,6 +262,7 @@ function NavItems({
                 <Link
                   key={href}
                   href={href}
+                  prefetch={false}
                   onClick={onNavigate}
                   className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                     isActive
@@ -498,6 +500,7 @@ function CashierLayout({
             <Link
               key={href}
               href={href}
+              prefetch={false}
               className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors ${
                 isActive ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'
               }`}
@@ -559,6 +562,7 @@ function CashierLayout({
                   <Link
                     key={href}
                     href={href}
+                    prefetch={false}
                     onClick={() => setMoreOpen(false)}
                     className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium transition-colors ${
                       isActive
