@@ -16,7 +16,7 @@ import { getStoreSettings } from '@/lib/actions/store';
 import type { StoreSettingsData } from '@/lib/actions/store';
 import { resolveBillConfig } from '@/lib/utils/billConfig';
 import type { PosSession, PosSessionDetail } from '@/lib/actions/pos';
-import { Printer, CheckCircle2, Tag, Package, X } from 'lucide-react';
+import { Printer, CheckCircle2, Tag, Package, X, Loader2 } from 'lucide-react';
 import { PricingTile as PricingTileCard } from '@/components/staff/PricingTile';
 import { print as printReceipt } from '@/lib/printer/service';
 import type { ReceiptData } from '@/lib/printer/types';
@@ -479,7 +479,8 @@ function PaymentPanel({
             <Printer className="size-4" />พิมพ์ซ้ำ
           </button>
           <button type="button" onClick={handleForceClose} disabled={submitting}
-            className="flex-1 rounded-lg border border-red-300 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-red-300 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
+            {submitting && <Loader2 className="size-3.5 animate-spin" />}
             {submitting ? 'กำลังปิด…' : 'บังคับปิดโต๊ะ'}
           </button>
           <button type="button" onClick={onPaid} className="flex-1 rounded-lg bg-slate-800 py-3 text-sm font-semibold text-white hover:bg-slate-700">เสร็จสิ้น</button>
@@ -636,7 +637,8 @@ function PaymentPanel({
 
         <button type="button" onClick={handleSubmit}
           disabled={submitting || (method === 'cash' && (!received || change < 0))}
-          className="w-full rounded-lg bg-slate-800 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50">
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-800 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50">
+          {submitting && <Loader2 className="size-4 animate-spin" />}
           {submitting ? 'กำลังดำเนินการ…' : `ยืนยันการชำระเงิน ฿${total.toLocaleString('th-TH')}`}
         </button>
       </div>
