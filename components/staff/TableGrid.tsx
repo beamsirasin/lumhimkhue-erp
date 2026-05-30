@@ -20,6 +20,7 @@ import {
   BadgeCheck,
   CheckCircle2,
   Pencil,
+  Loader2,
 } from 'lucide-react';
 import {
   Dialog,
@@ -493,6 +494,7 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
                 <Link2 className="size-3.5" />เชื่อมโต๊ะ
               </button>
               <Button onClick={handleSubmit} disabled={submitting}>
+                {submitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
                 {submitting ? 'กำลังเปิด...' : 'เปิดโต๊ะ'}
               </Button>
             </>
@@ -500,6 +502,7 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
             <>
               <button type="button" onClick={() => setStep('tiles')} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">ย้อนกลับ</button>
               <Button onClick={handleSubmit} disabled={submitting}>
+                {submitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
                 {submitting ? 'กำลังเปิด...' : 'เปิดโต๊ะ'}
               </Button>
             </>
@@ -662,7 +665,10 @@ function ReservationFlow({ open, table, allTables, pricingTiles, onClose, onSucc
           {step === 'link' && (
             <>
               <button type="button" onClick={() => setStep('tiles')} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">ย้อนกลับ</button>
-              <Button onClick={handleSubmit} disabled={submitting}>{submitting ? 'กำลังจอง...' : 'ยืนยันจอง'}</Button>
+              <Button onClick={handleSubmit} disabled={submitting}>
+                {submitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
+                {submitting ? 'กำลังจอง...' : 'ยืนยันจอง'}
+              </Button>
             </>
           )}
         </DialogFooter>
@@ -766,6 +772,7 @@ function EditGuestsDialog({ open, sessionId, currentGuests, pricingTiles, onClos
         <DialogFooter>
           <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">ยกเลิก</button>
           <Button onClick={handleSubmit} disabled={submitting || totalGuests === 0}>
+            {submitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
             {submitting ? 'กำลังบันทึก...' : 'บันทึก'}
           </Button>
         </DialogFooter>
