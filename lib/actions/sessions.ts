@@ -336,9 +336,11 @@ export async function moveSession(input: { sessionId: string; newTableId: string
       .set({ tableId: input.newTableId })
       .where(eq(sessions.id, input.sessionId));
 
-    // Update table statuses
-    await db.update(tables).set({ status: 'available' }).where(eq(tables.id, oldTableId));
-    await db.update(tables).set({ status: newTableStatus }).where(eq(tables.id, input.newTableId));
+    // Parallel: update both table statuses simultaneously
+    await Promise.all([
+      db.update(tables).set({ status: 'available' }).where(eq(tables.id, oldTableId)),
+      db.update(tables).set({ status: newTableStatus }).where(eq(tables.id, input.newTableId)),
+    ]);
 
     revalidatePath('/tables');
     revalidatePath('/pos');
