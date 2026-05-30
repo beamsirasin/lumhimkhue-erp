@@ -190,6 +190,7 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
     queryKey: ['kds-items'],
     queryFn: () => getKdsItems().then((r) => (r.ok ? r.data : [])),
     initialData: initialItems,
+    initialDataUpdatedAt: Date.now(),
     refetchInterval: 3_000,
     staleTime: 1_000,
   });

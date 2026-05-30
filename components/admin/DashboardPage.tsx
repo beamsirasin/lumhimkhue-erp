@@ -43,6 +43,7 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
     queryKey: ['dashboard'],
     queryFn: () => getDashboardData().then((r) => (r.ok ? r.data : null)),
     initialData,
+    initialDataUpdatedAt: Date.now(),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });

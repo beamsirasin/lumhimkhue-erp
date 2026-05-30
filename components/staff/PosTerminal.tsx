@@ -42,6 +42,7 @@ export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) 
     queryKey: ['pos-sessions'],
     queryFn: () => getPosSessionsForPos().then((r) => (r.ok ? r.data : [])),
     initialData: initialSessions,
+    initialDataUpdatedAt: Date.now(),
     refetchInterval: 5_000,
     staleTime: 2_000,
   });

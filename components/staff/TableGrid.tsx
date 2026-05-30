@@ -1549,6 +1549,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
       return res.data;
     },
     initialData: initialTables,
+    initialDataUpdatedAt: Date.now(),
     refetchInterval: editMode ? 0 : 5_000,
     staleTime: 2_000,
     refetchOnWindowFocus: !editMode,

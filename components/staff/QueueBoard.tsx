@@ -38,6 +38,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
     queryKey: ['queue-list'],
     queryFn: () => getQueueList().then((r) => (r.ok ? r.data : [])),
     initialData: initialEntries,
+    initialDataUpdatedAt: Date.now(),
     refetchInterval: 5_000,
     staleTime: 2_000,
   });
