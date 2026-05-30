@@ -2,6 +2,7 @@
 
 import { useState, useEffect, memo, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getKdsItems, serveGroup, cancelGroup } from '@/lib/actions/kds';
 import type { KdsItem } from '@/lib/actions/kds';
@@ -149,8 +150,9 @@ const KdsCard = memo(function KdsCard({
           type="button"
           disabled={isPending}
           onClick={onServe}
-          className="flex-1 rounded-lg bg-green-600 py-2 text-xs font-bold text-white hover:bg-green-700 active:bg-green-800 disabled:opacity-50 transition-colors"
+          className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-green-600 py-2 text-xs font-bold text-white hover:bg-green-700 active:bg-green-800 disabled:opacity-50 transition-colors"
         >
+          {isPending && <Loader2 className="size-3 animate-spin" />}
           เสิร์ฟ
         </button>
         {confirming ? (
