@@ -16,7 +16,7 @@ import {
 } from '@/lib/actions/queue';
 import { addQueueSchema, type AddQueueInput } from '@/lib/validations/queue';
 import type { QueueEntry } from '@/lib/actions/queue';
-import { Printer } from 'lucide-react';
+import { Printer, Loader2 } from 'lucide-react';
 import { print as printQueueQr } from '@/lib/printer/service';
 import type { QueueQrData } from '@/lib/printer/types';
 
@@ -48,7 +48,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['queue-list'] });
 
-  const { mutate: doCall } = useMutation({
+  const { mutate: doCall, isPending: isCallingPending, variables: callingId } = useMutation({
     mutationFn: (id: string) => callQueue(id),
     onSuccess: (r) => {
       if (!r.ok) toast.error(r.error);
@@ -56,7 +56,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
     },
   });
 
-  const { mutate: doSeat } = useMutation({
+  const { mutate: doSeat, isPending: isSeatingPending, variables: seatingId } = useMutation({
     mutationFn: (id: string) => seatQueue(id),
     onSuccess: (r) => {
       if (!r.ok) toast.error(r.error);
@@ -64,7 +64,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
     },
   });
 
-  const { mutate: doRemove } = useMutation({
+  const { mutate: doRemove, isPending: isRemovingPending, variables: removingId } = useMutation({
     mutationFn: (id: string) => removeFromQueue(id),
     onSuccess: (r) => {
       if (!r.ok) toast.error(r.error);
@@ -187,6 +187,8 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
                 position={idx + 1}
                 onCall={() => doCall(e.id)}
                 onRemove={() => doRemove(e.id)}
+                isCallPending={isCallingPending && callingId === e.id}
+                isRemovePending={isRemovingPending && removingId === e.id}
               />
             ))}
           </div>
@@ -209,6 +211,8 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
                 entry={e}
                 onSeat={() => doSeat(e.id)}
                 onRemove={() => doRemove(e.id)}
+                isSeatPending={isSeatingPending && seatingId === e.id}
+                isRemovePending={isRemovingPending && removingId === e.id}
               />
             ))}
           </div>
@@ -291,8 +295,9 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full rounded-lg bg-slate-800 py-2.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-800 py-2.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
               >
+                {isSubmitting && <Loader2 className="size-3.5 animate-spin" />}
                 {isSubmitting ? 'กำลังเพิ่ม…' : 'เพิ่มคิว'}
               </button>
             </form>
@@ -309,9 +314,12 @@ interface QueueCardProps {
   onCall?: () => void;
   onSeat?: () => void;
   onRemove: () => void;
+  isCallPending?: boolean;
+  isSeatPending?: boolean;
+  isRemovePending?: boolean;
 }
 
-function QueueCard({ entry, position, onCall, onSeat, onRemove }: QueueCardProps) {
+function QueueCard({ entry, position, onCall, onSeat, onRemove, isCallPending, isSeatPending, isRemovePending }: QueueCardProps) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4">
       <div className="flex items-start justify-between gap-2">
@@ -342,8 +350,10 @@ function QueueCard({ entry, position, onCall, onSeat, onRemove }: QueueCardProps
           <button
             type="button"
             onClick={onCall}
-            className="flex-1 rounded-md bg-blue-600 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+            disabled={isCallPending}
+            className="flex flex-1 items-center justify-center gap-1 rounded-md bg-blue-600 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60"
           >
+            {isCallPending && <Loader2 className="size-3 animate-spin" />}
             เรียก
           </button>
         )}
@@ -351,8 +361,10 @@ function QueueCard({ entry, position, onCall, onSeat, onRemove }: QueueCardProps
           <button
             type="button"
             onClick={onSeat}
-            className="flex-1 rounded-md bg-green-600 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+            disabled={isSeatPending}
+            className="flex flex-1 items-center justify-center gap-1 rounded-md bg-green-600 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60"
           >
+            {isSeatPending && <Loader2 className="size-3 animate-spin" />}
             เข้าที่นั่ง
           </button>
         )}
@@ -360,8 +372,10 @@ function QueueCard({ entry, position, onCall, onSeat, onRemove }: QueueCardProps
           type="button"
           aria-label="นำออกจากคิว"
           onClick={onRemove}
-          className="rounded-md border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50"
+          disabled={isRemovePending}
+          className="flex items-center gap-1 rounded-md border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-60"
         >
+          {isRemovePending && <Loader2 className="size-3 animate-spin" />}
           นำออก
         </button>
       </div>
