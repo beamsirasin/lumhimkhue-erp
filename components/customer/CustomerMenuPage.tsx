@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { differenceInSeconds } from 'date-fns';
 import { useQuery } from '@tanstack/react-query';
@@ -389,8 +390,9 @@ export function CustomerMenuPage({
             type="button"
             onClick={handleOrder}
             disabled={submitting || isClosed || hasUnserved}
-            className="rounded-lg bg-slate-800 px-5 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-5 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
           >
+            {submitting && <Loader2 className="size-3.5 animate-spin" />}
             {submitting ? t.ordering : hasUnserved ? t.waitingBtn : t.order}
           </button>
         </div>
