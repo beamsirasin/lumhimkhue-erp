@@ -173,7 +173,8 @@ function DetailPanel({ sessionId, cashierName, onPaid }: { sessionId: string; ca
   const { data, isLoading } = useQuery({
     queryKey: ['pos-detail', sessionId],
     queryFn: () => getPosSessionDetail(sessionId).then((r) => (r.ok ? r.data : null)),
-    refetchInterval: 10_000,
+    enabled: !!sessionId,
+    refetchInterval: sessionId ? 10_000 : false,
     staleTime: 5_000,
   });
 
