@@ -142,21 +142,24 @@ export async function processPayment(input: unknown) {
   const { sessionId, paymentMethod, receivedAmount, discount, notes, lineItems } = parsed.data;
 
   try {
-    // Verify session + no duplicate payment
-    const session = await db.query.sessions.findFirst({
-      where: eq(sessions.id, sessionId),
-      with: {
-        table: true,
-        guests: { with: { pricingTile: true } },
-        linkedSessions: true,
-      },
-    });
+    // Parallel: session fetch + idempotency check (both need only sessionId)
+    const [session, existingPayment] = await Promise.all([
+      db.query.sessions.findFirst({
+        where: eq(sessions.id, sessionId),
+        with: {
+          table: true,
+          guests: { with: { pricingTile: true } },
+          linkedSessions: true,
+        },
+      }),
+      db.query.payments.findFirst({
+        where: eq(payments.sessionId, sessionId),
+      }),
+    ]);
+
     if (!session) return { ok: false as const, error: 'session ไม่ถูกต้อง' };
 
     // Idempotency: if payment already exists (e.g. previous attempt succeeded in DB but threw before returning), return it
-    const existingPayment = await db.query.payments.findFirst({
-      where: eq(payments.sessionId, sessionId),
-    });
     if (existingPayment) {
       return {
         ok: true as const,
