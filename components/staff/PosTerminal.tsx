@@ -548,6 +548,7 @@ function PaymentPanel({
     const cfg = resolveBillConfig(storeSettings, billType);
     return {
       logoUrl:     cfg.logoUrl,
+      paperWidth:  (storeSettings.billPaperWidth as 58 | 80) ?? 80,
       shopNameTh:  cfg.shopNameTh ?? 'ร้านชาบู',
       shopNameEn:  cfg.shopNameEn,
       companyName: cfg.companyName,

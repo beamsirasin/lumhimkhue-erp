@@ -28,6 +28,7 @@ interface Props {
   billForm: Record<string, string>;
   billVisible: Record<string, boolean>;
   logoUrl: string;
+  paperWidth: 58 | 80;
   onClose: () => void;
 }
 
@@ -43,7 +44,7 @@ function resolveField(
   return billForm[key] || ((globalForm as Record<string, string | number>)[key] as string) || undefined;
 }
 
-export function BillPreviewModal({ billType, globalForm, billForm, billVisible, logoUrl, onClose }: Props) {
+export function BillPreviewModal({ billType, globalForm, billForm, billVisible, logoUrl, paperWidth, onClose }: Props) {
   const isGlobal  = billType === 'global';
   const isReceipt = !isGlobal && billType !== 'preview';
 
@@ -69,14 +70,20 @@ export function BillPreviewModal({ billType, globalForm, billForm, billVisible, 
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-xs max-h-[90vh] overflow-y-auto rounded-2xl bg-slate-100 shadow-2xl"
+        className="relative max-h-[90vh] overflow-y-auto rounded-2xl bg-slate-100 shadow-2xl"
+        style={{ width: paperWidth === 58 ? 224 : 320 }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal header */}
         <div className="flex items-center justify-between px-4 py-3 bg-white rounded-t-2xl border-b border-slate-100">
           <div>
             <p className="text-sm font-semibold text-slate-900">ตัวอย่างบิล</p>
-            <p className="text-xs text-slate-400">{TAB_LABEL[billType] ?? billType}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <p className="text-xs text-slate-400">{TAB_LABEL[billType] ?? billType}</p>
+              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                {paperWidth}mm
+              </span>
+            </div>
           </div>
           <button
             type="button"

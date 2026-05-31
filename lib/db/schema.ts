@@ -586,6 +586,7 @@ export const storeSettings = pgTable('store_settings', {
   footerNote: varchar('footer_note', { length: 255 }).default('ขอบคุณและขอให้โชคดี'),
   vatPercent: integer('vat_percent').notNull().default(7),
   logoUrl: text('logo_url'),
+  billPaperWidth: integer('bill_paper_width').notNull().default(80),
   /** Per-bill-type overrides (null = fall back to global fields above) */
   billPreviewConfig: jsonb('bill_preview_config').$type<BillConfig>(),
   billMainConfig: jsonb('bill_main_config').$type<BillConfig>(),

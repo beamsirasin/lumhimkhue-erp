@@ -97,6 +97,9 @@ export function StoreSettingsForm({ initialData }: Props) {
   });
 
   const [logoUrl, setLogoUrl] = useState<string>(initialData.logoUrl ?? '');
+  const [paperWidth, setPaperWidth] = useState<58 | 80>(
+    (initialData.billPaperWidth as 58 | 80) ?? 80,
+  );
 
   const [billForms, setBillForms] = useState<Record<string, Record<string, string>>>({
     preview:   emptyBillForm(initialData.billPreviewConfig),
@@ -163,6 +166,7 @@ export function StoreSettingsForm({ initialData }: Props) {
       ...global,
       vatPercent: Number(global.vatPercent),
       logoUrl: logoUrl || undefined,
+      billPaperWidth: paperWidth,
       billPreviewConfig:   toConfig(billForms.preview   ?? {}, billVisible.preview   ?? {}),
       billMainConfig:      toConfig(billForms.main      ?? {}, billVisible.main      ?? {}),
       billSecondaryConfig: toConfig(billForms.secondary ?? {}, billVisible.secondary ?? {}),
@@ -243,6 +247,30 @@ export function StoreSettingsForm({ initialData }: Props) {
                   <p className="text-[10px] text-slate-400">แนะนำขนาดไม่เกิน 200 KB · จะแสดงที่ด้านบนของบิลทุกประเภท</p>
                 </label>
               )}
+            </div>
+
+            {/* Paper width */}
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-semibold text-slate-700 mb-3">ขนาดกระดาษบิล</p>
+              <div className="flex gap-2">
+                {([58, 80] as const).map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    onClick={() => setPaperWidth(w)}
+                    className={`flex-1 rounded-lg border py-2.5 text-sm font-semibold transition-colors ${
+                      paperWidth === w
+                        ? 'border-slate-800 bg-slate-800 text-white'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {w} mm
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] text-slate-400">
+                58mm — เครื่องพิมพ์ขนาดเล็ก · 80mm — เครื่องพิมพ์มาตรฐาน
+              </p>
             </div>
 
             {/* Global fields */}
@@ -334,6 +362,7 @@ export function StoreSettingsForm({ initialData }: Props) {
           billForm={billForms[previewTab] ?? {}}
           billVisible={billVisible[previewTab] ?? {}}
           logoUrl={logoUrl}
+          paperWidth={paperWidth}
           onClose={() => setPreviewTab(null)}
         />
       )}

@@ -35,6 +35,7 @@ export type ReceiptData = {
 
   /* ── Shop info (from store settings) ── */
   logoUrl?: string;
+  paperWidth?: 58 | 80;
   shopNameTh: string;
   shopNameEn?: string;
   companyName?: string;

@@ -4,14 +4,17 @@
  * then closes the window.  Works everywhere — no driver or USB needed.
  */
 
-/** CSS shared by all print templates */
-const PRINT_CSS = `
-  @page { size: 80mm auto; margin: 0; }
+function buildPrintCSS(paperWidth: 58 | 80 = 80): string {
+  const pageW    = `${paperWidth}mm`;
+  const bodyW    = paperWidth === 58 ? '54mm' : '76mm';
+  const fontSize = paperWidth === 58 ? '11px' : '12px';
+  return `
+  @page { size: ${pageW} auto; margin: 0; }
   * { box-sizing: border-box; }
   body {
     font-family: 'IBM Plex Sans Thai', 'TH Sarabun New', sans-serif;
-    font-size: 12px;
-    width: 76mm;
+    font-size: ${fontSize};
+    width: ${bodyW};
     padding: 2mm;
     margin: 0;
     color: #000;
@@ -52,8 +55,12 @@ const PRINT_CSS = `
   .item-qty  { width: 24px; text-align: center; flex-shrink: 0; }
   .item-total{ width: 52px; text-align: right; flex-shrink: 0; tabular-nums: initial; }
 `;
+}
 
-export function printBrowser(html: string): void {
+/** @deprecated Use printBrowser with explicit paperWidth instead */
+export const PRINT_CSS = buildPrintCSS(80);
+
+export function printBrowser(html: string, paperWidth: 58 | 80 = 80): void {
   const win = window.open('', '_blank', 'width=420,height=700');
   if (!win) {
     throw new Error(
@@ -69,7 +76,7 @@ export function printBrowser(html: string): void {
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500&display=swap" rel="stylesheet" />
-  <style>${PRINT_CSS}</style>
+  <style>${buildPrintCSS(paperWidth)}</style>
 </head>
 <body>${html}</body>
 </html>`);
@@ -84,5 +91,3 @@ export function printBrowser(html: string): void {
   }
 }
 
-/** Expose the CSS so HTML templates can reuse the same class names */
-export { PRINT_CSS };

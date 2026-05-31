@@ -355,7 +355,8 @@ async function printViaBrowser(job: PrintJob): Promise<PrintResult> {
       case 'queue_qr':      html = await renderQueueQrHTML(job.queueEntry); break;
       case 'kitchen_order': html = await renderKitchenOrderHTML(job.order); break;
     }
-    printBrowser(html);
+    const paperWidth = job.type === 'receipt' ? (job.payment.paperWidth ?? 80) : 80;
+    printBrowser(html, paperWidth);
     return { ok: true };
   } catch (err) {
     const error = err instanceof Error ? err.message : 'พิมพ์ไม่สำเร็จ';
