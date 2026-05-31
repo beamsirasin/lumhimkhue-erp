@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, memo, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, memo, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -436,6 +436,29 @@ function PaymentPanel({
   const [addonQty, setAddonQty] = useState<Record<string, number>>({});
   const [discountQty, setDiscountQty] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
+
+  // Auto-save guestQty when it changes (debounced 600ms)
+  const queryClient = useQueryClient();
+  const isFirstGuestRender = useRef(true);
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [autoSaving, setAutoSaving] = useState(false);
+
+  useEffect(() => {
+    if (isFirstGuestRender.current) { isFirstGuestRender.current = false; return; }
+    clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(async () => {
+      setAutoSaving(true);
+      const result = await updateSessionGuests({
+        sessionId: session.id,
+        guests: guestTiles.map((t) => ({ pricingTileId: t.id, quantity: guestQty[t.id] ?? 0 })),
+      });
+      setAutoSaving(false);
+      if (!result.ok) toast.error(result.error);
+      else queryClient.invalidateQueries({ queryKey: ['pos-sessions'] });
+    }, 600);
+    return () => clearTimeout(autoSaveTimer.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guestQty]);
 
   // Payment-view state
   const [method, setMethod] = useState<'cash' | 'cash_qr' | 'qr_promptpay' | 'transfer' | 'card'>('cash');
@@ -1458,10 +1481,14 @@ function PaymentPanel({
 
         {/* Action buttons */}
         <div className="flex flex-col gap-2">
-          <button type="button" onClick={handleSave} disabled={saving}
-            className="w-full rounded-lg border border-slate-300 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-            {saving ? 'กำลังบันทึก…' : 'บันทึก'}
-          </button>
+          <div className="flex items-center justify-center gap-1.5 h-5">
+            {autoSaving && (
+              <>
+                <Loader2 className="size-3 animate-spin text-slate-400" />
+                <span className="text-[11px] text-slate-400">กำลังบันทึก…</span>
+              </>
+            )}
+          </div>
           <button type="button" onClick={handlePrint}
             className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-300 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
             <Printer className="size-3.5" />ปริ้นบิล
