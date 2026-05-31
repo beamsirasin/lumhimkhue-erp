@@ -32,9 +32,9 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
   const totalStaff       = rows.reduce((s, r) => s + r.staffCount,      0);
   const totalStaffGuests = rows.reduce((s, r) => s + r.staffGuestCount, 0);
 
-  // Build link groups: sessionId → { color, peerLabels }
+  // Build link groups: sessionId → { color, peerLabels, isSplit, seqIndex, groupSize }
   const linkInfo = useMemo(() => {
-    const map = new Map<string, { border: string; badge: string; peers: string[] }>();
+    const map = new Map<string, { border: string; badge: string; peers: string[]; isSplit: boolean; seqIndex: number; groupSize: number }>();
     let colorIdx = 0;
 
     // Find all primary sessions that have at least one secondary
@@ -48,15 +48,18 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
       const group = [...(primary ? [primary] : []), ...children];
       if (group.length < 2) continue;
 
+      // Split payment: all sessions share the same table label
+      const isSplit = group.every((r) => r.tableLabel === group[0].tableLabel);
+
       const color = LINK_COLORS[colorIdx % LINK_COLORS.length];
       colorIdx++;
 
-      for (const row of group) {
+      group.forEach((row, idx) => {
         const peers = group
           .filter((r) => r.sessionId !== row.sessionId)
           .map((r) => r.tableLabel);
-        map.set(row.sessionId, { ...color, peers });
-      }
+        map.set(row.sessionId, { ...color, peers, isSplit, seqIndex: idx + 1, groupSize: group.length });
+      });
     }
 
     return map;
@@ -124,7 +127,7 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
                           {/* Colored left accent bar for linked groups */}
                           <div
                             className="w-1 self-stretch rounded-r-full mr-3 shrink-0"
-                            style={{ backgroundColor: link ? link.border : 'transparent' }}
+                            style={{ backgroundColor: link && !link.isSplit ? link.border : 'transparent' }}
                           />
                           <div className="flex flex-col gap-0.5">
                             <span className="font-semibold text-slate-900">
@@ -135,11 +138,9 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
                                 </span>
                               )}
                             </span>
-                            {link && link.peers.length > 0 && (
-                              <span
-                                className={`self-start rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${link.badge}`}
-                              >
-                                ⊞ {link.peers.join(', ')}
+                            {link && !link.isSplit && (
+                              <span className={`self-start rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${link.badge}`}>
+                                {`⊞ ${link.peers.join(', ')}`}
                               </span>
                             )}
                           </div>

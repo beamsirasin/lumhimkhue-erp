@@ -11,7 +11,7 @@ import {
   getActiveTilesForPos,
   processPayment,
 } from '@/lib/actions/pos';
-import { updateSessionGuests, closeSession } from '@/lib/actions/sessions';
+import { updateSessionGuests, closeSession, createContinuationSession } from '@/lib/actions/sessions';
 import { getStoreSettings } from '@/lib/actions/store';
 import type { StoreSettingsData } from '@/lib/actions/store';
 import { resolveBillConfig } from '@/lib/utils/billConfig';
@@ -152,6 +152,11 @@ export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) 
                 <SessionCard key={s.id} session={s} selected={selectedId === s.id} onSelect={handleSelectSession} linkedCount={0} />
               );
             }
+            // If primary is paid but a child is pending (closing/active), show child as front card
+            const urgentChild = s.status === 'paid'
+              ? (linked.find((l) => l.status === 'closing') ?? linked.find((l) => l.status === 'active'))
+              : undefined;
+            const frontSession = urgentChild ?? s;
             return (
               <div key={s.id} className="relative">
                 {linked.length >= 2 && (
@@ -159,7 +164,12 @@ export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) 
                 )}
                 <div className="absolute inset-0 translate-x-1 translate-y-1 rounded-xl border-2 border-slate-200 bg-white z-[1]" />
                 <div className="relative z-[2]">
-                  <SessionCard session={s} selected={isGroupSelected} onSelect={handleSelectSession} linkedCount={linked.length} />
+                  <SessionCard
+                    session={frontSession}
+                    selected={isGroupSelected}
+                    onSelect={urgentChild ? () => handleSelectSession(s.id) : handleSelectSession}
+                    linkedCount={linked.length}
+                  />
                 </div>
               </div>
             );
@@ -173,6 +183,13 @@ export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) 
         const linked = linkedMap[groupPickerId] ?? [];
         if (!primary) return null;
         const allInGroup = [primary, ...linked];
+        // Split payment = all sessions share the same table (vs linked-table group = different tables)
+        const isSplit = allInGroup.every((g) => g.tableId === allInGroup[0].tableId);
+        // Sort: closing/active before paid so pending items appear first
+        const sortedGroup = [...allInGroup].sort((a, b) => {
+          const u = (st: string) => st === 'closing' ? 0 : st === 'active' ? 1 : 2;
+          return u(a.status) - u(b.status);
+        });
         return (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
@@ -184,32 +201,46 @@ export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) 
             >
               <p className="text-sm font-semibold text-slate-900">เลือกบิลที่ต้องการเปิด</p>
               <div className="space-y-2">
-                {allInGroup.map((s) => {
+                {sortedGroup.map((s) => {
                   const total = s.guests.reduce((sum, g) => sum + Number(g.pricingTile.price) * g.quantity, 0);
                   const guestCount = s.guests.reduce((sum, g) => sum + g.quantity, 0);
                   const isClosing = s.status === 'closing';
+                  const isPaid    = s.status === 'paid';
                   return (
                     <button
                       key={s.id}
                       type="button"
                       onClick={() => { setSelectedId(s.id); setGroupPickerId(null); }}
-                      className="w-full flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 hover:bg-slate-50 text-left transition-colors"
+                      className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
+                        isPaid
+                          ? 'border-emerald-100 bg-emerald-50 hover:bg-emerald-100'
+                          : isClosing
+                            ? 'border-red-100 bg-red-50 hover:bg-red-100'
+                            : 'border-slate-200 hover:bg-slate-50'
+                      }`}
                     >
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-slate-900">โต๊ะ {s.table.label}</span>
                           <span className="text-[10px] text-slate-400">
-                            {s.parentSessionId ? 'บัญชีรอง' : 'บัญชีหลัก'}
+                            {isSplit
+                              ? (isPaid ? 'ชำระแล้ว' : 'ยังค้างชำระ')
+                              : (s.parentSessionId ? 'บัญชีรอง' : 'บัญชีหลัก')}
                           </span>
                           {isClosing && (
                             <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
-                              รอบิล
+                              รอชำระ
+                            </span>
+                          )}
+                          {isPaid && (
+                            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                              จ่ายแล้ว
                             </span>
                           )}
                         </div>
                         <p className="mt-0.5 text-xs text-slate-400">{guestCount} คน</p>
                       </div>
-                      <p className="text-sm font-bold tabular-nums text-slate-800">
+                      <p className={`text-sm font-bold tabular-nums ${isPaid ? 'text-emerald-700' : 'text-slate-800'}`}>
                         ฿{total.toLocaleString('th-TH')}
                       </p>
                     </button>
@@ -265,6 +296,7 @@ const SessionCard = memo(function SessionCard({ session, selected, onSelect, lin
   const isPaid = session.status === 'paid';
   const totalGuests = session.guests.reduce((s, g) => s + g.quantity, 0);
 
+  const isContinuation = !!session.parentSessionId;
   let cardClass = 'rounded-xl border-2 p-3 text-left transition-colors w-full ';
   if (selected) {
     cardClass += 'border-slate-800 bg-slate-800 text-white';
@@ -282,16 +314,23 @@ const SessionCard = memo(function SessionCard({ session, selected, onSelect, lin
         <span className={`text-base font-bold tabular-nums leading-tight ${selected ? 'text-white' : 'text-slate-900'}`}>
           โต๊ะ {session.table.label}
         </span>
-        {isClosing && (
-          <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-red-400 text-white' : 'bg-red-100 text-red-700'}`}>
-            รอบิล
-          </span>
-        )}
-        {isPaid && (
-          <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-emerald-400 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
-            จ่ายแล้ว
-          </span>
-        )}
+        <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+          {isContinuation && (
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-amber-400 text-white' : 'bg-amber-100 text-amber-700'}`}>
+              ต่อบิล
+            </span>
+          )}
+          {isClosing && (
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-red-400 text-white' : 'bg-red-100 text-red-700'}`}>
+              รอบิล
+            </span>
+          )}
+          {isPaid && (
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-emerald-400 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
+              จ่ายแล้ว
+            </span>
+          )}
+        </div>
       </div>
       <p className={`mt-0.5 text-xs ${selected ? 'text-slate-300' : 'text-slate-500'}`}>{totalGuests} คน</p>
       <p className={`mt-1 text-sm font-semibold tabular-nums ${selected ? 'text-white' : isPaid ? 'text-emerald-700' : 'text-slate-800'}`}>
@@ -461,21 +500,38 @@ function PaymentPanel({
   }, [guestQty]);
 
   // Payment-view state
-  const [method, setMethod] = useState<'cash' | 'cash_qr' | 'qr_promptpay' | 'transfer' | 'card'>('cash');
+  const [method, setMethod] = useState<'cash' | 'cash_qr' | 'qr_promptpay' | 'transfer' | 'card'>('qr_promptpay');
   const [bankAccount, setBankAccount] = useState<'main' | 'secondary'>('main');
-  const [numpadInput, setNumpadInput] = useState('0');
+  const [numpadInput, setNumpadInput] = useState(() => {
+    const initGuests = Object.fromEntries(session.guests.map((g) => [g.pricingTile.id, g.quantity]));
+    return String(guestTiles.reduce((sum, t) => sum + Number(t.price) * (initGuests[t.id] ?? 0), 0));
+  });
   const [manualDiscount, setManualDiscount] = useState('0');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [paid, setPaid] = useState(false);
+  // set after partial payment creates a continuation session
+  const [continuationInfo, setContinuationInfo] = useState<{
+    guestCount: number; amount: number;
+  } | null>(null);
 
   // Split payment state — sequential rounds
-  type CompletedRound = { items: { pricingTileId: string; name: string; qty: number; price: number }[]; subtotal: number; method: 'cash' | 'qr_promptpay' };
+  type CompletedRound = { items: { pricingTileId: string; name: string; qty: number; price: number }[]; subtotal: number; method: 'cash' | 'qr_promptpay' | 'cash_qr'; cashPortion?: number };
   const [roundRemaining,  setRoundRemaining]  = useState<Record<string, number>>({});
   const [roundSelection,  setRoundSelection]  = useState<Record<string, number>>({});
   const [completedRounds, setCompletedRounds] = useState<CompletedRound[]>([]);
-  const [roundMethod,     setRoundMethod]     = useState<'cash' | 'qr_promptpay'>('cash');
+  const [roundMethod,     setRoundMethod]     = useState<'cash' | 'qr_promptpay' | 'cash_qr'>('qr_promptpay');
   const [roundNumpad,     setRoundNumpad]     = useState('0');
+
+  // Keep numpad in sync with round subtotal when QR is selected
+  useEffect(() => {
+    if (roundMethod === 'qr_promptpay') {
+      const sub = [...guestTiles, ...addonTiles].reduce(
+        (s, t) => s + (roundSelection[t.id] ?? 0) * Number(t.price), 0,
+      );
+      setRoundNumpad(String(sub));
+    }
+  }, [roundSelection, roundMethod]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function initRoundSplit() {
     const rem: Record<string, number> = {};
@@ -484,7 +540,7 @@ function PaymentPanel({
     setRoundRemaining(rem);
     setRoundSelection({});
     setCompletedRounds([]);
-    setRoundMethod('cash');
+    setRoundMethod('qr_promptpay');
     setRoundNumpad('0');
   }
 
@@ -510,7 +566,8 @@ function PaymentPanel({
     const items = [...guestTiles, ...addonTiles]
       .filter((t) => (roundSelection[t.id] ?? 0) > 0)
       .map((t) => ({ pricingTileId: t.id, name: t.name, qty: roundSelection[t.id]!, price: Number(t.price) }));
-    setCompletedRounds((prev) => [...prev, { items, subtotal: sub, method: roundMethod }]);
+    const cashPortion = roundMethod === 'cash_qr' ? Number(roundNumpad) : undefined;
+    setCompletedRounds((prev) => [...prev, { items, subtotal: sub, method: roundMethod, cashPortion }]);
     setRoundRemaining((prev) => {
       const next = { ...prev };
       for (const [id, qty] of Object.entries(roundSelection)) {
@@ -697,7 +754,16 @@ function PaymentPanel({
           <p className="text-3xl font-bold tabular-nums text-slate-900">฿{lastReceipt.total.toLocaleString('th-TH')}</p>
           {lastReceipt.changeAmount > 0 && <p className="text-base text-slate-600">เงินทอน ฿{lastReceipt.changeAmount.toLocaleString('th-TH')}</p>}
           <p className="text-sm text-slate-500">โต๊ะ {lastReceipt.tableNumber} · ชำระด้วย {lastReceipt.paymentMethod}</p>
-          <p className="text-xs text-slate-400">โต๊ะยังแสดงสถานะ &quot;จ่ายแล้ว&quot; — ปิดโต๊ะได้ที่ จัดการโต๊ะ</p>
+          {continuationInfo ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-left">
+              <p className="text-xs font-semibold text-amber-700">สร้างบิลต่อแล้ว</p>
+              <p className="text-xs text-amber-600 mt-0.5">
+                เหลือ {continuationInfo.guestCount} คน · ฿{continuationInfo.amount.toLocaleString('th-TH')} — ปรากฏในรายการ POS แล้ว
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400">โต๊ะยังแสดงสถานะ &quot;จ่ายแล้ว&quot; — ปิดโต๊ะได้ที่ จัดการโต๊ะ</p>
+          )}
         </div>
         <div className="flex gap-3">
           <button type="button" onClick={() => void printReceipt({ type: 'receipt', payment: lastReceipt })}
@@ -754,7 +820,7 @@ function PaymentPanel({
 
   /* ── Payment form view ── */
   if (view === 'payment') {
-    const METHODS = ['cash', 'cash_qr', 'qr_promptpay'] as const;
+    const METHODS = ['qr_promptpay', 'cash', 'cash_qr'] as const;
     const confirmDisabled =
       submitting ||
       (method === 'cash' && (numpadInput === '0' || change < 0)) ||
@@ -1008,7 +1074,9 @@ function PaymentPanel({
     const roundChange = roundMethod === 'cash' ? roundNumpadNum - roundSubtotal : 0;
     const canConfirmRound =
       roundSubtotal > 0 &&
-      (roundMethod === 'qr_promptpay' || (roundMethod === 'cash' && roundNumpadNum >= roundSubtotal));
+      (roundMethod === 'qr_promptpay' ||
+       (roundMethod === 'cash' && roundNumpadNum >= roundSubtotal) ||
+       (roundMethod === 'cash_qr' && roundNumpadNum > 0 && roundNumpadNum < roundSubtotal));
     const completedTotal = completedRounds.reduce((s, r) => s + r.subtotal, 0);
     const allDone = !hasRemaining;
 
@@ -1027,7 +1095,6 @@ function PaymentPanel({
     function handleConfirmRound() {
       if (!canConfirmRound) return;
       confirmRound();
-      setRoundMethod('cash');
     }
 
     async function handleRoundSubmit() {
@@ -1061,13 +1128,18 @@ function PaymentPanel({
         if (!updateRes.ok) { toast.error(updateRes.error); setSubmitting(false); return; }
       }
 
-      const hasCash = completedRounds.some((r) => r.method === 'cash');
-      const hasQr   = completedRounds.some((r) => r.method === 'qr_promptpay');
+      const hasCash = completedRounds.some((r) => r.method === 'cash' || r.method === 'cash_qr');
+      const hasQr   = completedRounds.some((r) => r.method === 'qr_promptpay' || r.method === 'cash_qr');
       const dbMethod: 'cash' | 'cash_qr' | 'qr_promptpay' =
         hasCash && hasQr ? 'cash_qr' : hasCash ? 'cash' : 'qr_promptpay';
-      const cashTotal = completedRounds.reduce((s, r) => s + (r.method === 'cash' ? r.subtotal : 0), 0);
+      const cashTotal = completedRounds.reduce(
+        (s, r) => s + (r.method === 'cash' ? r.subtotal : r.method === 'cash_qr' ? (r.cashPortion ?? 0) : 0), 0,
+      );
       const roundNote = completedRounds
-        .map((r, i) => `[รอบ ${i + 1}: ฿${r.subtotal.toLocaleString('th-TH')} ${r.method === 'cash' ? 'สด' : 'QR'}]`)
+        .map((r, i) => {
+          const mLabel = r.method === 'cash' ? 'สด' : r.method === 'cash_qr' ? 'สด+QR' : 'QR';
+          return `[รอบ ${i + 1}: ฿${r.subtotal.toLocaleString('th-TH')} ${mLabel}]`;
+        })
         .join(' ');
       const accountLabel = bankAccount === 'main' ? 'บัญชีหลัก' : 'บัญชีรอง';
       const partialNote = !allDone ? `[ชำระบางส่วน]` : '';
@@ -1118,6 +1190,32 @@ function PaymentPanel({
         sessionId: session.id,
       };
       setLastReceipt(receipt);
+
+      // If partial: create a continuation session for remaining guests
+      if (!allDone) {
+        const remainingGuestTileIds = new Set(guestTiles.map((t) => t.id));
+        const remainingGuests = Object.entries(roundRemaining)
+          .filter(([tileId, qty]) => qty > 0 && remainingGuestTileIds.has(tileId))
+          .map(([pricingTileId, quantity]) => ({ pricingTileId, quantity }));
+
+        if (remainingGuests.length > 0) {
+          const remainingAmount = guestTiles.reduce(
+            (s, t) => s + (roundRemaining[t.id] ?? 0) * Number(t.price), 0,
+          );
+          const remainingCount = remainingGuests.reduce((s, g) => s + g.quantity, 0);
+          const contRes = await createContinuationSession({
+            originalSessionId: session.id,
+            guests: remainingGuests,
+          });
+          if (contRes.ok) {
+            setContinuationInfo({ guestCount: remainingCount, amount: remainingAmount });
+            queryClient.invalidateQueries({ queryKey: ['pos-sessions'] });
+          } else {
+            toast.error(`สร้างบิลต่อไม่สำเร็จ: ${contRes.error}`);
+          }
+        }
+      }
+
       setPaid(true);
       await printReceipt({ type: 'receipt', payment: receipt });
     }
@@ -1197,10 +1295,37 @@ function PaymentPanel({
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-xs font-bold tabular-nums text-emerald-700">฿{r.subtotal.toLocaleString('th-TH')}</p>
-                    <p className="text-[10px] text-slate-400">{r.method === 'cash' ? 'เงินสด' : 'QR'}</p>
+                    <p className="text-[10px] text-slate-400">
+                      {r.method === 'cash' ? 'เงินสด' : r.method === 'cash_qr' ? 'เงินสด+QR' : 'QR'}
+                    </p>
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Paid / remaining summary when partial */}
+          {completedRounds.length > 0 && !allDone && (
+            <div className="shrink-0 rounded-xl border border-slate-200 bg-white p-3 space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">สรุปการชำระ</p>
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                <span className="text-xs text-slate-600 flex-1">
+                  ชำระแล้ว {completedRounds.reduce((s, r) => s + r.items.reduce((a, x) => a + x.qty, 0), 0)} คน
+                </span>
+                <span className="text-xs font-semibold tabular-nums text-emerald-700">฿{completedTotal.toLocaleString('th-TH')}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
+                <span className="text-xs text-slate-600 flex-1">
+                  ยังเหลือ {Object.values(roundRemaining).reduce((a, b) => a + b, 0)} คน
+                </span>
+                <span className="text-xs font-semibold tabular-nums text-amber-700">
+                  ฿{[...guestTiles, ...addonTiles]
+                      .reduce((s, t) => s + (roundRemaining[t.id] ?? 0) * Number(t.price), 0)
+                      .toLocaleString('th-TH')}
+                </span>
+              </div>
             </div>
           )}
 
@@ -1250,9 +1375,12 @@ function PaymentPanel({
             <div className="shrink-0">
               <p className="mb-1 text-xs font-medium text-slate-500">ช่องทางชำระรอบนี้</p>
               <div className="flex gap-1.5">
-                {(['cash', 'qr_promptpay'] as const).map((m) => (
+                {(['qr_promptpay', 'cash', 'cash_qr'] as const).map((m) => (
                   <button key={m} type="button"
-                    onClick={() => setRoundMethod(m)}
+                    onClick={() => {
+                      setRoundMethod(m);
+                      if (m !== 'qr_promptpay') setRoundNumpad('0');
+                    }}
                     className={`flex-1 rounded-lg border py-2.5 text-xs font-medium transition-colors ${
                       roundMethod === m ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                     }`}>
@@ -1265,49 +1393,53 @@ function PaymentPanel({
             {/* Display */}
             <div className="shrink-0 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-right">
               <p className="text-xs font-medium text-slate-400 mb-1">
-                {roundMethod === 'qr_promptpay' ? 'ยอดชำระ QR' : 'รับเงิน'}
+                {roundMethod === 'qr_promptpay' ? 'ยอดชำระ QR' : roundMethod === 'cash_qr' ? 'เงินสด (กรอกยอดสด)' : 'รับเงิน'}
               </p>
               <p className="text-4xl font-bold tabular-nums text-slate-900 leading-none">
-                ฿{roundMethod === 'qr_promptpay'
-                  ? roundSubtotal.toLocaleString('th-TH')
-                  : Number(roundNumpad).toLocaleString('th-TH')}
+                ฿{Number(roundNumpad).toLocaleString('th-TH')}
               </p>
               {roundMethod === 'cash' && roundNumpadNum > 0 && (
                 <p className={`text-sm mt-2 tabular-nums font-semibold ${roundChange >= 0 ? 'text-green-600' : 'text-red-500'}`}>
                   {roundChange >= 0 ? `เงินทอน ฿${roundChange.toLocaleString('th-TH')}` : 'ไม่เพียงพอ'}
                 </p>
               )}
+              {roundMethod === 'cash_qr' && roundNumpadNum > 0 && roundNumpadNum < roundSubtotal && (
+                <p className="text-sm text-slate-500 mt-2 tabular-nums">
+                  QR PromptPay <span className="font-semibold text-slate-800">฿{(roundSubtotal - roundNumpadNum).toLocaleString('th-TH')}</span>
+                </p>
+              )}
             </div>
 
-            {/* Numpad (cash only) */}
-            {roundMethod === 'cash' && (
-              <div className="flex-1 grid grid-cols-3 gap-2 content-start">
-                {(['7','8','9','4','5','6','1','2','3','C','0','⌫'] as const).map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => {
-                      if (k === '⌫') setRoundNumpad((v) => v.length > 1 ? v.slice(0, -1) : '0');
-                      else if (k === 'C') setRoundNumpad('0');
-                      else setRoundNumpad((v) => {
-                        const next = v === '0' ? k : v + k;
-                        return next.length <= 7 ? next : v;
-                      });
-                    }}
-                    className={`rounded-2xl text-xl font-bold transition-colors active:scale-95 select-none h-14 ${
-                      k === 'C'  ? 'bg-red-50 border border-red-200 text-red-600 hover:bg-red-100' :
-                      k === '⌫' ? 'bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200' :
-                                   'bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 shadow-sm'
-                    }`}
-                  >
-                    {k}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* Numpad — always visible; QR keys are disabled (amount is auto-filled) */}
+            <div className="flex-1 grid grid-cols-3 gap-2 content-start">
+              {(['7','8','9','4','5','6','1','2','3','C','0','⌫'] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  disabled={roundMethod === 'qr_promptpay'}
+                  onClick={() => {
+                    if (k === '⌫') setRoundNumpad((v) => v.length > 1 ? v.slice(0, -1) : '0');
+                    else if (k === 'C') setRoundNumpad('0');
+                    else setRoundNumpad((v) => {
+                      const next = v === '0' ? k : v + k;
+                      return next.length <= 7 ? next : v;
+                    });
+                  }}
+                  className={`rounded-2xl text-xl font-bold transition-colors active:scale-95 select-none h-14 ${
+                    roundMethod === 'qr_promptpay'
+                      ? 'bg-slate-50 border border-slate-100 text-slate-300 cursor-not-allowed'
+                      : k === 'C'  ? 'bg-red-50 border border-red-200 text-red-600 hover:bg-red-100' :
+                        k === '⌫' ? 'bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200' :
+                                     'bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 shadow-sm'
+                  }`}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
 
             {/* Quick amounts (cash only) */}
-            {roundQuickAmounts.length > 0 && (
+            {roundQuickAmounts.length > 0 && roundMethod === 'cash' && (
               <div className="shrink-0 flex gap-1.5">
                 {roundQuickAmounts.map((amt) => (
                   <button

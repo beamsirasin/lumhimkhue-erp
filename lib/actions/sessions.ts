@@ -528,3 +528,67 @@ export async function transferPrimary(input: { newPrimarySessionId: string }) {
     return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
   }
 }
+
+/* ─── createContinuationSession ─────────────────────────────────────────
+   Used after partial split payment to create a new "remaining" session
+   linked to the original via parentSessionId.  The new session is in
+   'closing' status (ready for immediate payment) and the table is reset
+   to 'occupied' since some guests are still seated.
+────────────────────────────────────────────────────────────────────── */
+
+const continuationSchema = z.object({
+  originalSessionId: z.string().uuid(),
+  guests: z.array(guestRowSchema).min(1),
+});
+
+export async function createContinuationSession(input: unknown) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'process_payment'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  const parsed = continuationSchema.safeParse(input);
+  if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
+
+  const { originalSessionId, guests } = parsed.data;
+
+  try {
+    const original = await db.query.sessions.findFirst({
+      where: eq(sessions.id, originalSessionId),
+    });
+    if (!original) return { ok: false as const, error: 'ไม่พบ session ต้นฉบับ' };
+
+    // Always link to the root session (so all continuations share one parent)
+    const rootParentId = original.parentSessionId ?? originalSessionId;
+
+    const [newSession] = await db
+      .insert(sessions)
+      .values({
+        tableId:         original.tableId,
+        startedAt:       new Date(),
+        sessionToken:    nanoid(12),
+        status:          'closing',
+        notes:           '[แบ่งชำระ]',
+        parentSessionId: rootParentId,
+      })
+      .returning({ id: sessions.id });
+
+    await db.insert(sessionGuests).values(
+      guests.map((g) => ({
+        sessionId:      newSession.id,
+        pricingTileId:  g.pricingTileId,
+        quantity:       g.quantity,
+      })),
+    );
+
+    // Table is still occupied (remaining guests are seated)
+    await db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, original.tableId));
+
+    revalidatePath('/pos');
+    revalidatePath('/tables');
+    return { ok: true as const, data: { sessionId: newSession.id } };
+  } catch (e) {
+    console.error('[createContinuationSession]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
+  }
+}

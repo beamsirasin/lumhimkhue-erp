@@ -1,13 +1,15 @@
 'use server';
 
-import { eq, and, gte, not, desc, asc } from 'drizzle-orm';
+import { eq, and, gte, not, desc, asc, inArray } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
+import { z } from 'zod';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { startOfDay } from 'date-fns';
+import { revalidatePath } from 'next/cache';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
-import { sessions, tables, payments, orders, orderItems, menuItems } from '@/lib/db/schema';
+import { sessions, tables, payments, paymentLineItems, orders, orderItems, menuItems } from '@/lib/db/schema';
 
 const TZ = 'Asia/Bangkok';
 
@@ -188,6 +190,96 @@ export async function getHistoryCalendarDates(year: number, month: number) {
     };
   } catch (e) {
     console.error('[getHistoryCalendarDates]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+/* ─── deletePaymentRecord — ลบประวัติอย่างเดียว (ไม่เปิดโต๊ะใหม่) ──── */
+
+export async function deletePaymentRecord(input: unknown) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'process_payment'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  const parsed = z.object({ paymentId: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
+
+  const { paymentId } = parsed.data;
+  try {
+    const [payment] = await db
+      .select({ id: payments.id, sessionId: payments.sessionId })
+      .from(payments)
+      .where(eq(payments.id, paymentId));
+    if (!payment) return { ok: false as const, error: 'ไม่พบข้อมูลการชำระเงิน' };
+
+    await db.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
+    await db.delete(payments).where(eq(payments.id, paymentId));
+    // Mark session closed (no payment) so it stays in history but doesn't re-appear in POS
+    await db.update(sessions)
+      .set({ status: 'closed' })
+      .where(eq(sessions.id, payment.sessionId));
+
+    revalidatePath('/pos/history');
+    revalidatePath('/tables/history');
+    return { ok: true as const };
+  } catch (e) {
+    console.error('[deletePaymentRecord]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+/* ─── reopenSessionForPayment — ยกเลิกการชำระ แล้วส่งกลับ POS ──────── */
+
+export async function reopenSessionForPayment(input: unknown) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'process_payment'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  const parsed = z.object({ paymentId: z.string().uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
+
+  const { paymentId } = parsed.data;
+  try {
+    const [payment] = await db
+      .select({ id: payments.id, sessionId: payments.sessionId })
+      .from(payments)
+      .where(eq(payments.id, paymentId));
+    if (!payment) return { ok: false as const, error: 'ไม่พบข้อมูลการชำระเงิน' };
+
+    const [mainSession] = await db
+      .select({ id: sessions.id, tableId: sessions.tableId })
+      .from(sessions)
+      .where(eq(sessions.id, payment.sessionId));
+    if (!mainSession) return { ok: false as const, error: 'ไม่พบ session' };
+
+    // Include group-bill linked sessions (different table), not split children (same table)
+    const childSessions = await db
+      .select({ id: sessions.id, tableId: sessions.tableId })
+      .from(sessions)
+      .where(eq(sessions.parentSessionId, mainSession.id));
+    const groupLinked = childSessions.filter((s) => s.tableId !== mainSession.tableId);
+
+    const allSessionIds = [mainSession.id, ...groupLinked.map((s) => s.id)];
+    const allTableIds = [...new Set([mainSession.tableId, ...groupLinked.map((s) => s.tableId)])];
+
+    await db.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
+    await db.delete(payments).where(eq(payments.id, paymentId));
+    await db.update(sessions)
+      .set({ status: 'closing', closedAt: null })
+      .where(inArray(sessions.id, allSessionIds));
+    await db.update(tables)
+      .set({ status: 'occupied' })
+      .where(inArray(tables.id, allTableIds));
+
+    revalidatePath('/pos');
+    revalidatePath('/pos/history');
+    revalidatePath('/tables');
+    revalidatePath('/tables/history');
+    return { ok: true as const, sessionId: mainSession.id };
+  } catch (e) {
+    console.error('[reopenSessionForPayment]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
   }
 }
