@@ -24,16 +24,17 @@ export async function getStoreSettings() {
 }
 
 const billConfigSchema = z.object({
-  shopNameTh: z.string().max(255).optional(),
-  shopNameEn: z.string().max(255).optional(),
-  companyName: z.string().max(255).optional(),
-  address: z.string().max(1000).optional(),
-  phone: z.string().max(50).optional(),
-  taxId: z.string().max(30).optional(),
-  branch: z.string().max(100).optional(),
-  registerNo: z.string().max(50).optional(),
-  footerNote: z.string().max(255).optional(),
-  vatPercent: z.number().int().min(0).max(100).optional(),
+  shopNameTh:   z.string().max(255).optional(),
+  shopNameEn:   z.string().max(255).optional(),
+  companyName:  z.string().max(255).optional(),
+  address:      z.string().max(1000).optional(),
+  phone:        z.string().max(50).optional(),
+  taxId:        z.string().max(30).optional(),
+  branch:       z.string().max(100).optional(),
+  registerNo:   z.string().max(50).optional(),
+  footerNote:   z.string().max(255).optional(),
+  vatPercent:   z.number().int().min(0).max(100).optional(),
+  hiddenFields: z.array(z.string()).optional(),
 }).nullable();
 
 const updateSchema = z.object({
@@ -48,7 +49,7 @@ const updateSchema = z.object({
   footerNote: z.string().max(255).nullable().optional(),
   vatPercent: z.number().int().min(0).max(100).default(7),
   logoUrl: z.string().max(2_097_152).nullable().optional(),
-  billPaperWidth: z.union([z.literal(58), z.literal(80)]).default(80),
+  billPaperWidth: z.number().int().transform((v) => (v === 58 ? 58 : 80) as 58 | 80).default(80),
   billPreviewConfig: billConfigSchema.optional(),
   billMainConfig: billConfigSchema.optional(),
   billSecondaryConfig: billConfigSchema.optional(),
