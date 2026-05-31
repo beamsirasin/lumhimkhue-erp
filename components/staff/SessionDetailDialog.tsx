@@ -7,18 +7,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { getSessionDetail } from '@/lib/actions/history';
 
 const METHOD_LABEL: Record<string, string> = {
-  cash: 'เงินสด',
+  cash:         'เงินสด',
+  cash_qr:      'เงินสด + QR',
   qr_promptpay: 'QR PromptPay',
-  transfer: 'โอนเงิน',
-  card: 'บัตรเครดิต',
+  transfer:     'โอนเงิน',
+  card:         'บัตรเครดิต',
 };
 
 interface SessionDetailDialogProps {
   sessionId: string | null;
   onClose: () => void;
+  showPayment?: boolean;
 }
 
-export function SessionDetailDialog({ sessionId, onClose }: SessionDetailDialogProps) {
+export function SessionDetailDialog({ sessionId, onClose, showPayment = false }: SessionDetailDialogProps) {
   const { data, isLoading } = useQuery({
     queryKey: ['session-detail', sessionId],
     queryFn: () => getSessionDetail(sessionId!).then((r) => (r.ok ? r.data : null)),
@@ -122,7 +124,7 @@ export function SessionDetailDialog({ sessionId, onClose }: SessionDetailDialogP
             )}
 
             {/* Payment */}
-            {data.session.payment && (
+            {showPayment && data.session.payment && (
               <div>
                 <p className="mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   การชำระเงิน

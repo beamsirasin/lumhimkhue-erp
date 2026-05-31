@@ -15,6 +15,7 @@ export function resolveBillConfig(
     registerNo:  settings.registerNo ?? undefined,
     footerNote:  settings.footerNote ?? undefined,
     vatPercent:  settings.vatPercent ?? 7,
+    logoUrl:     settings.logoUrl ?? undefined,
   };
 
   const override: BillConfig | null | undefined =
@@ -38,6 +39,7 @@ export function resolveBillConfig(
     footerNote:  hidden.has('footerNote')  ? undefined : (override.footerNote  ?? global.footerNote),
     // vatPercent hidden → 0 so the VAT row doesn't render (template checks vatAmount > 0)
     vatPercent:  hidden.has('vatPercent')  ? 0         : (override.vatPercent  ?? global.vatPercent),
+    logoUrl:     global.logoUrl,
     hiddenFields: override.hiddenFields,
   };
 }

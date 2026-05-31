@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { eq, inArray, or } from 'drizzle-orm';
+import { eq, inArray, or, and, ne } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
@@ -403,8 +403,32 @@ export async function closeSingleSession(input: { sessionId: string }) {
             .where(inArray(sessions.id, rest.map((r) => r.id)));
         }
 
-        // Update table statuses
-        await db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, newPrimary.tableId));
+        // If new primary has no remaining siblings, keep 'linked' status so
+        // the table still shows the grouped visual indicator on the floor map.
+        const newStatus = rest.length === 0 ? 'linked' : 'occupied';
+        await db.update(tables).set({ status: newStatus }).where(eq(tables.id, newPrimary.tableId));
+      }
+    }
+
+    if (!isPrimary && sess.parentSessionId) {
+      // Secondary being closed — check if primary now has no remaining children.
+      // If so, mark the primary table as 'linked' to keep the visual grouping indicator.
+      const remainingChildren = await db
+        .select({ id: sessions.id })
+        .from(sessions)
+        .where(and(
+          eq(sessions.parentSessionId, sess.parentSessionId),
+          ne(sessions.id, input.sessionId),
+        ));
+      if (remainingChildren.length === 0) {
+        const [primarySess] = await db
+          .select({ tableId: sessions.tableId })
+          .from(sessions)
+          .where(eq(sessions.id, sess.parentSessionId))
+          .limit(1);
+        if (primarySess) {
+          await db.update(tables).set({ status: 'linked' }).where(eq(tables.id, primarySess.tableId));
+        }
       }
     }
 

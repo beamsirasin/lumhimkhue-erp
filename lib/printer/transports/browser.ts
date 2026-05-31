@@ -40,6 +40,8 @@ const PRINT_CSS = `
   }
   .qr-wrap { text-align: center; margin: 6px 0; }
   .qr-wrap img { width: 120px; height: 120px; }
+  .logo-wrap { text-align: center; margin: 4px 0 6px; }
+  .logo-wrap .logo { max-height: 48px; max-width: 100%; object-fit: contain; }
   .small { font-size: 10px; }
   .item-row {
     display: flex;

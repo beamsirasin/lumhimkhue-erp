@@ -10,7 +10,7 @@ export const lineItemSchema = z.object({
 
 export const processPaymentSchema = z.object({
   sessionId: z.string().uuid(),
-  paymentMethod: z.enum(['cash', 'qr_promptpay', 'transfer', 'card']),
+  paymentMethod: z.enum(['cash', 'cash_qr', 'qr_promptpay', 'transfer', 'card']),
   receivedAmount: z.number().min(0),
   discount: z.number().min(0).default(0),
   notes: z.string().max(500).optional(),

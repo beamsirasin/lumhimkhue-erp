@@ -1,4 +1,4 @@
-'use server';
+﻿'use server';
 
 import { eq, and, gte, desc, asc, inArray, ne } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
@@ -79,7 +79,7 @@ export async function placeOrder(input: unknown) {
       .where(eq(sessions.sessionToken, sessionToken))
       .limit(1);
 
-    if (!session || session.status !== 'active')
+    if (!session || (session.status !== 'active' && session.status !== 'paid'))
       return { ok: false as const, error: 'session เนเธกเนเธ–เธนเธเธ•เนเธญเธเธซเธฃเธทเธญเธซเธกเธ”เน€เธงเธฅเธฒเนเธฅเนเธง' };
 
     // Block new order if any items from previous orders are not yet served

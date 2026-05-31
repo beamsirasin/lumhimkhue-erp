@@ -21,7 +21,9 @@ import {
   CheckCircle2,
   Pencil,
   Loader2,
+  Eye,
 } from 'lucide-react';
+import QRCode from 'qrcode';
 import {
   Dialog,
   DialogContent,
@@ -289,6 +291,49 @@ function LinkedTablePicker({ tables, primaryTableId, selected, onToggle }: Linke
   );
 }
 
+/* ─── QR View Modal (show on screen) ──────────────────────────────── */
+
+function QrViewModal({ url, label, onClose }: { url: string | null; label: string; onClose: () => void }) {
+  const [qrSrc, setQrSrc] = useState('');
+
+  useEffect(() => {
+    if (!url) return;
+    QRCode.toDataURL(url, { width: 280, margin: 2, color: { dark: '#1e293b', light: '#ffffff' } })
+      .then(setQrSrc)
+      .catch(() => {});
+  }, [url]);
+
+  if (!url) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-xs rounded-2xl bg-white p-6 shadow-2xl text-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-base font-semibold text-slate-900">QR โต๊ะ {label}</p>
+          <button type="button" onClick={onClose} aria-label="ปิด" className="text-slate-400 hover:text-slate-600">
+            <X className="size-5" />
+          </button>
+        </div>
+        {qrSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={qrSrc} alt={`QR โต๊ะ ${label}`} className="mx-auto rounded-xl" width={240} height={240} />
+        ) : (
+          <div className="flex h-60 w-60 mx-auto items-center justify-center">
+            <Loader2 className="size-8 animate-spin text-slate-300" />
+          </div>
+        )}
+        <p className="mt-3 text-xs text-slate-400 break-all line-clamp-2">{url}</p>
+      </div>
+    </div>
+  );
+}
+
 /* ─── QR Dialog ────────────────────────────────────────────────────── */
 
 interface QrDialogProps {
@@ -299,6 +344,7 @@ interface QrDialogProps {
 
 function SessionQrDialog({ open, data, onClose }: QrDialogProps) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
+  const [qrView, setQrView] = useState<{ url: string; label: string } | null>(null);
   if (!data) return null;
 
   const allEntries: TableQrEntry[] = [
@@ -307,53 +353,69 @@ function SessionQrDialog({ open, data, onClose }: QrDialogProps) {
   ];
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>
-            โต๊ะ {allEntries.map((e) => e.tableLabel).join(', ')} พร้อมแล้ว
-          </DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              โต๊ะ {allEntries.map((e) => e.tableLabel).join(', ')} พร้อมแล้ว
+            </DialogTitle>
+          </DialogHeader>
 
-        <div className="space-y-2">
-          {allEntries.map((entry) => {
-            const url = `${appUrl}/t/${entry.tableQrToken}/s/${entry.sessionToken}`;
-            return (
-              <div
-                key={entry.sessionToken}
-                className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3"
-              >
-                <span className="flex-1 text-sm font-semibold text-slate-800">โต๊ะ {entry.tableLabel}</span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(url).catch(() => {});
-                    toast.success('คัดลอก URL แล้ว');
-                  }}
+          <div className="space-y-2">
+            {allEntries.map((entry) => {
+              const url = `${appUrl}/t/${entry.tableQrToken}/s/${entry.sessionToken}`;
+              return (
+                <div
+                  key={entry.sessionToken}
+                  className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3"
                 >
-                  <Link2 className="mr-1.5 size-3.5" />Link
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const qrPrint: TableQrData = { tableNumber: entry.tableLabel, url, startedAt: data.startedAt };
-                    void printTableQr({ type: 'table_qr', table: qrPrint });
-                  }}
-                >
-                  <Printer className="mr-1.5 size-3.5" />พิมพ์ QR
-                </Button>
-              </div>
-            );
-          })}
-        </div>
+                  <span className="flex-1 text-sm font-semibold text-slate-800">โต๊ะ {entry.tableLabel}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(url).catch(() => {});
+                      toast.success('คัดลอก URL แล้ว');
+                    }}
+                  >
+                    <Link2 className="mr-1.5 size-3.5" />Link
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setQrView({ url, label: entry.tableLabel })}
+                    aria-label="ดู QR"
+                  >
+                    <Eye className="size-3.5" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const qrPrint: TableQrData = { tableNumber: entry.tableLabel, url, startedAt: data.startedAt };
+                      void printTableQr({ type: 'table_qr', table: qrPrint });
+                    }}
+                  >
+                    <Printer className="mr-1.5 size-3.5" />พิมพ์ QR
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
 
-        <DialogFooter>
-          <Button onClick={onClose}>ปิด</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter>
+            <Button onClick={onClose}>ปิด</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <QrViewModal
+        url={qrView?.url ?? null}
+        label={qrView?.label ?? ''}
+        onClose={() => setQrView(null)}
+      />
+    </>
   );
 }
 
@@ -809,6 +871,7 @@ function TableSheet({
   onEditGuests,
 }: TableSheetProps) {
   const [busy, setBusy] = useState(false);
+  const [qrView, setQrView] = useState<{ url: string; label: string } | null>(null);
   const { openConfirm, dialog: confirmDialog } = useConfirm();
 
   if (!table) return null;
@@ -857,6 +920,15 @@ function TableSheet({
     } else {
       doClose();
     }
+  };
+
+  const handleForceSingle = async () => {
+    if (!sess) return;
+    setBusy(true);
+    const r = await closeSingleSession({ sessionId: sess.id });
+    setBusy(false);
+    if (r.ok) { toast.success(`ปิดโต๊ะ ${table.label} แล้ว`); onClose(); onRefetch(); }
+    else toast.error(r.error);
   };
 
   const handleTransferPrimary = async (newPrimarySessionId: string) => {
@@ -1021,6 +1093,14 @@ function TableSheet({
                             </button>
                             <button
                               type="button"
+                              onClick={() => setQrView({ url, label: entry.label })}
+                              aria-label="ดู QR"
+                              className="flex items-center justify-center rounded-xl border border-slate-200 px-3 py-2.5 text-slate-600 hover:bg-slate-50 transition-colors"
+                            >
+                              <Eye className="size-3.5" />
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => {
                                 const qrPrint: TableQrData = { tableNumber: entry.label, url, startedAt: startedAtStr };
                                 void printTableQr({ type: 'table_qr', table: qrPrint });
@@ -1163,40 +1243,101 @@ function TableSheet({
           )}
 
           {/* ── PAID ── */}
-          {visualStatus === 'paid' && (
-            <>
-              <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3 space-y-2 text-sm">
-                <div className="flex items-center gap-2 text-emerald-700 font-medium">
-                  <CheckCircle2 className="size-4 shrink-0" />
-                  ชำระเงินแล้ว — รอเคลียร์โต๊ะ
+          {visualStatus === 'paid' && sess && (() => {
+            const paidLinked = allTables.filter(
+              (t) => t.activeSession?.parentSessionId === sess.id,
+            );
+            const hasGroup = paidLinked.length > 0;
+            const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
+            const startedAtStr = new Date(sess.startedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Bangkok' });
+            const paidUrl = `${appUrl}/t/${table.qrToken}/s/${sess.sessionToken}`;
+            return (
+              <>
+                <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3 space-y-2 text-sm">
+                  <div className="flex items-center gap-2 text-emerald-700 font-medium">
+                    <CheckCircle2 className="size-4 shrink-0" />
+                    ชำระเงินแล้ว — รอเคลียร์โต๊ะ
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-500">เริ่ม</span>
+                    <span className="font-medium">{new Date(sess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-500">จำนวนคน</span>
+                    <span className="font-medium">{sess.totalGuests} คน</span>
+                  </div>
+                  <div className="flex justify-between text-xs border-t border-emerald-100 pt-1.5">
+                    <span className="text-slate-500">ยอดรวม</span>
+                    <span className="font-semibold text-emerald-800">฿{sess.baseAmount.toLocaleString('th-TH')}</span>
+                  </div>
+                  {hasGroup && (
+                    <div className="flex flex-wrap gap-1 pt-0.5">
+                      {[table, ...paidLinked].map((t) => (
+                        <span key={t.id} className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                          โต๊ะ {t.label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                {sess && (
-                  <>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-500">เริ่ม</span>
-                      <span className="font-medium">{new Date(sess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-500">จำนวนคน</span>
-                      <span className="font-medium">{sess.totalGuests} คน</span>
-                    </div>
-                    <div className="flex justify-between text-xs border-t border-emerald-100 pt-1.5">
-                      <span className="text-slate-500">ยอดรวม</span>
-                      <span className="font-semibold text-emerald-800">฿{sess.baseAmount.toLocaleString('th-TH')}</span>
-                    </div>
-                  </>
+
+                {/* Link / QR buttons */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => { await navigator.clipboard.writeText(paidUrl).catch(() => {}); toast.success('คัดลอก URL แล้ว'); }}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <Link2 className="size-3.5" />Link
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="ดู QR"
+                    onClick={() => setQrView({ url: paidUrl, label: table.label })}
+                    className="flex items-center justify-center rounded-xl border border-slate-200 px-3 py-2.5 text-slate-600 hover:bg-slate-50 transition-colors"
+                  >
+                    <Eye className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { const qr: TableQrData = { tableNumber: table.label, url: paidUrl, startedAt: startedAtStr }; void printTableQr({ type: 'table_qr', table: qr }); }}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <Printer className="size-3.5" />พิมพ์ QR
+                  </button>
+                </div>
+                {hasGroup ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={handleForceSingle}
+                      disabled={busy}
+                      className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                    >
+                      ปิดโต๊ะนี้
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleForceClose}
+                      disabled={busy}
+                      className="rounded-xl border-2 border-slate-800 bg-slate-800 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+                    >
+                      ปิดทั้งหมด
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleForceClose}
+                    disabled={busy}
+                    className="w-full rounded-xl border-2 border-slate-800 bg-slate-800 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+                  >
+                    ปิดโต๊ะ / เคลียร์โต๊ะ
+                  </button>
                 )}
-              </div>
-              <button
-                type="button"
-                onClick={handleForceClose}
-                disabled={busy}
-                className="w-full rounded-xl border-2 border-slate-800 bg-slate-800 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
-              >
-                ปิดโต๊ะ / เคลียร์โต๊ะ
-              </button>
-            </>
-          )}
+              </>
+            );
+          })()}
 
           {/* ── LINKED (secondary table) — show same full view as primary ── */}
           {visualStatus === 'linked' && sess && (
@@ -1279,22 +1420,34 @@ function TableSheet({
                   <span className="flex items-center justify-center gap-2"><MoveRight className="size-4" />ย้ายโต๊ะ</span>
                 </button>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={handleCloseSingle} disabled={busy}
-                    className="rounded-xl border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
-                    ปิดโต๊ะนี้
+                {sess.parentSessionId ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={handleCloseSingle} disabled={busy}
+                      className="rounded-xl border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
+                      ปิดโต๊ะนี้
+                    </button>
+                    <button type="button" onClick={handleCloseAll} disabled={busy}
+                      className="rounded-xl border border-red-400 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors">
+                      ปิดทั้งหมด
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={handleForceClose} disabled={busy}
+                    className="w-full rounded-xl border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
+                    บังคับปิดโต๊ะ
                   </button>
-                  <button type="button" onClick={handleCloseAll} disabled={busy}
-                    className="rounded-xl border border-red-400 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors">
-                    ปิดทั้งหมด
-                  </button>
-                </div>
+                )}
               </div>
             </>
           )}
         </div>
       </DialogContent>
     </Dialog>
+    <QrViewModal
+      url={qrView?.url ?? null}
+      label={qrView?.label ?? ''}
+      onClose={() => setQrView(null)}
+    />
     </>
   );
 }

@@ -14,16 +14,15 @@ export default function HistoryPage() {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ['session-history', selectedDate],
     queryFn: () => getSessionHistory(selectedDate).then((r) => (r.ok ? r.data : [])),
-    staleTime: 30_000,
+    staleTime: 0,
   });
 
   return (
-    <div className="flex gap-6 p-6 min-h-screen items-start">
-      {/* Calendar sidebar */}
-      <HistoryCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
-
-      {/* History table */}
-      <div className="flex-1 min-w-0">
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="shrink-0 px-6 pt-6 pb-0">
+        <HistoryCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+      </div>
+      <div className="flex-1 min-w-0 overflow-hidden">
         {isLoading ? (
           <div className="py-16 text-center text-sm text-slate-400">กำลังโหลด...</div>
         ) : (

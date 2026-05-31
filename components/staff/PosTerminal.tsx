@@ -23,11 +23,45 @@ import type { ReceiptData } from '@/lib/printer/types';
 import type { PricingTile } from '@/lib/db/schema';
 
 const METHOD_LABEL: Record<string, string> = {
-  cash: 'เงินสด',
+  cash:         'เงินสด',
+  cash_qr:      'เงินสด + QR',
   qr_promptpay: 'QR PromptPay',
-  transfer: 'โอนเงิน',
-  card: 'บัตรเครดิต',
+  transfer:     'โอนเงิน',
+  card:         'บัตรเครดิต',
 };
+
+/* ─── Numpad ────────────────────────────────────────────────────────── */
+
+function Numpad({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  function press(key: string) {
+    if (key === '⌫') {
+      onChange(value.length > 1 ? value.slice(0, -1) : '0');
+    } else if (key === 'C') {
+      onChange('0');
+    } else {
+      const next = value === '0' ? key : value + key;
+      if (next.length <= 7) onChange(next);
+    }
+  }
+  return (
+    <div className="grid grid-cols-3 gap-1.5">
+      {(['7','8','9','4','5','6','1','2','3','C','0','⌫'] as const).map((k) => (
+        <button
+          key={k}
+          type="button"
+          onClick={() => press(k)}
+          className={`rounded-xl py-3.5 text-base font-semibold transition-colors active:scale-95 ${
+            k === 'C'  ? 'bg-red-50 border border-red-200 text-red-600 hover:bg-red-100' :
+            k === '⌫' ? 'bg-slate-100 border border-slate-200 text-slate-700 hover:bg-slate-200' :
+                         'bg-white border border-slate-200 text-slate-800 hover:bg-slate-50'
+          }`}
+        >
+          {k}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 interface PosTerminalProps {
   initialSessions: PosSession[];
@@ -36,6 +70,7 @@ interface PosTerminalProps {
 
 export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [groupPickerId, setGroupPickerId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const { data: sessions = [] } = useQuery({
@@ -48,10 +83,9 @@ export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) 
   });
 
   useEffect(() => {
-    if (selectedId && !sessions.find((s) => s.id === selectedId)) {
-      setSelectedId(null);
-    }
-  }, [sessions, selectedId]);
+    if (selectedId && !sessions.find((s) => s.id === selectedId)) setSelectedId(null);
+    if (groupPickerId && !sessions.find((s) => s.id === groupPickerId)) setGroupPickerId(null);
+  }, [sessions, selectedId, groupPickerId]);
 
   const closing = useMemo(() => sessions.filter((s) => s.status === 'closing'), [sessions]);
   const active = useMemo(() => sessions.filter((s) => s.status === 'active'), [sessions]);
@@ -61,13 +95,36 @@ export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) 
     queryClient.invalidateQueries({ queryKey: ['pos-sessions'] });
   }, [queryClient]);
 
-  const handleSelectSession = useCallback((id: string) => setSelectedId(id), []);
-
   const sortedSessions = useMemo(() => [...sessions].sort((a, b) => {
     const order = (s: string) => s === 'closing' ? 0 : s === 'active' ? 1 : 2;
     if (order(a.status) !== order(b.status)) return order(a.status) - order(b.status);
     return new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime();
   }), [sessions]);
+
+  const linkedMap = useMemo(() => {
+    const map: Record<string, PosSession[]> = {};
+    for (const s of sortedSessions) {
+      if (s.parentSessionId) {
+        if (!map[s.parentSessionId]) map[s.parentSessionId] = [];
+        map[s.parentSessionId].push(s);
+      }
+    }
+    return map;
+  }, [sortedSessions]);
+
+  const primarySessions = useMemo(
+    () => sortedSessions.filter((s) => !s.parentSessionId),
+    [sortedSessions],
+  );
+
+  const handleSelectSession = useCallback((id: string) => {
+    const linked = linkedMap[id] ?? [];
+    if (linked.length > 0) {
+      setGroupPickerId(id);
+    } else {
+      setSelectedId(id);
+    }
+  }, [linkedMap]);
 
   return (
     <div className="p-6">
@@ -83,15 +140,93 @@ export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) 
       </div>
 
       {/* Session grid */}
-      {sortedSessions.length === 0 ? (
+      {primarySessions.length === 0 ? (
         <p className="py-24 text-center text-sm text-slate-400">ไม่มีโต๊ะที่ใช้งาน</p>
       ) : (
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {sortedSessions.map((s) => (
-            <SessionCard key={s.id} session={s} selected={selectedId === s.id} onSelect={handleSelectSession} />
-          ))}
+          {primarySessions.map((s) => {
+            const linked = linkedMap[s.id] ?? [];
+            const isGroupSelected = selectedId === s.id || linked.some((l) => l.id === selectedId);
+            if (linked.length === 0) {
+              return (
+                <SessionCard key={s.id} session={s} selected={selectedId === s.id} onSelect={handleSelectSession} linkedCount={0} />
+              );
+            }
+            return (
+              <div key={s.id} className="relative">
+                {linked.length >= 2 && (
+                  <div className="absolute inset-0 translate-x-2 translate-y-2 rounded-xl border-2 border-slate-200 bg-white z-0" />
+                )}
+                <div className="absolute inset-0 translate-x-1 translate-y-1 rounded-xl border-2 border-slate-200 bg-white z-[1]" />
+                <div className="relative z-[2]">
+                  <SessionCard session={s} selected={isGroupSelected} onSelect={handleSelectSession} linkedCount={linked.length} />
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
+
+      {/* Group picker popup */}
+      {groupPickerId && (() => {
+        const primary = sessions.find((s) => s.id === groupPickerId);
+        const linked = linkedMap[groupPickerId] ?? [];
+        if (!primary) return null;
+        const allInGroup = [primary, ...linked];
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            onClick={() => setGroupPickerId(null)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl space-y-3"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-sm font-semibold text-slate-900">เลือกบิลที่ต้องการเปิด</p>
+              <div className="space-y-2">
+                {allInGroup.map((s) => {
+                  const total = s.guests.reduce((sum, g) => sum + Number(g.pricingTile.price) * g.quantity, 0);
+                  const guestCount = s.guests.reduce((sum, g) => sum + g.quantity, 0);
+                  const isClosing = s.status === 'closing';
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => { setSelectedId(s.id); setGroupPickerId(null); }}
+                      className="w-full flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 hover:bg-slate-50 text-left transition-colors"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-900">โต๊ะ {s.table.label}</span>
+                          <span className="text-[10px] text-slate-400">
+                            {s.parentSessionId ? 'บัญชีรอง' : 'บัญชีหลัก'}
+                          </span>
+                          {isClosing && (
+                            <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
+                              รอบิล
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 text-xs text-slate-400">{guestCount} คน</p>
+                      </div>
+                      <p className="text-sm font-bold tabular-nums text-slate-800">
+                        ฿{total.toLocaleString('th-TH')}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                onClick={() => setGroupPickerId(null)}
+                className="w-full rounded-lg border border-slate-200 py-2 text-sm text-slate-500 hover:bg-slate-50"
+              >
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modal */}
       {selectedId && (
@@ -123,7 +258,7 @@ function baseTotal(session: PosSession): number {
   return session.guests.reduce((sum, g) => sum + Number(g.pricingTile.price) * g.quantity, 0);
 }
 
-const SessionCard = memo(function SessionCard({ session, selected, onSelect }: { session: PosSession; selected: boolean; onSelect: (id: string) => void }) {
+const SessionCard = memo(function SessionCard({ session, selected, onSelect, linkedCount = 0 }: { session: PosSession; selected: boolean; onSelect: (id: string) => void; linkedCount?: number }) {
   const handleClick = useCallback(() => onSelect(session.id), [onSelect, session.id]);
   const total = baseTotal(session);
   const isClosing = session.status === 'closing';
@@ -162,6 +297,11 @@ const SessionCard = memo(function SessionCard({ session, selected, onSelect }: {
       <p className={`mt-1 text-sm font-semibold tabular-nums ${selected ? 'text-white' : isPaid ? 'text-emerald-700' : 'text-slate-800'}`}>
         ฿{total.toLocaleString('th-TH')}
       </p>
+      {linkedCount > 0 && (
+        <p className={`mt-0.5 text-[10px] font-medium ${selected ? 'text-violet-300' : 'text-violet-500'}`}>
+          เชื่อม {linkedCount + 1} โต๊ะ
+        </p>
+      )}
       <p className={`mt-0.5 text-[11px] ${selected ? 'text-slate-400' : 'text-slate-400'}`}>
         {formatDistanceToNowStrict(new Date(session.startedAt), { locale: th, addSuffix: true })}
       </p>
@@ -288,7 +428,7 @@ function PaymentPanel({
 }) {
   const { session, orders, totals } = detail;
 
-  const [view, setView] = useState<'bill' | 'payment'>('bill');
+  const [view, setView] = useState<'bill' | 'payment' | 'split'>('bill');
   // keyed by pricingTile.id — initialized from existing session guests
   const [guestQty, setGuestQty] = useState<Record<string, number>>(
     Object.fromEntries(session.guests.map((g) => [g.pricingTile.id, g.quantity])),
@@ -298,13 +438,67 @@ function PaymentPanel({
   const [saving, setSaving] = useState(false);
 
   // Payment-view state
-  const [method, setMethod] = useState<'cash' | 'qr_promptpay' | 'transfer' | 'card'>('cash');
+  const [method, setMethod] = useState<'cash' | 'cash_qr' | 'qr_promptpay' | 'transfer' | 'card'>('cash');
   const [bankAccount, setBankAccount] = useState<'main' | 'secondary'>('main');
-  const [received, setReceived] = useState('');
+  const [numpadInput, setNumpadInput] = useState('0');
   const [manualDiscount, setManualDiscount] = useState('0');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [paid, setPaid] = useState(false);
+
+  // Split payment state — sequential rounds
+  type CompletedRound = { items: { pricingTileId: string; name: string; qty: number; price: number }[]; subtotal: number; method: 'cash' | 'qr_promptpay' };
+  const [roundRemaining,  setRoundRemaining]  = useState<Record<string, number>>({});
+  const [roundSelection,  setRoundSelection]  = useState<Record<string, number>>({});
+  const [completedRounds, setCompletedRounds] = useState<CompletedRound[]>([]);
+  const [roundMethod,     setRoundMethod]     = useState<'cash' | 'qr_promptpay'>('cash');
+  const [roundNumpad,     setRoundNumpad]     = useState('0');
+
+  function initRoundSplit() {
+    const rem: Record<string, number> = {};
+    for (const t of guestTiles)  { const q = guestQty[t.id]  ?? 0; if (q > 0) rem[t.id] = q; }
+    for (const t of addonTiles)  { const q = addonQty[t.id]  ?? 0; if (q > 0) rem[t.id] = q; }
+    setRoundRemaining(rem);
+    setRoundSelection({});
+    setCompletedRounds([]);
+    setRoundMethod('cash');
+    setRoundNumpad('0');
+  }
+
+  function getRoundSubtotal(): number {
+    return [...guestTiles, ...addonTiles].reduce(
+      (s, t) => s + (roundSelection[t.id] ?? 0) * Number(t.price), 0,
+    );
+  }
+
+  function adjustRoundItem(tileId: string, delta: number) {
+    const remaining = roundRemaining[tileId] ?? 0;
+    setRoundSelection((prev) => {
+      const cur = prev[tileId] ?? 0;
+      const next = cur + delta;
+      if (next < 0 || next > remaining) return prev;
+      return { ...prev, [tileId]: next };
+    });
+  }
+
+  function confirmRound() {
+    const sub = getRoundSubtotal();
+    if (sub === 0) return;
+    const items = [...guestTiles, ...addonTiles]
+      .filter((t) => (roundSelection[t.id] ?? 0) > 0)
+      .map((t) => ({ pricingTileId: t.id, name: t.name, qty: roundSelection[t.id]!, price: Number(t.price) }));
+    setCompletedRounds((prev) => [...prev, { items, subtotal: sub, method: roundMethod }]);
+    setRoundRemaining((prev) => {
+      const next = { ...prev };
+      for (const [id, qty] of Object.entries(roundSelection)) {
+        next[id] = (next[id] ?? 0) - qty;
+        if (next[id] <= 0) delete next[id];
+      }
+      return next;
+    });
+    setRoundSelection({});
+    setRoundNumpad('0');
+  }
 
   // Tax invoice state
   const [taxInvoiceOpen, setTaxInvoiceOpen] = useState(false);
@@ -328,8 +522,10 @@ function PaymentPanel({
     return sum + Number(t.discountValue) * qty;
   }, 0);
   const total = Math.max(0, subtotalBeforeDiscount - manualDiscountNum - discountTileTotal);
-  const receivedNum = Number(received) || 0;
-  const change = method === 'cash' ? receivedNum - total : 0;
+  const numpadNum   = Number(numpadInput) || 0;
+  const cashPortion = method === 'cash_qr' ? Math.min(numpadNum, total) : numpadNum;
+  const qrPortion   = method === 'cash_qr' ? total - cashPortion : 0;
+  const change      = method === 'cash' ? numpadNum - total : 0;
 
   async function handleSave() {
     setSaving(true);
@@ -351,6 +547,7 @@ function PaymentPanel({
     if (!storeSettings) return { shopNameTh: 'ร้านชาบู' };
     const cfg = resolveBillConfig(storeSettings, billType);
     return {
+      logoUrl:     cfg.logoUrl,
       shopNameTh:  cfg.shopNameTh ?? 'ร้านชาบู',
       shopNameEn:  cfg.shopNameEn,
       companyName: cfg.companyName,
@@ -407,11 +604,16 @@ function PaymentPanel({
   }
 
   async function handleSubmit() {
-    if (method === 'cash' && receivedNum < total) { toast.error('จำนวนเงินที่รับไม่เพียงพอ'); return; }
+    if (method === 'cash' && numpadNum < total) { toast.error('จำนวนเงินที่รับไม่เพียงพอ'); return; }
+    if (method === 'cash_qr' && cashPortion <= 0) { toast.error('กรุณาระบุยอดเงินสด'); return; }
     setSubmitting(true);
     const accountLabel = bankAccount === 'main' ? 'บัญชีหลัก' : 'บัญชีรอง';
+    const splitNote = method === 'cash_qr'
+      ? `[เงินสด ฿${cashPortion.toLocaleString('th-TH')} + QR ฿${qrPortion.toLocaleString('th-TH')}]`
+      : '';
     const fullNotes = [
       `[${accountLabel}]`,
+      splitNote,
       notes || '',
       taxInvoice ? `[ใบกำกับภาษี: ${taxInvoice.companyName} ${taxInvoice.taxId}]` : '',
     ].filter(Boolean).join(' ');
@@ -419,7 +621,7 @@ function PaymentPanel({
     const result = await processPayment({
       sessionId: session.id,
       paymentMethod: method,
-      receivedAmount: method === 'cash' ? receivedNum : total,
+      receivedAmount: method === 'cash' ? numpadNum : method === 'cash_qr' ? cashPortion : total,
       discount: manualDiscountNum,
       notes: fullNotes || undefined,
       lineItems: buildLineItems(),
@@ -445,7 +647,7 @@ function PaymentPanel({
       items: receiptItems, subtotal: subtotalBeforeDiscount,
       discount: manualDiscountNum + discountTileTotal, serviceCharge: 0,
       total: result.data.total,
-      receivedAmount: method === 'cash' ? receivedNum : result.data.total,
+      receivedAmount: method === 'cash' ? numpadNum : method === 'cash_qr' ? cashPortion : result.data.total,
       changeAmount: result.data.changeAmount, paymentMethod: METHOD_LABEL[method], sessionId: session.id,
     };
     setLastReceipt(receipt);
@@ -528,119 +730,593 @@ function PaymentPanel({
 
   /* ── Payment form view ── */
   if (view === 'payment') {
+    const METHODS = ['cash', 'cash_qr', 'qr_promptpay'] as const;
+    const confirmDisabled =
+      submitting ||
+      (method === 'cash' && (numpadInput === '0' || change < 0)) ||
+      (method === 'cash_qr' && cashPortion <= 0);
+
+    // Thai cash prediction: exact total + round up to real Thai denominations
+    const predictAmounts = (t: number): number[] => {
+      const seen = new Set<number>();
+      const out: number[] = [];
+      const push = (n: number) => { if (n >= t && !seen.has(n)) { seen.add(n); out.push(n); } };
+      const r = (n: number, d: number) => Math.ceil(n / d) * d;
+      push(t);            // exact total always first
+      push(r(t, 10));     // round to nearest ฿10
+      push(r(t, 100));    // round to nearest ฿100
+      push(r(t, 500));    // round to nearest ฿500
+      push(r(t, 1000));   // round to nearest ฿1,000
+      return out;
+    };
+    const quickAmounts = predictAmounts(total);
+
     return (
-      <div className="p-6 space-y-4">
+      <div className="flex h-full min-h-[480px]">
         {TaxInvoicePopup}
 
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={() => setView('bill')}
-            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
-            ← กลับ
-          </button>
-          <h2 className="text-base font-semibold text-slate-900">ชำระเงิน — โต๊ะ {session.table.label}</h2>
-          {isGroupBill && linkedTableLabels && (
-            <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-700">
-              บิลกลุ่ม · โต๊ะ {[session.table.label, ...linkedTableLabels].join(', ')}
-            </span>
-          )}
-        </div>
+        {/* ── Left panel: form ── */}
+        <div className="flex flex-1 flex-col overflow-y-auto p-5 gap-3 min-w-0">
 
-        {/* Bank account selector */}
-        <div>
-          <p className="mb-1.5 text-xs font-medium text-slate-500">เข้าบัญชี</p>
-          <div className="flex gap-2">
-            {(['main', 'secondary'] as const).map((acc) => (
-              <button key={acc} type="button" onClick={() => setBankAccount(acc)}
-                className={`flex-1 rounded-lg border py-2 text-sm font-medium transition-colors ${
-                  bankAccount === acc ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}>
-                {acc === 'main' ? 'บัญชีหลัก' : 'บัญชีรอง'}
-              </button>
-            ))}
+          {/* Header */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button type="button" onClick={() => setView('bill')}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
+              ← กลับ
+            </button>
+            <h2 className="text-sm font-semibold text-slate-900">ชำระเงิน — โต๊ะ {session.table.label}</h2>
+            {isGroupBill && linkedTableLabels && (
+              <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
+                กลุ่ม {[session.table.label, ...linkedTableLabels].join(', ')}
+              </span>
+            )}
           </div>
-        </div>
 
-        {/* Method */}
-        <div>
-          <p className="mb-1.5 text-xs font-medium text-slate-500">ช่องทางชำระ</p>
-          <div className="grid grid-cols-4 gap-2">
-            {(['cash', 'qr_promptpay', 'transfer', 'card'] as const).map((m) => (
-              <button key={m} type="button" onClick={() => setMethod(m)}
-                className={`rounded-lg border py-2 text-xs font-medium transition-colors ${method === m ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                {METHOD_LABEL[m]}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Discount tiles */}
-        {discountTiles.length > 0 && (
-          <div>
-            <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-600"><Tag className="size-3.5 text-red-400" />ส่วนลด</p>
-            <div className="flex flex-wrap gap-2">
-              {discountTiles.map((t) => (
-                <PosTile key={t.id} tile={t} qty={discountQty[t.id] ?? 0}
-                  onInc={() => setDiscountQty((p) => ({ ...p, [t.id]: (p[t.id] ?? 0) + 1 }))}
-                  onDec={() => setDiscountQty((p) => ({ ...p, [t.id]: Math.max(0, (p[t.id] ?? 0) - 1) }))} />
+          {/* Bank account */}
+          <div className="shrink-0">
+            <p className="mb-1 text-xs font-medium text-slate-500">เข้าบัญชี</p>
+            <div className="flex gap-1.5">
+              {(['main', 'secondary'] as const).map((acc) => (
+                <button key={acc} type="button" onClick={() => setBankAccount(acc)}
+                  className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${
+                    bankAccount === acc ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}>
+                  {acc === 'main' ? 'บัญชีหลัก' : 'บัญชีรอง'}
+                </button>
               ))}
             </div>
           </div>
-        )}
 
-        {/* Manual discount */}
-        <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">ส่วนลดเพิ่มเติม (฿)</label>
-          <input type="number" min={0} value={manualDiscount} onChange={(e) => setManualDiscount(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm tabular-nums outline-none focus:border-slate-500" />
-        </div>
-
-        {/* Totals */}
-        <div className="rounded-lg bg-slate-50 px-4 py-3 space-y-1">
-          <div className="flex justify-between text-sm text-slate-600"><span>ยอดรวม</span><span className="tabular-nums">฿{subtotalBeforeDiscount.toLocaleString('th-TH')}</span></div>
-          {discountTileTotal > 0 && <div className="flex justify-between text-sm text-red-500"><span>ส่วนลด</span><span className="tabular-nums">−฿{discountTileTotal.toLocaleString('th-TH')}</span></div>}
-          {manualDiscountNum > 0 && <div className="flex justify-between text-sm text-red-500"><span>ส่วนลดเพิ่มเติม</span><span className="tabular-nums">−฿{manualDiscountNum.toLocaleString('th-TH')}</span></div>}
-          <div className="flex justify-between border-t border-slate-200 pt-2 font-bold text-slate-900">
-            <span>ยอดชำระ</span><span className="tabular-nums text-lg">฿{total.toLocaleString('th-TH')}</span>
-          </div>
-        </div>
-
-        {method === 'cash' && (
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">รับเงิน (฿)</label>
-              <input type="number" min={0} value={received} onChange={(e) => setReceived(e.target.value)} placeholder={total.toString()}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm tabular-nums outline-none focus:border-slate-500" />
+          {/* Payment method — 3 options only */}
+          <div className="shrink-0">
+            <p className="mb-1 text-xs font-medium text-slate-500">ช่องทางชำระ</p>
+            <div className="flex gap-1.5">
+              {METHODS.map((m) => (
+                <button key={m} type="button"
+                  onClick={() => {
+                    setMethod(m);
+                    // QR: pre-fill with total; cash modes: reset to 0
+                    setNumpadInput(m === 'qr_promptpay' ? String(total) : '0');
+                  }}
+                  className={`flex-1 rounded-lg border py-2.5 text-xs font-medium transition-colors ${
+                    method === m ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}>
+                  {METHOD_LABEL[m]}
+                </button>
+              ))}
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">เงินทอน (฿)</label>
-              <p className={`rounded-lg border px-3 py-2 text-sm tabular-nums font-semibold ${change >= 0 ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-600'}`}>
-                {change >= 0 ? `฿${change.toLocaleString('th-TH')}` : 'ไม่เพียงพอ'}
+          </div>
+
+          {/* Discount tiles */}
+          {discountTiles.length > 0 && (
+            <div className="shrink-0">
+              <p className="mb-1.5 flex items-center gap-1 text-xs font-semibold text-slate-600">
+                <Tag className="size-3 text-red-400" />ส่วนลด
               </p>
+              <div className="flex flex-wrap gap-1.5">
+                {discountTiles.map((t) => (
+                  <PosTile key={t.id} tile={t} qty={discountQty[t.id] ?? 0}
+                    onInc={() => setDiscountQty((p) => ({ ...p, [t.id]: (p[t.id] ?? 0) + 1 }))}
+                    onDec={() => setDiscountQty((p) => ({ ...p, [t.id]: Math.max(0, (p[t.id] ?? 0) - 1) }))} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Manual discount */}
+          <div className="shrink-0">
+            <label className="block text-xs font-medium text-slate-600 mb-1">ส่วนลดเพิ่มเติม (฿)</label>
+            <input type="number" min={0} value={manualDiscount} onChange={(e) => setManualDiscount(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm tabular-nums outline-none focus:border-slate-500" />
+          </div>
+
+          {/* Totals with item breakdown */}
+          <div className="shrink-0 rounded-lg bg-slate-50 px-3 py-2.5 space-y-1">
+            <div className="flex justify-between text-xs font-medium text-slate-500 mb-1">
+              <span>รายการ</span>
+              <span className="tabular-nums">฿{subtotalBeforeDiscount.toLocaleString('th-TH')}</span>
+            </div>
+            {/* Guest lines */}
+            {guestTiles.filter((t) => (guestQty[t.id] ?? 0) > 0).map((t) => {
+              const qty = guestQty[t.id] ?? 0;
+              return (
+                <div key={t.id} className="flex justify-between text-xs text-slate-400 pl-2">
+                  <span>{t.name} ×{qty}</span>
+                  <span className="tabular-nums">฿{(Number(t.price) * qty).toLocaleString('th-TH')}</span>
+                </div>
+              );
+            })}
+            {/* Addon lines */}
+            {addonTiles.filter((t) => (addonQty[t.id] ?? 0) > 0).map((t) => {
+              const qty = addonQty[t.id] ?? 0;
+              return (
+                <div key={t.id} className="flex justify-between text-xs text-slate-400 pl-2">
+                  <span>{t.name} ×{qty}</span>
+                  <span className="tabular-nums text-green-600">+฿{(Number(t.price) * qty).toLocaleString('th-TH')}</span>
+                </div>
+              );
+            })}
+            {discountTileTotal > 0 && (
+              <div className="flex justify-between text-xs text-red-400 pl-2">
+                <span>ส่วนลด</span>
+                <span className="tabular-nums">−฿{discountTileTotal.toLocaleString('th-TH')}</span>
+              </div>
+            )}
+            {manualDiscountNum > 0 && (
+              <div className="flex justify-between text-xs text-red-400 pl-2">
+                <span>ส่วนลดเพิ่มเติม</span>
+                <span className="tabular-nums">−฿{manualDiscountNum.toLocaleString('th-TH')}</span>
+              </div>
+            )}
+            <div className="flex justify-between border-t border-slate-200 pt-1.5 font-bold text-slate-900">
+              <span className="text-sm">ยอดชำระ</span>
+              <span className="tabular-nums text-lg">฿{total.toLocaleString('th-TH')}</span>
             </div>
           </div>
-        )}
 
-        <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">หมายเหตุ</label>
-          <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="ไม่บังคับ"
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500" />
+          {/* Notes */}
+          <div className="shrink-0">
+            <label className="block text-xs font-medium text-slate-600 mb-1">หมายเหตุ</label>
+            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="ไม่บังคับ"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500" />
+          </div>
+
+          {/* Tax invoice */}
+          <button type="button"
+            onClick={() => { setTaxForm(taxInvoice ?? { companyName: '', phone: '', taxId: '', address: '' }); setTaxInvoiceOpen(true); }}
+            className={`shrink-0 w-full rounded-lg border py-2 text-xs font-medium transition-colors ${
+              taxInvoice ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}>
+            {taxInvoice ? `📄 ${taxInvoice.companyName}` : '+ ออกใบกำกับภาษี'}
+          </button>
+
+          {/* Split button */}
+          <button type="button"
+            onClick={() => { initRoundSplit(); setView('split'); }}
+            className="shrink-0 w-full rounded-xl border border-slate-200 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 transition-colors">
+            ÷ แยกชำระตามรายการ
+          </button>
+
+          {/* Confirm */}
+          <button type="button" onClick={handleSubmit} disabled={confirmDisabled}
+            className="shrink-0 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-800 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-40 transition-colors">
+            {submitting && <Loader2 className="size-4 animate-spin" />}
+            {submitting ? 'กำลังดำเนินการ…' : `ยืนยันชำระ ฿${total.toLocaleString('th-TH')}`}
+          </button>
         </div>
 
-        {/* Tax invoice toggle */}
-        <button type="button"
-          onClick={() => { setTaxForm(taxInvoice ?? { companyName: '', phone: '', taxId: '', address: '' }); setTaxInvoiceOpen(true); }}
-          className={`w-full rounded-lg border py-2.5 text-sm font-medium transition-colors ${
-            taxInvoice ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-          }`}>
-          {taxInvoice ? `📄 ใบกำกับภาษี: ${taxInvoice.companyName}` : '+ ออกใบกำกับภาษี'}
-        </button>
+        {/* ── Right panel: numpad (all methods) ── */}
+        <div className="flex-1 border-l border-slate-100 p-5 flex flex-col gap-3 bg-slate-50/40">
 
-        <button type="button" onClick={handleSubmit}
-          disabled={submitting || (method === 'cash' && (!received || change < 0))}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-800 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50">
-          {submitting && <Loader2 className="size-4 animate-spin" />}
-          {submitting ? 'กำลังดำเนินการ…' : `ยืนยันการชำระเงิน ฿${total.toLocaleString('th-TH')}`}
-        </button>
+            {/* Display */}
+            <div className="shrink-0 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-right">
+              <p className="text-xs font-medium text-slate-400 mb-1">
+                {method === 'cash_qr' ? 'เงินสด (กรอกยอดสด)' :
+                 method === 'qr_promptpay' ? 'ยอดชำระ QR' : 'รับเงิน'}
+              </p>
+              <p className="text-4xl font-bold tabular-nums text-slate-900 leading-none">
+                ฿{Number(numpadInput).toLocaleString('th-TH')}
+              </p>
+              {method === 'cash_qr' && (
+                <p className="text-sm text-slate-500 mt-2 tabular-nums">
+                  QR PromptPay <span className="font-semibold text-slate-800">฿{qrPortion.toLocaleString('th-TH')}</span>
+                </p>
+              )}
+              {method === 'cash' && numpadNum > 0 && (
+                <p className={`text-sm mt-2 tabular-nums font-semibold ${change >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                  {change >= 0 ? `เงินทอน ฿${change.toLocaleString('th-TH')}` : 'ไม่เพียงพอ'}
+                </p>
+              )}
+            </div>
+
+            {/* Numpad — large keys */}
+            <div className="flex-1 grid grid-cols-3 gap-2 content-start">
+              {(['7','8','9','4','5','6','1','2','3','C','0','⌫'] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => {
+                    if (k === '⌫') setNumpadInput((v) => v.length > 1 ? v.slice(0, -1) : '0');
+                    else if (k === 'C') setNumpadInput('0');
+                    else setNumpadInput((v) => {
+                      const next = v === '0' ? k : v + k;
+                      return next.length <= 7 ? next : v;
+                    });
+                  }}
+                  className={`rounded-2xl text-xl font-bold transition-colors active:scale-95 select-none h-14 ${
+                    k === 'C'  ? 'bg-red-50 border border-red-200 text-red-600 hover:bg-red-100' :
+                    k === '⌫' ? 'bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200' :
+                                 'bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 shadow-sm'
+                  }`}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+
+            {/* Predictive quick amounts */}
+            <div className="shrink-0 flex gap-1.5">
+              {quickAmounts.map((amt) => (
+                <button
+                  key={amt}
+                  type="button"
+                  onClick={() => setNumpadInput(String(amt))}
+                  className={`flex-1 rounded-xl border py-2.5 text-xs font-semibold tabular-nums transition-colors ${
+                    numpadInput === String(amt)
+                      ? 'border-slate-800 bg-slate-800 text-white'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  ฿{amt.toLocaleString('th-TH')}
+                </button>
+              ))}
+            </div>
+          </div>
+      </div>
+    );
+  }
+
+  /* ── Split payment view (round-by-round sequential) ── */
+  if (view === 'split') {
+    const hasRemaining = Object.values(roundRemaining).some((v) => v > 0);
+    const roundSubtotal = getRoundSubtotal();
+    const roundNumpadNum = Number(roundNumpad) || 0;
+    const roundChange = roundMethod === 'cash' ? roundNumpadNum - roundSubtotal : 0;
+    const canConfirmRound =
+      roundSubtotal > 0 &&
+      (roundMethod === 'qr_promptpay' || (roundMethod === 'cash' && roundNumpadNum >= roundSubtotal));
+    const completedTotal = completedRounds.reduce((s, r) => s + r.subtotal, 0);
+    const allDone = !hasRemaining;
+
+    const predictRoundAmounts = (t: number): number[] => {
+      const seen = new Set<number>();
+      const out: number[] = [];
+      const push = (n: number) => { if (n >= t && !seen.has(n)) { seen.add(n); out.push(n); } };
+      const rd = (n: number, d: number) => Math.ceil(n / d) * d;
+      push(t); push(rd(t, 10)); push(rd(t, 100)); push(rd(t, 500)); push(rd(t, 1000));
+      return out;
+    };
+    const roundQuickAmounts = roundSubtotal > 0 && roundMethod === 'cash'
+      ? predictRoundAmounts(roundSubtotal)
+      : [];
+
+    function handleConfirmRound() {
+      if (!canConfirmRound) return;
+      confirmRound();
+      setRoundMethod('cash');
+    }
+
+    async function handleRoundSubmit() {
+      if (completedRounds.length === 0) return;
+      setSubmitting(true);
+
+      // Aggregate per-tile quantities from completed rounds
+      const partialGuestQty: Record<string, number> = {};
+      const partialAddonQty: Record<string, number> = {};
+      const guestTileIds = new Set(guestTiles.map((t) => t.id));
+      for (const round of completedRounds) {
+        for (const item of round.items) {
+          if (guestTileIds.has(item.pricingTileId)) {
+            partialGuestQty[item.pricingTileId] = (partialGuestQty[item.pricingTileId] ?? 0) + item.qty;
+          } else {
+            partialAddonQty[item.pricingTileId] = (partialAddonQty[item.pricingTileId] ?? 0) + item.qty;
+          }
+        }
+      }
+
+      // If partial (not all guests covered), shrink the session to only the paid guests first
+      // so processPayment calculates the correct total server-side
+      if (!allDone) {
+        const updateRes = await updateSessionGuests({
+          sessionId: session.id,
+          guests: guestTiles.map((t) => ({
+            pricingTileId: t.id,
+            quantity: partialGuestQty[t.id] ?? 0,
+          })),
+        });
+        if (!updateRes.ok) { toast.error(updateRes.error); setSubmitting(false); return; }
+      }
+
+      const hasCash = completedRounds.some((r) => r.method === 'cash');
+      const hasQr   = completedRounds.some((r) => r.method === 'qr_promptpay');
+      const dbMethod: 'cash' | 'cash_qr' | 'qr_promptpay' =
+        hasCash && hasQr ? 'cash_qr' : hasCash ? 'cash' : 'qr_promptpay';
+      const cashTotal = completedRounds.reduce((s, r) => s + (r.method === 'cash' ? r.subtotal : 0), 0);
+      const roundNote = completedRounds
+        .map((r, i) => `[รอบ ${i + 1}: ฿${r.subtotal.toLocaleString('th-TH')} ${r.method === 'cash' ? 'สด' : 'QR'}]`)
+        .join(' ');
+      const accountLabel = bankAccount === 'main' ? 'บัญชีหลัก' : 'บัญชีรอง';
+      const partialNote = !allDone ? `[ชำระบางส่วน]` : '';
+      const fullNotes = [
+        `[${accountLabel}]`,
+        partialNote,
+        `[แยกชำระ ${completedRounds.length} รอบ]`,
+        roundNote,
+      ].filter(Boolean).join(' ');
+
+      // For partial payment, use addon line items from completed rounds only
+      const lineItemsToUse = allDone
+        ? buildLineItems()
+        : addonTiles
+            .filter((t) => (partialAddonQty[t.id] ?? 0) > 0)
+            .map((t) => ({
+              pricingTileId: t.id,
+              quantity: partialAddonQty[t.id],
+              amount: Number(t.price) * partialAddonQty[t.id],
+            }));
+
+      const result = await processPayment({
+        sessionId: session.id,
+        paymentMethod: dbMethod,
+        receivedAmount: cashTotal > 0 ? cashTotal : completedTotal,
+        discount: allDone ? manualDiscountNum : 0,
+        notes: fullNotes || undefined,
+        lineItems: lineItemsToUse,
+      });
+      setSubmitting(false);
+      if (!result.ok) { toast.error(result.error); return; }
+
+      const receiptItems: ReceiptData['items'] = completedRounds.flatMap((r) =>
+        r.items.map((x) => ({ name: x.name, quantity: x.qty, total: x.price * x.qty })),
+      );
+      const receipt: ReceiptData = {
+        receiptType: 'receipt',
+        ...buildShopInfo(bankAccount === 'main' ? 'main' : 'secondary'),
+        receiptNo: Date.now().toString().slice(-8),
+        tableNumber: session.table.label, cashierName,
+        paidAt: now(),
+        items: receiptItems, subtotal: completedTotal,
+        discount: allDone ? manualDiscountNum + discountTileTotal : 0, serviceCharge: 0,
+        total: result.data.total,
+        receivedAmount: cashTotal > 0 ? cashTotal : completedTotal,
+        changeAmount: result.data.changeAmount,
+        paymentMethod: METHOD_LABEL[dbMethod],
+        sessionId: session.id,
+      };
+      setLastReceipt(receipt);
+      setPaid(true);
+      await printReceipt({ type: 'receipt', payment: receipt });
+    }
+
+    const activeTiles = [...guestTiles, ...addonTiles].filter((t) => (roundRemaining[t.id] ?? 0) > 0);
+
+    return (
+      <div className="flex h-full min-h-[480px]">
+        {/* ── Left panel ── */}
+        <div className="flex-1 flex flex-col overflow-y-auto p-5 gap-3 min-w-0">
+          {/* Header */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button type="button" onClick={() => setView('payment')}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
+              ← กลับ
+            </button>
+            <h2 className="text-sm font-semibold text-slate-900">แยกชำระ — โต๊ะ {session.table.label}</h2>
+            {!allDone && (
+              <span className="ml-auto text-xs font-medium text-slate-400">รอบที่ {completedRounds.length + 1}</span>
+            )}
+          </div>
+
+          {/* Tile pickers for current round */}
+          {!allDone && activeTiles.length > 0 && (
+            <div className="shrink-0">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">เลือกรายการรอบนี้</p>
+              <div className="flex flex-wrap gap-2">
+                {activeTiles.map((t) => {
+                  const remaining = roundRemaining[t.id] ?? 0;
+                  const selected  = roundSelection[t.id] ?? 0;
+                  return (
+                    <div
+                      key={t.id}
+                      className={`relative flex flex-col items-center rounded-xl border-2 p-2 transition-all ${
+                        selected > 0 ? 'border-slate-800 bg-slate-50' : 'border-slate-200 bg-white'
+                      }`}
+                      style={{ width: 100, minHeight: 80 }}
+                    >
+                      {selected > 0 && (
+                        <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-800 text-[10px] font-bold text-white">
+                          {selected}
+                        </span>
+                      )}
+                      <p className="mt-0.5 text-center text-[11px] font-semibold text-slate-800 line-clamp-2 w-full leading-tight">{t.name}</p>
+                      <p className="text-[11px] font-bold text-slate-600">฿{Number(t.price).toLocaleString('th-TH')}</p>
+                      <p className="text-[10px] text-slate-400">เหลือ {remaining}</p>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <button type="button" aria-label="ลด"
+                          onClick={() => adjustRoundItem(t.id, -1)}
+                          disabled={selected === 0}
+                          className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-700 hover:bg-slate-200 disabled:opacity-30">−</button>
+                        <span className="w-5 text-center tabular-nums text-xs font-bold text-slate-900">{selected}</span>
+                        <button type="button" aria-label="เพิ่ม"
+                          onClick={() => adjustRoundItem(t.id, 1)}
+                          disabled={selected >= remaining}
+                          className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-800 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-30">+</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Completed rounds history */}
+          {completedRounds.length > 0 && (
+            <div className="shrink-0 space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">รอบที่ชำระแล้ว</p>
+              {completedRounds.map((r, i) => (
+                <div key={i}
+                  className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+                  <div>
+                    <p className="text-xs font-medium text-slate-700">รอบ {i + 1}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      {r.items.map((x) => `${x.name} ×${x.qty}`).join(' · ')}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-xs font-bold tabular-nums text-emerald-700">฿{r.subtotal.toLocaleString('th-TH')}</p>
+                    <p className="text-[10px] text-slate-400">{r.method === 'cash' ? 'เงินสด' : 'QR'}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Bank account + submit — shown whenever at least one round is done */}
+          {completedRounds.length > 0 && (
+            <>
+              {allDone ? (
+                <div className="shrink-0 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <p className="text-xs font-medium text-emerald-600">เก็บครบแล้ว {completedRounds.length} รอบ</p>
+                  <p className="mt-0.5 text-2xl font-bold tabular-nums text-slate-900">฿{completedTotal.toLocaleString('th-TH')}</p>
+                </div>
+              ) : (
+                <div className="shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-xs font-medium text-amber-600">
+                    เก็บแล้ว {completedRounds.length} รอบ · ยังเหลือ {Object.values(roundRemaining).reduce((a, b) => a + b, 0)} คน
+                  </p>
+                  <p className="mt-0.5 text-xl font-bold tabular-nums text-slate-900">฿{completedTotal.toLocaleString('th-TH')}</p>
+                  <p className="text-[10px] text-amber-500 mt-0.5">ยืนยันจะชำระเฉพาะรอบที่เก็บแล้ว ส่วนที่เหลือจะถูกยกเลิก</p>
+                </div>
+              )}
+              <div className="shrink-0">
+                <p className="mb-1 text-xs font-medium text-slate-500">เข้าบัญชี</p>
+                <div className="flex gap-1.5">
+                  {(['main', 'secondary'] as const).map((acc) => (
+                    <button key={acc} type="button" onClick={() => setBankAccount(acc)}
+                      className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${
+                        bankAccount === acc ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}>
+                      {acc === 'main' ? 'บัญชีหลัก' : 'บัญชีรอง'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button type="button" onClick={handleRoundSubmit} disabled={submitting}
+                className="shrink-0 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-800 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-40 transition-colors">
+                {submitting && <Loader2 className="size-4 animate-spin" />}
+                {submitting ? 'กำลังดำเนินการ…' : `ยืนยันชำระ ฿${completedTotal.toLocaleString('th-TH')}`}
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* ── Right panel: method + numpad (only when not all done) ── */}
+        {!allDone && (
+          <div className="flex-1 border-l border-slate-100 p-5 flex flex-col gap-3 bg-slate-50/40">
+            {/* Method */}
+            <div className="shrink-0">
+              <p className="mb-1 text-xs font-medium text-slate-500">ช่องทางชำระรอบนี้</p>
+              <div className="flex gap-1.5">
+                {(['cash', 'qr_promptpay'] as const).map((m) => (
+                  <button key={m} type="button"
+                    onClick={() => setRoundMethod(m)}
+                    className={`flex-1 rounded-lg border py-2.5 text-xs font-medium transition-colors ${
+                      roundMethod === m ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}>
+                    {METHOD_LABEL[m]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Display */}
+            <div className="shrink-0 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-right">
+              <p className="text-xs font-medium text-slate-400 mb-1">
+                {roundMethod === 'qr_promptpay' ? 'ยอดชำระ QR' : 'รับเงิน'}
+              </p>
+              <p className="text-4xl font-bold tabular-nums text-slate-900 leading-none">
+                ฿{roundMethod === 'qr_promptpay'
+                  ? roundSubtotal.toLocaleString('th-TH')
+                  : Number(roundNumpad).toLocaleString('th-TH')}
+              </p>
+              {roundMethod === 'cash' && roundNumpadNum > 0 && (
+                <p className={`text-sm mt-2 tabular-nums font-semibold ${roundChange >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                  {roundChange >= 0 ? `เงินทอน ฿${roundChange.toLocaleString('th-TH')}` : 'ไม่เพียงพอ'}
+                </p>
+              )}
+            </div>
+
+            {/* Numpad (cash only) */}
+            {roundMethod === 'cash' && (
+              <div className="flex-1 grid grid-cols-3 gap-2 content-start">
+                {(['7','8','9','4','5','6','1','2','3','C','0','⌫'] as const).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => {
+                      if (k === '⌫') setRoundNumpad((v) => v.length > 1 ? v.slice(0, -1) : '0');
+                      else if (k === 'C') setRoundNumpad('0');
+                      else setRoundNumpad((v) => {
+                        const next = v === '0' ? k : v + k;
+                        return next.length <= 7 ? next : v;
+                      });
+                    }}
+                    className={`rounded-2xl text-xl font-bold transition-colors active:scale-95 select-none h-14 ${
+                      k === 'C'  ? 'bg-red-50 border border-red-200 text-red-600 hover:bg-red-100' :
+                      k === '⌫' ? 'bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200' :
+                                   'bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 shadow-sm'
+                    }`}
+                  >
+                    {k}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Quick amounts (cash only) */}
+            {roundQuickAmounts.length > 0 && (
+              <div className="shrink-0 flex gap-1.5">
+                {roundQuickAmounts.map((amt) => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => setRoundNumpad(String(amt))}
+                    className={`flex-1 rounded-xl border py-2.5 text-xs font-semibold tabular-nums transition-colors ${
+                      roundNumpad === String(amt)
+                        ? 'border-slate-800 bg-slate-800 text-white'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    ฿{amt.toLocaleString('th-TH')}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Round total */}
+            <div className="shrink-0 rounded-xl bg-slate-50 px-4 py-2.5">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">รอบนี้</span>
+                <span className="font-bold tabular-nums text-slate-900">฿{roundSubtotal.toLocaleString('th-TH')}</span>
+              </div>
+            </div>
+
+            {/* Confirm this round */}
+            <button type="button" onClick={handleConfirmRound} disabled={!canConfirmRound}
+              className="shrink-0 flex w-full items-center justify-center rounded-xl bg-slate-800 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-40 transition-colors">
+              {roundSubtotal > 0 ? `เก็บรอบนี้ ฿${roundSubtotal.toLocaleString('th-TH')}` : 'เลือกรายการก่อน'}
+            </button>
+          </div>
+        )}
       </div>
     );
   }

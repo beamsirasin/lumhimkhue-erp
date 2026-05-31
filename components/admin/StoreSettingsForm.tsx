@@ -2,19 +2,21 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { Eye, ImagePlus, X } from 'lucide-react';
 import { updateStoreSettings } from '@/lib/actions/store';
 import type { StoreSettingsData } from '@/lib/actions/store';
 import type { BillConfig } from '@/lib/db/schema';
+import { BillPreviewModal } from '@/components/admin/BillPreviewModal';
 
 interface Props { initialData: StoreSettingsData; }
 
 type Tab = 'global' | 'preview' | 'main' | 'secondary';
 
 const TABS: { key: Tab; label: string; desc: string }[] = [
-  { key: 'global',    label: 'ข้อมูลหลัก',     desc: 'ค่าเริ่มต้นสำหรับทุกบิล' },
-  { key: 'preview',  label: 'บิลธรรมดา',       desc: 'บิลแจกประจำโต๊ะ (ไม่แสดงภาษี/ชำระ)' },
-  { key: 'main',     label: 'บัญชีหลัก',       desc: 'ใบเสร็จชำระเงินบัญชีหลัก' },
-  { key: 'secondary',label: 'บัญชีรอง',        desc: 'ใบเสร็จชำระเงินบัญชีรอง' },
+  { key: 'global',    label: 'ข้อมูลหลัก',  desc: 'ค่าเริ่มต้นสำหรับทุกบิล' },
+  { key: 'preview',  label: 'บิลธรรมดา',   desc: 'บิลแจกประจำโต๊ะ (ไม่แสดงภาษี/ชำระ)' },
+  { key: 'main',     label: 'บัญชีหลัก',   desc: 'ใบเสร็จชำระเงินบัญชีหลัก' },
+  { key: 'secondary',label: 'บัญชีรอง',    desc: 'ใบเสร็จชำระเงินบัญชีรอง' },
 ];
 
 type GlobalForm = {
@@ -23,7 +25,7 @@ type GlobalForm = {
   branch: string; registerNo: string; footerNote: string; vatPercent: number;
 };
 
-type BillForm = Omit<BillConfig, 'vatPercent' | 'hiddenFields'> & { vatPercent: string };
+type BillForm = Omit<BillConfig, 'vatPercent' | 'hiddenFields' | 'logoUrl'> & { vatPercent: string };
 
 const GLOBAL_FIELDS: { key: keyof GlobalForm; label: string; placeholder?: string; type?: string; span?: boolean }[] = [
   { key: 'shopNameTh',  label: 'ชื่อร้าน (ไทย)',             placeholder: 'ร้านชาบู' },
@@ -79,6 +81,7 @@ function initVisible(cfg: BillConfig | null | undefined): Record<string, boolean
 export function StoreSettingsForm({ initialData }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('global');
   const [saving, setSaving] = useState(false);
+  const [previewTab, setPreviewTab] = useState<Tab | null>(null);
 
   const [global, setGlobal] = useState<GlobalForm>({
     shopNameTh:  initialData.shopNameTh ?? '',
@@ -92,6 +95,8 @@ export function StoreSettingsForm({ initialData }: Props) {
     footerNote:  initialData.footerNote ?? '',
     vatPercent:  initialData.vatPercent ?? 7,
   });
+
+  const [logoUrl, setLogoUrl] = useState<string>(initialData.logoUrl ?? '');
 
   const [billForms, setBillForms] = useState<Record<string, Record<string, string>>>({
     preview:   emptyBillForm(initialData.billPreviewConfig),
@@ -120,7 +125,6 @@ export function StoreSettingsForm({ initialData }: Props) {
     const hiddenFields = BILL_FIELDS
       .filter((f) => f.toggleable && !(visible[f.key] ?? true))
       .map((f) => f.key);
-
     const hasAny = Object.values(form).some((v) => v !== '') || hiddenFields.length > 0;
     if (!hasAny) return null;
     return {
@@ -138,12 +142,27 @@ export function StoreSettingsForm({ initialData }: Props) {
     };
   }
 
+  function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('กรุณาเลือกไฟล์รูปภาพ'); return; }
+    if (file.size > 500_000) { toast.error('ไฟล์ใหญ่เกิน 500 KB — กรุณาบีบอัดรูปก่อน'); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target?.result;
+      if (typeof result === 'string') setLogoUrl(result);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     const result = await updateStoreSettings({
       ...global,
       vatPercent: Number(global.vatPercent),
+      logoUrl: logoUrl || undefined,
       billPreviewConfig:   toConfig(billForms.preview   ?? {}, billVisible.preview   ?? {}),
       billMainConfig:      toConfig(billForms.main      ?? {}, billVisible.main      ?? {}),
       billSecondaryConfig: toConfig(billForms.secondary ?? {}, billVisible.secondary ?? {}),
@@ -158,96 +177,166 @@ export function StoreSettingsForm({ initialData }: Props) {
   const INPUT_OFF  = `${INPUT_BASE} border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed`;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Tabs */}
-      <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
-        {TABS.map((t) => (
-          <button key={t.key} type="button" onClick={() => setActiveTab(t.key)}
-            className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-colors ${
-              activeTab === t.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-            }`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab description */}
-      <p className="text-xs text-slate-400">
-        {TABS.find((t) => t.key === activeTab)?.desc}
-        {activeTab !== 'global' && ' — เว้นว่างเพื่อใช้ค่าจาก "ข้อมูลหลัก"'}
-      </p>
-
-      {/* Global tab */}
-      {activeTab === 'global' && (
-        <div className="grid grid-cols-2 gap-3">
-          {GLOBAL_FIELDS.map(({ key, label, placeholder, type, span }) => (
-            <div key={key} className={span ? 'col-span-2' : ''}>
-              <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
-              <input type={type ?? 'text'} value={String(global[key] ?? '')}
-                onChange={(e) => setGlobal((p) => ({ ...p, [key]: type === 'number' ? Number(e.target.value) : e.target.value }))}
-                placeholder={placeholder} className={INPUT_ON}
-                min={type === 'number' ? 0 : undefined} max={type === 'number' ? 100 : undefined} />
-            </div>
+    <>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Tabs */}
+        <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
+          {TABS.map((t) => (
+            <button key={t.key} type="button" onClick={() => setActiveTab(t.key)}
+              className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-colors ${
+                activeTab === t.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}>
+              {t.label}
+            </button>
           ))}
         </div>
-      )}
 
-      {/* Per-bill tabs */}
-      {(activeTab === 'preview' || activeTab === 'main' || activeTab === 'secondary') && (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            {BILL_FIELDS.map(({ key, label, placeholder, type, span, toggleable }) => {
-              const isVisible = !toggleable || (billVisible[activeTab]?.[key] ?? true);
-              const inputId = `field-${activeTab}-${key}`;
-              return (
-                <div key={key} className={span ? 'col-span-2' : ''}>
-                  <div className="flex items-center gap-2 mb-1">
-                    {toggleable ? (
-                      <input
-                        type="checkbox"
-                        id={`vis-${activeTab}-${key}`}
-                        checked={isVisible}
-                        onChange={() => toggleVisible(activeTab, key)}
-                        className="h-3.5 w-3.5 shrink-0 accent-slate-800 cursor-pointer"
-                      />
-                    ) : (
-                      <span className="h-3.5 w-3.5 shrink-0" />
-                    )}
-                    <label
-                      htmlFor={toggleable ? `vis-${activeTab}-${key}` : inputId}
-                      className={`text-xs font-medium select-none ${isVisible ? 'text-slate-600' : 'text-slate-400'} ${toggleable ? 'cursor-pointer' : ''}`}
-                    >
-                      {label}
-                      {!isVisible && (
-                        <span className="ml-1.5 rounded bg-red-100 px-1 py-0.5 text-[10px] font-semibold text-red-500">ซ่อน</span>
-                      )}
-                    </label>
+        {/* Tab description + preview button */}
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-slate-400">
+            {TABS.find((t) => t.key === activeTab)?.desc}
+            {activeTab !== 'global' && ' — เว้นว่างเพื่อใช้ค่าจาก "ข้อมูลหลัก"'}
+          </p>
+          <button
+            type="button"
+            onClick={() => setPreviewTab(activeTab)}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors shrink-0"
+          >
+            <Eye className="size-3.5" />
+            ดูตัวอย่าง
+          </button>
+        </div>
+
+        {/* Global tab */}
+        {activeTab === 'global' && (
+          <div className="space-y-4">
+            {/* Logo upload */}
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/50 p-4">
+              <p className="text-xs font-semibold text-slate-700 mb-3">โลโก้หัวบิล</p>
+              {logoUrl ? (
+                <div className="flex items-center gap-4">
+                  <img src={logoUrl} alt="โลโก้" className="h-14 max-w-[160px] object-contain rounded-lg border border-slate-200 bg-white p-1" />
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-slate-500">อัพโหลดแล้ว</p>
+                    <div className="flex gap-2">
+                      <label className="cursor-pointer rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+                        <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                        เปลี่ยนรูป
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setLogoUrl('')}
+                        className="flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 transition-colors"
+                      >
+                        <X className="size-3" />ลบโลโก้
+                      </button>
+                    </div>
                   </div>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center gap-2 cursor-pointer group">
+                  <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                  <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 group-hover:bg-slate-50 transition-colors">
+                    <ImagePlus className="size-4 text-slate-400" />
+                    เลือกรูปภาพ (PNG / JPG / SVG)
+                  </div>
+                  <p className="text-[10px] text-slate-400">แนะนำขนาดไม่เกิน 200 KB · จะแสดงที่ด้านบนของบิลทุกประเภท</p>
+                </label>
+              )}
+            </div>
+
+            {/* Global fields */}
+            <div className="grid grid-cols-2 gap-3">
+              {GLOBAL_FIELDS.map(({ key, label, placeholder, type, span }) => (
+                <div key={key} className={span ? 'col-span-2' : ''}>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
                   <input
-                    id={inputId}
                     type={type ?? 'text'}
-                    value={(billForms[activeTab] ?? {})[key] ?? ''}
-                    onChange={(e) => setBillField(activeTab, key, e.target.value)}
-                    placeholder={isVisible ? placeholder : 'ไม่แสดงในบิล'}
-                    disabled={!isVisible}
-                    className={isVisible ? INPUT_ON : INPUT_OFF}
+                    value={String(global[key] ?? '')}
+                    onChange={(e) => setGlobal((p) => ({ ...p, [key]: type === 'number' ? Number(e.target.value) : e.target.value }))}
+                    placeholder={placeholder}
+                    className={INPUT_ON}
                     min={type === 'number' ? 0 : undefined}
                     max={type === 'number' ? 100 : undefined}
                   />
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
-          <p className="text-[11px] text-slate-400">
-            💡 ช่องที่เว้นว่างจะดึงค่าจาก &quot;ข้อมูลหลัก&quot; อัตโนมัติ · ยกเลิกติ๊กเพื่อซ่อน field นั้นออกจากบิล
-          </p>
-        </div>
-      )}
+        )}
 
-      <button type="submit" disabled={saving}
-        className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50">
-        {saving ? 'กำลังบันทึก…' : 'บันทึก'}
-      </button>
-    </form>
+        {/* Per-bill tabs */}
+        {(activeTab === 'preview' || activeTab === 'main' || activeTab === 'secondary') && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              {BILL_FIELDS.map(({ key, label, placeholder, type, span, toggleable }) => {
+                const isVisible = !toggleable || (billVisible[activeTab]?.[key] ?? true);
+                const inputId = `field-${activeTab}-${key}`;
+                return (
+                  <div key={key} className={span ? 'col-span-2' : ''}>
+                    <div className="flex items-center gap-2 mb-1">
+                      {toggleable ? (
+                        <input
+                          type="checkbox"
+                          id={`vis-${activeTab}-${key}`}
+                          checked={isVisible}
+                          onChange={() => toggleVisible(activeTab, key)}
+                          className="h-3.5 w-3.5 shrink-0 accent-slate-800 cursor-pointer"
+                        />
+                      ) : (
+                        <span className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      <label
+                        htmlFor={toggleable ? `vis-${activeTab}-${key}` : inputId}
+                        className={`text-xs font-medium select-none ${isVisible ? 'text-slate-600' : 'text-slate-400'} ${toggleable ? 'cursor-pointer' : ''}`}
+                      >
+                        {label}
+                        {!isVisible && (
+                          <span className="ml-1.5 rounded bg-red-100 px-1 py-0.5 text-[10px] font-semibold text-red-500">ซ่อน</span>
+                        )}
+                      </label>
+                    </div>
+                    <input
+                      id={inputId}
+                      type={type ?? 'text'}
+                      value={(billForms[activeTab] ?? {})[key] ?? ''}
+                      onChange={(e) => setBillField(activeTab, key, e.target.value)}
+                      placeholder={isVisible ? placeholder : 'ไม่แสดงในบิล'}
+                      disabled={!isVisible}
+                      className={isVisible ? INPUT_ON : INPUT_OFF}
+                      min={type === 'number' ? 0 : undefined}
+                      max={type === 'number' ? 100 : undefined}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-slate-400">
+              💡 ช่องที่เว้นว่างจะดึงค่าจาก &quot;ข้อมูลหลัก&quot; อัตโนมัติ · ยกเลิกติ๊กเพื่อซ่อน field นั้นออกจากบิล
+            </p>
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+        >
+          {saving ? 'กำลังบันทึก…' : 'บันทึก'}
+        </button>
+      </form>
+
+      {/* Bill preview modal */}
+      {previewTab !== null && (
+        <BillPreviewModal
+          billType={previewTab}
+          globalForm={global}
+          billForm={billForms[previewTab] ?? {}}
+          billVisible={billVisible[previewTab] ?? {}}
+          logoUrl={logoUrl}
+          onClose={() => setPreviewTab(null)}
+        />
+      )}
+    </>
   );
 }

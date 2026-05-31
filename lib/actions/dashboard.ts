@@ -48,7 +48,7 @@ export async function getDashboardData() {
       .select({
         revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
         sessionCount: sql<number>`count(*)`,
-        guests: sql<number>`coalesce(sum(${guestSums.total}), 0)`,
+        guests: sql<number>`coalesce(sum("guest_sums"."total"), 0)`,
       })
       .from(payments)
       .innerJoin(sessions, eq(payments.sessionId, sessions.id))
@@ -66,7 +66,7 @@ export async function getDashboardData() {
         date: sql<string>`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`,
         revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
         sessionCount: sql<number>`count(*)`,
-        guests: sql<number>`coalesce(sum(${guestSums.total}), 0)`,
+        guests: sql<number>`coalesce(sum("guest_sums"."total"), 0)`,
       })
       .from(payments)
       .innerJoin(sessions, eq(payments.sessionId, sessions.id))
@@ -173,7 +173,7 @@ export async function getReportSummary(fromDate: string, toDate: string) {
         date: sql<string>`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`,
         revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
         sessionCount: sql<number>`count(*)`,
-        guests: sql<number>`coalesce(sum(${guestSums.total}), 0)`,
+        guests: sql<number>`coalesce(sum("guest_sums"."total"), 0)`,
       })
       .from(payments)
       .innerJoin(sessions, eq(payments.sessionId, sessions.id))

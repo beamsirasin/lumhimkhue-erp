@@ -197,6 +197,7 @@ export function KdsHistoryPage() {
       if (!r.ok) throw new Error(r.error);
       return r.data;
     },
+    staleTime: 60_000,
   });
 
   return (

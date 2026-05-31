@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, isToday } from 'date-fns';
 import { th } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CalendarDays, ChevronDown } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { getHistoryCalendarDates } from '@/lib/actions/history';
 
@@ -15,7 +15,10 @@ interface HistoryCalendarProps {
 const DAY_NAMES = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
 
 export function HistoryCalendar({ selectedDate, onSelectDate }: HistoryCalendarProps) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const today = new Date();
+
   const [viewDate, setViewDate] = useState(() => {
     const d = new Date(selectedDate);
     return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -31,10 +34,20 @@ export function HistoryCalendar({ selectedDate, onSelectDate }: HistoryCalendarP
     staleTime: 60_000,
   });
 
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
   const monthStart = startOfMonth(viewDate);
   const monthEnd = endOfMonth(viewDate);
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
-  const startPad = getDay(monthStart); // 0 = Sunday
+  const startPad = getDay(monthStart);
 
   function prevMonth() {
     setViewDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
@@ -46,78 +59,93 @@ export function HistoryCalendar({ selectedDate, onSelectDate }: HistoryCalendarP
 
   const isNextDisabled = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1) > today;
 
+  const selectedLabel = format(new Date(selectedDate), 'd MMMM yyyy', { locale: th });
+
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 w-72 shrink-0 self-start">
-      {/* Month nav */}
-      <div className="flex items-center justify-between mb-3">
-        <button
-          type="button"
-          aria-label="เดือนก่อน"
-          onClick={prevMonth}
-          className="rounded p-1 hover:bg-slate-100"
-        >
-          <ChevronLeft className="size-4 text-slate-600" />
-        </button>
-        <p className="text-sm font-semibold text-slate-900">
-          {format(viewDate, 'MMMM yyyy', { locale: th })}
-        </p>
-        <button
-          type="button"
-          aria-label="เดือนถัดไป"
-          onClick={nextMonth}
-          disabled={isNextDisabled}
-          className="rounded p-1 hover:bg-slate-100 disabled:opacity-30"
-        >
-          <ChevronRight className="size-4 text-slate-600" />
-        </button>
-      </div>
+    <div ref={containerRef} className="relative">
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+      >
+        <CalendarDays className="size-4 text-slate-400" />
+        <span>{selectedLabel}</span>
+        <ChevronDown className={`size-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
 
-      {/* Day names */}
-      <div className="grid grid-cols-7 mb-1">
-        {DAY_NAMES.map((d) => (
-          <div key={d} className="text-center text-[10px] font-medium text-slate-400 py-1">
-            {d}
-          </div>
-        ))}
-      </div>
-
-      {/* Days grid */}
-      <div className="grid grid-cols-7 gap-0.5">
-        {/* Padding for month start */}
-        {Array.from({ length: startPad }).map((_, i) => (
-          <div key={`pad-${i}`} />
-        ))}
-
-        {days.map((day) => {
-          const dateStr = format(day, 'yyyy-MM-dd');
-          const isSelected = dateStr === selectedDate;
-          const count = sessionCounts[dateStr] ?? 0;
-          const isFuture = day > today;
-
-          return (
+      {/* Dropdown panel */}
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-30 rounded-xl border border-slate-200 bg-white p-4 shadow-lg w-72">
+          {/* Month nav */}
+          <div className="flex items-center justify-between mb-3">
             <button
-              key={dateStr}
               type="button"
-              disabled={isFuture}
-              onClick={() => onSelectDate(dateStr)}
-              className={`relative flex flex-col items-center justify-center rounded-lg p-1.5 text-xs transition-colors
-                ${isFuture ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-100'}
-                ${isSelected ? 'bg-slate-800 text-white hover:bg-slate-700' : 'text-slate-700'}
-                ${isToday(day) && !isSelected ? 'ring-1 ring-slate-400' : ''}
-              `}
+              aria-label="เดือนก่อน"
+              onClick={prevMonth}
+              className="rounded p-1 hover:bg-slate-100"
             >
-              <span className="font-medium leading-none">{format(day, 'd')}</span>
-              {count > 0 && (
-                <span
-                  className={`mt-0.5 h-1 w-1 rounded-full ${
-                    isSelected ? 'bg-white' : 'bg-slate-400'
-                  }`}
-                />
-              )}
+              <ChevronLeft className="size-4 text-slate-600" />
             </button>
-          );
-        })}
-      </div>
+            <p className="text-sm font-semibold text-slate-900">
+              {format(viewDate, 'MMMM yyyy', { locale: th })}
+            </p>
+            <button
+              type="button"
+              aria-label="เดือนถัดไป"
+              onClick={nextMonth}
+              disabled={isNextDisabled}
+              className="rounded p-1 hover:bg-slate-100 disabled:opacity-30"
+            >
+              <ChevronRight className="size-4 text-slate-600" />
+            </button>
+          </div>
+
+          {/* Day names */}
+          <div className="grid grid-cols-7 mb-1">
+            {DAY_NAMES.map((d) => (
+              <div key={d} className="text-center text-[10px] font-medium text-slate-400 py-1">
+                {d}
+              </div>
+            ))}
+          </div>
+
+          {/* Days grid */}
+          <div className="grid grid-cols-7 gap-0.5">
+            {Array.from({ length: startPad }).map((_, i) => (
+              <div key={`pad-${i}`} />
+            ))}
+            {days.map((day) => {
+              const dateStr = format(day, 'yyyy-MM-dd');
+              const isSelected = dateStr === selectedDate;
+              const count = sessionCounts[dateStr] ?? 0;
+              const isFuture = day > today;
+
+              return (
+                <button
+                  key={dateStr}
+                  type="button"
+                  disabled={isFuture}
+                  onClick={() => {
+                    onSelectDate(dateStr);
+                    setOpen(false);
+                  }}
+                  className={`relative flex flex-col items-center justify-center rounded-lg p-1.5 text-xs transition-colors
+                    ${isFuture ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-100'}
+                    ${isSelected ? 'bg-slate-800 text-white hover:bg-slate-700' : 'text-slate-700'}
+                    ${isToday(day) && !isSelected ? 'ring-1 ring-slate-400' : ''}
+                  `}
+                >
+                  <span className="font-medium leading-none">{format(day, 'd')}</span>
+                  {count > 0 && (
+                    <span className={`mt-0.5 h-1 w-1 rounded-full ${isSelected ? 'bg-white' : 'bg-slate-400'}`} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

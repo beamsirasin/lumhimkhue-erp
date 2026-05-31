@@ -16,6 +16,7 @@ import {
   Users,
   BarChart3,
   Settings,
+  Info,
   Menu,
   LogOut,
   Printer,
@@ -85,12 +86,13 @@ const NAV: Record<Role, NavSection[]> = {
     {
       heading: 'จัดการ',
       items: [
-        { href: '/menu',                label: 'เมนูอาหาร',     Icon: UtensilsCrossed },
+        { href: '/menu',          label: 'เมนูอาหาร',    Icon: UtensilsCrossed },
         { href: '/pricing-tiles', label: 'Pricing Tiles', Icon: Tag },
-        { href: '/users',               label: 'พนักงาน',        Icon: Users },
-        { href: '/reports',             label: 'รายงาน',         Icon: BarChart3 },
-        { href: '/settings',            label: 'ตั้งค่า',         Icon: Settings },
-        { href: '/printers',            label: 'เครื่องพิมพ์',   Icon: Printer },
+        { href: '/users',         label: 'พนักงาน',       Icon: Users },
+        { href: '/reports',       label: 'รายงาน',        Icon: BarChart3 },
+        { href: '/settings',      label: 'ตั้งค่าบิล',    Icon: Settings },
+        { href: '/printers',      label: 'เครื่องพิมพ์',  Icon: Printer },
+        { href: '/system',        label: 'ข้อมูลระบบ',    Icon: Info },
       ],
     },
   ],
@@ -144,13 +146,14 @@ const PAGE_TITLES: Record<string, string> = {
   '/kds/history':           'ประวัติครัว',
   '/queue':                 'จัดการคิว',
   '/tables':                'จัดการโต๊ะ',
-  '/tables/history':        'ประวัติ session',
+  '/tables/history':        'ประวัติโต๊ะ',
   '/menu':                  'เมนูอาหาร',
   '/pricing-tiles':   'Pricing Tiles',
   '/users':                 'พนักงาน',
   '/reports':               'รายงาน',
-  '/settings':              'ตั้งค่า',
+  '/settings':              'ตั้งค่าบิล',
   '/printers':              'เครื่องพิมพ์',
+  '/system':                'ข้อมูลระบบ',
 };
 
 const ROLE_LABEL: Record<Role, string> = {

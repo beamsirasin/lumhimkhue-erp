@@ -34,6 +34,7 @@ export type ReceiptData = {
   receiptType: 'bill' | 'receipt';
 
   /* ── Shop info (from store settings) ── */
+  logoUrl?: string;
   shopNameTh: string;
   shopNameEn?: string;
   companyName?: string;

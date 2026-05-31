@@ -3,8 +3,10 @@ import { redirect } from 'next/navigation';
 
 const roleHome: Record<string, string> = {
   owner: '/dashboard',
+  manager: '/dashboard',
   cashier: '/pos',
   kitchen: '/kds',
+  host: '/queue',
 };
 
 export default async function Home() {

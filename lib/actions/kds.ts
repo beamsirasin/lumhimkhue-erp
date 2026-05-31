@@ -1,4 +1,4 @@
-'use server';
+﻿'use server';
 
 import { revalidatePath } from 'next/cache';
 import { eq, and, inArray, asc, gte, not, sql } from 'drizzle-orm';
@@ -32,7 +32,7 @@ const _fetchKdsItems = async () =>
     .where(
       and(
         inArray(orderItems.status, ['pending', 'preparing', 'ready']),
-        inArray(sessions.status, ['active', 'closing']),
+        inArray(sessions.status, ['active', 'closing', 'paid']),
       ),
     )
     .orderBy(asc(orders.createdAt), asc(sql`coalesce(${menuItems.sortOrder}, 0)`), asc(orderItems.id));

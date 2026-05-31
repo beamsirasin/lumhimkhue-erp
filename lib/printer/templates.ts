@@ -47,6 +47,7 @@ export async function renderReceiptHTML(data: ReceiptData): Promise<string> {
   /* Header block */
   const header = `
 <div class="center">
+  ${data.logoUrl ? `<div class="logo-wrap"><img src="${data.logoUrl}" alt="logo" class="logo" /></div>` : ''}
   <div class="big bold">${esc(data.shopNameTh)}</div>
   ${data.shopNameEn ? `<div>${esc(data.shopNameEn)}</div>` : ''}
   ${data.companyName ? `<div>${esc(data.companyName)}</div>` : ''}

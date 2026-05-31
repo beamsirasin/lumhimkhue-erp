@@ -69,6 +69,7 @@ export const queueStatusEnum = pgEnum('queue_status', [
 
 export const paymentMethodEnum = pgEnum('payment_method', [
   'cash',
+  'cash_qr',
   'qr_promptpay',
   'transfer',
   'card',
@@ -567,6 +568,7 @@ export type BillConfig = {
   registerNo?: string;
   footerNote?: string;
   vatPercent?: number;
+  logoUrl?: string;
   /** Fields explicitly hidden from this bill type (even if global has a value) */
   hiddenFields?: string[];
 };
@@ -583,6 +585,7 @@ export const storeSettings = pgTable('store_settings', {
   registerNo: varchar('register_no', { length: 50 }),
   footerNote: varchar('footer_note', { length: 255 }).default('ขอบคุณและขอให้โชคดี'),
   vatPercent: integer('vat_percent').notNull().default(7),
+  logoUrl: text('logo_url'),
   /** Per-bill-type overrides (null = fall back to global fields above) */
   billPreviewConfig: jsonb('bill_preview_config').$type<BillConfig>(),
   billMainConfig: jsonb('bill_main_config').$type<BillConfig>(),

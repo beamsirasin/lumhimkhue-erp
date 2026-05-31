@@ -39,11 +39,42 @@ export async function getSessionHistory(dateStr: string) {
         status: sessions.status,
         notes: sessions.notes,
         totalRevenue: sql<number>`coalesce(${payments.total}::numeric, 0)`,
+        receivedAmount: sql<number>`coalesce(${payments.receivedAmount}::numeric, 0)`,
         paymentMethod: payments.paymentMethod,
         guestCount: sql<number>`(
           SELECT coalesce(sum(sg.quantity), 0)
           FROM session_guests sg
           WHERE sg.session_id = ${sessions.id}
+        )`,
+        adultCount: sql<number>`(
+          SELECT coalesce(sum(sg.quantity), 0)
+          FROM session_guests sg
+          INNER JOIN pricing_tiles pt ON pt.id = sg.pricing_tile_id
+          WHERE sg.session_id = ${sessions.id} AND pt.code = 'adult'
+        )`,
+        childCount: sql<number>`(
+          SELECT coalesce(sum(sg.quantity), 0)
+          FROM session_guests sg
+          INNER JOIN pricing_tiles pt ON pt.id = sg.pricing_tile_id
+          WHERE sg.session_id = ${sessions.id} AND pt.code = 'child'
+        )`,
+        toddlerCount: sql<number>`(
+          SELECT coalesce(sum(sg.quantity), 0)
+          FROM session_guests sg
+          INNER JOIN pricing_tiles pt ON pt.id = sg.pricing_tile_id
+          WHERE sg.session_id = ${sessions.id} AND pt.code = 'toddler'
+        )`,
+        staffCount: sql<number>`(
+          SELECT coalesce(sum(sg.quantity), 0)
+          FROM session_guests sg
+          INNER JOIN pricing_tiles pt ON pt.id = sg.pricing_tile_id
+          WHERE sg.session_id = ${sessions.id} AND pt.code = 'staff'
+        )`,
+        staffGuestCount: sql<number>`(
+          SELECT coalesce(sum(sg.quantity), 0)
+          FROM session_guests sg
+          INNER JOIN pricing_tiles pt ON pt.id = sg.pricing_tile_id
+          WHERE sg.session_id = ${sessions.id} AND pt.code = 'staff_guest_first'
         )`,
       })
       .from(sessions)
@@ -70,8 +101,14 @@ export async function getSessionHistory(dateStr: string) {
         status: r.status,
         notes: r.notes,
         totalRevenue: Number(r.totalRevenue),
+        receivedAmount: Number(r.receivedAmount),
         paymentMethod: r.paymentMethod,
         guestCount: Number(r.guestCount),
+        adultCount: Number(r.adultCount),
+        childCount: Number(r.childCount),
+        toddlerCount: Number(r.toddlerCount),
+        staffCount: Number(r.staffCount),
+        staffGuestCount: Number(r.staffGuestCount),
       })),
     };
   } catch (e) {

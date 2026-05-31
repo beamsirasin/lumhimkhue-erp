@@ -47,6 +47,7 @@ const updateSchema = z.object({
   registerNo: z.string().max(50).nullable().optional(),
   footerNote: z.string().max(255).nullable().optional(),
   vatPercent: z.number().int().min(0).max(100).default(7),
+  logoUrl: z.string().max(2_097_152).nullable().optional(),
   billPreviewConfig: billConfigSchema.optional(),
   billMainConfig: billConfigSchema.optional(),
   billSecondaryConfig: billConfigSchema.optional(),
