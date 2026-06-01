@@ -25,21 +25,22 @@ const BILL_TABS: { key: BillTab; label: string }[] = [
 // ─── Section toggles ──────────────────────────────────────────────────────────
 
 type SectionKey =
-  | 'logo' | 'shopName' | 'branch' | 'address' | 'taxId'
+  | 'logo' | 'shopName' | 'branch' | 'address' | 'taxId' | 'registerNo'
   | 'receiptNo' | 'tableNo' | 'cashier' | 'date' | 'vatPercent' | 'footerNote';
 
 const SECTIONS: { key: SectionKey; label: string }[] = [
-  { key: 'logo',       label: 'โลโก้' },
-  { key: 'shopName',   label: 'ชื่อร้าน / บริษัท' },
-  { key: 'branch',     label: 'สาขา' },
-  { key: 'address',    label: 'ที่อยู่' },
-  { key: 'taxId',      label: 'เลขประจำตัวผู้เสียภาษีอากร' },
-  { key: 'receiptNo',  label: 'เลขที่บิล' },
-  { key: 'tableNo',    label: 'โต๊ะ' },
-  { key: 'cashier',    label: 'พิมพ์โดย (พนักงาน)' },
-  { key: 'date',       label: 'วันที่ / เวลา' },
-  { key: 'vatPercent', label: 'ภาษีมูลค่าเพิ่ม' },
-  { key: 'footerNote', label: 'ข้อความท้ายบิล' },
+  { key: 'logo',        label: 'โลโก้' },
+  { key: 'shopName',    label: 'ชื่อร้าน / บริษัท' },
+  { key: 'branch',      label: 'สาขา' },
+  { key: 'address',     label: 'ที่อยู่' },
+  { key: 'taxId',       label: 'เลขประจำตัวผู้เสียภาษีอากร' },
+  { key: 'registerNo',  label: 'Register No' },
+  { key: 'receiptNo',   label: 'เลขที่บิล' },
+  { key: 'tableNo',     label: 'โต๊ะ' },
+  { key: 'cashier',     label: 'พนักงาน' },
+  { key: 'date',        label: 'วันที่ / เวลา' },
+  { key: 'vatPercent',  label: 'ภาษีมูลค่าเพิ่ม' },
+  { key: 'footerNote',  label: 'ข้อความท้ายบิล' },
 ];
 
 const BILL_TYPE_OPTIONS: { value: BillTypeLabel; label: string }[] = [

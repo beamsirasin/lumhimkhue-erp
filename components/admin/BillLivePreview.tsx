@@ -55,7 +55,7 @@ function buildSampleData(props: Props): ReceiptData {
     phone:         props.phone,
     taxId:         hidden.has('taxId')     ? undefined : props.taxId,
     branch:        hidden.has('branch')    ? undefined : props.branch,
-    registerNo:    props.registerNo,
+    registerNo:    hidden.has('registerNo') ? undefined : props.registerNo,
     footerNote:    hidden.has('footerNote')? undefined : (props.footerNote || 'ขอบคุณและขอให้โชคดี'),
     vatPercent:    vat,
     receiptNo:     hidden.has('receiptNo') ? undefined : (props.receiptNo || '2605/00001'),
