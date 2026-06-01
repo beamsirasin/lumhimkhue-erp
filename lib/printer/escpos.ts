@@ -78,55 +78,117 @@ function sep(cols: number): string {
   return '-'.repeat(cols);
 }
 
+/**
+ * Split text into lines that fit within `cols` characters.
+ * Breaks at spaces first; falls back to hard-break at col boundary.
+ * Each Thai/ASCII character counts as 1 column (Thai codepage = 1 byte/char).
+ */
+function wrapLines(text: string, cols: number): string[] {
+  if (text.length <= cols) return [text];
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let cur = '';
+  for (const word of words) {
+    const chunk = word.slice(0, cols);
+    if (!cur) {
+      cur = chunk;
+    } else if (cur.length + 1 + chunk.length <= cols) {
+      cur += ' ' + chunk;
+    } else {
+      lines.push(cur);
+      cur = chunk;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [text.slice(0, cols)];
+}
+
 /* ─── Receipt ────────────────────────────────────────────────────────────── */
 
 export function buildReceipt(data: ReceiptData, paperWidth: 58 | 80, thaiCodepage = 21): Uint8Array {
   const cols = COLS[paperWidth];
+  const label = data.billTypeLabel ?? (data.receiptType === 'receipt' ? 'receipt_short' : 'food');
+  const showTaxFields = data.receiptType === 'receipt' || label === 'tax_full';
+
   let e = makeEncoder(paperWidth, thaiCodepage)
     .initialize()
     .codepage(getThaiCpName(thaiCodepage))
     /* Shop header */
-    .align('center')
-    .bold(true).size(2, 2).line(data.shopNameTh).size(1, 1).bold(false);
+    .align('center');
+
+  if (data.shopNameTh) e = e.bold(true).size(2, 2).line(data.shopNameTh).size(1, 1).bold(false);
 
   if (data.shopNameEn)  e = e.line(data.shopNameEn);
   if (data.companyName) e = e.line(data.companyName);
-  if (data.shopAddress) e = e.line(data.shopAddress);
-  if (data.phone)       e = e.line(`โทร: ${data.phone}`);
-  if (data.receiptType === 'receipt') {
+  if (data.shopAddress) for (const l of wrapLines(data.shopAddress, cols)) e = e.line(l);
+  if (data.phone)       e = e.line(`โทรศัพท์: ${data.phone}`);
+  if (showTaxFields) {
     if (data.taxId)     e = e.line(`เลขผู้เสียภาษี: ${data.taxId}`);
     if (data.branch)    e = e.line(`สาขา: ${data.branch}`);
     if (data.registerNo)e = e.line(`Register No: ${data.registerNo}`);
   }
 
+  /* Buyer info (tax_full only) */
+  if (label === 'tax_full' && data.buyerInfo) {
+    e = e.line(sep(cols))
+      .line('ข้อมูลผู้ซื้อ');
+    for (const l of wrapLines(data.buyerInfo.companyName, cols)) e = e.line(l);
+    for (const l of wrapLines(data.buyerInfo.address, cols)) e = e.line(l);
+    e = e.line(`เลขผู้เสียภาษี: ${data.buyerInfo.taxId}`);
+  }
+
+  /* Document title */
+  const docTitle =
+    label === 'food'          ? 'บิลรายการอาหาร' :
+    label === 'receipt_short' ? 'ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ' :
+                                'ใบกำกับภาษี';
+
+  e = e
+    .line(sep(cols))
+    .line(docTitle);
+  if (label === 'receipt_short') e = e.line('ราคารวมภาษีมูลค่าเพิ่มแล้ว');
+
   e = e
     .line(sep(cols))
     /* Session info */
-    .align('left')
-    .line(`โต๊ะ: ${data.tableNumber}   พนักงาน: ${data.cashierName}`)
-    .line(`วันที่: ${data.paidAt}`)
-    .line(sep(cols));
+    .align('left');
+
+  if (data.receiptNo)                    e = e.line(row('เลขที่',   data.receiptNo,   cols));
+  if (data.tableNumber)                  e = e.line(row('โต๊ะ',     data.tableNumber, cols));
+  if (showTaxFields && data.cashierName) e = e.line(row('พนักงาน', data.cashierName, cols));
+  if (data.paidAt)                       e = e.line(row('วันที่',   data.paidAt,      cols));
+  e = e.line(sep(cols));
 
   /* Items */
   for (const item of data.items) {
     const right = `x${item.quantity}  ฿${item.total.toFixed(2)}`;
-    e = e.line(row(item.name, right, cols));
+    const maxNameLen = cols - right.length - 1;
+    if (item.name.length <= maxNameLen) {
+      e = e.line(row(item.name, right, cols));
+    } else {
+      const nameLines = wrapLines(item.name, cols);
+      for (let i = 0; i < nameLines.length - 1; i++) e = e.line(nameLines[i]);
+      const last = nameLines[nameLines.length - 1] ?? '';
+      e = last.length <= maxNameLen
+        ? e.line(row(last, right, cols))
+        : e.line(last).line(row('', right, cols));
+    }
   }
 
   e = e.line(sep(cols));
 
   /* Totals */
-  e = e.line(row('รวม', `฿${data.subtotal.toFixed(2)}`, cols));
+  e = e.line(row('ยอดรวม', `฿${data.subtotal.toFixed(2)}`, cols));
   if (data.discount > 0) {
     e = e.line(row('ส่วนลด', `-฿${data.discount.toFixed(2)}`, cols));
   }
   if (data.serviceCharge > 0) {
     e = e.line(row('ค่าบริการ', `+฿${data.serviceCharge.toFixed(2)}`, cols));
   }
-  if (data.receiptType === 'receipt') {
+  if (showTaxFields) {
     const vat = data.vatPercent ?? 7;
     const vatAmt = data.total * vat / (100 + vat);
-    e = e.line(row(`ภาษีมูลค่าเพิ่ม ${vat}% (รวม)`, vatAmt.toFixed(2), cols));
+    if (vatAmt > 0) e = e.line(row(`ภาษีมูลค่าเพิ่ม ${vat}% (รวม)`, vatAmt.toFixed(2), cols));
   }
   e = e.bold(true).line(row('ทั้งหมด', `฿${data.total.toFixed(2)}`, cols)).bold(false);
 

@@ -29,12 +29,21 @@ export type PrintJob =
 
 /* ─── Job Payloads ──────────────────────────────────────────────────────── */
 
+export type BuyerInfo = {
+  companyName: string;
+  address: string;
+  taxId: string;
+};
+
 export type ReceiptData = {
   /** 'bill' = preview before payment (no VAT/payment info), 'receipt' = full paid receipt */
   receiptType: 'bill' | 'receipt';
+  /** Document label: 'food' | 'receipt_short' | 'tax_full' */
+  billTypeLabel?: 'food' | 'receipt_short' | 'tax_full';
 
   /* ── Shop info (from store settings) ── */
   logoUrl?: string;
+  logoHeight?: number;
   paperWidth?: 58 | 80;
   shopNameTh: string;
   shopNameEn?: string;
@@ -46,6 +55,9 @@ export type ReceiptData = {
   registerNo?: string;
   footerNote?: string;
   vatPercent?: number;
+
+  /* ── Tax invoice buyer info (tax_full only) ── */
+  buyerInfo?: BuyerInfo;
 
   /* ── Transaction ── */
   receiptNo?: string;

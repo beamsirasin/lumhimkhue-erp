@@ -1,159 +1,142 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { Eye, ImagePlus, X } from 'lucide-react';
+import { ImagePlus, X } from 'lucide-react';
 import { updateStoreSettings } from '@/lib/actions/store';
 import type { StoreSettingsData } from '@/lib/actions/store';
-import type { BillConfig } from '@/lib/db/schema';
-import { BillPreviewModal } from '@/components/admin/BillPreviewModal';
+import type { BillConfig, BillTypeLabel } from '@/lib/db/schema';
+import { BillLivePreview } from '@/components/admin/BillLivePreview';
 
 interface Props { initialData: StoreSettingsData; }
 
-type Tab = 'global' | 'preview' | 'main' | 'secondary';
+// ─── Bill type tabs ───────────────────────────────────────────────────────────
 
-const TABS: { key: Tab; label: string; desc: string }[] = [
-  { key: 'global',    label: 'ข้อมูลหลัก',  desc: 'ค่าเริ่มต้นสำหรับทุกบิล' },
-  { key: 'preview',  label: 'บิลธรรมดา',   desc: 'บิลแจกประจำโต๊ะ (ไม่แสดงภาษี/ชำระ)' },
-  { key: 'main',     label: 'บัญชีหลัก',   desc: 'ใบเสร็จชำระเงินบัญชีหลัก' },
-  { key: 'secondary',label: 'บัญชีรอง',    desc: 'ใบเสร็จชำระเงินบัญชีรอง' },
+type BillTab = 'global' | 'preview' | 'main' | 'secondary' | 'taxInvoice';
+
+const BILL_TABS: { key: BillTab; label: string }[] = [
+  { key: 'global',     label: 'ข้อมูลหลัก' },
+  { key: 'preview',    label: 'บิลรายการอาหาร' },
+  { key: 'main',       label: 'บัญชีหลัก' },
+  { key: 'secondary',  label: 'บัญชีรอง' },
+  { key: 'taxInvoice', label: 'ใบกำกับภาษี' },
 ];
 
-type GlobalForm = {
-  shopNameTh: string; shopNameEn: string; companyName: string;
-  address: string; phone: string; taxId: string;
-  branch: string; registerNo: string; footerNote: string; vatPercent: number;
+// ─── Section toggles ──────────────────────────────────────────────────────────
+
+type SectionKey =
+  | 'logo' | 'shopName' | 'branch' | 'address' | 'taxId'
+  | 'receiptNo' | 'tableNo' | 'cashier' | 'date' | 'vatPercent' | 'footerNote';
+
+const SECTIONS: { key: SectionKey; label: string }[] = [
+  { key: 'logo',       label: 'โลโก้' },
+  { key: 'shopName',   label: 'ชื่อร้าน / บริษัท' },
+  { key: 'branch',     label: 'สาขา' },
+  { key: 'address',    label: 'ที่อยู่' },
+  { key: 'taxId',      label: 'เลขประจำตัวผู้เสียภาษีอากร' },
+  { key: 'receiptNo',  label: 'เลขที่บิล' },
+  { key: 'tableNo',    label: 'โต๊ะ' },
+  { key: 'cashier',    label: 'พิมพ์โดย (พนักงาน)' },
+  { key: 'date',       label: 'วันที่ / เวลา' },
+  { key: 'vatPercent', label: 'ภาษีมูลค่าเพิ่ม' },
+  { key: 'footerNote', label: 'ข้อความท้ายบิล' },
+];
+
+const BILL_TYPE_OPTIONS: { value: BillTypeLabel; label: string }[] = [
+  { value: 'food',          label: 'บิลรายการอาหาร' },
+  { value: 'receipt_short', label: 'ใบเสร็จรับเงิน / ใบกำกับภาษีอย่างย่อ' },
+  { value: 'tax_full',      label: 'ใบกำกับภาษี' },
+];
+
+// ─── Per-bill config state ────────────────────────────────────────────────────
+
+type BillTabState = {
+  billTypeLabel: BillTypeLabel;
+  hiddenFields: Set<SectionKey>;
 };
 
-type BillForm = Omit<BillConfig, 'vatPercent' | 'hiddenFields' | 'logoUrl'> & { vatPercent: string };
+function defaultBillTypeLabel(tab: BillTab): BillTypeLabel {
+  if (tab === 'preview') return 'food';
+  if (tab === 'taxInvoice') return 'tax_full';
+  return 'receipt_short';
+}
 
-const GLOBAL_FIELDS: { key: keyof GlobalForm; label: string; placeholder?: string; type?: string; span?: boolean }[] = [
-  { key: 'shopNameTh',  label: 'ชื่อร้าน (ไทย)',             placeholder: 'ร้านชาบู' },
-  { key: 'shopNameEn',  label: 'ชื่อร้าน (English)',         placeholder: 'Shabu Buffet' },
-  { key: 'companyName', label: 'ชื่อนิติบุคคล / บริษัท',    placeholder: 'หจก. ร้านชาบู' },
-  { key: 'address',     label: 'ที่อยู่',                    placeholder: '1/1 ถ.xxx ต.xxx', span: true },
-  { key: 'phone',       label: 'โทรศัพท์',                   placeholder: '0800000000' },
-  { key: 'taxId',       label: 'เลขประจำตัวผู้เสียภาษี',    placeholder: '0503xxxxxxx' },
-  { key: 'branch',      label: 'สาขา',                       placeholder: 'สำนักงานใหญ่' },
-  { key: 'registerNo',  label: 'Register No',                 placeholder: '00001' },
-  { key: 'footerNote',  label: 'ข้อความท้ายบิล',             placeholder: 'ขอบคุณและขอให้โชคดี' },
-  { key: 'vatPercent',  label: 'ภาษีมูลค่าเพิ่ม (%)',        type: 'number' },
-];
+const VALID_SECTION_KEYS = new Set<string>(SECTIONS.map((s) => s.key));
 
-const BILL_FIELDS: { key: keyof BillForm; label: string; placeholder?: string; type?: string; span?: boolean; toggleable?: boolean }[] = [
-  { key: 'shopNameTh',  label: 'ชื่อร้าน (ไทย)',             placeholder: '(ใช้ค่าหลัก)',  toggleable: false },
-  { key: 'shopNameEn',  label: 'ชื่อร้าน (English)',         placeholder: '(ใช้ค่าหลัก)',  toggleable: true },
-  { key: 'companyName', label: 'ชื่อนิติบุคคล / บริษัท',    placeholder: '(ใช้ค่าหลัก)',  toggleable: true },
-  { key: 'address',     label: 'ที่อยู่',                    placeholder: '(ใช้ค่าหลัก)',  span: true, toggleable: true },
-  { key: 'phone',       label: 'โทรศัพท์',                   placeholder: '(ใช้ค่าหลัก)',  toggleable: true },
-  { key: 'taxId',       label: 'เลขประจำตัวผู้เสียภาษี',    placeholder: '(ใช้ค่าหลัก)',  toggleable: true },
-  { key: 'branch',      label: 'สาขา',                       placeholder: '(ใช้ค่าหลัก)',  toggleable: true },
-  { key: 'registerNo',  label: 'Register No',                 placeholder: '(ใช้ค่าหลัก)',  toggleable: true },
-  { key: 'footerNote',  label: 'ข้อความท้ายบิล',             placeholder: '(ใช้ค่าหลัก)',  toggleable: true },
-  { key: 'vatPercent',  label: 'ภาษีมูลค่าเพิ่ม (%)',        placeholder: '(ใช้ค่าหลัก)',  type: 'number', toggleable: true },
-];
-
-function emptyBillForm(cfg: BillConfig | null | undefined): Record<string, string> {
-  if (!cfg) return {};
+function initBillState(cfg: BillConfig | null | undefined, tab: BillTab): BillTabState {
   return {
-    shopNameTh:  cfg.shopNameTh  ?? '',
-    shopNameEn:  cfg.shopNameEn  ?? '',
-    companyName: cfg.companyName ?? '',
-    address:     cfg.address     ?? '',
-    phone:       cfg.phone       ?? '',
-    taxId:       cfg.taxId       ?? '',
-    branch:      cfg.branch      ?? '',
-    registerNo:  cfg.registerNo  ?? '',
-    footerNote:  cfg.footerNote  ?? '',
-    vatPercent:  cfg.vatPercent != null ? String(cfg.vatPercent) : '',
+    billTypeLabel: cfg?.billTypeLabel ?? defaultBillTypeLabel(tab),
+    hiddenFields: new Set(
+      (cfg?.hiddenFields ?? []).filter((k) => VALID_SECTION_KEYS.has(k)) as SectionKey[],
+    ),
   };
 }
 
-function initVisible(cfg: BillConfig | null | undefined): Record<string, boolean> {
-  const hidden = new Set(cfg?.hiddenFields ?? []);
-  const result: Record<string, boolean> = {};
-  for (const f of BILL_FIELDS.filter((f) => f.toggleable)) {
-    result[f.key] = !hidden.has(f.key);
-  }
-  return result;
+function toBillConfig(state: BillTabState, tab: Exclude<BillTab, 'global'>): BillConfig | null {
+  const hiddenArr = [...state.hiddenFields];
+  const billTypeKey = tab === 'preview' ? 'preview' : tab === 'main' ? 'main' : tab === 'secondary' ? 'secondary' : 'taxInvoice';
+  if (hiddenArr.length === 0 && state.billTypeLabel === defaultBillTypeLabel(billTypeKey)) return null;
+  return {
+    billTypeLabel: state.billTypeLabel,
+    hiddenFields: hiddenArr.length > 0 ? hiddenArr : undefined,
+  };
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function StoreSettingsForm({ initialData }: Props) {
-  const [activeTab, setActiveTab] = useState<Tab>('global');
   const [saving, setSaving] = useState(false);
-  const [previewTab, setPreviewTab] = useState<Tab | null>(null);
+  const [activeTab, setActiveTab] = useState<BillTab>('global');
+  const [previewWidth, setPreviewWidth] = useState<58 | 80>((initialData.billPaperWidth as 58 | 80) ?? 80);
 
-  const [global, setGlobal] = useState<GlobalForm>({
-    shopNameTh:  initialData.shopNameTh ?? '',
-    shopNameEn:  initialData.shopNameEn ?? '',
-    companyName: initialData.companyName ?? '',
-    address:     initialData.address ?? '',
-    phone:       initialData.phone ?? '',
-    taxId:       initialData.taxId ?? '',
-    branch:      initialData.branch ?? '',
-    registerNo:  initialData.registerNo ?? '',
-    footerNote:  initialData.footerNote ?? '',
-    vatPercent:  initialData.vatPercent ?? 7,
+  // Global fields
+  const [shopNameTh,  setShopNameTh]  = useState(initialData.shopNameTh ?? '');
+  const [shopNameEn,  setShopNameEn]  = useState(initialData.shopNameEn ?? '');
+  const [companyName, setCompanyName] = useState(initialData.companyName ?? '');
+  const [address,     setAddress]     = useState(initialData.address ?? '');
+  const [phone,       setPhone]       = useState(initialData.phone ?? '');
+  const [taxId,       setTaxId]       = useState(initialData.taxId ?? '');
+  const [branch,      setBranch]      = useState(initialData.branch ?? '');
+  const [registerNo,  setRegisterNo]  = useState(initialData.registerNo ?? '');
+  const [footerNote,  setFooterNote]  = useState(initialData.footerNote ?? '');
+  const [vatPercent,  setVatPercent]  = useState(initialData.vatPercent ?? 7);
+  const [taxInvoicePrefix, setTaxInvoicePrefix] = useState(initialData.taxInvoicePrefix ?? '2605');
+
+  // Logo
+  const [logoUrl,    setLogoUrl]    = useState(initialData.logoUrl ?? '');
+  const [logoHeight, setLogoHeight] = useState(initialData.logoHeight ?? 56);
+  const [paperWidth, setPaperWidth] = useState<58 | 80>((initialData.billPaperWidth as 58 | 80) ?? 80);
+
+  // Per-bill tab states
+  const [billStates, setBillStates] = useState<Record<string, BillTabState>>({
+    preview:    initBillState(initialData.billPreviewConfig,    'preview'),
+    main:       initBillState(initialData.billMainConfig,       'main'),
+    secondary:  initBillState(initialData.billSecondaryConfig,  'secondary'),
+    taxInvoice: initBillState(initialData.billTaxInvoiceConfig, 'taxInvoice'),
   });
 
-  const [logoUrl, setLogoUrl] = useState<string>(initialData.logoUrl ?? '');
-  const [paperWidth, setPaperWidth] = useState<58 | 80>(
-    (initialData.billPaperWidth as 58 | 80) ?? 80,
-  );
+  const billState = billStates[activeTab as string] as BillTabState | undefined;
 
-  const [billForms, setBillForms] = useState<Record<string, Record<string, string>>>({
-    preview:   emptyBillForm(initialData.billPreviewConfig),
-    main:      emptyBillForm(initialData.billMainConfig),
-    secondary: emptyBillForm(initialData.billSecondaryConfig),
-  });
-
-  const [billVisible, setBillVisible] = useState<Record<string, Record<string, boolean>>>({
-    preview:   initVisible(initialData.billPreviewConfig),
-    main:      initVisible(initialData.billMainConfig),
-    secondary: initVisible(initialData.billSecondaryConfig),
-  });
-
-  function setBillField(tab: string, key: string, val: string) {
-    setBillForms((p) => ({ ...p, [tab]: { ...(p[tab] ?? {}), [key]: val } }));
+  function setBillTypeLabel(tab: string, label: BillTypeLabel) {
+    setBillStates(p => ({ ...p, [tab]: { ...p[tab], billTypeLabel: label } }));
   }
 
-  function toggleVisible(tab: string, key: string) {
-    setBillVisible((p) => ({
-      ...p,
-      [tab]: { ...(p[tab] ?? {}), [key]: !(p[tab]?.[key] ?? true) },
-    }));
-  }
-
-  function toConfig(form: Record<string, string>, visible: Record<string, boolean>): BillConfig | null {
-    const hiddenFields = BILL_FIELDS
-      .filter((f) => f.toggleable && !(visible[f.key] ?? true))
-      .map((f) => f.key);
-    const hasAny = Object.values(form).some((v) => v !== '') || hiddenFields.length > 0;
-    if (!hasAny) return null;
-    return {
-      shopNameTh:  form.shopNameTh  || undefined,
-      shopNameEn:  form.shopNameEn  || undefined,
-      companyName: form.companyName || undefined,
-      address:     form.address     || undefined,
-      phone:       form.phone       || undefined,
-      taxId:       form.taxId       || undefined,
-      branch:      form.branch      || undefined,
-      registerNo:  form.registerNo  || undefined,
-      footerNote:  form.footerNote  || undefined,
-      vatPercent:  form.vatPercent !== '' ? Number(form.vatPercent) : undefined,
-      hiddenFields: hiddenFields.length > 0 ? hiddenFields : undefined,
-    };
+  function toggleSection(tab: string, key: SectionKey) {
+    setBillStates(p => {
+      const cur = new Set(p[tab].hiddenFields);
+      cur.has(key) ? cur.delete(key) : cur.add(key);
+      return { ...p, [tab]: { ...p[tab], hiddenFields: cur } };
+    });
   }
 
   function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) { toast.error('กรุณาเลือกไฟล์รูปภาพ'); return; }
-    if (file.size > 500_000) { toast.error('ไฟล์ใหญ่เกิน 500 KB — กรุณาบีบอัดรูปก่อน'); return; }
+    if (file.size > 500_000) { toast.error('ไฟล์ใหญ่เกิน 500 KB'); return; }
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const result = ev.target?.result;
-      if (typeof result === 'string') setLogoUrl(result);
+      if (typeof ev.target?.result === 'string') setLogoUrl(ev.target.result);
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -163,209 +146,269 @@ export function StoreSettingsForm({ initialData }: Props) {
     e.preventDefault();
     setSaving(true);
     const result = await updateStoreSettings({
-      ...global,
-      vatPercent: Number(global.vatPercent),
-      logoUrl: logoUrl || undefined,
+      shopNameTh, shopNameEn, companyName, address, phone, taxId,
+      branch, registerNo, footerNote, vatPercent,
+      logoUrl: logoUrl || null,
+      logoHeight,
       billPaperWidth: paperWidth,
-      billPreviewConfig:   toConfig(billForms.preview   ?? {}, billVisible.preview   ?? {}),
-      billMainConfig:      toConfig(billForms.main      ?? {}, billVisible.main      ?? {}),
-      billSecondaryConfig: toConfig(billForms.secondary ?? {}, billVisible.secondary ?? {}),
+      taxInvoicePrefix,
+      billPreviewConfig:    toBillConfig(billStates.preview,    'preview'),
+      billMainConfig:       toBillConfig(billStates.main,        'main'),
+      billSecondaryConfig:  toBillConfig(billStates.secondary,   'secondary'),
+      billTaxInvoiceConfig: toBillConfig(billStates.taxInvoice,  'taxInvoice'),
     });
     setSaving(false);
     if (!result.ok) toast.error(result.error);
     else toast.success('บันทึกแล้ว');
   }
 
-  const INPUT_BASE = 'w-full rounded-lg border px-3 py-2 text-sm outline-none transition-colors';
-  const INPUT_ON   = `${INPUT_BASE} border-slate-300 focus:border-slate-500`;
-  const INPUT_OFF  = `${INPUT_BASE} border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed`;
+  // ─── Preview props (resolved for current tab) ───────────────────────────────
+
+  const previewTabKey = activeTab === 'global' ? 'preview' : activeTab;
+  const previewState = billStates[previewTabKey];
+
+  const previewProps = {
+    paperWidth: previewWidth,
+    billTypeLabel: previewState?.billTypeLabel ?? 'food',
+    billTypeKey: previewTabKey as 'preview' | 'main' | 'secondary' | 'taxInvoice',
+    shopNameTh,
+    shopNameEn: shopNameEn || undefined,
+    companyName: companyName || undefined,
+    address: address || undefined,
+    phone: phone || undefined,
+    taxId: taxId || undefined,
+    branch: branch || undefined,
+    registerNo: registerNo || undefined,
+    footerNote: footerNote || undefined,
+    vatPercent,
+    logoUrl: logoUrl || undefined,
+    logoHeight,
+    hiddenFields: [...(previewState?.hiddenFields ?? [])],
+  };
+
+  const INPUT = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500 transition-colors';
 
   return (
-    <>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <div className="flex gap-6 items-start">
+      {/* ── Left: Form ──────────────────────────────────────────────────── */}
+      <form onSubmit={handleSubmit} className="w-[420px] shrink-0 space-y-4">
         {/* Tabs */}
-        <div className="flex gap-1 rounded-lg bg-slate-100 p-1">
-          {TABS.map((t) => (
-            <button key={t.key} type="button" onClick={() => setActiveTab(t.key)}
-              className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-colors ${
-                activeTab === t.key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}>
+        <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+          {BILL_TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setActiveTab(t.key)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                activeTab === t.key
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
               {t.label}
             </button>
           ))}
         </div>
 
-        {/* Tab description + preview button */}
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-slate-400">
-            {TABS.find((t) => t.key === activeTab)?.desc}
-            {activeTab !== 'global' && ' — เว้นว่างเพื่อใช้ค่าจาก "ข้อมูลหลัก"'}
-          </p>
-          <button
-            type="button"
-            onClick={() => setPreviewTab(activeTab)}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors shrink-0"
-          >
-            <Eye className="size-3.5" />
-            ดูตัวอย่าง
-          </button>
-        </div>
-
-        {/* Global tab */}
+        {/* ── Global Tab ──────────────────────────────────────────────── */}
         {activeTab === 'global' && (
-          <div className="space-y-4">
-            {/* Logo upload */}
-            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/50 p-4">
-              <p className="text-xs font-semibold text-slate-700 mb-3">โลโก้หัวบิล</p>
+          <div className="space-y-5">
+            {/* Logo */}
+            <Section title="โลโก้หัวบิล">
               {logoUrl ? (
-                <div className="flex items-center gap-4">
-                  <img src={logoUrl} alt="โลโก้" className="h-14 max-w-[160px] object-contain rounded-lg border border-slate-200 bg-white p-1" />
-                  <div className="space-y-1.5">
-                    <p className="text-xs text-slate-500">อัพโหลดแล้ว</p>
+                <div className="flex items-start gap-4">
+                  <img src={logoUrl} alt="โลโก้" style={{ height: logoHeight }} className="max-w-[160px] object-contain rounded border border-slate-200 bg-white p-1" />
+                  <div className="space-y-2 flex-1">
                     <div className="flex gap-2">
-                      <label className="cursor-pointer rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+                      <label className="cursor-pointer rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
                         <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
                         เปลี่ยนรูป
                       </label>
-                      <button
-                        type="button"
-                        onClick={() => setLogoUrl('')}
-                        className="flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 transition-colors"
-                      >
+                      <button type="button" onClick={() => setLogoUrl('')}
+                        className="flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 transition-colors">
                         <X className="size-3" />ลบโลโก้
                       </button>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-500 mb-1">ความสูงโลโก้: {logoHeight}px</label>
+                      <input type="range" min={20} max={200} value={logoHeight}
+                        onChange={e => setLogoHeight(Number(e.target.value))}
+                        className="w-full accent-slate-800" />
                     </div>
                   </div>
                 </div>
               ) : (
                 <label className="flex flex-col items-center gap-2 cursor-pointer group">
                   <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
-                  <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 group-hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-600 group-hover:bg-slate-100 transition-colors w-full justify-center">
                     <ImagePlus className="size-4 text-slate-400" />
                     เลือกรูปภาพ (PNG / JPG / SVG)
                   </div>
-                  <p className="text-[10px] text-slate-400">แนะนำขนาดไม่เกิน 200 KB · จะแสดงที่ด้านบนของบิลทุกประเภท</p>
+                  <p className="text-[10px] text-slate-400">แนะนำขนาดไม่เกิน 200 KB</p>
                 </label>
               )}
-            </div>
+            </Section>
 
             {/* Paper width */}
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="text-xs font-semibold text-slate-700 mb-3">ขนาดกระดาษบิล</p>
+            <Section title="ขนาดกระดาษบิล">
               <div className="flex gap-2">
                 {([58, 80] as const).map((w) => (
-                  <button
-                    key={w}
-                    type="button"
-                    onClick={() => setPaperWidth(w)}
-                    className={`flex-1 rounded-lg border py-2.5 text-sm font-semibold transition-colors ${
-                      paperWidth === w
-                        ? 'border-slate-800 bg-slate-800 text-white'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
+                  <button key={w} type="button" onClick={() => { setPaperWidth(w); setPreviewWidth(w); }}
+                    className={`flex-1 rounded-lg border py-2 text-sm font-semibold transition-colors ${
+                      paperWidth === w ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}>
                     {w} mm
                   </button>
                 ))}
               </div>
-              <p className="mt-2 text-[10px] text-slate-400">
-                58mm — เครื่องพิมพ์ขนาดเล็ก · 80mm — เครื่องพิมพ์มาตรฐาน
-              </p>
-            </div>
+              <p className="mt-1.5 text-[10px] text-slate-400">58mm — เครื่องพิมพ์ขนาดเล็ก · 80mm — เครื่องพิมพ์มาตรฐาน</p>
+            </Section>
 
-            {/* Global fields */}
-            <div className="grid grid-cols-2 gap-3">
-              {GLOBAL_FIELDS.map(({ key, label, placeholder, type, span }) => (
-                <div key={key} className={span ? 'col-span-2' : ''}>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
-                  <input
-                    type={type ?? 'text'}
-                    value={String(global[key] ?? '')}
-                    onChange={(e) => setGlobal((p) => ({ ...p, [key]: type === 'number' ? Number(e.target.value) : e.target.value }))}
-                    placeholder={placeholder}
-                    className={INPUT_ON}
-                    min={type === 'number' ? 0 : undefined}
-                    max={type === 'number' ? 100 : undefined}
-                  />
-                </div>
-              ))}
-            </div>
+            {/* Info fields */}
+            <Section title="ข้อมูลร้าน">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="ชื่อร้าน (ไทย) *" span>
+                  <input className={INPUT} value={shopNameTh} onChange={e => setShopNameTh(e.target.value)} placeholder="ร้านชาบู" />
+                </Field>
+                <Field label="ชื่อร้าน (English)">
+                  <input className={INPUT} value={shopNameEn} onChange={e => setShopNameEn(e.target.value)} placeholder="Shabu Buffet" />
+                </Field>
+                <Field label="ชื่อนิติบุคคล / บริษัท" span>
+                  <input className={INPUT} value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="หจก. ร้านชาบู" />
+                </Field>
+                <Field label="ที่อยู่" span>
+                  <textarea className={INPUT} rows={2} value={address} onChange={e => setAddress(e.target.value)} placeholder="1/1 ถ.xxx ต.xxx" />
+                </Field>
+                <Field label="โทรศัพท์">
+                  <input className={INPUT} value={phone} onChange={e => setPhone(e.target.value)} placeholder="0800000000" />
+                </Field>
+                <Field label="เลขประจำตัวผู้เสียภาษี">
+                  <input className={INPUT} value={taxId} onChange={e => setTaxId(e.target.value)} placeholder="0503xxxxxxx" />
+                </Field>
+                <Field label="สาขา">
+                  <input className={INPUT} value={branch} onChange={e => setBranch(e.target.value)} placeholder="สำนักงานใหญ่" />
+                </Field>
+                <Field label="Register No">
+                  <input className={INPUT} value={registerNo} onChange={e => setRegisterNo(e.target.value)} placeholder="00001" />
+                </Field>
+                <Field label="ข้อความท้ายบิล" span>
+                  <input className={INPUT} value={footerNote} onChange={e => setFooterNote(e.target.value)} placeholder="ขอบคุณและขอให้โชคดี" />
+                </Field>
+                <Field label="ภาษีมูลค่าเพิ่ม (%)">
+                  <input type="number" min={0} max={100} className={INPUT} value={vatPercent} onChange={e => setVatPercent(Number(e.target.value))} />
+                </Field>
+              </div>
+            </Section>
+
+            {/* Tax invoice settings */}
+            <Section title="ตั้งค่าใบกำกับภาษี">
+              <Field label={`Prefix เลขที่บิล (เช่น "2605" → 2605/00001)`} span>
+                <input className={INPUT} value={taxInvoicePrefix} onChange={e => setTaxInvoicePrefix(e.target.value)} placeholder="2605" maxLength={20} />
+              </Field>
+              <p className="text-[10px] text-slate-400 mt-1">เลขที่จะ reset ทุกวัน เช่น 2605/00001, 2605/00002, …</p>
+            </Section>
           </div>
         )}
 
-        {/* Per-bill tabs */}
-        {(activeTab === 'preview' || activeTab === 'main' || activeTab === 'secondary') && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              {BILL_FIELDS.map(({ key, label, placeholder, type, span, toggleable }) => {
-                const isVisible = !toggleable || (billVisible[activeTab]?.[key] ?? true);
-                const inputId = `field-${activeTab}-${key}`;
-                return (
-                  <div key={key} className={span ? 'col-span-2' : ''}>
-                    <div className="flex items-center gap-2 mb-1">
-                      {toggleable ? (
-                        <input
-                          type="checkbox"
-                          id={`vis-${activeTab}-${key}`}
-                          checked={isVisible}
-                          onChange={() => toggleVisible(activeTab, key)}
-                          className="h-3.5 w-3.5 shrink-0 accent-slate-800 cursor-pointer"
-                        />
-                      ) : (
-                        <span className="h-3.5 w-3.5 shrink-0" />
-                      )}
-                      <label
-                        htmlFor={toggleable ? `vis-${activeTab}-${key}` : inputId}
-                        className={`text-xs font-medium select-none ${isVisible ? 'text-slate-600' : 'text-slate-400'} ${toggleable ? 'cursor-pointer' : ''}`}
-                      >
-                        {label}
-                        {!isVisible && (
-                          <span className="ml-1.5 rounded bg-red-100 px-1 py-0.5 text-[10px] font-semibold text-red-500">ซ่อน</span>
-                        )}
-                      </label>
-                    </div>
+        {/* ── Per-bill tabs ────────────────────────────────────────────── */}
+        {activeTab !== 'global' && billState && (
+          <div className="space-y-4">
+            {/* Document type selector */}
+            <Section title="ประเภทเอกสาร">
+              <div className="flex flex-col gap-2">
+                {BILL_TYPE_OPTIONS.map((opt) => (
+                  <label key={opt.value} className="flex items-center gap-2.5 cursor-pointer">
                     <input
-                      id={inputId}
-                      type={type ?? 'text'}
-                      value={(billForms[activeTab] ?? {})[key] ?? ''}
-                      onChange={(e) => setBillField(activeTab, key, e.target.value)}
-                      placeholder={isVisible ? placeholder : 'ไม่แสดงในบิล'}
-                      disabled={!isVisible}
-                      className={isVisible ? INPUT_ON : INPUT_OFF}
-                      min={type === 'number' ? 0 : undefined}
-                      max={type === 'number' ? 100 : undefined}
+                      type="radio"
+                      name={`billType-${activeTab}`}
+                      checked={billState.billTypeLabel === opt.value}
+                      onChange={() => setBillTypeLabel(activeTab, opt.value)}
+                      className="accent-slate-800"
                     />
-                  </div>
-                );
-              })}
-            </div>
-            <p className="text-[11px] text-slate-400">
-              💡 ช่องที่เว้นว่างจะดึงค่าจาก &quot;ข้อมูลหลัก&quot; อัตโนมัติ · ยกเลิกติ๊กเพื่อซ่อน field นั้นออกจากบิล
-            </p>
+                    <span className="text-sm text-slate-700">{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+            </Section>
+
+            {/* Section toggles */}
+            <Section title="แสดง / ซ่อน แต่ละส่วน">
+              <div className="divide-y divide-slate-100">
+                {SECTIONS.map((s) => {
+                  const isHidden = billState.hiddenFields.has(s.key);
+                  return (
+                    <label key={s.key} className="flex items-center justify-between py-2.5 cursor-pointer group">
+                      <span className={`text-sm transition-colors ${isHidden ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+                        {s.label}
+                      </span>
+                      <div
+                        onClick={() => toggleSection(activeTab, s.key)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          isHidden ? 'bg-slate-200' : 'bg-slate-800'
+                        }`}
+                      >
+                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-sm ${
+                          isHidden ? 'translate-x-1' : 'translate-x-4.5'
+                        }`} />
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-slate-400 pt-2">ปิดสวิตช์ = ซ่อน section นั้นออกจากบิลประเภทนี้</p>
+            </Section>
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
-        >
+        <button type="submit" disabled={saving}
+          className="w-full rounded-lg bg-slate-800 py-2.5 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50 transition-colors">
           {saving ? 'กำลังบันทึก…' : 'บันทึก'}
         </button>
       </form>
 
-      {/* Bill preview modal */}
-      {previewTab !== null && (
-        <BillPreviewModal
-          billType={previewTab}
-          globalForm={global}
-          billForm={billForms[previewTab] ?? {}}
-          billVisible={billVisible[previewTab] ?? {}}
-          logoUrl={logoUrl}
-          paperWidth={paperWidth}
-          onClose={() => setPreviewTab(null)}
-        />
-      )}
-    </>
+      {/* ── Right: Live Preview ──────────────────────────────────────── */}
+      <div className="flex-1 min-w-0 sticky top-6">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+          {/* Paper width toggle for preview */}
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-600">ตัวอย่างบิล</p>
+            <div className="flex gap-1 rounded-lg bg-white border border-slate-200 p-0.5">
+              {([58, 80] as const).map((w) => (
+                <button key={w} type="button" onClick={() => setPreviewWidth(w)}
+                  className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                    previewWidth === w ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-700'
+                  }`}>
+                  {w}mm
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="overflow-auto">
+            <BillLivePreview {...previewProps} paperWidth={previewWidth} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Helper sub-components ────────────────────────────────────────────────────
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+      <p className="text-xs font-semibold text-slate-700">{title}</p>
+      {children}
+    </div>
+  );
+}
+
+function Field({ label, children, span }: { label: string; children: React.ReactNode; span?: boolean }) {
+  return (
+    <div className={span ? 'col-span-2' : ''}>
+      <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
+      {children}
+    </div>
   );
 }

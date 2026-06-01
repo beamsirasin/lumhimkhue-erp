@@ -557,6 +557,8 @@ export const reservationGuestsRelations = relations(reservationGuests, ({ one })
 
 /* ─── Store Settings (singleton row, id = 1) ─────────────────────────────── */
 
+export type BillTypeLabel = 'food' | 'receipt_short' | 'tax_full';
+
 export type BillConfig = {
   shopNameTh?: string;
   shopNameEn?: string;
@@ -569,7 +571,14 @@ export type BillConfig = {
   footerNote?: string;
   vatPercent?: number;
   logoUrl?: string;
-  /** Fields explicitly hidden from this bill type (even if global has a value) */
+  logoHeight?: number;
+  /** Document type label shown on the bill */
+  billTypeLabel?: BillTypeLabel;
+  /**
+   * Fields hidden from this bill type.
+   * Keys: 'logo' | 'shopName' | 'branch' | 'address' | 'taxId' |
+   *       'receiptNo' | 'tableNo' | 'cashier' | 'date' | 'vatPercent' | 'footerNote'
+   */
   hiddenFields?: string[];
 };
 
@@ -586,11 +595,16 @@ export const storeSettings = pgTable('store_settings', {
   footerNote: varchar('footer_note', { length: 255 }).default('ขอบคุณและขอให้โชคดี'),
   vatPercent: integer('vat_percent').notNull().default(7),
   logoUrl: text('logo_url'),
+  logoHeight: integer('logo_height').notNull().default(56),
   billPaperWidth: integer('bill_paper_width').notNull().default(80),
+  taxInvoicePrefix: varchar('tax_invoice_prefix', { length: 20 }).notNull().default('2605'),
+  receiptCounter: integer('receipt_counter').notNull().default(0),
+  receiptCounterDate: varchar('receipt_counter_date', { length: 10 }).notNull().default(''),
   /** Per-bill-type overrides (null = fall back to global fields above) */
-  billPreviewConfig: jsonb('bill_preview_config').$type<BillConfig>(),
-  billMainConfig: jsonb('bill_main_config').$type<BillConfig>(),
-  billSecondaryConfig: jsonb('bill_secondary_config').$type<BillConfig>(),
+  billPreviewConfig:     jsonb('bill_preview_config').$type<BillConfig>(),
+  billMainConfig:        jsonb('bill_main_config').$type<BillConfig>(),
+  billSecondaryConfig:   jsonb('bill_secondary_config').$type<BillConfig>(),
+  billTaxInvoiceConfig:  jsonb('bill_tax_invoice_config').$type<BillConfig>(),
 });
 
 // ─── Inferred Types ───────────────────────────────────────────────────────────

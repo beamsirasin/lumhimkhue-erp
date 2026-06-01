@@ -17,12 +17,24 @@ import type { ReceiptData, TableQrData, QueueQrData, KitchenOrderData } from './
 /* ─── Constants ──────────────────────────────────────────────────────────── */
 
 const DOTS: Record<58 | 80, number> = { 58: 384, 80: 576 };
+/** Printable body width in mm (matches buildPrintCSS in browser.ts) */
+const BODY_MM: Record<58 | 80, number> = { 58: 54, 80: 76 };
 
 const THAI_FONT = '"IBM Plex Sans Thai", "TH Sarabun New", "Noto Sans Thai", "Tahoma", sans-serif';
 const FONT_SIZE = 26;
 const LINE_H    = 36;
 const PAD_X     = 14;
 const PAD_Y     = 12;
+
+/**
+ * Convert a logo height expressed in CSS/screen pixels (96 dpi) to the
+ * equivalent number of canvas dots at the thermal-printer dot density.
+ */
+function logoHeightToDots(heightPx: number, paperWidth: 58 | 80): number {
+  const dotPerMm = DOTS[paperWidth] / BODY_MM[paperWidth];
+  const pxPerMm  = 96 / 25.4;
+  return Math.round(heightPx * dotPerMm / pxPerMm);
+}
 
 const STATION: Record<string, string> = {
   meat: 'เนื้อสัตว์', seafood: 'ทะเล', vegetable: 'ผัก',
@@ -38,13 +50,25 @@ type Ln =
   | { t: 'sp';   n?: number }
   | { t: 'qr';   url: string };
 
+/* ─── Image loader helper ────────────────────────────────────────────────── */
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload  = () => resolve(img);
+    img.onerror = () => reject(new Error('logo load failed'));
+    img.src = src;
+  });
+}
+
 /* ─── Canvas renderer ────────────────────────────────────────────────────── */
 
 async function drawToCanvas(lines: Ln[], paperWidth: 58 | 80): Promise<HTMLCanvasElement> {
-  const W   = DOTS[paperWidth];
-  const BIG = Math.round(FONT_SIZE * 1.4);
+  const W          = DOTS[paperWidth];
+  const BIG        = Math.round(FONT_SIZE * 1.4);
+  const PRINTABLE  = W - PAD_X * 2;
+  const QR_SIZE    = PRINTABLE;
 
-  // Wait for ALL fonts, then explicitly load the sizes we need
   await document.fonts.ready;
   await Promise.allSettled([
     document.fonts.load(`400 ${FONT_SIZE}px "IBM Plex Sans Thai"`),
@@ -53,11 +77,46 @@ async function drawToCanvas(lines: Ln[], paperWidth: 58 | 80): Promise<HTMLCanva
     document.fonts.load(`bold ${BIG}px "IBM Plex Sans Thai"`),
   ]);
 
-  const QR_SIZE = W - PAD_X * 2; // QR code fills printable width
+  /* Use a 1-pixel-tall off-screen canvas to measure text widths */
+  const mcanvas = document.createElement('canvas');
+  mcanvas.width  = W;
+  mcanvas.height = 1;
+  const mctx = mcanvas.getContext('2d')!;
 
-  // Measure total height
-  let h = PAD_Y;
+  function wrapText(s: string, bold: boolean, big: boolean): string[] {
+    const fs = big ? BIG : FONT_SIZE;
+    mctx.font = `${bold ? 'bold ' : ''}${fs}px ${THAI_FONT}`;
+    if (mctx.measureText(s).width <= PRINTABLE) return [s];
+    const segments: string[] = [];
+    let cur = '';
+    for (const ch of s) {
+      const test = cur + ch;
+      if (mctx.measureText(test).width > PRINTABLE) {
+        if (cur) segments.push(cur);
+        cur = ch;
+      } else {
+        cur = test;
+      }
+    }
+    if (cur) segments.push(cur);
+    return segments.length ? segments : [s];
+  }
+
+  /* Expand text lines that exceed the printable width */
+  const expanded: Ln[] = [];
   for (const ln of lines) {
+    if (ln.t === 'text') {
+      for (const seg of wrapText(ln.s, ln.bold ?? false, ln.big ?? false)) {
+        expanded.push({ ...ln, s: seg });
+      }
+    } else {
+      expanded.push(ln);
+    }
+  }
+
+  /* Measure total canvas height using the expanded line list */
+  let h = PAD_Y;
+  for (const ln of expanded) {
     if      (ln.t === 'hr') h += 16;
     else if (ln.t === 'sp') h += (ln.n ?? 1) * LINE_H;
     else if (ln.t === 'qr') h += QR_SIZE + 8;
@@ -81,7 +140,7 @@ async function drawToCanvas(lines: Ln[], paperWidth: 58 | 80): Promise<HTMLCanva
 
   let y = PAD_Y + 4;
 
-  for (const ln of lines) {
+  for (const ln of expanded) {
     ctx.fillStyle = '#000000';
 
     if (ln.t === 'hr') {
@@ -162,40 +221,85 @@ async function render(lines: Ln[], paperWidth: 58 | 80): Promise<Uint8Array> {
 /* ─── Receipt ────────────────────────────────────────────────────────────── */
 
 export async function buildBitmapReceipt(data: ReceiptData, paperWidth: 58 | 80): Promise<Uint8Array> {
-  const isReceipt = data.receiptType === 'receipt';
-  const vat    = data.vatPercent ?? 7;
-  const vatAmt = isReceipt ? data.total * vat / (100 + vat) : 0;
+  const isReceipt  = data.receiptType === 'receipt';
+  const label      = data.billTypeLabel ?? (isReceipt ? 'receipt_short' : 'food');
+  const isTaxFull  = label === 'tax_full';
+  const showTax    = isReceipt || isTaxFull;
+  const vat        = data.vatPercent ?? 7;
+  const vatAmt     = showTax && vat > 0 ? data.total * vat / (100 + vat) : 0;
+
   const lines: Ln[] = [];
 
-  lines.push({ t: 'text', s: data.shopNameTh,  a: 'c', bold: true, big: true });
+  /* ── Logo: convert px→dots, load image, delegate to two-pass renderer ── */
+  if (data.logoUrl) {
+    try {
+      const img  = await loadImage(data.logoUrl);
+      const W    = DOTS[paperWidth];
+      const maxH = logoHeightToDots(data.logoHeight ?? 56, paperWidth);
+      const ratio = Math.min(1, maxH / img.naturalHeight, (W - PAD_X * 2) / img.naturalWidth);
+      const imgW  = Math.round(img.naturalWidth  * ratio);
+      const imgH  = Math.round(img.naturalHeight * ratio);
+      return await renderWithLogo(data, label, showTax, vat, vatAmt, isReceipt, img, imgW, imgH, paperWidth);
+    } catch {
+      // logo load failed — fall through to text-only render below
+    }
+  }
+
+  /* ── Header ── */
+  if (data.shopNameTh)  lines.push({ t: 'text', s: data.shopNameTh,  a: 'c', bold: true, big: true });
   if (data.shopNameEn)  lines.push({ t: 'text', s: data.shopNameEn,  a: 'c' });
   if (data.companyName) lines.push({ t: 'text', s: data.companyName, a: 'c' });
   if (data.shopAddress) lines.push({ t: 'text', s: data.shopAddress, a: 'c' });
   if (data.phone)       lines.push({ t: 'text', s: `โทร: ${data.phone}`, a: 'c' });
-  if (isReceipt) {
-    if (data.taxId)  lines.push({ t: 'text', s: `เลขผู้เสียภาษี: ${data.taxId}`, a: 'c' });
-    if (data.branch) lines.push({ t: 'text', s: `สาขา: ${data.branch}`, a: 'c' });
+  if (showTax) {
+    if (data.taxId)     lines.push({ t: 'text', s: `เลขผู้เสียภาษี: ${data.taxId}`, a: 'c' });
+    if (data.branch)    lines.push({ t: 'text', s: `สาขา: ${data.branch}`, a: 'c' });
+    if (data.registerNo)lines.push({ t: 'text', s: `Register No: ${data.registerNo}`, a: 'c' });
   }
 
-  lines.push({ t: 'hr' });
-  lines.push({ t: 'row',  l: `โต๊ะ: ${data.tableNumber}`, r: data.cashierName });
-  lines.push({ t: 'text', s: `วันที่: ${data.paidAt}`, a: 'l' });
-  lines.push({ t: 'hr' });
+  /* ── Buyer info (tax invoice) ── */
+  if (isTaxFull && data.buyerInfo) {
+    lines.push({ t: 'hr' });
+    lines.push({ t: 'text', s: 'ข้อมูลผู้ซื้อ', a: 'c', bold: true });
+    lines.push({ t: 'text', s: data.buyerInfo.companyName, a: 'l' });
+    lines.push({ t: 'text', s: data.buyerInfo.address,     a: 'l' });
+    lines.push({ t: 'text', s: `เลขผู้เสียภาษี: ${data.buyerInfo.taxId}`, a: 'l' });
+  }
 
+  /* ── Document type header ── */
+  lines.push({ t: 'hr' });
+  const docTitle =
+    label === 'food'          ? 'บิลรายการอาหาร' :
+    label === 'receipt_short' ? 'ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ' :
+                                'ใบกำกับภาษี';
+  lines.push({ t: 'text', s: docTitle, a: 'c', bold: true });
+  if (label === 'receipt_short') lines.push({ t: 'text', s: 'ราคารวมภาษีมูลค่าเพิ่มแล้ว', a: 'c' });
+
+  /* ── Transaction info ── */
+  lines.push({ t: 'hr' });
+  if (data.receiptNo)                     lines.push({ t: 'row', l: 'เลขที่',   r: data.receiptNo });
+  if (data.tableNumber)                   lines.push({ t: 'row', l: 'โต๊ะ',     r: data.tableNumber });
+  if (showTax && data.cashierName)        lines.push({ t: 'row', l: 'พนักงาน', r: data.cashierName });
+  if (data.paidAt)                        lines.push({ t: 'text', s: `วันที่: ${data.paidAt}`, a: 'l' });
+
+  /* ── Items ── */
+  lines.push({ t: 'hr' });
   for (const item of data.items) {
     lines.push({ t: 'row', l: item.name, r: `x${item.quantity}  ฿${item.total.toFixed(2)}` });
   }
 
+  /* ── Totals ── */
   lines.push({ t: 'hr' });
-  lines.push({ t: 'row', l: 'รวม',       r: `฿${data.subtotal.toFixed(2)}` });
+  lines.push({ t: 'row', l: 'ยอดรวม',    r: `฿${data.subtotal.toFixed(2)}` });
   if (data.discount > 0)
     lines.push({ t: 'row', l: 'ส่วนลด',   r: `-฿${data.discount.toFixed(2)}` });
   if (data.serviceCharge > 0)
     lines.push({ t: 'row', l: 'ค่าบริการ', r: `+฿${data.serviceCharge.toFixed(2)}` });
-  if (isReceipt && vatAmt > 0)
+  if (showTax && vatAmt > 0)
     lines.push({ t: 'row', l: `VAT ${vat}% (รวม)`, r: vatAmt.toFixed(2) });
   lines.push({ t: 'row', l: 'ทั้งหมด',   r: `฿${data.total.toFixed(2)}`, bold: true });
 
+  /* ── Payment ── */
   if (isReceipt) {
     lines.push({ t: 'hr' });
     lines.push({ t: 'row', l: data.paymentMethod, r: `฿${data.receivedAmount.toFixed(2)}` });
@@ -203,11 +307,120 @@ export async function buildBitmapReceipt(data: ReceiptData, paperWidth: 58 | 80)
       lines.push({ t: 'row', l: 'เงินทอน', r: `฿${data.changeAmount.toFixed(2)}` });
   }
 
+  /* ── Footer ── */
   lines.push({ t: 'hr' });
   lines.push({ t: 'text', s: data.footerNote ?? 'ขอบคุณและขอให้โชคดี', a: 'c' });
   lines.push({ t: 'sp' });
 
   return render(lines, paperWidth);
+}
+
+/** Two-pass render when a logo image is needed: logo block + rest of bill */
+async function renderWithLogo(
+  data: ReceiptData,
+  label: string,
+  showTax: boolean,
+  vat: number,
+  vatAmt: number,
+  isReceipt: boolean,
+  img: HTMLImageElement,
+  imgW: number,
+  imgH: number,
+  paperWidth: 58 | 80,
+): Promise<Uint8Array> {
+  const W       = DOTS[paperWidth];
+  const isTaxFull = label === 'tax_full';
+  const cols    = paperWidth === 58 ? 32 : 48;
+
+  await document.fonts.ready;
+  await Promise.allSettled([
+    document.fonts.load(`400 ${FONT_SIZE}px "IBM Plex Sans Thai"`),
+    document.fonts.load(`bold ${FONT_SIZE}px "IBM Plex Sans Thai"`),
+  ]);
+
+  /* Build the rest of the bill as Ln[] */
+  const lines: Ln[] = [];
+  if (data.shopNameTh)  lines.push({ t: 'text', s: data.shopNameTh,  a: 'c', bold: true, big: true });
+  if (data.shopNameEn)  lines.push({ t: 'text', s: data.shopNameEn,  a: 'c' });
+  if (data.companyName) lines.push({ t: 'text', s: data.companyName, a: 'c' });
+  if (data.shopAddress) lines.push({ t: 'text', s: data.shopAddress, a: 'c' });
+  if (data.phone)       lines.push({ t: 'text', s: `โทร: ${data.phone}`, a: 'c' });
+  if (showTax) {
+    if (data.taxId)      lines.push({ t: 'text', s: `เลขผู้เสียภาษี: ${data.taxId}`, a: 'c' });
+    if (data.branch)     lines.push({ t: 'text', s: `สาขา: ${data.branch}`, a: 'c' });
+    if (data.registerNo) lines.push({ t: 'text', s: `Register No: ${data.registerNo}`, a: 'c' });
+  }
+  if (isTaxFull && data.buyerInfo) {
+    lines.push({ t: 'hr' });
+    lines.push({ t: 'text', s: 'ข้อมูลผู้ซื้อ', a: 'c', bold: true });
+    lines.push({ t: 'text', s: data.buyerInfo.companyName, a: 'l' });
+    lines.push({ t: 'text', s: data.buyerInfo.address,     a: 'l' });
+    lines.push({ t: 'text', s: `เลขผู้เสียภาษี: ${data.buyerInfo.taxId}`, a: 'l' });
+  }
+  lines.push({ t: 'hr' });
+  const docTitle =
+    label === 'food'          ? 'บิลรายการอาหาร' :
+    label === 'receipt_short' ? 'ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ' :
+                                'ใบกำกับภาษี';
+  lines.push({ t: 'text', s: docTitle, a: 'c', bold: true });
+  if (label === 'receipt_short') lines.push({ t: 'text', s: 'ราคารวมภาษีมูลค่าเพิ่มแล้ว', a: 'c' });
+  lines.push({ t: 'hr' });
+  if (data.receiptNo)              lines.push({ t: 'row', l: 'เลขที่',   r: data.receiptNo });
+  if (data.tableNumber)            lines.push({ t: 'row', l: 'โต๊ะ',     r: data.tableNumber });
+  if (showTax && data.cashierName) lines.push({ t: 'row', l: 'พนักงาน', r: data.cashierName });
+  if (data.paidAt)                 lines.push({ t: 'text', s: `วันที่: ${data.paidAt}`, a: 'l' });
+  lines.push({ t: 'hr' });
+  for (const item of data.items)
+    lines.push({ t: 'row', l: item.name, r: `x${item.quantity}  ฿${item.total.toFixed(2)}` });
+  lines.push({ t: 'hr' });
+  lines.push({ t: 'row', l: 'ยอดรวม',    r: `฿${data.subtotal.toFixed(2)}` });
+  if (data.discount > 0)
+    lines.push({ t: 'row', l: 'ส่วนลด',   r: `-฿${data.discount.toFixed(2)}` });
+  if (data.serviceCharge > 0)
+    lines.push({ t: 'row', l: 'ค่าบริการ', r: `+฿${data.serviceCharge.toFixed(2)}` });
+  if (showTax && vatAmt > 0)
+    lines.push({ t: 'row', l: `VAT ${vat}% (รวม)`, r: vatAmt.toFixed(2) });
+  lines.push({ t: 'row', l: 'ทั้งหมด',   r: `฿${data.total.toFixed(2)}`, bold: true });
+  if (isReceipt) {
+    lines.push({ t: 'hr' });
+    lines.push({ t: 'row', l: data.paymentMethod, r: `฿${data.receivedAmount.toFixed(2)}` });
+    if (data.changeAmount > 0)
+      lines.push({ t: 'row', l: 'เงินทอน', r: `฿${data.changeAmount.toFixed(2)}` });
+  }
+  lines.push({ t: 'hr' });
+  lines.push({ t: 'text', s: data.footerNote ?? 'ขอบคุณและขอให้โชคดี', a: 'c' });
+  lines.push({ t: 'sp' });
+
+  const bodyCanvas = await drawToCanvas(lines, paperWidth);
+
+  /* Combine: logo block on top, then body */
+  const logoBlockH = imgH + PAD_Y * 2;
+  const totalH     = Math.ceil((logoBlockH + bodyCanvas.height) / 8) * 8;
+  const combined   = document.createElement('canvas');
+  combined.width   = W;
+  combined.height  = totalH;
+  const ctx        = combined.getContext('2d')!;
+  ctx.fillStyle    = '#ffffff';
+  ctx.fillRect(0, 0, W, totalH);
+  ctx.drawImage(img, Math.floor((W - imgW) / 2), PAD_Y, imgW, imgH);
+  ctx.drawImage(bodyCanvas, 0, logoBlockH);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const enc = new (ReceiptPrinterEncoder as any)({
+    language: 'esc-pos',
+    columns: cols,
+    imageMode: 'raster',
+    createCanvas: (w: number, h: number) => {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h; return c;
+    },
+  });
+  return enc
+    .initialize()
+    .image(combined, combined.width, combined.height, 'threshold')
+    .newline(3)
+    .cut('partial')
+    .encode() as Uint8Array;
 }
 
 /* ─── Kitchen Order ──────────────────────────────────────────────────────── */

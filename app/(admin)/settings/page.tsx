@@ -14,15 +14,9 @@ export default async function Settings() {
   const settings = result.ok ? result.data : null;
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl">
-      <h1 className="text-xl font-semibold text-slate-900">ตั้งค่าบิล</h1>
-
-      {settings && (
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="mb-4 text-sm font-semibold text-slate-700">ข้อมูลร้านและหัวบิล</h2>
-          <StoreSettingsForm initialData={settings} />
-        </div>
-      )}
+    <div className="p-6">
+      <h1 className="text-xl font-semibold text-slate-900 mb-6">ตั้งค่าบิล</h1>
+      {settings && <StoreSettingsForm initialData={settings} />}
     </div>
   );
 }

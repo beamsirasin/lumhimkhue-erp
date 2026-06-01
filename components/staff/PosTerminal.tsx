@@ -15,6 +15,8 @@ import { updateSessionGuests, closeSession, createContinuationSession } from '@/
 import { getStoreSettings } from '@/lib/actions/store';
 import type { StoreSettingsData } from '@/lib/actions/store';
 import { resolveBillConfig } from '@/lib/utils/billConfig';
+import type { BillTypeKey } from '@/lib/utils/billConfig';
+import { incrementReceiptCounter } from '@/lib/actions/store';
 import type { PosSession, PosSessionDetail } from '@/lib/actions/pos';
 import { Printer, CheckCircle2, Tag, Package, X, Loader2 } from 'lucide-react';
 import { PricingTile as PricingTileCard } from '@/components/staff/PricingTile';
@@ -366,7 +368,7 @@ function DetailPanel({ sessionId, cashierName, onPaid }: { sessionId: string; ca
   const { data: storeData } = useQuery({
     queryKey: ['store-settings'],
     queryFn: () => getStoreSettings().then((r) => (r.ok ? r.data : null)),
-    staleTime: 300_000,
+    staleTime: 0, // always refetch on mount so settings changes are reflected immediately
   });
 
   if (isLoading || !data) {
@@ -623,26 +625,35 @@ function PaymentPanel({
 
   const now = () => new Date().toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Bangkok' });
 
-  function buildShopInfo(billType: 'preview' | 'main' | 'secondary') {
-    if (!storeSettings) return { shopNameTh: 'ร้านชาบู' };
-    const cfg = resolveBillConfig(storeSettings, billType);
+  function buildShopInfo(billType: BillTypeKey, s?: StoreSettingsData | null) {
+    const src = s ?? storeSettings;
+    if (!src) return { shopNameTh: 'ร้านชาบู' };
+    const cfg = resolveBillConfig(src, billType);
     return {
-      logoUrl:     cfg.logoUrl,
-      paperWidth:  (storeSettings.billPaperWidth as 58 | 80) ?? 80,
-      shopNameTh:  cfg.shopNameTh ?? 'ร้านชาบู',
-      shopNameEn:  cfg.shopNameEn,
-      companyName: cfg.companyName,
-      shopAddress: cfg.address,
-      phone:       cfg.phone,
-      taxId:       cfg.taxId,
-      branch:      cfg.branch,
-      registerNo:  cfg.registerNo,
-      footerNote:  cfg.footerNote,
-      vatPercent:  cfg.vatPercent ?? 7,
+      cfg,
+      logoUrl:       cfg.logoUrl,
+      logoHeight:    cfg.logoHeight,
+      paperWidth:    (src.billPaperWidth as 58 | 80) ?? 80,
+      shopNameTh:    cfg.shopNameTh ?? '',
+      shopNameEn:    cfg.shopNameEn,
+      companyName:   cfg.companyName,
+      shopAddress:   cfg.address,
+      phone:         cfg.phone,
+      taxId:         cfg.taxId,
+      branch:        cfg.branch,
+      registerNo:    cfg.registerNo,
+      footerNote:    cfg.footerNote,
+      vatPercent:    cfg.vatPercent ?? 7,
+      billTypeLabel: cfg.billTypeLabel,
     };
   }
 
   async function handlePrint() {
+    const freshRes = await getStoreSettings();
+    const fresh = freshRes.ok ? freshRes.data : storeSettings;
+    const { cfg, ...shopInfo } = buildShopInfo('preview', fresh);
+    const hidden = new Set(cfg?.hiddenFields ?? []);
+
     const receiptItems: ReceiptData['items'] = [];
     for (const t of guestTiles) {
       const qty = guestQty[t.id] ?? 0;
@@ -656,9 +667,10 @@ function PaymentPanel({
       type: 'receipt',
       payment: {
         receiptType: 'bill',
-        ...buildShopInfo('preview'),
-        tableNumber: session.table.label, cashierName,
-        paidAt: now(),
+        ...shopInfo,
+        tableNumber:  hidden.has('tableNo')   ? '' : session.table.label,
+        cashierName:  hidden.has('cashier')   ? '' : cashierName,
+        paidAt:       hidden.has('date')      ? '' : now(),
         items: receiptItems, subtotal: subtotalBeforeDiscount, discount: 0, serviceCharge: 0,
         total: subtotalBeforeDiscount, receivedAmount: 0, changeAmount: 0,
         paymentMethod: '', sessionId: session.id,
@@ -719,17 +731,31 @@ function PaymentPanel({
       const qty = addonQty[t.id] ?? 0;
       if (qty > 0) receiptItems.push({ name: t.name, quantity: qty, total: Number(t.price) * qty });
     }
+    const billType: BillTypeKey = taxInvoice
+      ? 'taxInvoice'
+      : (bankAccount === 'main' ? 'main' : 'secondary');
+    const [freshRes, counterResult] = await Promise.all([getStoreSettings(), incrementReceiptCounter()]);
+    const fresh = freshRes.ok ? freshRes.data : storeSettings;
+    const { cfg, ...shopInfo } = buildShopInfo(billType, fresh);
+    const hidden = new Set(cfg?.hiddenFields ?? []);
+    const receiptNo = counterResult.ok ? counterResult.receiptNo : Date.now().toString().slice(-8);
     const receipt: ReceiptData = {
       receiptType: 'receipt',
-      ...buildShopInfo(bankAccount === 'main' ? 'main' : 'secondary'),
-      receiptNo: Date.now().toString().slice(-8),
-      tableNumber: session.table.label, cashierName,
-      paidAt: now(),
+      ...shopInfo,
+      receiptNo:    hidden.has('receiptNo') ? undefined : receiptNo,
+      tableNumber:  hidden.has('tableNo')   ? '' : session.table.label,
+      cashierName:  hidden.has('cashier')   ? '' : cashierName,
+      paidAt:       hidden.has('date')      ? '' : now(),
       items: receiptItems, subtotal: subtotalBeforeDiscount,
       discount: manualDiscountNum + discountTileTotal, serviceCharge: 0,
       total: result.data.total,
       receivedAmount: method === 'cash' ? numpadNum : method === 'cash_qr' ? cashPortion : result.data.total,
       changeAmount: result.data.changeAmount, paymentMethod: METHOD_LABEL[method], sessionId: session.id,
+      buyerInfo: taxInvoice ? {
+        companyName: taxInvoice.companyName,
+        address:     taxInvoice.address,
+        taxId:       taxInvoice.taxId,
+      } : undefined,
     };
     setLastReceipt(receipt);
     setPaid(true);
@@ -1175,12 +1201,21 @@ function PaymentPanel({
       const receiptItems: ReceiptData['items'] = completedRounds.flatMap((r) =>
         r.items.map((x) => ({ name: x.name, quantity: x.qty, total: x.price * x.qty })),
       );
+      const splitBillType: BillTypeKey = taxInvoice
+        ? 'taxInvoice'
+        : (bankAccount === 'main' ? 'main' : 'secondary');
+      const [splitFreshRes, splitCounter] = await Promise.all([getStoreSettings(), incrementReceiptCounter()]);
+      const splitFresh = splitFreshRes.ok ? splitFreshRes.data : storeSettings;
+      const { cfg: splitCfg, ...splitShopInfo } = buildShopInfo(splitBillType, splitFresh);
+      const splitHidden = new Set(splitCfg?.hiddenFields ?? []);
+      const splitReceiptNo = splitCounter.ok ? splitCounter.receiptNo : Date.now().toString().slice(-8);
       const receipt: ReceiptData = {
         receiptType: 'receipt',
-        ...buildShopInfo(bankAccount === 'main' ? 'main' : 'secondary'),
-        receiptNo: Date.now().toString().slice(-8),
-        tableNumber: session.table.label, cashierName,
-        paidAt: now(),
+        ...splitShopInfo,
+        receiptNo:   splitHidden.has('receiptNo') ? undefined : splitReceiptNo,
+        tableNumber: splitHidden.has('tableNo')   ? '' : session.table.label,
+        cashierName: splitHidden.has('cashier')   ? '' : cashierName,
+        paidAt:      splitHidden.has('date')      ? '' : now(),
         items: receiptItems, subtotal: completedTotal,
         discount: allDone ? manualDiscountNum + discountTileTotal : 0, serviceCharge: 0,
         total: result.data.total,

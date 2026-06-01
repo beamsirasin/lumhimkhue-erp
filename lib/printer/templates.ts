@@ -41,35 +41,49 @@ const STATION_LABEL: Record<string, string> = {
 
 export async function renderReceiptHTML(data: ReceiptData): Promise<string> {
   const isReceipt = data.receiptType === 'receipt';
+  const label = data.billTypeLabel ?? (isReceipt ? 'receipt_short' : 'food');
+  const isTaxFull = label === 'tax_full';
+  const showTaxFields = isReceipt || isTaxFull;
   const vat = data.vatPercent ?? 7;
-  const vatAmount = isReceipt ? data.total * vat / (100 + vat) : 0;
+  const vatAmount = showTaxFields ? data.total * vat / (100 + vat) : 0;
+
+  const logoStyle = data.logoHeight ? ` style="max-height:${data.logoHeight}px"` : '';
 
   /* Header block */
   const header = `
 <div class="center">
-  ${data.logoUrl ? `<div class="logo-wrap"><img src="${data.logoUrl}" alt="logo" class="logo" /></div>` : ''}
-  <div class="big bold">${esc(data.shopNameTh)}</div>
+  ${data.logoUrl ? `<div class="logo-wrap"><img src="${data.logoUrl}" alt="logo" class="logo"${logoStyle} /></div>` : ''}
+  ${data.shopNameTh ? `<div class="big bold">${esc(data.shopNameTh)}</div>` : ''}
   ${data.shopNameEn ? `<div>${esc(data.shopNameEn)}</div>` : ''}
   ${data.companyName ? `<div>${esc(data.companyName)}</div>` : ''}
   ${data.shopAddress ? `<div class="small">${esc(data.shopAddress)}</div>` : ''}
   ${data.phone ? `<div>โทรศัพท์: ${esc(data.phone)}</div>` : ''}
-  ${isReceipt && data.taxId ? `<div class="small">เลขประจำตัวผู้เสียภาษีอากร: ${esc(data.taxId)}</div>` : ''}
-  ${isReceipt && data.branch ? `<div>สาขา: ${esc(data.branch)}</div>` : ''}
-  ${isReceipt && data.registerNo ? `<div class="small">Register No: ${esc(data.registerNo)}</div>` : ''}
+  ${showTaxFields && data.taxId ? `<div class="small">เลขประจำตัวผู้เสียภาษี: ${esc(data.taxId)}</div>` : ''}
+  ${showTaxFields && data.branch ? `<div>สาขา: ${esc(data.branch)}</div>` : ''}
+  ${showTaxFields && data.registerNo ? `<div class="small">Register No: ${esc(data.registerNo)}</div>` : ''}
 </div>`;
 
+  /* Buyer info block (tax_full only) */
+  const buyerBlock = isTaxFull && data.buyerInfo ? `
+${hr()}
+<div class="center small bold">ข้อมูลผู้ซื้อ</div>
+<div class="small">${esc(data.buyerInfo.companyName)}</div>
+<div class="small">${esc(data.buyerInfo.address)}</div>
+<div class="small">เลขประจำตัวผู้เสียภาษี: ${esc(data.buyerInfo.taxId)}</div>` : '';
+
   /* Document type label */
-  const docLabel = isReceipt
-    ? `<div class="center bold">ใบเสร็จรับเงิน / ใบกำกับภาษีอย่างย่อ</div>
-       <div class="center small">ราคารวมภาษีมูลค่าเพิ่มแล้ว</div>`
-    : `<div class="center bold">บิลรายการอาหาร</div>`;
+  const docLabel =
+    label === 'food'          ? `<div class="center bold">บิลรายการอาหาร</div>` :
+    label === 'receipt_short' ? `<div class="center bold">ใบเสร็จรับเงิน / ใบกำกับภาษีอย่างย่อ</div>
+                                 <div class="center small">ราคารวมภาษีมูลค่าเพิ่มแล้ว</div>` :
+                                `<div class="center bold">ใบกำกับภาษี</div>`;
 
   /* Transaction details */
   const txDetails = `
 ${data.receiptNo ? row('เลขที่', data.receiptNo) : ''}
-${row(`โต๊ะ`, data.tableNumber)}
-${isReceipt ? row('แคชเชียร์', data.cashierName) : ''}
-${row('วันที่/เวลา', data.paidAt)}`;
+${data.tableNumber  ? row('โต๊ะ', data.tableNumber) : ''}
+${showTaxFields && data.cashierName ? row('แคชเชียร์', data.cashierName) : ''}
+${data.paidAt ? row('วันที่/เวลา', data.paidAt) : ''}`;
 
   /* Items */
   const itemHeader = `<div class="item-row bold"><span class="item-name">สินค้า</span><span class="item-qty">Qty</span><span class="item-total">ราคารวม</span></div>`;
@@ -80,7 +94,7 @@ ${row('วันที่/เวลา', data.paidAt)}`;
   const totalsBlock = `
 ${row('ยอดรวม', `${data.subtotal.toFixed(2)}`)}
 ${discountRow}
-${isReceipt && vatAmount > 0 ? row(`ภาษีมูลค่าเพิ่ม ${vat}% (รวม)`, vatAmount.toFixed(2)) : ''}
+${showTaxFields && vatAmount > 0 ? row(`ภาษีมูลค่าเพิ่ม ${vat}% (รวม)`, vatAmount.toFixed(2)) : ''}
 ${row('ทั้งหมด', `฿${data.total.toFixed(2)}`, true)}`;
 
   /* Payment (receipt only) */
@@ -94,6 +108,7 @@ ${data.changeAmount > 0 ? row('เงินทอน', `฿${data.changeAmount.t
 
   return `
 ${header}
+${buyerBlock}
 ${hr()}
 ${docLabel}
 ${hr()}

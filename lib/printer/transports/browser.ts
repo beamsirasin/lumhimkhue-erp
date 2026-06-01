@@ -4,7 +4,7 @@
  * then closes the window.  Works everywhere — no driver or USB needed.
  */
 
-function buildPrintCSS(paperWidth: 58 | 80 = 80): string {
+export function buildPrintCSS(paperWidth: 58 | 80 = 80): string {
   const pageW    = `${paperWidth}mm`;
   const bodyW    = paperWidth === 58 ? '54mm' : '76mm';
   const fontSize = paperWidth === 58 ? '11px' : '12px';
@@ -15,9 +15,13 @@ function buildPrintCSS(paperWidth: 58 | 80 = 80): string {
     font-family: 'IBM Plex Sans Thai', 'TH Sarabun New', sans-serif;
     font-size: ${fontSize};
     width: ${bodyW};
+    max-width: ${bodyW};
     padding: 2mm;
     margin: 0;
     color: #000;
+    overflow-x: hidden;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   .center { text-align: center; }
   .right  { text-align: right; }
@@ -27,12 +31,11 @@ function buildPrintCSS(paperWidth: 58 | 80 = 80): string {
   .row {
     display: flex;
     justify-content: space-between;
-    white-space: nowrap;
+    align-items: flex-end;
   }
   .row .name {
-    overflow: hidden;
-    text-overflow: ellipsis;
     flex: 1;
+    min-width: 0;
     margin-right: 4px;
   }
   .row .value { flex-shrink: 0; }
@@ -49,9 +52,10 @@ function buildPrintCSS(paperWidth: 58 | 80 = 80): string {
   .item-row {
     display: flex;
     justify-content: space-between;
+    align-items: flex-start;
     gap: 4px;
   }
-  .item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .item-name { flex: 1; min-width: 0; }
   .item-qty  { width: 24px; text-align: center; flex-shrink: 0; }
   .item-total{ width: 52px; text-align: right; flex-shrink: 0; tabular-nums: initial; }
 `;
