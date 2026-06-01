@@ -32,9 +32,9 @@ export function resolveBillConfig(
   const hidden = new Set(override.hiddenFields ?? []);
 
   return {
-    shopNameTh:    hidden.has('shopName')  ? undefined : (override.shopNameTh  || global.shopNameTh),
-    shopNameEn:    hidden.has('shopName')  ? undefined : (override.shopNameEn  ?? global.shopNameEn),
-    companyName:   hidden.has('shopName')  ? undefined : (override.companyName ?? global.companyName),
+    shopNameTh:    hidden.has('shopName')    ? undefined : (override.shopNameTh  || global.shopNameTh),
+    shopNameEn:    hidden.has('shopName')    ? undefined : (override.shopNameEn  ?? global.shopNameEn),
+    companyName:   hidden.has('companyName') ? undefined : (override.companyName ?? global.companyName),
     address:       hidden.has('address')   ? undefined : (override.address     ?? global.address),
     phone:         hidden.has('phone')     ? undefined : (override.phone       ?? global.phone),
     taxId:         hidden.has('taxId')     ? undefined : (override.taxId       ?? global.taxId),

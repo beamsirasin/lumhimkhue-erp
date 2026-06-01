@@ -25,12 +25,13 @@ const BILL_TABS: { key: BillTab; label: string }[] = [
 // ─── Section toggles ──────────────────────────────────────────────────────────
 
 type SectionKey =
-  | 'logo' | 'shopName' | 'branch' | 'address' | 'taxId' | 'registerNo'
+  | 'logo' | 'shopName' | 'companyName' | 'branch' | 'address' | 'taxId' | 'registerNo'
   | 'receiptNo' | 'tableNo' | 'cashier' | 'date' | 'vatPercent' | 'footerNote';
 
 const SECTIONS: { key: SectionKey; label: string }[] = [
   { key: 'logo',        label: 'โลโก้' },
-  { key: 'shopName',    label: 'ชื่อร้าน / บริษัท' },
+  { key: 'shopName',    label: 'ชื่อร้าน' },
+  { key: 'companyName', label: 'บริษัท / นิติบุคคล' },
   { key: 'branch',      label: 'สาขา' },
   { key: 'address',     label: 'ที่อยู่' },
   { key: 'taxId',       label: 'เลขประจำตัวผู้เสียภาษีอากร' },
