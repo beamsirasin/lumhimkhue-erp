@@ -251,11 +251,9 @@ export async function buildBitmapReceipt(data: ReceiptData, paperWidth: 58 | 80)
   if (data.companyName) lines.push({ t: 'text', s: data.companyName, a: 'c' });
   if (data.shopAddress) lines.push({ t: 'text', s: data.shopAddress, a: 'c' });
   if (data.phone)       lines.push({ t: 'text', s: `โทร: ${data.phone}`, a: 'c' });
-  if (showTax) {
-    if (data.taxId)     lines.push({ t: 'text', s: `เลขผู้เสียภาษี: ${data.taxId}`, a: 'c' });
-    if (data.branch)    lines.push({ t: 'text', s: `สาขา: ${data.branch}`, a: 'c' });
-    if (data.registerNo)lines.push({ t: 'text', s: `Register No: ${data.registerNo}`, a: 'c' });
-  }
+  if (data.taxId)       lines.push({ t: 'text', s: `เลขผู้เสียภาษี: ${data.taxId}`, a: 'c' });
+  if (data.branch)      lines.push({ t: 'text', s: `สาขา: ${data.branch}`, a: 'c' });
+  if (data.registerNo)  lines.push({ t: 'text', s: `Register No: ${data.registerNo}`, a: 'c' });
 
   /* ── Buyer info (tax invoice) ── */
   if (isTaxFull && data.buyerInfo) {
@@ -279,7 +277,7 @@ export async function buildBitmapReceipt(data: ReceiptData, paperWidth: 58 | 80)
   lines.push({ t: 'hr' });
   if (data.receiptNo)                     lines.push({ t: 'row', l: 'เลขที่',   r: data.receiptNo });
   if (data.tableNumber)                   lines.push({ t: 'row', l: 'โต๊ะ',     r: data.tableNumber });
-  if (showTax && data.cashierName)        lines.push({ t: 'row', l: 'พนักงาน', r: data.cashierName });
+  if (data.cashierName)                   lines.push({ t: 'row', l: 'พนักงาน', r: data.cashierName });
   if (data.paidAt)                        lines.push({ t: 'text', s: `วันที่: ${data.paidAt}`, a: 'l' });
 
   /* ── Items ── */
@@ -345,11 +343,9 @@ async function renderWithLogo(
   if (data.companyName) lines.push({ t: 'text', s: data.companyName, a: 'c' });
   if (data.shopAddress) lines.push({ t: 'text', s: data.shopAddress, a: 'c' });
   if (data.phone)       lines.push({ t: 'text', s: `โทร: ${data.phone}`, a: 'c' });
-  if (showTax) {
-    if (data.taxId)      lines.push({ t: 'text', s: `เลขผู้เสียภาษี: ${data.taxId}`, a: 'c' });
-    if (data.branch)     lines.push({ t: 'text', s: `สาขา: ${data.branch}`, a: 'c' });
-    if (data.registerNo) lines.push({ t: 'text', s: `Register No: ${data.registerNo}`, a: 'c' });
-  }
+  if (data.taxId)       lines.push({ t: 'text', s: `เลขผู้เสียภาษี: ${data.taxId}`, a: 'c' });
+  if (data.branch)      lines.push({ t: 'text', s: `สาขา: ${data.branch}`, a: 'c' });
+  if (data.registerNo)  lines.push({ t: 'text', s: `Register No: ${data.registerNo}`, a: 'c' });
   if (isTaxFull && data.buyerInfo) {
     lines.push({ t: 'hr' });
     lines.push({ t: 'text', s: 'ข้อมูลผู้ซื้อ', a: 'c', bold: true });
@@ -367,7 +363,7 @@ async function renderWithLogo(
   lines.push({ t: 'hr' });
   if (data.receiptNo)              lines.push({ t: 'row', l: 'เลขที่',   r: data.receiptNo });
   if (data.tableNumber)            lines.push({ t: 'row', l: 'โต๊ะ',     r: data.tableNumber });
-  if (showTax && data.cashierName) lines.push({ t: 'row', l: 'พนักงาน', r: data.cashierName });
+  if (data.cashierName)            lines.push({ t: 'row', l: 'พนักงาน', r: data.cashierName });
   if (data.paidAt)                 lines.push({ t: 'text', s: `วันที่: ${data.paidAt}`, a: 'l' });
   lines.push({ t: 'hr' });
   for (const item of data.items)

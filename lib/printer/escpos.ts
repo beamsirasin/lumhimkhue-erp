@@ -122,11 +122,9 @@ export function buildReceipt(data: ReceiptData, paperWidth: 58 | 80, thaiCodepag
   if (data.companyName) e = e.line(data.companyName);
   if (data.shopAddress) for (const l of wrapLines(data.shopAddress, cols)) e = e.line(l);
   if (data.phone)       e = e.line(`โทรศัพท์: ${data.phone}`);
-  if (showTaxFields) {
-    if (data.taxId)     e = e.line(`เลขผู้เสียภาษี: ${data.taxId}`);
-    if (data.branch)    e = e.line(`สาขา: ${data.branch}`);
-    if (data.registerNo)e = e.line(`Register No: ${data.registerNo}`);
-  }
+  if (data.taxId)       e = e.line(`เลขผู้เสียภาษี: ${data.taxId}`);
+  if (data.branch)      e = e.line(`สาขา: ${data.branch}`);
+  if (data.registerNo)  e = e.line(`Register No: ${data.registerNo}`);
 
   /* Buyer info (tax_full only) */
   if (label === 'tax_full' && data.buyerInfo) {
@@ -155,7 +153,7 @@ export function buildReceipt(data: ReceiptData, paperWidth: 58 | 80, thaiCodepag
 
   if (data.receiptNo)                    e = e.line(row('เลขที่',   data.receiptNo,   cols));
   if (data.tableNumber)                  e = e.line(row('โต๊ะ',     data.tableNumber, cols));
-  if (showTaxFields && data.cashierName) e = e.line(row('พนักงาน', data.cashierName, cols));
+  if (data.cashierName) e = e.line(row('พนักงาน', data.cashierName, cols));
   if (data.paidAt)                       e = e.line(row('วันที่',   data.paidAt,      cols));
   e = e.line(sep(cols));
 

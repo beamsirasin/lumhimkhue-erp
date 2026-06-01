@@ -58,9 +58,9 @@ export async function renderReceiptHTML(data: ReceiptData): Promise<string> {
   ${data.companyName ? `<div>${esc(data.companyName)}</div>` : ''}
   ${data.shopAddress ? `<div class="small">${esc(data.shopAddress)}</div>` : ''}
   ${data.phone ? `<div>โทรศัพท์: ${esc(data.phone)}</div>` : ''}
-  ${showTaxFields && data.taxId ? `<div class="small">เลขประจำตัวผู้เสียภาษี: ${esc(data.taxId)}</div>` : ''}
-  ${showTaxFields && data.branch ? `<div>สาขา: ${esc(data.branch)}</div>` : ''}
-  ${showTaxFields && data.registerNo ? `<div class="small">Register No: ${esc(data.registerNo)}</div>` : ''}
+  ${data.taxId ? `<div class="small">เลขประจำตัวผู้เสียภาษี: ${esc(data.taxId)}</div>` : ''}
+  ${data.branch ? `<div>สาขา: ${esc(data.branch)}</div>` : ''}
+  ${data.registerNo ? `<div class="small">Register No: ${esc(data.registerNo)}</div>` : ''}
 </div>`;
 
   /* Buyer info block (tax_full only) */
@@ -82,7 +82,7 @@ ${hr()}
   const txDetails = `
 ${data.receiptNo ? row('เลขที่', data.receiptNo) : ''}
 ${data.tableNumber  ? row('โต๊ะ', data.tableNumber) : ''}
-${showTaxFields && data.cashierName ? row('แคชเชียร์', data.cashierName) : ''}
+${data.cashierName ? row('แคชเชียร์', data.cashierName) : ''}
 ${data.paidAt ? row('วันที่/เวลา', data.paidAt) : ''}`;
 
   /* Items */
