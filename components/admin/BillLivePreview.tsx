@@ -58,7 +58,7 @@ function buildSampleData(props: Props): ReceiptData {
     registerNo:    hidden.has('registerNo') ? undefined : props.registerNo,
     footerNote:    hidden.has('footerNote')? undefined : (props.footerNote || 'ขอบคุณและขอให้โชคดี'),
     vatPercent:    vat,
-    receiptNo:     hidden.has('receiptNo') ? undefined : (props.receiptNo || '2605/00001'),
+    receiptNo:     hidden.has('receiptNo') ? undefined : (props.receiptNo || 'LHK03060001'),
     tableNumber:   hidden.has('tableNo')   ? '' : 'T1',
     cashierName:   hidden.has('cashier')   ? '' : 'พนักงาน',
     paidAt:        hidden.has('date')      ? '' : new Date().toLocaleDateString('th-TH', { dateStyle: 'short' }) + ' 12:00',

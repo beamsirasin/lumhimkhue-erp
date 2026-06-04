@@ -13,6 +13,7 @@ import {
   updateStaff,
   resetStaffPassword,
   toggleStaffActive,
+  deleteStaff,
 } from '@/lib/actions/staff';
 import {
   createStaffSchema,
@@ -45,7 +46,8 @@ interface StaffPageProps {
 type Modal =
   | { type: 'add' }
   | { type: 'edit'; member: StaffMember }
-  | { type: 'resetPwd'; member: StaffMember };
+  | { type: 'resetPwd'; member: StaffMember }
+  | { type: 'delete'; member: StaffMember };
 
 export function StaffPage({ initialData }: StaffPageProps) {
   const [modal, setModal] = useState<Modal | null>(null);
@@ -64,16 +66,26 @@ export function StaffPage({ initialData }: StaffPageProps) {
     onSuccess: (r) => { if (!r.ok) toast.error(r.error); else invalidate(); },
   });
 
+  const { mutate: deleteMember, isPending: isDeleting } = useMutation({
+    mutationFn: (id: string) => deleteStaff(id),
+    onSuccess: (r) => {
+      if (!r.ok) { toast.error(r.error); return; }
+      toast.success('ลบ User แล้ว');
+      setModal(null);
+      invalidate();
+    },
+  });
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">จัดการพนักงาน</h1>
+        <h1 className="text-xl font-semibold text-slate-900">จัดการ User</h1>
         <button
           type="button"
           onClick={() => setModal({ type: 'add' })}
           className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
         >
-          + เพิ่มพนักงาน
+          + เพิ่ม User
         </button>
       </div>
 
@@ -82,8 +94,8 @@ export function StaffPage({ initialData }: StaffPageProps) {
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50">
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">ชื่อ</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">อีเมล</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">ตำแหน่ง</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Username (Email)</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Role</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">สมัครเมื่อ</th>
               <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500">สถานะ</th>
               <th className="px-4 py-3" />
@@ -130,6 +142,13 @@ export function StaffPage({ initialData }: StaffPageProps) {
                     >
                       รีเซ็ตรหัสผ่าน
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setModal({ type: 'delete', member })}
+                      className="text-xs text-red-400 hover:text-red-600"
+                    >
+                      ลบ
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -162,6 +181,35 @@ export function StaffPage({ initialData }: StaffPageProps) {
                 member={modal.member}
                 onClose={() => setModal(null)}
               />
+            )}
+            {modal.type === 'delete' && (
+              <div className="w-80 rounded-xl bg-white p-5 shadow-xl">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-slate-900">ยืนยันการลบ</h2>
+                  <button type="button" aria-label="ปิด" onClick={() => setModal(null)} className="text-slate-400 hover:text-slate-600">×</button>
+                </div>
+                <p className="mb-1 text-sm text-slate-700">
+                  ลบ <span className="font-semibold">{modal.member.name}</span> ออกจากระบบ?
+                </p>
+                <p className="mb-5 text-xs text-slate-400">{modal.member.email}</p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModal(null)}
+                    className="flex-1 rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => deleteMember(modal.member.id)}
+                    className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {isDeleting ? 'กำลังลบ…' : 'ลบ'}
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -196,14 +244,14 @@ function StaffForm({
   async function onSubmit(data: CreateStaffInput | UpdateStaffInput) {
     const result = initial ? await updateStaff(data) : await createStaff(data);
     if (!result.ok) { toast.error(result.error); return; }
-    toast.success(initial ? 'แก้ไขข้อมูลแล้ว' : 'เพิ่มพนักงานแล้ว');
+    toast.success(initial ? 'แก้ไขข้อมูลแล้ว' : 'เพิ่ม User แล้ว');
     onSaved();
   }
 
   return (
     <div className="w-80 rounded-xl bg-white p-5 shadow-xl">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-900">{initial ? 'แก้ไขพนักงาน' : 'เพิ่มพนักงาน'}</h2>
+        <h2 className="text-sm font-semibold text-slate-900">{initial ? 'แก้ไข User' : 'เพิ่ม User'}</h2>
         <button type="button" aria-label="ปิด" onClick={onClose} className="text-slate-400 hover:text-slate-600">×</button>
       </div>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
@@ -213,22 +261,16 @@ function StaffForm({
           {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name.message}</p>}
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-700 mb-1">อีเมล</label>
-          <input {...register('email')} type="email" className={INPUT} />
+          <label className="block text-xs font-medium text-slate-700 mb-1">Username (Email)</label>
+          <input {...register('email')} type="email" className={INPUT} placeholder="user@example.com" />
           {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email.message}</p>}
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-700 mb-1">ตำแหน่ง</label>
+          <label className="block text-xs font-medium text-slate-700 mb-1">Role</label>
           <select {...register('role')} className={INPUT}>
             {ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </div>
-        {'password' in (errors as object) && !initial && (
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">รหัสผ่าน</label>
-            <input {...register('password' as keyof (CreateStaffInput | UpdateStaffInput))} type="password" className={INPUT} />
-          </div>
-        )}
         {!initial && (
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">รหัสผ่าน</label>

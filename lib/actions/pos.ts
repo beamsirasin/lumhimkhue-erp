@@ -139,7 +139,7 @@ export async function processPayment(input: unknown) {
   const parsed = processPaymentSchema.safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
 
-  const { sessionId, paymentMethod, receivedAmount, discount, notes, lineItems } = parsed.data;
+  const { sessionId, paymentMethod, receivedAmount, discount, notes, receiptNo, lineItems } = parsed.data;
 
   try {
     // Parallel: session fetch + idempotency check (both need only sessionId)
@@ -166,6 +166,7 @@ export async function processPayment(input: unknown) {
         data: {
           total: Number(existingPayment.total),
           changeAmount: Number(existingPayment.changeAmount),
+          receiptNo: existingPayment.receiptNo ?? undefined,
         },
       };
     }
@@ -252,6 +253,7 @@ export async function processPayment(input: unknown) {
       receivedAmount: String(receivedAmount),
       changeAmount: String(changeAmount),
       processedBy: authSession.user.id,
+      receiptNo: receiptNo ?? null,
       notes,
     }).returning({ id: payments.id });
 
@@ -282,7 +284,7 @@ export async function processPayment(input: unknown) {
     revalidatePath('/pos');
     revalidatePath('/tables');
     revalidatePath('/dashboard');
-    return { ok: true as const, data: { total, changeAmount } };
+    return { ok: true as const, data: { total, changeAmount, receiptNo: receiptNo ?? undefined } };
   } catch (e) {
     console.error('[processPayment]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };

@@ -2,6 +2,9 @@
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { toast } from 'sonner';
 import { Plus, Pencil, ToggleLeft, ToggleRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -22,27 +25,21 @@ import {
   type PricingTileRow,
 } from '@/lib/actions/pricing';
 
-interface TierFormState {
-  code: string;
-  name: string;
-  price: string;
-  vatIncluded: boolean;
-  vatRate: string;
-  sortOrder: string;
-  isActive: boolean;
-  notes: string;
-}
+const tierFormSchema = z.object({
+  code: z
+    .string()
+    .min(1, 'กรุณากรอกรหัส')
+    .max(50)
+    .regex(/^[a-z0-9_]+$/, 'ตัวอักษรพิมพ์เล็ก ตัวเลข หรือ _'),
+  name: z.string().min(1, 'กรุณากรอกชื่อ').max(255),
+  price: z.number({ message: 'กรุณากรอกตัวเลข' }).min(0),
+  vatRate: z.number().min(0).max(100),
+  sortOrder: z.number().int().min(0),
+  isActive: z.boolean(),
+  notes: z.string().max(500).optional(),
+});
 
-const EMPTY_FORM: TierFormState = {
-  code: '',
-  name: '',
-  price: '0',
-  vatIncluded: true,
-  vatRate: '7',
-  sortOrder: '0',
-  isActive: true,
-  notes: '',
-};
+type TierFormValues = z.infer<typeof tierFormSchema>;
 
 interface PricingPageProps {
   initialTiers: PricingTileRow[];
@@ -52,8 +49,6 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTier, setEditingTier] = useState<PricingTileRow | null>(null);
-  const [form, setForm] = useState<TierFormState>(EMPTY_FORM);
-  const [submitting, setSubmitting] = useState(false);
 
   const { data: tiers = initialTiers } = useQuery({
     queryKey: ['pricing-tiles'],
@@ -63,46 +58,53 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
 
   const refetch = () => qc.invalidateQueries({ queryKey: ['pricing-tiles'] });
 
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<TierFormValues>({
+    resolver: zodResolver(tierFormSchema),
+    defaultValues: { price: 0, vatRate: 7, sortOrder: 0, isActive: true, notes: '' },
+  });
+
   function openCreate() {
     setEditingTier(null);
-    setForm(EMPTY_FORM);
+    reset({ code: '', name: '', price: 0, vatRate: 7, sortOrder: 0, isActive: true, notes: '' });
     setDialogOpen(true);
   }
 
   function openEdit(tier: PricingTileRow) {
     setEditingTier(tier);
-    setForm({
+    reset({
       code: tier.code,
       name: tier.name,
-      price: String(tier.price),
-      vatIncluded: tier.vatIncluded,
-      vatRate: String(tier.vatRate),
-      sortOrder: String(tier.sortOrder),
+      price: Number(tier.price),
+      vatRate: Number(tier.vatRate),
+      sortOrder: Number(tier.sortOrder),
       isActive: tier.isActive,
       notes: tier.notes ?? '',
     });
     setDialogOpen(true);
   }
 
-  async function handleSubmit() {
-    setSubmitting(true);
+  async function onSubmit(values: TierFormValues) {
     const payload = {
-      code: form.code,
-      name: form.name,
+      code: values.code,
+      name: values.name,
       category: 'guest' as const,
-      price: Number(form.price),
-      vatIncluded: form.vatIncluded,
-      vatRate: Number(form.vatRate),
-      sortOrder: Number(form.sortOrder),
-      isActive: form.isActive,
-      notes: form.notes || undefined,
+      price: values.price,
+      vatIncluded: true,
+      vatRate: values.vatRate,
+      sortOrder: values.sortOrder,
+      isActive: values.isActive,
+      notes: values.notes || undefined,
     };
 
     const result = editingTier
       ? await updatePricingTile({ ...payload, id: editingTier.id })
       : await createPricingTile(payload);
 
-    setSubmitting(false);
     if (result.ok) {
       toast.success(editingTier ? 'แก้ไขสำเร็จ' : 'เพิ่มสำเร็จ');
       setDialogOpen(false);
@@ -204,11 +206,13 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
                 <Label htmlFor="f-code">รหัส (code) *</Label>
                 <Input
                   id="f-code"
-                  value={form.code}
-                  onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))}
+                  {...register('code')}
                   placeholder="adult"
                   disabled={!!editingTier}
                 />
+                {errors.code && (
+                  <p className="text-xs text-red-600">{errors.code.message}</p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="f-order">ลำดับ</Label>
@@ -216,8 +220,7 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
                   id="f-order"
                   type="number"
                   min={0}
-                  value={form.sortOrder}
-                  onChange={(e) => setForm((p) => ({ ...p, sortOrder: e.target.value }))}
+                  {...register('sortOrder', { valueAsNumber: true })}
                 />
               </div>
             </div>
@@ -225,10 +228,12 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
               <Label htmlFor="f-name">ชื่อแสดงผล *</Label>
               <Input
                 id="f-name"
-                value={form.name}
-                onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                {...register('name')}
                 placeholder="ผู้ใหญ่"
               />
+              {errors.name && (
+                <p className="text-xs text-red-600">{errors.name.message}</p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -238,9 +243,11 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
                   type="number"
                   min={0}
                   step={0.01}
-                  value={form.price}
-                  onChange={(e) => setForm((p) => ({ ...p, price: e.target.value }))}
+                  {...register('price', { valueAsNumber: true })}
                 />
+                {errors.price && (
+                  <p className="text-xs text-red-600">{errors.price.message}</p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="f-vat">VAT (%)</Label>
@@ -249,8 +256,7 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
                   type="number"
                   min={0}
                   max={100}
-                  value={form.vatRate}
-                  onChange={(e) => setForm((p) => ({ ...p, vatRate: e.target.value }))}
+                  {...register('vatRate', { valueAsNumber: true })}
                 />
               </div>
             </div>
@@ -258,15 +264,13 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
               <Label htmlFor="f-notes">หมายเหตุ (ไม่บังคับ)</Label>
               <Input
                 id="f-notes"
-                value={form.notes}
-                onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
+                {...register('notes')}
               />
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={form.isActive}
-                onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))}
+                {...register('isActive')}
                 className="h-4 w-4 rounded border-slate-300"
               />
               เปิดใช้งาน
@@ -280,8 +284,8 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
             >
               ยกเลิก
             </button>
-            <Button onClick={handleSubmit} disabled={submitting || !form.code || !form.name}>
-              {submitting ? 'กำลังบันทึก...' : editingTier ? 'บันทึก' : 'เพิ่ม'}
+            <Button onClick={handleSubmit(onSubmit)} disabled={isSubmitting}>
+              {isSubmitting ? 'กำลังบันทึก...' : editingTier ? 'บันทึก' : 'เพิ่ม'}
             </Button>
           </DialogFooter>
         </DialogContent>

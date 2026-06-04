@@ -99,6 +99,7 @@ export function PaymentHistoryTable({ rows, date }: PaymentHistoryTableProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">เลขที่บิล</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">โต๊ะ</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">เวลาปิด</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">ผู้เข้าใช้</th>
@@ -123,6 +124,9 @@ export function PaymentHistoryTable({ rows, date }: PaymentHistoryTableProps) {
                   } : undefined}
                   onClick={() => setDetailSessionId(row.sessionId)}
                 >
+                  <td className="px-4 py-3 tabular-nums text-xs text-slate-500 font-mono">
+                    {row.receiptNo ?? '—'}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-0.5">
                       <span className="font-semibold text-slate-900">

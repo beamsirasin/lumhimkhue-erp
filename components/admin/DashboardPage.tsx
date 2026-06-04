@@ -4,17 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from 'recharts';
+  ChartContainer,
+  ChartTooltip,
+  ChartXAxis,
+  ChartYAxis,
+  BarChart, Bar,
+  PieChart, Pie, Cell, Legend,
+} from '@/components/ui/chart';
 import { getDashboardData } from '@/lib/actions/dashboard';
 import type { DashboardData } from '@/lib/actions/dashboard';
 
@@ -83,32 +79,25 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
         {/* Revenue bar chart */}
         <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-5">
           <h2 className="mb-4 text-sm font-semibold text-slate-700">รายได้ 7 วันที่ผ่านมา</h2>
-          <ResponsiveContainer width="100%" height={200}>
+          <ChartContainer height={200}>
             <BarChart data={revenueByDay} barSize={28}>
-              <XAxis
+              <ChartXAxis
                 dataKey="date"
                 tickFormatter={(v) =>
                   format(new Date(v + 'T00:00:00'), 'd/M', { locale: th })
                 }
-                tick={{ fontSize: 11, fill: '#64748b' }}
-                axisLine={false}
-                tickLine={false}
               />
-              <YAxis
+              <ChartYAxis
                 tickFormatter={(v) => `฿${(v / 1000).toFixed(0)}k`}
-                tick={{ fontSize: 11, fill: '#64748b' }}
-                axisLine={false}
-                tickLine={false}
                 width={48}
               />
-              <Tooltip
+              <ChartTooltip
                 formatter={(v) => [`฿${Number(v).toLocaleString('th-TH')}`, 'รายได้']}
                 labelFormatter={(v) => format(new Date(v + 'T00:00:00'), 'd MMMM', { locale: th })}
-                contentStyle={{ fontSize: 12, borderRadius: 8 }}
               />
               <Bar dataKey="revenue" fill="#0f172a" radius={[4, 4, 0, 0]} />
             </BarChart>
-          </ResponsiveContainer>
+          </ChartContainer>
         </div>
 
         {/* Payment methods pie */}
@@ -119,7 +108,7 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
               <p className="text-sm text-slate-400">ยังไม่มีข้อมูล</p>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
+            <ChartContainer height={200}>
               <PieChart>
                 <Pie
                   data={paymentMethods}
@@ -135,12 +124,11 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
                     <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip
+                <ChartTooltip
                   formatter={(v, name) => [
                     `฿${Number(v).toLocaleString('th-TH')}`,
                     METHOD_LABEL[String(name)] ?? name,
                   ]}
-                  contentStyle={{ fontSize: 12, borderRadius: 8 }}
                 />
                 <Legend
                   formatter={(v) => METHOD_LABEL[v] ?? v}
@@ -149,7 +137,7 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
                   wrapperStyle={{ fontSize: 11 }}
                 />
               </PieChart>
-            </ResponsiveContainer>
+            </ChartContainer>
           )}
         </div>
       </div>

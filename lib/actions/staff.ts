@@ -103,6 +103,20 @@ export async function resetStaffPassword(input: unknown) {
   }
 }
 
+export async function deleteStaff(id: string) {
+  const session = await requireManageUsers();
+  if (!session) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+  if (id === session.user.id) return { ok: false as const, error: 'ไม่สามารถลบบัญชีตัวเองได้' };
+  try {
+    await db.delete(users).where(eq(users.id, id));
+    revalidatePath('/users');
+    return { ok: true as const };
+  } catch (e) {
+    console.error('[deleteStaff]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
 export async function toggleStaffActive(id: string) {
   const session = await requireManageUsers();
   if (!session) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };

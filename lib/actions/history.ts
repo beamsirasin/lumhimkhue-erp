@@ -43,6 +43,7 @@ export async function getSessionHistory(dateStr: string) {
         totalRevenue: sql<number>`coalesce(${payments.total}::numeric, 0)`,
         receivedAmount: sql<number>`coalesce(${payments.receivedAmount}::numeric, 0)`,
         paymentMethod: payments.paymentMethod,
+        receiptNo: payments.receiptNo,
         guestCount: sql<number>`(
           SELECT coalesce(sum(sg.quantity), 0)
           FROM session_guests sg
@@ -105,6 +106,7 @@ export async function getSessionHistory(dateStr: string) {
         totalRevenue: Number(r.totalRevenue),
         receivedAmount: Number(r.receivedAmount),
         paymentMethod: r.paymentMethod,
+        receiptNo: r.receiptNo,
         guestCount: Number(r.guestCount),
         adultCount: Number(r.adultCount),
         childCount: Number(r.childCount),

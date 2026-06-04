@@ -14,6 +14,7 @@ export const processPaymentSchema = z.object({
   receivedAmount: z.number().min(0),
   discount: z.number().min(0).default(0),
   notes: z.string().max(500).optional(),
+  receiptNo: z.string().max(30).optional(),
   /** Addon/discount tile line items applied at checkout */
   lineItems: z.array(lineItemSchema).default([]),
 });

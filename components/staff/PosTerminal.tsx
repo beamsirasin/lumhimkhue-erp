@@ -711,12 +711,16 @@ function PaymentPanel({
       taxInvoice ? `[ใบกำกับภาษี: ${taxInvoice.companyName} ${taxInvoice.taxId}]` : '',
     ].filter(Boolean).join(' ');
 
+    const counterResult = await incrementReceiptCounter();
+    const receiptNo = counterResult.ok ? counterResult.receiptNo : Date.now().toString().slice(-8);
+
     const result = await processPayment({
       sessionId: session.id,
       paymentMethod: method,
       receivedAmount: method === 'cash' ? numpadNum : method === 'cash_qr' ? cashPortion : total,
       discount: manualDiscountNum,
       notes: fullNotes || undefined,
+      receiptNo,
       lineItems: buildLineItems(),
     });
     setSubmitting(false);
@@ -734,15 +738,15 @@ function PaymentPanel({
     const billType: BillTypeKey = taxInvoice
       ? 'taxInvoice'
       : (bankAccount === 'main' ? 'main' : 'secondary');
-    const [freshRes, counterResult] = await Promise.all([getStoreSettings(), incrementReceiptCounter()]);
+    const freshRes = await getStoreSettings();
     const fresh = freshRes.ok ? freshRes.data : storeSettings;
     const { cfg, ...shopInfo } = buildShopInfo(billType, fresh);
     const hidden = new Set(cfg?.hiddenFields ?? []);
-    const receiptNo = counterResult.ok ? counterResult.receiptNo : Date.now().toString().slice(-8);
+    const finalReceiptNo = result.data.receiptNo ?? receiptNo;
     const receipt: ReceiptData = {
       receiptType: 'receipt',
       ...shopInfo,
-      receiptNo:    hidden.has('receiptNo') ? undefined : receiptNo,
+      receiptNo:    hidden.has('receiptNo') ? undefined : finalReceiptNo,
       tableNumber:  hidden.has('tableNo')   ? '' : session.table.label,
       cashierName:  hidden.has('cashier')   ? '' : cashierName,
       paidAt:       hidden.has('date')      ? '' : now(),
@@ -1187,12 +1191,16 @@ function PaymentPanel({
               amount: Number(t.price) * partialAddonQty[t.id],
             }));
 
+      const splitCounter = await incrementReceiptCounter();
+      const splitReceiptNo = splitCounter.ok ? splitCounter.receiptNo : Date.now().toString().slice(-8);
+
       const result = await processPayment({
         sessionId: session.id,
         paymentMethod: dbMethod,
         receivedAmount: cashTotal > 0 ? cashTotal : completedTotal,
         discount: allDone ? manualDiscountNum : 0,
         notes: fullNotes || undefined,
+        receiptNo: splitReceiptNo,
         lineItems: lineItemsToUse,
       });
       setSubmitting(false);
@@ -1204,15 +1212,15 @@ function PaymentPanel({
       const splitBillType: BillTypeKey = taxInvoice
         ? 'taxInvoice'
         : (bankAccount === 'main' ? 'main' : 'secondary');
-      const [splitFreshRes, splitCounter] = await Promise.all([getStoreSettings(), incrementReceiptCounter()]);
+      const splitFreshRes = await getStoreSettings();
       const splitFresh = splitFreshRes.ok ? splitFreshRes.data : storeSettings;
       const { cfg: splitCfg, ...splitShopInfo } = buildShopInfo(splitBillType, splitFresh);
       const splitHidden = new Set(splitCfg?.hiddenFields ?? []);
-      const splitReceiptNo = splitCounter.ok ? splitCounter.receiptNo : Date.now().toString().slice(-8);
+      const finalSplitReceiptNo = result.data.receiptNo ?? splitReceiptNo;
       const receipt: ReceiptData = {
         receiptType: 'receipt',
         ...splitShopInfo,
-        receiptNo:   splitHidden.has('receiptNo') ? undefined : splitReceiptNo,
+        receiptNo:   splitHidden.has('receiptNo') ? undefined : finalSplitReceiptNo,
         tableNumber: splitHidden.has('tableNo')   ? '' : session.table.label,
         cashierName: splitHidden.has('cashier')   ? '' : cashierName,
         paidAt:      splitHidden.has('date')      ? '' : now(),

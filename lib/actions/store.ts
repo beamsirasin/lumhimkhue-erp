@@ -91,37 +91,37 @@ export async function updateStoreSettings(input: unknown) {
 }
 
 /**
- * Atomically increments the daily receipt counter.
+ * Atomically increments the daily receipt counter via a single UPDATE...RETURNING.
  * Resets to 1 each new day (Asia/Bangkok).
- * Returns the formatted receipt number: "{prefix}/{counter:05d}"
+ * Returns the formatted receipt number: "{prefix}{DDMM}{counter:04d}" e.g. "LHK03060001"
+ *
+ * Uses UPDATE...RETURNING instead of SELECT FOR UPDATE to stay compatible
+ * with the Neon HTTP driver which does not support advisory locks.
  */
 export async function incrementReceiptCounter(): Promise<{ ok: true; receiptNo: string } | { ok: false; error: string }> {
-  const session = await auth();
-  if (!session?.user) return { ok: false, error: 'ไม่ได้เข้าสู่ระบบ' };
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false, error: 'ไม่ได้เข้าสู่ระบบ' };
 
   try {
-    const today = format(toZonedTime(new Date(), TZ), 'yyyy-MM-dd');
+    const zonedNow = toZonedTime(new Date(), TZ);
+    const today = format(zonedNow, 'yyyy-MM-dd');
+    const ddMM = format(zonedNow, 'ddMM');
 
-    const result = await db.transaction(async (tx) => {
-      const [row] = await tx
-        .select({ counter: storeSettings.receiptCounter, counterDate: storeSettings.receiptCounterDate, prefix: storeSettings.taxInvoicePrefix })
-        .from(storeSettings)
-        .where(eq(storeSettings.id, 1))
-        .for('update');
+    const [updated] = await db
+      .update(storeSettings)
+      .set({
+        receiptCounter: sql`CASE WHEN ${storeSettings.receiptCounterDate} = ${today} THEN ${storeSettings.receiptCounter} + 1 ELSE 1 END`,
+        receiptCounterDate: today,
+      })
+      .where(eq(storeSettings.id, 1))
+      .returning({
+        counter: storeSettings.receiptCounter,
+        prefix: storeSettings.taxInvoicePrefix,
+      });
 
-      if (!row) throw new Error('ไม่พบการตั้งค่าร้าน');
+    if (!updated) throw new Error('ไม่พบการตั้งค่าร้าน');
 
-      const newCounter = row.counterDate === today ? row.counter + 1 : 1;
-
-      await tx
-        .update(storeSettings)
-        .set({ receiptCounter: newCounter, receiptCounterDate: today })
-        .where(eq(storeSettings.id, 1));
-
-      return { counter: newCounter, prefix: row.prefix };
-    });
-
-    const receiptNo = `${result.prefix}/${result.counter.toString().padStart(5, '0')}`;
+    const receiptNo = `${updated.prefix}${ddMM}${updated.counter.toString().padStart(4, '0')}`;
     return { ok: true, receiptNo };
   } catch (e) {
     console.error('[incrementReceiptCounter]', e);

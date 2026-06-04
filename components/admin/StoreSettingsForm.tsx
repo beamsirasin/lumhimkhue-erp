@@ -102,7 +102,7 @@ export function StoreSettingsForm({ initialData }: Props) {
   const [registerNo,  setRegisterNo]  = useState(initialData.registerNo ?? '');
   const [footerNote,  setFooterNote]  = useState(initialData.footerNote ?? '');
   const [vatPercent,  setVatPercent]  = useState(initialData.vatPercent ?? 7);
-  const [taxInvoicePrefix, setTaxInvoicePrefix] = useState(initialData.taxInvoicePrefix ?? '2605');
+  const [taxInvoicePrefix, setTaxInvoicePrefix] = useState(initialData.taxInvoicePrefix ?? 'LHK');
 
   // Logo
   const [logoUrl,    setLogoUrl]    = useState(initialData.logoUrl ?? '');
@@ -304,10 +304,10 @@ export function StoreSettingsForm({ initialData }: Props) {
 
             {/* Tax invoice settings */}
             <Section title="ตั้งค่าใบกำกับภาษี">
-              <Field label={`Prefix เลขที่บิล (เช่น "2605" → 2605/00001)`} span>
-                <input className={INPUT} value={taxInvoicePrefix} onChange={e => setTaxInvoicePrefix(e.target.value)} placeholder="2605" maxLength={20} />
+              <Field label={`Prefix เลขที่บิล (เช่น "LHK" → LHK03060001)`} span>
+                <input className={INPUT} value={taxInvoicePrefix} onChange={e => setTaxInvoicePrefix(e.target.value)} placeholder="LHK" maxLength={20} />
               </Field>
-              <p className="text-[10px] text-slate-400 mt-1">เลขที่จะ reset ทุกวัน เช่น 2605/00001, 2605/00002, …</p>
+              <p className="text-[10px] text-slate-400 mt-1">รูปแบบ: {taxInvoicePrefix || 'LHK'}{'{DDMM}'}{'{0001}'} — เลขที่ reset ทุกวัน เช่น {taxInvoicePrefix || 'LHK'}03060001, {taxInvoicePrefix || 'LHK'}03060002, …</p>
             </Section>
           </div>
         )}
