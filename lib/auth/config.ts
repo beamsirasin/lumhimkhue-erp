@@ -1,6 +1,6 @@
 import type { NextAuthConfig } from 'next-auth';
 
-const adminPrefixes = ['/dashboard', '/menu', '/pricing-tiles', '/users', '/reports', '/settings'];
+const adminPrefixes = ['/dashboard', '/menu', '/pricing-tiles', '/users', '/reports', '/settings', '/hr'];
 const managerPrefixes = ['/pricing-tiles'];
 
 export const authConfig: NextAuthConfig = {

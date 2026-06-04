@@ -128,3 +128,31 @@
     @apply font-sans;
   }
 }
+
+@media print {
+  /* Schedule A4 landscape print */
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+
+  .print\:hidden {
+    display: none !important;
+  }
+
+  .print\:block {
+    display: block !important;
+  }
+
+  .print\:flex {
+    display: flex !important;
+  }
+
+  .print\:pointer-events-none {
+    pointer-events: none !important;
+  }
+
+  .print\:text-\[10px\] {
+    font-size: 10px !important;
+  }
+}

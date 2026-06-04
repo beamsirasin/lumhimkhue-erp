@@ -26,6 +26,15 @@ import {
   Minimize2,
   MoreHorizontal,
   CreditCard,
+  Boxes,
+  ClipboardList,
+  Truck,
+  ShoppingBag,
+  Package,
+  UserCog,
+  Calendar,
+  Clock,
+  Wallet,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -52,6 +61,44 @@ function isNavGroup(item: NavItem | NavGroup): item is NavGroup {
 
 /* ─── Nav config per role ────────────────────────────────────── */
 
+const hrGroup: NavGroup = {
+  label: 'พนักงาน (HR)',
+  Icon: UserCog,
+  matchPrefix: '/hr',
+  children: [
+    { href: '/hr',           label: 'ภาพรวม',           Icon: LayoutDashboard },
+    { href: '/hr/employees', label: 'ข้อมูลพนักงาน',     Icon: UsersRound },
+    { href: '/hr/schedule',  label: 'ตารางงาน',           Icon: Calendar },
+    { href: '/hr/time',      label: 'บันทึกเวลา',         Icon: Clock },
+    { href: '/hr/payroll',   label: 'เงินเดือน',           Icon: Wallet },
+    { href: '/hr/settings',  label: 'ตั้งค่า HR',          Icon: Settings },
+    { href: '/users',        label: 'บัญชีผู้ใช้ระบบ',     Icon: Users },
+  ],
+};
+
+const inventoryGroup: NavGroup = {
+  label: 'สต็อก/วัตถุดิบ',
+  Icon: Boxes,
+  matchPrefix: '/inventory',
+  children: [
+    { href: '/inventory',              label: 'ภาพรวม',     Icon: Package },
+    { href: '/inventory/count',        label: 'นับสต็อก',   Icon: ClipboardList },
+    { href: '/inventory/ingredients',  label: 'วัตถุดิบ',   Icon: UtensilsCrossed },
+    { href: '/inventory/suppliers',    label: 'ผู้ขาย',      Icon: Truck },
+    { href: '/inventory/orders',       label: 'ใบสั่งซื้อ', Icon: ShoppingBag },
+  ],
+};
+
+const posGroup: NavGroup = {
+  label: 'POS',
+  Icon: ShoppingCart,
+  matchPrefix: '/pos',
+  children: [
+    { href: '/pos',         label: 'หน้า POS',          Icon: ShoppingCart },
+    { href: '/pos/history', label: 'ประวัติชำระเงิน',   Icon: CreditCard },
+  ],
+};
+
 const kdsGroup: NavGroup = {
   label: 'ครัว (KDS)',
   Icon: ChefHat,
@@ -75,24 +122,26 @@ const tableGroup: NavGroup = {
 const NAV: Record<Role, NavSection[]> = {
   owner: [
     {
+      heading: 'หน้าบ้าน',
       items: [
-        { href: '/dashboard', label: 'แดชบอร์ด', Icon: LayoutDashboard },
-        { href: '/pos',       label: 'POS',       Icon: ShoppingCart },
+        posGroup,
         kdsGroup,
-        { href: '/queue',     label: 'คิว',        Icon: UsersRound },
+        { href: '/queue', label: 'คิว',   Icon: UsersRound },
         tableGroup,
       ],
     },
     {
       heading: 'จัดการ',
       items: [
+        { href: '/dashboard',     label: 'แดชบอร์ด',     Icon: LayoutDashboard },
         { href: '/menu',          label: 'เมนูอาหาร',    Icon: UtensilsCrossed },
         { href: '/pricing-tiles', label: 'Pricing Tiles', Icon: Tag },
-        { href: '/users',         label: 'พนักงาน',       Icon: Users },
+        hrGroup,
         { href: '/reports',       label: 'รายงาน',        Icon: BarChart3 },
         { href: '/settings',      label: 'ตั้งค่าบิล',    Icon: Settings },
         { href: '/printers',      label: 'เครื่องพิมพ์',  Icon: Printer },
         { href: '/system',        label: 'ข้อมูลระบบ',    Icon: Info },
+        inventoryGroup,
       ],
     },
   ],
@@ -149,11 +198,22 @@ const PAGE_TITLES: Record<string, string> = {
   '/tables/history':        'ประวัติโต๊ะ',
   '/menu':                  'เมนูอาหาร',
   '/pricing-tiles':   'Pricing Tiles',
-  '/users':                 'พนักงาน',
+  '/users':                 'User',
   '/reports':               'รายงาน',
   '/settings':              'ตั้งค่าบิล',
   '/printers':              'เครื่องพิมพ์',
   '/system':                'ข้อมูลระบบ',
+  '/inventory':             'ภาพรวมสต็อก',
+  '/inventory/count':       'นับสต็อกรายวัน',
+  '/inventory/ingredients': 'วัตถุดิบ',
+  '/inventory/suppliers':   'ผู้ขาย (Supplier)',
+  '/inventory/orders':      'ใบสั่งซื้อ (PO)',
+  '/hr':                    'ภาพรวม HR',
+  '/hr/employees':          'ข้อมูลพนักงาน',
+  '/hr/schedule':           'ตารางงาน',
+  '/hr/time':               'บันทึกเวลา',
+  '/hr/payroll':            'เงินเดือน',
+  '/hr/settings':           'ตั้งค่า HR',
 };
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -182,7 +242,9 @@ function NavGroupItem({
   pathname: string;
   onNavigate?: () => void;
 }) {
-  const isGroupActive = pathname === group.matchPrefix || pathname.startsWith(group.matchPrefix + '/');
+  const isGroupActive = pathname === group.matchPrefix
+    || pathname.startsWith(group.matchPrefix + '/')
+    || group.children.some(c => pathname === c.href || (c.href.length > 1 && pathname.startsWith(c.href + '/')));
   const [open, setOpen] = useState(isGroupActive);
   const { Icon } = group;
 

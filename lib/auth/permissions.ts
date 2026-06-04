@@ -11,7 +11,12 @@ export type Action =
   | 'manage_queue'
   | 'pricing_tile:edit'
   | 'pricing_tile:reorder'
-  | 'table:layout_edit';
+  | 'table:layout_edit'
+  | 'inventory:view'
+  | 'inventory:edit'
+  | 'stock_count:create'
+  | 'purchase_order:manage'
+  | 'hr:manage';
 
 const PERMISSIONS: Record<Role, Action[]> = {
   owner: [
@@ -26,6 +31,11 @@ const PERMISSIONS: Record<Role, Action[]> = {
     'pricing_tile:edit',
     'pricing_tile:reorder',
     'table:layout_edit',
+    'inventory:view',
+    'inventory:edit',
+    'stock_count:create',
+    'purchase_order:manage',
+    'hr:manage',
   ],
   manager: [
     'manage_menu',
@@ -36,6 +46,10 @@ const PERMISSIONS: Record<Role, Action[]> = {
     'pricing_tile:edit',
     'pricing_tile:reorder',
     'table:layout_edit',
+    'inventory:view',
+    'inventory:edit',
+    'stock_count:create',
+    'purchase_order:manage',
   ],
   cashier: ['process_payment', 'manage_tables', 'manage_queue', 'view_kds'],
   kitchen: ['view_kds', 'manage_queue', 'manage_tables'],
