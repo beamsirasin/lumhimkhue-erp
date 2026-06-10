@@ -19,6 +19,28 @@ import {
 } from '@/lib/validations/hr';
 import { eq, and, gte, lte, inArray, sql } from 'drizzle-orm';
 
+// ─── Thai progressive income tax (WHT) ───────────────────────────────────────
+
+function calcMonthlyWithholdingTax(monthlyGross: number): number {
+  const annual = monthlyGross * 12;
+  const tiers: [number, number][] = [
+    [150_000,    0    ],
+    [300_000,    0.05 ],
+    [500_000,    0.10 ],
+    [750_000,    0.15 ],
+    [1_000_000,  0.20 ],
+    [Infinity,   0.25 ],
+  ];
+  let tax = 0;
+  let prev = 0;
+  for (const [ceiling, rate] of tiers) {
+    if (annual <= prev) break;
+    tax += (Math.min(annual, ceiling) - prev) * rate;
+    prev = ceiling;
+  }
+  return Math.round((tax / 12) * 100) / 100;
+}
+
 // ─── Auth helper ──────────────────────────────────────────────────────────────
 
 async function requireHr() {
@@ -108,6 +130,11 @@ export async function createEmployee(raw: unknown) {
       phone: data.phone ?? null,
       bankName: data.bankName ?? null,
       bankAccountNumber: data.bankAccountNumber ?? null,
+      nationalId: data.nationalId ?? null,
+      taxId: data.taxId ?? null,
+      socialSecurityNumber: data.socialSecurityNumber ?? null,
+      employmentEndDate: data.employmentEndDate ?? null,
+      ssfRegistered: data.ssfRegistered,
       type: data.type,
       status: data.status,
       baseSalaryPerCycle: data.baseSalaryPerCycle != null ? String(data.baseSalaryPerCycle) : null,
@@ -138,6 +165,11 @@ export async function updateEmployee(id: string, raw: unknown) {
       phone: data.phone ?? null,
       bankName: data.bankName ?? null,
       bankAccountNumber: data.bankAccountNumber ?? null,
+      nationalId: data.nationalId ?? null,
+      taxId: data.taxId ?? null,
+      socialSecurityNumber: data.socialSecurityNumber ?? null,
+      employmentEndDate: data.employmentEndDate ?? null,
+      ssfRegistered: data.ssfRegistered,
       type: data.type,
       status: data.status,
       baseSalaryPerCycle: data.baseSalaryPerCycle != null ? String(data.baseSalaryPerCycle) : null,
@@ -484,6 +516,12 @@ export async function createPayrollCycle(raw: unknown) {
       gross = hourlyTotal;
     }
 
+    const ssfEmployee = emp.ssfRegistered ? Math.min(gross * 0.05, 750) : 0;
+    const ssfEmployer = emp.ssfRegistered ? Math.min(gross * 0.05, 750) : 0;
+    const withholdingTax = calcMonthlyWithholdingTax(gross);
+    const netPay = gross;
+    const netPayAfterTax = Math.max(0, netPay - withholdingTax);
+
     await db.insert(schema.payrollItems).values({
       payrollCycleId: cycle.id,
       employeeId: emp.id,
@@ -497,7 +535,11 @@ export async function createPayrollCycle(raw: unknown) {
       hourlyTotal: String(hourlyTotal),
       gross: String(gross),
       totalDeduction: '0',
-      netPay: String(gross),
+      netPay: String(netPay),
+      ssfEmployee: String(Math.round(ssfEmployee * 100) / 100),
+      ssfEmployer: String(Math.round(ssfEmployer * 100) / 100),
+      withholdingTax: String(withholdingTax),
+      netPayAfterTax: String(Math.round(netPayAfterTax * 100) / 100),
     });
   }
 
@@ -561,6 +603,12 @@ async function recalcPayrollItem(itemId: string, settings: schema.HrSettings) {
   const [item] = await db.select().from(schema.payrollItems).where(eq(schema.payrollItems.id, itemId));
   if (!item) return;
 
+  const [emp] = await db
+    .select({ ssfRegistered: schema.employees.ssfRegistered })
+    .from(schema.employees)
+    .where(eq(schema.employees.id, item.employeeId))
+    .limit(1);
+
   const deductions = await db.select().from(schema.payrollDeductions).where(eq(schema.payrollDeductions.payrollItemId, itemId));
   const absences = await db.select().from(schema.payrollAbsences).where(eq(schema.payrollAbsences.payrollItemId, itemId));
 
@@ -591,6 +639,10 @@ async function recalcPayrollItem(itemId: string, settings: schema.HrSettings) {
 
   const totalDeduction = absenceDeduction + lateDeduction + advanceTotal + damageTotal;
   const netPay = gross - totalDeduction;
+  const ssfEmployee = (emp?.ssfRegistered ?? true) ? Math.min(gross * 0.05, 750) : 0;
+  const ssfEmployer = (emp?.ssfRegistered ?? true) ? Math.min(gross * 0.05, 750) : 0;
+  const withholdingTax = calcMonthlyWithholdingTax(gross);
+  const netPayAfterTax = Math.max(0, netPay - withholdingTax);
 
   await db.update(schema.payrollItems).set({
     incentiveTotal: String(incentiveTotal),
@@ -604,6 +656,10 @@ async function recalcPayrollItem(itemId: string, settings: schema.HrSettings) {
     gross: String(gross),
     totalDeduction: String(totalDeduction),
     netPay: String(netPay),
+    ssfEmployee: String(Math.round(ssfEmployee * 100) / 100),
+    ssfEmployer: String(Math.round(ssfEmployer * 100) / 100),
+    withholdingTax: String(withholdingTax),
+    netPayAfterTax: String(Math.round(netPayAfterTax * 100) / 100),
   }).where(eq(schema.payrollItems.id, itemId));
 }
 
@@ -763,3 +819,65 @@ export async function getHrDashboardStats() {
     recentCycles,
   };
 }
+
+// ─── SSF & Tax Report ─────────────────────────────────────────────────────────
+
+export async function getPayrollSsfReport(cycleId: string) {
+  const authResult = await requireHr();
+  if (!authResult.ok) return authResult;
+
+  const [cycle] = await db
+    .select()
+    .from(schema.payrollCycles)
+    .where(eq(schema.payrollCycles.id, cycleId));
+  if (!cycle) return { ok: false, error: 'ไม่พบรอบเงินเดือน' } as const;
+
+  const items = await db
+    .select({
+      id: schema.payrollItems.id,
+      employeeId: schema.payrollItems.employeeId,
+      gross: schema.payrollItems.gross,
+      netPay: schema.payrollItems.netPay,
+      ssfEmployee: schema.payrollItems.ssfEmployee,
+      ssfEmployer: schema.payrollItems.ssfEmployer,
+      withholdingTax: schema.payrollItems.withholdingTax,
+      netPayAfterTax: schema.payrollItems.netPayAfterTax,
+    })
+    .from(schema.payrollItems)
+    .where(eq(schema.payrollItems.payrollCycleId, cycleId));
+
+  const employeeIds = items.map((i) => i.employeeId);
+  const employees =
+    employeeIds.length > 0
+      ? await db
+          .select({ id: schema.employees.id, firstName: schema.employees.firstName, lastName: schema.employees.lastName })
+          .from(schema.employees)
+          .where(inArray(schema.employees.id, employeeIds))
+      : [];
+  const empMap = new Map(employees.map((e) => [e.id, e]));
+
+  const rows = items.map((item) => ({
+    id: item.id,
+    employee: empMap.get(item.employeeId),
+    gross: Number(item.gross),
+    netPay: Number(item.netPay),
+    ssfEmployee: Number(item.ssfEmployee),
+    ssfEmployer: Number(item.ssfEmployer),
+    withholdingTax: Number(item.withholdingTax),
+    netPayAfterTax: Number(item.netPayAfterTax),
+  }));
+
+  const totals = {
+    gross: rows.reduce((s, r) => s + r.gross, 0),
+    ssfEmployee: rows.reduce((s, r) => s + r.ssfEmployee, 0),
+    ssfEmployer: rows.reduce((s, r) => s + r.ssfEmployer, 0),
+    withholdingTax: rows.reduce((s, r) => s + r.withholdingTax, 0),
+    netPayAfterTax: rows.reduce((s, r) => s + r.netPayAfterTax, 0),
+  };
+
+  return { ok: true as const, data: { cycle, rows, totals } };
+}
+
+export type SsfReportRow = NonNullable<
+  Extract<Awaited<ReturnType<typeof getPayrollSsfReport>>, { ok: true }>['data']
+>['rows'][number];

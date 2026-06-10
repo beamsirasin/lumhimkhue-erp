@@ -65,7 +65,7 @@ export function SuppliersPage({ initialData, initialDataUpdatedAt }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">ผู้ขาย (Supplier)</h1>
+          <h1 className="text-lg font-semibold text-slate-900">ผู้ขาย (Supplier)</h1>
           <p className="text-sm text-slate-500 mt-0.5">{suppliers.length} ราย</p>
         </div>
         <button
@@ -79,7 +79,7 @@ export function SuppliersPage({ initialData, initialDataUpdatedAt }: Props) {
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+      <div className="rounded-xl bg-white overflow-hidden shadow-sm ring-1 ring-slate-900/5">
         {suppliers.length === 0 ? (
           <div className="py-16 text-center">
             <Truck className="mx-auto size-8 text-slate-300 mb-2" />

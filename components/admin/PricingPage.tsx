@@ -137,7 +137,7 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
         </Button>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+      <div className="rounded-xl bg-white overflow-hidden shadow-sm ring-1 ring-slate-900/5">
         {tiers.length === 0 ? (
           <div className="py-12 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</div>
         ) : (

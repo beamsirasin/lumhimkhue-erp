@@ -16,7 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { createEmployee, updateEmployee, deleteEmployee } from '@/lib/actions/hr';
 import type { Employee } from '@/lib/db/schema';
 
@@ -42,6 +42,11 @@ type FormState = {
   phone: string;
   bankName: string;
   bankAccountNumber: string;
+  nationalId: string;
+  taxId: string;
+  socialSecurityNumber: string;
+  employmentEndDate: string;
+  ssfRegistered: boolean;
   type: 'full_time' | 'part_time';
   status: 'active' | 'inactive';
   baseSalaryPerCycle: string;
@@ -57,6 +62,11 @@ const defaultForm: FormState = {
   phone: '',
   bankName: '',
   bankAccountNumber: '',
+  nationalId: '',
+  taxId: '',
+  socialSecurityNumber: '',
+  employmentEndDate: '',
+  ssfRegistered: true,
   type: 'full_time',
   status: 'active',
   baseSalaryPerCycle: '',
@@ -68,27 +78,34 @@ const defaultForm: FormState = {
 
 interface Props {
   initialEmployees: Employee[];
+  userRole: string;
 }
 
-export function EmployeesPage({ initialEmployees }: Props) {
+function maskNationalId(id: string | null | undefined): string {
+  if (!id) return '-';
+  return `*********${id.slice(-4)}`;
+}
+
+export function EmployeesPage({ initialEmployees, userRole }: Props) {
   const router = useRouter();
   const [employees, setEmployees] = useState(initialEmployees);
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(defaultForm);
-  const [filterType, setFilterType] = useState<'all' | 'full_time' | 'part_time'>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [legalOpen, setLegalOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  const displayed = employees.filter((e) => {
-    if (filterType !== 'all' && e.type !== filterType) return false;
-    if (filterStatus !== 'all' && e.status !== filterStatus) return false;
-    return true;
-  });
+  const filterEmployee = (e: Employee) =>
+    filterStatus === 'all' || e.status === filterStatus;
+
+  const fullTime = employees.filter((e) => e.type === 'full_time' && filterEmployee(e));
+  const partTime = employees.filter((e) => e.type === 'part_time' && filterEmployee(e));
 
   function openCreate() {
     setEditingId(null);
     setForm(defaultForm);
+    setLegalOpen(false);
     setOpen(true);
   }
 
@@ -100,6 +117,11 @@ export function EmployeesPage({ initialEmployees }: Props) {
       phone: emp.phone ?? '',
       bankName: emp.bankName ?? '',
       bankAccountNumber: emp.bankAccountNumber ?? '',
+      nationalId: emp.nationalId ?? '',
+      taxId: emp.taxId ?? '',
+      socialSecurityNumber: emp.socialSecurityNumber ?? '',
+      employmentEndDate: emp.employmentEndDate ?? '',
+      ssfRegistered: emp.ssfRegistered,
       type: emp.type,
       status: emp.status,
       baseSalaryPerCycle: emp.baseSalaryPerCycle ?? '',
@@ -108,6 +130,7 @@ export function EmployeesPage({ initialEmployees }: Props) {
       startDate: emp.startDate ?? '',
       notes: emp.notes ?? '',
     });
+    setLegalOpen(false);
     setOpen(true);
   }
 
@@ -119,6 +142,10 @@ export function EmployeesPage({ initialEmployees }: Props) {
     const currentEditingId = editingId;
     const payload = {
       ...form,
+      nationalId: form.nationalId || null,
+      taxId: form.taxId || null,
+      socialSecurityNumber: form.socialSecurityNumber || null,
+      employmentEndDate: form.employmentEndDate || null,
       baseSalaryPerCycle: form.baseSalaryPerCycle ? Number(form.baseSalaryPerCycle) : null,
       incentivePerDay: Number(form.incentivePerDay || 0),
       hourlyRate: form.hourlyRate ? Number(form.hourlyRate) : null,
@@ -138,14 +165,19 @@ export function EmployeesPage({ initialEmployees }: Props) {
       toast.success(currentEditingId ? 'แก้ไขข้อมูลแล้ว' : 'เพิ่มพนักงานแล้ว');
       setOpen(false);
       router.refresh();
-      // Optimistic update
       if (!currentEditingId && 'data' in result && result.data) {
         setEmployees((prev) => [...prev, result.data as Employee]);
       } else if (currentEditingId) {
         setEmployees((prev) =>
           prev.map((e) =>
             e.id === currentEditingId
-              ? { ...e, ...payload, baseSalaryPerCycle: payload.baseSalaryPerCycle != null ? String(payload.baseSalaryPerCycle) : null, hourlyRate: payload.hourlyRate != null ? String(payload.hourlyRate) : null, incentivePerDay: String(payload.incentivePerDay) }
+              ? {
+                  ...e,
+                  ...payload,
+                  baseSalaryPerCycle: payload.baseSalaryPerCycle != null ? String(payload.baseSalaryPerCycle) : null,
+                  hourlyRate: payload.hourlyRate != null ? String(payload.hourlyRate) : null,
+                  incentivePerDay: String(payload.incentivePerDay),
+                }
               : e,
           ),
         );
@@ -166,6 +198,8 @@ export function EmployeesPage({ initialEmployees }: Props) {
     });
   }
 
+  const isOwner = userRole === 'owner';
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -177,20 +211,10 @@ export function EmployeesPage({ initialEmployees }: Props) {
         </Button>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-3 mb-4">
-        <Select value={filterType} onValueChange={(v) => { if (v) setFilterType(v as typeof filterType); }}>
-          <SelectTrigger className="w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">ทุกประเภท</SelectItem>
-            <SelectItem value="full_time">พนักงานประจำ</SelectItem>
-            <SelectItem value="part_time">พาร์ทไทม์</SelectItem>
-          </SelectContent>
-        </Select>
+      {/* Filter */}
+      <div className="flex gap-3 mb-6">
         <Select value={filterStatus} onValueChange={(v) => { if (v) setFilterStatus(v as typeof filterStatus); }}>
-          <SelectTrigger className="w-36">
+          <SelectTrigger className="w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -201,83 +225,136 @@ export function EmployeesPage({ initialEmployees }: Props) {
         </Select>
       </div>
 
-      {/* Table */}
-      <div className="rounded-lg border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-600">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium">ชื่อ-สกุล</th>
-              <th className="px-4 py-3 text-left font-medium">ประเภท</th>
-              <th className="px-4 py-3 text-left font-medium">เบอร์</th>
-              <th className="px-4 py-3 text-right font-medium tabular-nums">ค่าจ้าง</th>
-              <th className="px-4 py-3 text-center font-medium">สถานะ</th>
-              <th className="px-4 py-3 w-20" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {displayed.length === 0 ? (
+      {/* Full-time section */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="h-5 w-1 rounded-full bg-slate-800" />
+          <h3 className="text-sm font-semibold text-slate-800">พนักงานประจำ</h3>
+          <span className="text-xs text-slate-400 tabular-nums">{fullTime.length} คน</span>
+        </div>
+        <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-slate-600">
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
-                  ไม่มีพนักงานในระบบ
-                </td>
+                <th className="px-4 py-3 text-left font-medium">ชื่อ-สกุล</th>
+                <th className="px-4 py-3 text-left font-medium">เบอร์</th>
+                <th className="px-4 py-3 text-right font-medium tabular-nums">เงินเดือน/รอบ</th>
+                <th className="px-4 py-3 text-right font-medium tabular-nums">Incentive/วัน</th>
+                <th className="px-4 py-3 text-center font-medium">ประกันสังคม</th>
+                <th className="px-4 py-3 text-center font-medium">สถานะ</th>
+                <th className="px-4 py-3 w-20" />
               </tr>
-            ) : (
-              displayed.map((emp) => (
-                <tr key={emp.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium text-slate-900">
-                    {emp.firstName} {emp.lastName}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant={emp.type === 'full_time' ? 'default' : 'secondary'}>
-                      {emp.type === 'full_time' ? 'ประจำ' : 'พาร์ทไทม์'}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{emp.phone ?? '-'}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-slate-900">
-                    {emp.type === 'full_time' ? (
-                      <>
-                        <span>฿{Number(emp.baseSalaryPerCycle ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 0 })}</span>
-                        <span className="text-xs text-slate-400">/รอบ</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>฿{Number(emp.hourlyRate ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 0 })}</span>
-                        <span className="text-xs text-slate-400">/ชม.</span>
-                      </>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <Badge variant={emp.status === 'active' ? 'default' : 'outline'}>
-                      {emp.status === 'active' ? 'ทำงาน' : 'inactive'}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1 justify-end">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8"
-                        aria-label="แก้ไข"
-                        onClick={() => openEdit(emp)}
-                      >
-                        <Pencil className="size-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 text-red-500 hover:text-red-600"
-                        aria-label="ลบ"
-                        onClick={() => handleDelete(emp)}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {fullTime.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-400 text-sm">
+                    ไม่มีพนักงานประจำ
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                fullTime.map((emp) => (
+                  <tr key={emp.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3 font-medium text-slate-900">
+                      {emp.firstName} {emp.lastName}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{emp.phone ?? '-'}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                      ฿{Number(emp.baseSalaryPerCycle ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 0 })}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-slate-600">
+                      ฿{Number(emp.incentivePerDay ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 0 })}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`text-xs ${emp.ssfRegistered ? 'text-green-700' : 'text-slate-400'}`}>
+                        {emp.ssfRegistered ? 'สมัครแล้ว' : 'ไม่ได้สมัคร'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <Badge variant={emp.status === 'active' ? 'default' : 'outline'}>
+                        {emp.status === 'active' ? 'ทำงาน' : 'inactive'}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1 justify-end">
+                        <Button variant="ghost" size="icon" className="size-8" aria-label="แก้ไข" onClick={() => openEdit(emp)}>
+                          <Pencil className="size-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="size-8 text-red-500 hover:text-red-600" aria-label="ลบ" onClick={() => handleDelete(emp)}>
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Part-time section */}
+      <div>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="h-5 w-1 rounded-full bg-slate-400" />
+          <h3 className="text-sm font-semibold text-slate-700">พาร์ทไทม์</h3>
+          <span className="text-xs text-slate-400 tabular-nums">{partTime.length} คน</span>
+        </div>
+        <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-slate-600">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium">ชื่อ-สกุล</th>
+                <th className="px-4 py-3 text-left font-medium">เบอร์</th>
+                <th className="px-4 py-3 text-right font-medium tabular-nums">เรท/ชม.</th>
+                <th className="px-4 py-3 text-center font-medium">ประกันสังคม</th>
+                <th className="px-4 py-3 text-center font-medium">สถานะ</th>
+                <th className="px-4 py-3 w-20" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {partTime.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-slate-400 text-sm">
+                    ไม่มีพนักงานพาร์ทไทม์
+                  </td>
+                </tr>
+              ) : (
+                partTime.map((emp) => (
+                  <tr key={emp.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3 font-medium text-slate-900">
+                      {emp.firstName} {emp.lastName}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{emp.phone ?? '-'}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                      ฿{Number(emp.hourlyRate ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 0 })}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`text-xs ${emp.ssfRegistered ? 'text-green-700' : 'text-slate-400'}`}>
+                        {emp.ssfRegistered ? 'สมัครแล้ว' : 'ไม่ได้สมัคร'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <Badge variant={emp.status === 'active' ? 'default' : 'outline'}>
+                        {emp.status === 'active' ? 'ทำงาน' : 'inactive'}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1 justify-end">
+                        <Button variant="ghost" size="icon" className="size-8" aria-label="แก้ไข" onClick={() => openEdit(emp)}>
+                          <Pencil className="size-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="size-8 text-red-500 hover:text-red-600" aria-label="ลบ" onClick={() => handleDelete(emp)}>
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Modal */}
@@ -329,6 +406,86 @@ export function EmployeesPage({ initialEmployees }: Props) {
                 <Label>เลขบัญชี</Label>
                 <Input value={form.bankAccountNumber} onChange={(e) => setField('bankAccountNumber', e.target.value)} placeholder="XXX-X-XXXXX-X" />
               </div>
+            </section>
+
+            {/* ข้อมูลการเงินและกฎหมาย */}
+            <section className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setLegalOpen((v) => !v)}
+                className="flex w-full items-center gap-2 text-left"
+              >
+                {legalOpen
+                  ? <ChevronDown className="size-3.5 text-slate-400" />
+                  : <ChevronRight className="size-3.5 text-slate-400" />
+                }
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">ข้อมูลการเงินและกฎหมาย</p>
+              </button>
+              {legalOpen && (
+                <>
+                  <Separator />
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label>เลขบัตรประชาชน (13 หลัก)</Label>
+                      {isOwner || !editingId ? (
+                        <Input
+                          value={form.nationalId}
+                          onChange={(e) => setField('nationalId', e.target.value)}
+                          placeholder="1234567890123"
+                          maxLength={13}
+                        />
+                      ) : (
+                        <Input
+                          value={form.nationalId ? maskNationalId(form.nationalId) : ''}
+                          disabled
+                          className="text-slate-400 bg-slate-50"
+                          placeholder="—"
+                        />
+                      )}
+                      {!isOwner && editingId && (
+                        <p className="text-[11px] text-slate-400">เฉพาะ owner เท่านั้นที่เห็นเลขเต็ม</p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>เลขประจำตัวผู้เสียภาษี</Label>
+                      <Input
+                        value={form.taxId}
+                        onChange={(e) => setField('taxId', e.target.value)}
+                        placeholder="1234567890123"
+                        maxLength={13}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>เลขประกันสังคม</Label>
+                      <Input
+                        value={form.socialSecurityNumber}
+                        onChange={(e) => setField('socialSecurityNumber', e.target.value)}
+                        placeholder="เช่น 1234567890"
+                        maxLength={15}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label>วันสิ้นสุดการจ้างงาน</Label>
+                        <Input
+                          type="date"
+                          value={form.employmentEndDate}
+                          onChange={(e) => setField('employmentEndDate', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded"
+                        checked={form.ssfRegistered}
+                        onChange={(e) => setField('ssfRegistered', e.target.checked)}
+                      />
+                      <span className="text-sm text-slate-700">สมัครประกันสังคม (SSF 5% สูงสุด ฿750/เดือน)</span>
+                    </label>
+                  </div>
+                </>
+              )}
             </section>
 
             {/* ประเภทการจ้าง */}

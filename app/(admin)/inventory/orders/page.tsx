@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { auth } from '@/auth';
 import { PurchaseOrdersPage } from '@/components/admin/PurchaseOrdersPage';
 import { getPurchaseOrderListData } from '@/lib/actions/inventory';
 
@@ -9,14 +10,18 @@ interface Props {
 }
 
 export default async function InventoryOrdersPage({ searchParams }: Props) {
-  const params = await searchParams;
-  const result = await getPurchaseOrderListData();
+  const [params, session, result] = await Promise.all([
+    searchParams,
+    auth(),
+    getPurchaseOrderListData(),
+  ]);
   if (!result.ok) redirect('/dashboard');
   return (
     <PurchaseOrdersPage
       initialData={result.data}
       initialDataUpdatedAt={Date.now()}
       initialSupplierFilter={params.supplierId}
+      userRole={session?.user?.role}
     />
   );
 }

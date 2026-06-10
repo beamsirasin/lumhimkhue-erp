@@ -292,13 +292,17 @@ export function CustomerMenuPage({
                 className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white"
               >
                 {/* Image */}
-                {mi.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={mi.imageUrl}
-                    alt={displayName}
-                    className="aspect-square w-full object-cover"
-                  />
+                {mi.hasImage ? (
+                  <div className="relative aspect-square w-full">
+                    <Image
+                      src={`/api/img/${mi.id}`}
+                      alt={displayName}
+                      fill
+                      sizes="(max-width: 640px) 50vw, 33vw"
+                      className="object-cover"
+                      unoptimized
+                    />
+                  </div>
                 ) : (
                   <div className="aspect-square w-full bg-slate-100" />
                 )}

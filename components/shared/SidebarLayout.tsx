@@ -35,6 +35,7 @@ import {
   Calendar,
   Clock,
   Wallet,
+  BookOpen,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -135,6 +136,7 @@ const NAV: Record<Role, NavSection[]> = {
       items: [
         { href: '/dashboard',     label: 'แดชบอร์ด',     Icon: LayoutDashboard },
         { href: '/menu',          label: 'เมนูอาหาร',    Icon: UtensilsCrossed },
+        { href: '/recipes',       label: 'สูตรอาหาร',    Icon: BookOpen },
         { href: '/pricing-tiles', label: 'Pricing Tiles', Icon: Tag },
         hrGroup,
         { href: '/reports',       label: 'รายงาน',        Icon: BarChart3 },
@@ -197,7 +199,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/tables':                'จัดการโต๊ะ',
   '/tables/history':        'ประวัติโต๊ะ',
   '/menu':                  'เมนูอาหาร',
-  '/pricing-tiles':   'Pricing Tiles',
+  '/recipes':               'สูตรอาหาร',
+  '/pricing-tiles':         'Pricing Tiles',
   '/users':                 'User',
   '/reports':               'รายงาน',
   '/settings':              'ตั้งค่าบิล',
@@ -231,54 +234,73 @@ function getPageTitle(pathname: string): string {
   return key ? PAGE_TITLES[key] : '';
 }
 
+/* ─── Badge ──────────────────────────────────────────────────── */
+
+function NavBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
 /* ─── NavGroup component (collapsible) ──────────────────────── */
 
 function NavGroupItem({
   group,
   pathname,
   onNavigate,
+  badgeCounts,
 }: {
   group: NavGroup;
   pathname: string;
   onNavigate?: () => void;
+  badgeCounts?: Record<string, number>;
 }) {
   const isGroupActive = pathname === group.matchPrefix
     || pathname.startsWith(group.matchPrefix + '/')
     || group.children.some(c => pathname === c.href || (c.href.length > 1 && pathname.startsWith(c.href + '/')));
   const [open, setOpen] = useState(isGroupActive);
   const { Icon } = group;
+  const totalGroupBadge = group.children.reduce((s, c) => s + (badgeCounts?.[c.href] ?? 0), 0);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+      <CollapsibleTrigger className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
         isGroupActive
-          ? 'bg-slate-800 text-white'
-          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+          ? 'bg-slate-700 text-white'
+          : 'text-slate-400 hover:bg-slate-800 hover:text-white'
       }`}>
         <Icon className="size-4 shrink-0" />
         <span className="flex-1 text-left">{group.label}</span>
+        {!open && totalGroupBadge > 0 && (
+          <span className="size-2 rounded-full bg-red-500" />
+        )}
         <ChevronDown className={`size-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="mt-0.5 ml-4 border-l border-slate-200 pl-3 space-y-0.5">
+        <div className="mt-0.5 ml-4 border-l border-slate-700 pl-3 space-y-0.5">
           {group.children.map(({ href, label, Icon: ChildIcon }) => {
             const isActive = href === '/tables'
               ? pathname === '/tables'
               : pathname === href || pathname.startsWith(href + '/');
+            const badge = badgeCounts?.[href] ?? 0;
             return (
               <Link
                 key={href}
                 href={href}
                 prefetch={false}
                 onClick={onNavigate}
-                className={`flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors ${
+                className={`flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm font-medium transition-all ${
                   isActive
                     ? 'bg-slate-700 text-white'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    : 'text-slate-500 hover:bg-slate-800 hover:text-white'
                 }`}
               >
                 <ChildIcon className="size-3.5 shrink-0" />
                 {label}
+                <NavBadge count={badge} />
               </Link>
             );
           })}
@@ -294,17 +316,19 @@ function NavItems({
   sections,
   pathname,
   onNavigate,
+  badgeCounts,
 }: {
   sections: NavSection[];
   pathname: string;
   onNavigate?: () => void;
+  badgeCounts?: Record<string, number>;
 }) {
   return (
     <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
       {sections.map((section, i) => (
         <div key={i}>
           {section.heading && (
-            <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
               {section.heading}
             </p>
           )}
@@ -317,26 +341,29 @@ function NavItems({
                     group={item}
                     pathname={pathname}
                     onNavigate={onNavigate}
+                    badgeCounts={badgeCounts}
                   />
                 );
               }
 
               const { href, label, Icon } = item;
               const isActive = pathname === href || (href.length > 1 && pathname.startsWith(href + '/'));
+              const badge = badgeCounts?.[href] ?? 0;
               return (
                 <Link
                   key={href}
                   href={href}
                   prefetch={false}
                   onClick={onNavigate}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                     isActive
-                      ? 'bg-slate-800 text-white'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      ? 'bg-slate-700 text-white'
+                      : 'text-slate-400 hover:bg-slate-800 hover:text-white'
                   }`}
                 >
                   <Icon className="size-4 shrink-0" />
                   {label}
+                  <NavBadge count={badge} />
                 </Link>
               );
             })}
@@ -353,45 +380,49 @@ function SidebarInner({
   sections,
   pathname,
   onNavigate,
+  badgeCounts,
 }: {
   role: Role;
   userName: string;
   sections: NavSection[];
   pathname: string;
   onNavigate?: () => void;
+  badgeCounts?: Record<string, number>;
 }) {
   return (
-    <div className="flex h-full flex-col bg-white">
+    <div className="flex h-full flex-col bg-slate-900">
       {/* Logo */}
-      <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-slate-200 px-4">
-        <Image
-          src="/images/logo.png"
-          alt="ร้านชาบู ERP"
-          width={32}
-          height={32}
-          className="rounded object-contain"
-        />
-        <span className="text-sm font-semibold text-slate-900">ร้านชาบู ERP</span>
+      <div className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-800 px-4">
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-slate-700">
+          <Image
+            src="/images/logo.png"
+            alt="ร้านชาบู ERP"
+            width={20}
+            height={20}
+            className="rounded object-contain"
+          />
+        </div>
+        <span className="text-sm font-semibold text-white">ร้านชาบู ERP</span>
       </div>
 
       {/* Navigation */}
-      <NavItems sections={sections} pathname={pathname} onNavigate={onNavigate} />
+      <NavItems sections={sections} pathname={pathname} onNavigate={onNavigate} badgeCounts={badgeCounts} />
 
       {/* User info + logout */}
-      <div className="shrink-0 border-t border-slate-200 p-3">
+      <div className="shrink-0 border-t border-slate-800 p-3">
         <div className="flex items-center gap-2.5 rounded-lg px-3 py-2">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-800 text-xs font-semibold text-white">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-700 text-xs font-semibold text-white ring-2 ring-slate-600">
             {userName.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-slate-900">{userName}</p>
-            <p className="truncate text-xs text-slate-500">{ROLE_LABEL[role]}</p>
+            <p className="truncate text-sm font-medium text-white">{userName}</p>
+            <p className="truncate text-xs text-slate-400">{ROLE_LABEL[role]}</p>
           </div>
         </div>
         <form action={logoutAction} className="mt-1">
           <button
             type="submit"
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-400 transition-all hover:bg-slate-800 hover:text-white"
           >
             <LogOut className="size-4 shrink-0" />
             ออกจากระบบ
@@ -409,32 +440,34 @@ function StandardSidebarLayout({
   userName,
   children,
   pathname,
+  badgeCounts,
 }: {
   role: Role;
   userName: string;
   children: React.ReactNode;
   pathname: string;
+  badgeCounts?: Record<string, number>;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const sections = NAV[role] ?? [];
   const pageTitle = getPageTitle(pathname);
-  const innerProps = { role, userName, sections, pathname };
+  const innerProps = { role, userName, sections, pathname, badgeCounts };
 
   return (
     <div className="flex h-dvh overflow-hidden bg-slate-50">
       {/* Desktop sidebar */}
-      <aside className="hidden lg:block fixed inset-y-0 left-0 z-20 w-64 border-r border-slate-200">
+      <aside className="hidden lg:block fixed inset-y-0 left-0 z-20 w-64">
         <SidebarInner {...innerProps} />
       </aside>
 
       {/* Right content area */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden lg:pl-64">
         {/* Top bar */}
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-100 bg-white px-4 shadow-sm">
           <Sheet open={mobileOpen} onOpenChange={(open) => setMobileOpen(open)}>
             <SheetTrigger
               aria-label="เปิดเมนู"
-              className="flex lg:hidden items-center justify-center rounded-lg p-1.5 text-slate-600 hover:bg-slate-100"
+              className="flex lg:hidden items-center justify-center rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
             >
               <Menu className="size-5" />
             </SheetTrigger>
@@ -447,7 +480,7 @@ function StandardSidebarLayout({
           </Sheet>
 
           {pageTitle && (
-            <h1 className="text-sm font-semibold text-slate-900">{pageTitle}</h1>
+            <h1 className="text-sm font-semibold text-slate-800">{pageTitle}</h1>
           )}
         </header>
 
@@ -664,9 +697,10 @@ interface SidebarLayoutProps {
   role: Role;
   userName: string;
   children: React.ReactNode;
+  badgeCounts?: Record<string, number>;
 }
 
-export function SidebarLayout({ role, userName, children }: SidebarLayoutProps) {
+export function SidebarLayout({ role, userName, children, badgeCounts }: SidebarLayoutProps) {
   const pathname = usePathname();
 
   if (role === 'cashier' || role === 'kitchen') {
@@ -678,7 +712,7 @@ export function SidebarLayout({ role, userName, children }: SidebarLayoutProps) 
   }
 
   return (
-    <StandardSidebarLayout role={role} userName={userName} pathname={pathname}>
+    <StandardSidebarLayout role={role} userName={userName} pathname={pathname} badgeCounts={badgeCounts}>
       {children}
     </StandardSidebarLayout>
   );

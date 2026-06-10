@@ -87,7 +87,7 @@ export function IngredientsPage({ initialData, initialDataUpdatedAt }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">วัตถุดิบ</h1>
+          <h1 className="text-lg font-semibold text-slate-900">วัตถุดิบ</h1>
           <p className="text-sm text-slate-500 mt-0.5">{data.ingredients.length} รายการ</p>
         </div>
         <button
@@ -145,13 +145,13 @@ export function IngredientsPage({ initialData, initialDataUpdatedAt }: Props) {
       {/* Grouped tables */}
       <div className="space-y-4">
         {grouped.length === 0 ? (
-          <div className="rounded-xl border border-slate-200 bg-white py-16 text-center">
+          <div className="rounded-xl bg-white py-16 text-center shadow-sm ring-1 ring-slate-900/5">
             <Package className="mx-auto size-8 text-slate-300 mb-2" />
             <p className="text-sm text-slate-500">ไม่พบวัตถุดิบที่ตรงกัน</p>
           </div>
         ) : (
           grouped.map(({ category, items }) => (
-            <div key={category.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+            <div key={category.id} className="rounded-xl bg-white overflow-hidden shadow-sm ring-1 ring-slate-900/5">
               <div className="flex items-center gap-2 bg-slate-50 border-b border-slate-200 px-4 py-2.5">
                 <span className="text-xs font-semibold text-slate-700">{category.name}</span>
                 <span className="text-xs text-slate-400">{items.length} รายการ</span>

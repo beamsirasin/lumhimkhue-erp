@@ -5,6 +5,7 @@ import { eq, inArray, asc } from 'drizzle-orm';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
+import { writeAuditLog } from '@/lib/actions/audit';
 import {
   sessions,
   tables,
@@ -284,6 +285,14 @@ export async function processPayment(input: unknown) {
     revalidatePath('/pos');
     revalidatePath('/tables');
     revalidatePath('/dashboard');
+    writeAuditLog({
+      userId: authSession.user.id,
+      role: authSession.user.role,
+      action: 'process_payment',
+      entity: 'payments',
+      entityId: payment.id,
+      after: { sessionId, total, paymentMethod, receiptNo: receiptNo ?? null },
+    });
     return { ok: true as const, data: { total, changeAmount, receiptNo: receiptNo ?? undefined } };
   } catch (e) {
     console.error('[processPayment]', e);

@@ -6,6 +6,7 @@ import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
 import { pricingTiles, sessionGuests } from '@/lib/db/schema';
+import { writeAuditLog } from '@/lib/actions/audit';
 import {
   pricingTileSchema,
   updatePricingTileSchema,
@@ -92,6 +93,14 @@ export async function createPricingTile(input: unknown) {
       .returning({ id: pricingTiles.id });
 
     revalidatePath('/admin/pricing-tiles');
+    writeAuditLog({
+      userId: authSession.user.id,
+      role: authSession.user.role,
+      action: 'create',
+      entity: 'pricing_tiles',
+      entityId: tile.id,
+      after: { code: d.code, name: d.name, category: d.category, price: d.price },
+    });
     return { ok: true as const, data: { id: tile.id } };
   } catch (e) {
     console.error('[createPricingTile]', e);
@@ -143,6 +152,14 @@ export async function updatePricingTile(input: unknown) {
       .where(eq(pricingTiles.id, d.id));
 
     revalidatePath('/admin/pricing-tiles');
+    writeAuditLog({
+      userId: authSession.user.id,
+      role: authSession.user.role,
+      action: 'update',
+      entity: 'pricing_tiles',
+      entityId: d.id,
+      after: { name: d.name, price: d.price },
+    });
     return { ok: true as const };
   } catch (e) {
     console.error('[updatePricingTile]', e);
@@ -200,6 +217,13 @@ export async function deletePricingTile(id: string) {
   try {
     await db.delete(pricingTiles).where(eq(pricingTiles.id, id));
     revalidatePath('/admin/pricing-tiles');
+    writeAuditLog({
+      userId: authSession.user.id,
+      role: authSession.user.role,
+      action: 'delete',
+      entity: 'pricing_tiles',
+      entityId: id,
+    });
     return { ok: true as const };
   } catch (e) {
     console.error('[deletePricingTile]', e);

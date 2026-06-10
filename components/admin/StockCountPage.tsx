@@ -10,11 +10,14 @@ import {
   ClipboardList,
   Loader2,
   ShoppingCart,
+  PenLine,
+  X,
 } from 'lucide-react';
 import Link from 'next/link';
 import {
   saveStockCount,
   getLowStockItems,
+  createStockAdjustment,
   type StockCountPageData,
   type LowStockItem,
 } from '@/lib/actions/inventory';
@@ -88,6 +91,13 @@ export function StockCountPage({ initialData, today }: Props) {
   const [showLowPanel, setShowLowPanel] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [readonly, setReadonly] = useState(isSubmitted);
+
+  // Adjustment dialog state
+  const [showAdjDialog, setShowAdjDialog] = useState(false);
+  const [adjIngredientId, setAdjIngredientId] = useState('');
+  const [adjQty, setAdjQty] = useState('');
+  const [adjReason, setAdjReason] = useState('');
+  const [isAdjPending, startAdjTransition] = useTransition();
 
   function updateItem(id: string, field: keyof Omit<ItemState, 'notes'>, raw: string) {
     const val = parseFloat(raw);
@@ -174,12 +184,35 @@ export function StockCountPage({ initialData, today }: Props) {
     });
   }
 
+  function handleAdjustmentSubmit() {
+    if (!existing?.id) return;
+    const qty = parseFloat(adjQty);
+    if (!adjIngredientId) { toast.error('กรุณาเลือกวัตถุดิบ'); return; }
+    if (!adjQty || isNaN(qty) || qty === 0) { toast.error('กรุณาระบุจำนวน (ไม่เป็น 0)'); return; }
+    if (!adjReason.trim()) { toast.error('กรุณาระบุเหตุผล'); return; }
+
+    startAdjTransition(async () => {
+      const r = await createStockAdjustment({
+        stockCountId: existing.id,
+        ingredientId: adjIngredientId,
+        adjustmentQty: qty,
+        reason: adjReason.trim(),
+      });
+      if (!r.ok) { toast.error(r.error); return; }
+      toast.success('บันทึกรายการปรับปรุงแล้ว');
+      setShowAdjDialog(false);
+      setAdjIngredientId('');
+      setAdjQty('');
+      setAdjReason('');
+    });
+  }
+
   return (
     <div className="p-6 space-y-5">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">นับสต็อกรายวัน</h1>
+          <h1 className="text-lg font-semibold text-slate-900">นับสต็อกรายวัน</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             {format(new Date(today + 'T00:00:00'), 'd MMMM yyyy', { locale: th })}
           </p>
@@ -202,15 +235,6 @@ export function StockCountPage({ initialData, today }: Props) {
             </span>
           ) : (
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">ใหม่</span>
-          )}
-          {readonly && (
-            <button
-              type="button"
-              onClick={() => setReadonly(false)}
-              className="rounded-lg border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
-            >
-              แก้ไข
-            </button>
           )}
         </div>
       </div>
@@ -243,7 +267,7 @@ export function StockCountPage({ initialData, today }: Props) {
               <AlertTriangle className="size-4" />
               {lowItems.length} รายการต่ำกว่าจุดสั่งซื้อ
             </p>
-            <button type="button" onClick={() => setShowLowPanel(false)} className="text-red-400 hover:text-red-600">×</button>
+            <button type="button" onClick={() => setShowLowPanel(false)} className="text-red-400 hover:text-red-600" aria-label="ปิด">×</button>
           </div>
           <ul className="space-y-1">
             {lowItems.slice(0, 6).map((item) => (
@@ -270,7 +294,7 @@ export function StockCountPage({ initialData, today }: Props) {
       {/* Stock count table grouped by category */}
       <div className="space-y-4">
         {grouped.map(({ category, items }) => (
-          <div key={category.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <div key={category.id} className="rounded-xl bg-white overflow-hidden shadow-sm ring-1 ring-slate-900/5">
             {/* Category header */}
             <div className="flex items-center gap-2 bg-slate-50 border-b border-slate-200 px-4 py-2.5">
               <span className="text-xs font-semibold text-slate-700">{category.name}</span>
@@ -412,7 +436,7 @@ export function StockCountPage({ initialData, today }: Props) {
         />
       </div>
 
-      {/* Action buttons */}
+      {/* Action buttons (draft mode only) */}
       {!readonly && (
         <div className="flex flex-col sm:flex-row gap-3 pt-2">
           <button
@@ -457,10 +481,11 @@ export function StockCountPage({ initialData, today }: Props) {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setReadonly(false)}
-              className="rounded-lg border border-green-300 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
+              onClick={() => setShowAdjDialog(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
             >
-              แก้ไข
+              <PenLine className="size-3.5" />
+              บันทึกปรับปรุง
             </button>
             <Link
               href="/inventory/orders"
@@ -468,6 +493,94 @@ export function StockCountPage({ initialData, today }: Props) {
             >
               สร้าง PO
             </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Stock Adjustment Dialog */}
+      {showAdjDialog && existing?.id && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <h2 className="text-sm font-semibold text-slate-900">บันทึกปรับปรุงสต็อก</h2>
+              <button
+                type="button"
+                onClick={() => setShowAdjDialog(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                aria-label="ปิด"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              <p className="text-xs text-slate-500">
+                ใช้สำหรับแก้ไขข้อผิดพลาดหลังส่งผลการนับแล้ว ระบบจะบันทึกรายการปรับปรุงไว้แยกต่างหาก
+              </p>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  วัตถุดิบ <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={adjIngredientId}
+                  onChange={(e) => setAdjIngredientId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                >
+                  <option value="">— เลือกวัตถุดิบ —</option>
+                  {initialData.ingredients.map((ing) => (
+                    <option key={ing.id} value={ing.id}>
+                      {ing.name} ({ing.unit})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  จำนวนปรับปรุง <span className="text-red-500">*</span>
+                  <span className="ml-1 font-normal text-slate-400">(บวก = เพิ่ม, ลบ = ลด)</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={adjQty}
+                  onChange={(e) => setAdjQty(e.target.value)}
+                  placeholder="เช่น 5 หรือ -3"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  เหตุผล <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={adjReason}
+                  onChange={(e) => setAdjReason(e.target.value)}
+                  rows={2}
+                  placeholder="ระบุเหตุผลในการปรับปรุง"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500 resize-none"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 border-t border-slate-100 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setShowAdjDialog(false)}
+                className="flex-1 rounded-lg border border-slate-300 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={handleAdjustmentSubmit}
+                disabled={isAdjPending}
+                className="flex-1 rounded-lg bg-amber-600 py-2.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                {isAdjPending ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="size-4 animate-spin" /> กำลังบันทึก…
+                  </span>
+                ) : 'บันทึกปรับปรุง'}
+              </button>
+            </div>
           </div>
         </div>
       )}

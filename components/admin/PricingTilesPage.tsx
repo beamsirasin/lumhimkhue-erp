@@ -122,7 +122,7 @@ function SortableTileCard({ tile, onEdit, onToggle, onDelete, isPending }: Sorta
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden
+      className={`relative flex flex-col rounded-xl bg-white shadow-sm ring-1 ring-slate-900/5 overflow-hidden
         ${!tile.isActive ? 'opacity-50' : ''}
       `}
     >

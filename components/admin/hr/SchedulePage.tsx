@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { format, eachDayOfInterval, parseISO } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -93,9 +93,10 @@ export function SchedulePage({ initialCycles, settings, initialEmployees }: Prop
   }
 
   // Auto-load first cycle on mount
-  useState(() => {
+  useEffect(() => {
     if (selectedCycleId) loadGrid(selectedCycleId);
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function openPopover(employeeId: string, date: string) {
     const key = entryKey(employeeId, date);

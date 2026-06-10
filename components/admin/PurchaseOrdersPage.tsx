@@ -21,7 +21,8 @@ import {
   getPurchaseOrderListData,
   createPurchaseOrder,
   updatePurchaseOrder,
-  confirmOrder,
+  submitForApproval,
+  approveOrder,
   receiveOrder,
   cancelOrder,
   getPurchaseOrderDetail,
@@ -45,6 +46,7 @@ const BTN_PRIMARY = 'w-full rounded-lg bg-slate-800 py-2 text-sm font-medium tex
 
 const STATUS_LABEL: Record<string, string> = {
   draft: 'ร่าง',
+  pending_approval: 'รออนุมัติ',
   ordered: 'ยืนยันแล้ว',
   received: 'รับของแล้ว',
   cancelled: 'ยกเลิก',
@@ -52,6 +54,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 const STATUS_COLOR: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-600',
+  pending_approval: 'bg-amber-100 text-amber-700',
   ordered: 'bg-blue-100 text-blue-700',
   received: 'bg-green-100 text-green-700',
   cancelled: 'bg-red-100 text-red-600',
@@ -76,11 +79,12 @@ interface Props {
   initialData: POListData;
   initialDataUpdatedAt: number;
   initialSupplierFilter?: string;
+  userRole?: string;
 }
 
 // ── Main list ─────────────────────────────────────────────────────────────────
 
-export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialSupplierFilter }: Props) {
+export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialSupplierFilter, userRole }: Props) {
   const [modal, setModal] = useState<Modal | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [supplierFilter, setSupplierFilter] = useState(initialSupplierFilter ?? '');
@@ -101,6 +105,8 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['purchase-orders'] });
 
+  const isOwner = userRole === 'owner';
+
   const filtered = useMemo(() => {
     return data.orders.filter((po) => {
       if (statusFilter !== 'all' && po.status !== statusFilter) return false;
@@ -109,11 +115,19 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
     });
   }, [data, statusFilter, supplierFilter]);
 
-  function handleConfirm(id: string) {
+  function handleSubmitForApproval(id: string) {
     startTransition(async () => {
-      const r = await confirmOrder(id);
+      const r = await submitForApproval(id);
       if (!r.ok) toast.error(r.error);
-      else { toast.success('ยืนยันใบสั่งซื้อแล้ว'); invalidate(); }
+      else { toast.success('ส่งขออนุมัติแล้ว'); invalidate(); }
+    });
+  }
+
+  function handleApprove(id: string) {
+    startTransition(async () => {
+      const r = await approveOrder(id);
+      if (!r.ok) toast.error(r.error);
+      else { toast.success('อนุมัติใบสั่งซื้อแล้ว'); invalidate(); }
     });
   }
 
@@ -131,7 +145,7 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">ใบสั่งซื้อ (PO)</h1>
+          <h1 className="text-lg font-semibold text-slate-900">ใบสั่งซื้อ (PO)</h1>
           <p className="text-sm text-slate-500 mt-0.5">{data.orders.length} รายการทั้งหมด</p>
         </div>
         <button
@@ -147,7 +161,7 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
       {/* Filters */}
       <div className="flex flex-wrap gap-2 items-center">
         <div className="flex gap-1">
-          {['all', 'draft', 'ordered', 'received', 'cancelled'].map((s) => (
+          {['all', 'draft', 'pending_approval', 'ordered', 'received', 'cancelled'].map((s) => (
             <button
               key={s}
               type="button"
@@ -173,7 +187,7 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+      <div className="rounded-xl bg-white overflow-hidden shadow-sm ring-1 ring-slate-900/5">
         {filtered.length === 0 ? (
           <div className="py-16 text-center">
             <ShoppingBag className="mx-auto size-8 text-slate-300 mb-2" />
@@ -232,11 +246,33 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
                             <button
                               type="button"
                               disabled={isPending}
-                              onClick={() => handleConfirm(po.id)}
-                              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                              onClick={() => handleSubmitForApproval(po.id)}
+                              className="text-xs text-amber-600 hover:text-amber-800 font-medium"
                             >
-                              ยืนยัน
+                              ส่งอนุมัติ
                             </button>
+                            <button
+                              type="button"
+                              disabled={isPending}
+                              onClick={() => handleCancel(po.id)}
+                              className="text-xs text-red-400 hover:text-red-600"
+                            >
+                              ยกเลิก
+                            </button>
+                          </>
+                        )}
+                        {po.status === 'pending_approval' && (
+                          <>
+                            {isOwner && (
+                              <button
+                                type="button"
+                                disabled={isPending}
+                                onClick={() => handleApprove(po.id)}
+                                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                              >
+                                อนุมัติ
+                              </button>
+                            )}
                             <button
                               type="button"
                               disabled={isPending}

@@ -105,6 +105,7 @@ export const stockCountStatusEnum = pgEnum('stock_count_status', [
 
 export const purchaseOrderStatusEnum = pgEnum('purchase_order_status', [
   'draft',
+  'pending_approval',
   'ordered',
   'received',
   'cancelled',
@@ -575,6 +576,29 @@ export const purchaseOrders = pgTable(
   ],
 );
 
+export const stockCountAdjustments = pgTable(
+  'stock_count_adjustments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    stockCountId: uuid('stock_count_id')
+      .notNull()
+      .references(() => stockCounts.id),
+    ingredientId: uuid('ingredient_id')
+      .notNull()
+      .references(() => ingredients.id),
+    adjustmentQty: numeric('adjustment_qty', { precision: 10, scale: 2 }).notNull(),
+    reason: text('reason').notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('stock_count_adj_count_idx').on(t.stockCountId),
+    index('stock_count_adj_ingredient_idx').on(t.ingredientId),
+  ],
+);
+
 export const purchaseOrderItems = pgTable(
   'purchase_order_items',
   {
@@ -594,6 +618,31 @@ export const purchaseOrderItems = pgTable(
   (t) => [index('po_items_po_idx').on(t.purchaseOrderId)],
 );
 
+// ─── Recipe Tables ───────────────────────────────────────────────────────────
+
+export const recipes = pgTable(
+  'recipes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    menuItemId: uuid('menu_item_id').notNull().references(() => menuItems.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 100 }).notNull(),
+    isActive: boolean('is_active').notNull().default(true),
+    servingSize: integer('serving_size').notNull().default(1),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('recipe_menu_item_idx').on(t.menuItemId, t.isActive)],
+);
+
+export const recipeIngredients = pgTable('recipe_ingredients', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  recipeId: uuid('recipe_id').notNull().references(() => recipes.id, { onDelete: 'cascade' }),
+  ingredientId: uuid('ingredient_id').notNull().references(() => ingredients.id),
+  quantity: numeric('quantity', { precision: 10, scale: 4 }).notNull(),
+  unit: varchar('unit', { length: 20 }).notNull(),
+  notes: varchar('notes', { length: 200 }),
+});
+
 // ─── HR Tables ────────────────────────────────────────────────────────────────
 
 export const employees = pgTable(
@@ -612,6 +661,11 @@ export const employees = pgTable(
     incentivePerDay: numeric('incentive_per_day', { precision: 10, scale: 2 }).notNull().default('0'),
     hourlyRate: numeric('hourly_rate', { precision: 10, scale: 2 }),
     startDate: date('start_date'),
+    employmentEndDate: date('employment_end_date'),
+    nationalId: varchar('national_id', { length: 13 }),
+    taxId: varchar('tax_id', { length: 13 }),
+    socialSecurityNumber: varchar('social_security_number', { length: 15 }),
+    ssfRegistered: boolean('ssf_registered').notNull().default(true),
     notes: text('notes'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -705,6 +759,10 @@ export const payrollItems = pgTable(
     gross: numeric('gross', { precision: 12, scale: 2 }).notNull().default('0'),
     totalDeduction: numeric('total_deduction', { precision: 12, scale: 2 }).notNull().default('0'),
     netPay: numeric('net_pay', { precision: 12, scale: 2 }).notNull().default('0'),
+    ssfEmployee: numeric('ssf_employee', { precision: 10, scale: 2 }).notNull().default('0'),
+    ssfEmployer: numeric('ssf_employer', { precision: 10, scale: 2 }).notNull().default('0'),
+    withholdingTax: numeric('withholding_tax', { precision: 10, scale: 2 }).notNull().default('0'),
+    netPayAfterTax: numeric('net_pay_after_tax', { precision: 12, scale: 2 }).notNull().default('0'),
     isPaid: boolean('is_paid').notNull().default(false),
     paidMethod: hrPaymentMethodEnum('paid_method'),
     paidAt: timestamp('paid_at'),
@@ -818,6 +876,7 @@ export const menuItemsRelations = relations(menuItems, ({ one, many }) => ({
     references: [categories.id],
   }),
   orderItems: many(orderItems),
+  recipes: many(recipes),
 }));
 
 export const ordersRelations = relations(orders, ({ one, many }) => ({
@@ -909,6 +968,26 @@ export const ingredientsRelations = relations(ingredients, ({ one, many }) => ({
   }),
   stockCountItems: many(stockCountItems),
   purchaseOrderItems: many(purchaseOrderItems),
+  recipeIngredients: many(recipeIngredients),
+}));
+
+export const recipesRelations = relations(recipes, ({ one, many }) => ({
+  menuItem: one(menuItems, {
+    fields: [recipes.menuItemId],
+    references: [menuItems.id],
+  }),
+  ingredients: many(recipeIngredients),
+}));
+
+export const recipeIngredientsRelations = relations(recipeIngredients, ({ one }) => ({
+  recipe: one(recipes, {
+    fields: [recipeIngredients.recipeId],
+    references: [recipes.id],
+  }),
+  ingredient: one(ingredients, {
+    fields: [recipeIngredients.ingredientId],
+    references: [ingredients.id],
+  }),
 }));
 
 export const stockCountsRelations = relations(stockCounts, ({ one, many }) => ({
@@ -917,6 +996,22 @@ export const stockCountsRelations = relations(stockCounts, ({ one, many }) => ({
     references: [users.id],
   }),
   items: many(stockCountItems),
+  adjustments: many(stockCountAdjustments),
+}));
+
+export const stockCountAdjustmentsRelations = relations(stockCountAdjustments, ({ one }) => ({
+  stockCount: one(stockCounts, {
+    fields: [stockCountAdjustments.stockCountId],
+    references: [stockCounts.id],
+  }),
+  ingredient: one(ingredients, {
+    fields: [stockCountAdjustments.ingredientId],
+    references: [ingredients.id],
+  }),
+  createdByUser: one(users, {
+    fields: [stockCountAdjustments.createdBy],
+    references: [users.id],
+  }),
 }));
 
 export const stockCountItemsRelations = relations(stockCountItems, ({ one }) => ({
@@ -1095,6 +1190,8 @@ export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
 export type NewPurchaseOrder = typeof purchaseOrders.$inferInsert;
 export type PurchaseOrderItem = typeof purchaseOrderItems.$inferSelect;
 export type NewPurchaseOrderItem = typeof purchaseOrderItems.$inferInsert;
+export type StockCountAdjustment = typeof stockCountAdjustments.$inferSelect;
+export type NewStockCountAdjustment = typeof stockCountAdjustments.$inferInsert;
 
 // ─── HR Types ─────────────────────────────────────────────────────────────────
 
@@ -1115,3 +1212,10 @@ export type NewPayrollDeduction = typeof payrollDeductions.$inferInsert;
 export type PayrollAbsence = typeof payrollAbsences.$inferSelect;
 export type NewPayrollAbsence = typeof payrollAbsences.$inferInsert;
 export type HrSettings = typeof hrSettings.$inferSelect;
+
+// ─── Recipe Types ─────────────────────────────────────────────────────────────
+
+export type Recipe = typeof recipes.$inferSelect;
+export type NewRecipe = typeof recipes.$inferInsert;
+export type RecipeIngredient = typeof recipeIngredients.$inferSelect;
+export type NewRecipeIngredient = typeof recipeIngredients.$inferInsert;

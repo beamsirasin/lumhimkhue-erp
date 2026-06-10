@@ -69,6 +69,15 @@ export const saveStockCountSchema = z.object({
 
 export type SaveStockCountInput = z.infer<typeof saveStockCountSchema>;
 
+export const createStockAdjustmentSchema = z.object({
+  stockCountId: z.string().uuid(),
+  ingredientId: z.string().uuid('กรุณาเลือกวัตถุดิบ'),
+  adjustmentQty: z.coerce.number().refine((n) => n !== 0, 'จำนวนต้องไม่เป็น 0'),
+  reason: z.string().min(1, 'กรุณาระบุเหตุผล').max(500),
+});
+
+export type CreateStockAdjustmentInput = z.infer<typeof createStockAdjustmentSchema>;
+
 // ── Purchase Order ────────────────────────────────────────────────────────────
 
 export const poItemSchema = z.object({

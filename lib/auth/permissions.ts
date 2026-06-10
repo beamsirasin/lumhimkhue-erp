@@ -16,6 +16,8 @@ export type Action =
   | 'inventory:edit'
   | 'stock_count:create'
   | 'purchase_order:manage'
+  | 'purchase_order:approve'
+  | 'recipe:manage'
   | 'hr:manage';
 
 const PERMISSIONS: Record<Role, Action[]> = {
@@ -35,6 +37,8 @@ const PERMISSIONS: Record<Role, Action[]> = {
     'inventory:edit',
     'stock_count:create',
     'purchase_order:manage',
+    'purchase_order:approve',
+    'recipe:manage',
     'hr:manage',
   ],
   manager: [
@@ -50,6 +54,7 @@ const PERMISSIONS: Record<Role, Action[]> = {
     'inventory:edit',
     'stock_count:create',
     'purchase_order:manage',
+    'recipe:manage',
   ],
   cashier: ['process_payment', 'manage_tables', 'manage_queue', 'view_kds'],
   kitchen: ['view_kds', 'manage_queue', 'manage_tables'],

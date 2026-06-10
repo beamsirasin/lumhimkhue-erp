@@ -22,10 +22,10 @@ const METHOD_LABEL: Record<string, string> = {
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  available: { label: 'ว่าง', color: 'bg-green-500' },
-  occupied: { label: 'มีลูกค้า', color: 'bg-red-500' },
+  available: { label: 'ว่าง', color: 'bg-emerald-400' },
+  occupied: { label: 'มีลูกค้า', color: 'bg-rose-400' },
   cleaning: { label: 'ทำความสะอาด', color: 'bg-amber-400' },
-  reserved: { label: 'จอง', color: 'bg-blue-500' },
+  reserved: { label: 'จอง', color: 'bg-blue-400' },
 };
 
 const PIE_COLORS = ['#0f172a', '#3b82f6', '#10b981', '#f59e0b'];
@@ -51,8 +51,8 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">แดชบอร์ด</h1>
-        <p className="text-xs text-slate-500">
+        <h1 className="text-lg font-semibold text-slate-900">แดชบอร์ด</h1>
+        <p className="mt-0.5 text-xs text-slate-400">
           {format(new Date(), 'EEEE d MMMM yyyy', { locale: th })}
         </p>
       </div>
@@ -75,9 +75,9 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
       </div>
 
       {/* Charts row */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* Revenue bar chart */}
-        <div className="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-5">
+        <div className="lg:col-span-2 rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5">
           <h2 className="mb-4 text-sm font-semibold text-slate-700">รายได้ 7 วันที่ผ่านมา</h2>
           <ChartContainer height={200}>
             <BarChart data={revenueByDay} barSize={28}>
@@ -101,7 +101,7 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
         </div>
 
         {/* Payment methods pie */}
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5">
           <h2 className="mb-4 text-sm font-semibold text-slate-700">วิธีชำระเงินวันนี้</h2>
           {paymentMethods.length === 0 ? (
             <div className="flex h-[200px] items-center justify-center">
@@ -143,33 +143,33 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
       </div>
 
       {/* Bottom row */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* Top menu items */}
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5">
           <h2 className="mb-4 text-sm font-semibold text-slate-700">
             เมนูยอดนิยมวันนี้ (Top 10)
           </h2>
           {topMenuItems.length === 0 ? (
             <p className="py-8 text-center text-sm text-slate-400">ยังไม่มีออเดอร์วันนี้</p>
           ) : (
-            <ol className="space-y-2">
+            <ol className="space-y-2.5">
               {topMenuItems.map((item, i) => {
                 const max = topMenuItems[0].quantity;
                 return (
                   <li key={item.name} className="flex items-center gap-3">
-                    <span className="w-5 text-xs tabular-nums text-slate-400">{i + 1}</span>
+                    <span className="w-5 text-xs tabular-nums text-slate-300 font-medium">{i + 1}</span>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-medium text-slate-800 truncate">
                           {item.name}
                         </span>
-                        <span className="ml-2 text-xs tabular-nums text-slate-500 shrink-0">
+                        <span className="ml-2 text-xs tabular-nums text-slate-400 shrink-0">
                           {item.quantity} จาน
                         </span>
                       </div>
-                      <div className="h-1.5 rounded-full bg-slate-100">
+                      <div className="h-1 rounded-full bg-slate-100">
                         <div
-                          className="h-1.5 rounded-full bg-slate-800"
+                          className="h-1 rounded-full bg-slate-800"
                           style={{ width: `${(item.quantity / max) * 100}%` }}
                         />
                       </div>
@@ -182,7 +182,7 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
         </div>
 
         {/* Live table status */}
-        <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5">
           <h2 className="mb-4 text-sm font-semibold text-slate-700">สถานะโต๊ะปัจจุบัน</h2>
           <div className="grid grid-cols-2 gap-3">
             {tableSummary.map((t) => {
@@ -193,12 +193,12 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
               return (
                 <div
                   key={t.status}
-                  className="flex items-center gap-3 rounded-lg border border-slate-100 p-3"
+                  className="flex items-center gap-3 rounded-lg bg-slate-50 p-3.5"
                 >
-                  <span className={`h-3 w-3 rounded-full shrink-0 ${cfg.color}`} />
+                  <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${cfg.color}`} />
                   <div>
                     <p className="text-xs text-slate-500">{cfg.label}</p>
-                    <p className="text-2xl font-bold tabular-nums text-slate-900">{t.count}</p>
+                    <p className="text-2xl font-bold tabular-nums text-slate-900 leading-tight">{t.count}</p>
                   </div>
                 </div>
               );
@@ -220,11 +220,11 @@ function KpiCard({
   unit?: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
+    <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5">
+      <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">{label}</p>
+      <p className="mt-2 text-2xl font-bold tabular-nums text-slate-900 leading-none">
         {value}
-        {unit && <span className="ml-1 text-sm font-normal text-slate-500">{unit}</span>}
+        {unit && <span className="ml-1 text-sm font-normal text-slate-400">{unit}</span>}
       </p>
     </div>
   );

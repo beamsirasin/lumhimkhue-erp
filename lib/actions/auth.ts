@@ -1,8 +1,10 @@
 'use server';
 
 import { AuthError } from 'next-auth';
+import { headers } from 'next/headers';
 import { signIn, signOut } from '@/auth';
 import { loginSchema } from '@/lib/validations/auth';
+import { isLoginRateLimited } from '@/lib/auth/ratelimit';
 
 export async function loginAction(
   data: unknown,
@@ -10,6 +12,16 @@ export async function loginAction(
   const parsed = loginSchema.safeParse(data);
   if (!parsed.success) {
     return { ok: false, error: 'ข้อมูลไม่ถูกต้อง' };
+  }
+
+  const headerList = await headers();
+  const ip =
+    headerList.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    headerList.get('x-real-ip') ??
+    '127.0.0.1';
+
+  if (await isLoginRateLimited(ip)) {
+    return { ok: false, error: 'บัญชีถูกล็อคชั่วคราว กรุณาลองใหม่ใน 15 นาที' };
   }
 
   try {

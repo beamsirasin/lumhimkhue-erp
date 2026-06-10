@@ -6,6 +6,7 @@ import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
 import { categories, menuItems } from '@/lib/db/schema';
+import { writeAuditLog } from '@/lib/actions/audit';
 import {
   createCategorySchema,
   updateCategorySchema,
@@ -85,19 +86,28 @@ export async function toggleCategoryActive(id: string) {
 }
 
 export async function createMenuItem(input: unknown) {
-  if (!await requireManageMenu()) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+  const session = await requireManageMenu();
+  if (!session) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
   const parsed = createMenuItemSchema.safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
   try {
-    await db.insert(menuItems).values({
+    const [item] = await db.insert(menuItems).values({
       ...parsed.data,
       nameEn: parsed.data.nameEn ?? null,
       descriptionEn: parsed.data.descriptionEn ?? null,
       imageUrl: parsed.data.imageUrl ?? null,
       extraPrice: String(parsed.data.extraPrice),
       maxPerOrder: parsed.data.maxPerOrder ?? null,
-    });
+    }).returning({ id: menuItems.id });
     revalidatePath('/menu');
+    writeAuditLog({
+      userId: session.user.id,
+      role: session.user.role,
+      action: 'create',
+      entity: 'menu_items',
+      entityId: item.id,
+      after: { name: parsed.data.name, categoryId: parsed.data.categoryId },
+    });
     return { ok: true as const };
   } catch (e) {
     console.error('[createMenuItem]', e);
@@ -106,7 +116,8 @@ export async function createMenuItem(input: unknown) {
 }
 
 export async function updateMenuItem(input: unknown) {
-  if (!await requireManageMenu()) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+  const session = await requireManageMenu();
+  if (!session) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
   const parsed = updateMenuItemSchema.safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
   const { id, ...data } = parsed.data;
@@ -120,6 +131,14 @@ export async function updateMenuItem(input: unknown) {
       maxPerOrder: data.maxPerOrder ?? null,
     }).where(eq(menuItems.id, id));
     revalidatePath('/menu');
+    writeAuditLog({
+      userId: session.user.id,
+      role: session.user.role,
+      action: 'update',
+      entity: 'menu_items',
+      entityId: id,
+      after: { name: data.name },
+    });
     return { ok: true as const };
   } catch (e) {
     console.error('[updateMenuItem]', e);
@@ -128,10 +147,18 @@ export async function updateMenuItem(input: unknown) {
 }
 
 export async function deleteMenuItem(id: string) {
-  if (!await requireManageMenu()) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+  const session = await requireManageMenu();
+  if (!session) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
   try {
     await db.delete(menuItems).where(eq(menuItems.id, id));
     revalidatePath('/menu');
+    writeAuditLog({
+      userId: session.user.id,
+      role: session.user.role,
+      action: 'delete',
+      entity: 'menu_items',
+      entityId: id,
+    });
     return { ok: true as const };
   } catch (e) {
     console.error('[deleteMenuItem]', e);
@@ -158,12 +185,23 @@ export async function deleteCategory(id: string) {
 }
 
 export async function toggleMenuItemAvailable(id: string) {
-  if (!await requireManageMenu()) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+  const session = await requireManageMenu();
+  if (!session) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
   try {
     const [item] = await db.select({ isAvailable: menuItems.isAvailable }).from(menuItems).where(eq(menuItems.id, id)).limit(1);
     if (!item) return { ok: false as const, error: 'ไม่พบเมนู' };
-    await db.update(menuItems).set({ isAvailable: !item.isAvailable }).where(eq(menuItems.id, id));
+    const newVal = !item.isAvailable;
+    await db.update(menuItems).set({ isAvailable: newVal }).where(eq(menuItems.id, id));
     revalidatePath('/menu');
+    writeAuditLog({
+      userId: session.user.id,
+      role: session.user.role,
+      action: 'toggle_available',
+      entity: 'menu_items',
+      entityId: id,
+      before: { isAvailable: item.isAvailable },
+      after: { isAvailable: newVal },
+    });
     return { ok: true as const };
   } catch (e) {
     console.error('[toggleMenuItemAvailable]', e);

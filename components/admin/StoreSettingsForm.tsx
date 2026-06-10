@@ -105,7 +105,8 @@ export function StoreSettingsForm({ initialData }: Props) {
   const [taxInvoicePrefix, setTaxInvoicePrefix] = useState(initialData.taxInvoicePrefix ?? 'LHK');
 
   // Logo
-  const [logoUrl,    setLogoUrl]    = useState(initialData.logoUrl ?? '');
+  const [logoUrl,         setLogoUrl]         = useState(initialData.logoUrl ?? '');
+  const [isLogoUploading, setIsLogoUploading] = useState(false);
   const [logoHeight, setLogoHeight] = useState(initialData.logoHeight ?? 56);
   const [paperWidth, setPaperWidth] = useState<58 | 80>((initialData.billPaperWidth as 58 | 80) ?? 80);
 
@@ -131,16 +132,21 @@ export function StoreSettingsForm({ initialData }: Props) {
     });
   }
 
-  function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) { toast.error('กรุณาเลือกไฟล์รูปภาพ'); return; }
     if (file.size > 500_000) { toast.error('ไฟล์ใหญ่เกิน 500 KB'); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      if (typeof ev.target?.result === 'string') setLogoUrl(ev.target.result);
-    };
-    reader.readAsDataURL(file);
+    const form = new FormData();
+    form.append('file', file);
+    setIsLogoUploading(true);
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: form });
+      if (!res.ok) throw new Error('upload failed');
+      const { url } = await res.json() as { url: string };
+      setLogoUrl(url);
+    } catch { toast.error('อัปโหลดโลโก้ไม่ได้'); }
+    finally { setIsLogoUploading(false); }
     e.target.value = '';
   }
 
@@ -222,9 +228,9 @@ export function StoreSettingsForm({ initialData }: Props) {
                   <img src={logoUrl} alt="โลโก้" style={{ height: logoHeight }} className="max-w-[160px] object-contain rounded border border-slate-200 bg-white p-1" />
                   <div className="space-y-2 flex-1">
                     <div className="flex gap-2">
-                      <label className="cursor-pointer rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-                        <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
-                        เปลี่ยนรูป
+                      <label className={`cursor-pointer rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors ${isLogoUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                        <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={isLogoUploading} />
+                        {isLogoUploading ? 'กำลังอัปโหลด…' : 'เปลี่ยนรูป'}
                       </label>
                       <button type="button" onClick={() => setLogoUrl('')}
                         className="flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 transition-colors">
@@ -240,11 +246,11 @@ export function StoreSettingsForm({ initialData }: Props) {
                   </div>
                 </div>
               ) : (
-                <label className="flex flex-col items-center gap-2 cursor-pointer group">
-                  <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                <label className={`flex flex-col items-center gap-2 cursor-pointer group ${isLogoUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={isLogoUploading} />
                   <div className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-600 group-hover:bg-slate-100 transition-colors w-full justify-center">
                     <ImagePlus className="size-4 text-slate-400" />
-                    เลือกรูปภาพ (PNG / JPG / SVG)
+                    {isLogoUploading ? 'กำลังอัปโหลด…' : 'เลือกรูปภาพ (PNG / JPG / SVG)'}
                   </div>
                   <p className="text-[10px] text-slate-400">แนะนำขนาดไม่เกิน 200 KB</p>
                 </label>
@@ -399,7 +405,7 @@ export function StoreSettingsForm({ initialData }: Props) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+    <div className="rounded-xl bg-white p-4 space-y-3 shadow-sm ring-1 ring-slate-900/5">
       <p className="text-xs font-semibold text-slate-700">{title}</p>
       {children}
     </div>

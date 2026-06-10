@@ -6,14 +6,23 @@ import { authConfig } from '@/lib/auth/config';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { loginSchema } from '@/lib/validations/auth';
+import { isLoginRateLimited } from '@/lib/auth/ratelimit';
 
 export const { auth, handlers, signIn, signOut } = NextAuth({
   ...authConfig,
   providers: [
     Credentials({
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) return null;
+
+        const ip =
+          request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+          request.headers.get('x-real-ip') ??
+          '127.0.0.1';
+
+        const limited = await isLoginRateLimited(ip);
+        if (limited) return null;
 
         const { email, password } = parsed.data;
         const [user] = await db

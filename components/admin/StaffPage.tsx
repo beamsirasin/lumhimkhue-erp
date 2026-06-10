@@ -79,7 +79,7 @@ export function StaffPage({ initialData }: StaffPageProps) {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">จัดการ User</h1>
+        <h1 className="text-lg font-semibold text-slate-900">จัดการ User</h1>
         <button
           type="button"
           onClick={() => setModal({ type: 'add' })}
@@ -89,7 +89,7 @@ export function StaffPage({ initialData }: StaffPageProps) {
         </button>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+      <div className="rounded-xl bg-white overflow-hidden shadow-sm ring-1 ring-slate-900/5">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50">

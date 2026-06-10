@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
+import { writeAuditLog } from '@/lib/actions/audit';
 import { users } from '@/lib/db/schema';
 import {
   createStaffSchema,
@@ -46,7 +47,8 @@ export type StaffMember = NonNullable<
 >[number];
 
 export async function createStaff(input: unknown) {
-  if (!await requireManageUsers()) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+  const session = await requireManageUsers();
+  if (!session) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
   const parsed = createStaffSchema.safeParse(input);
   if (!parsed.success) return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' };
 
@@ -55,13 +57,21 @@ export async function createStaff(input: unknown) {
     if (existing) return { ok: false as const, error: 'อีเมลนี้ถูกใช้งานแล้ว' };
 
     const passwordHash = await bcrypt.hash(parsed.data.password, 12);
-    await db.insert(users).values({
+    const [newUser] = await db.insert(users).values({
       email: parsed.data.email,
       name: parsed.data.name,
       role: parsed.data.role,
       passwordHash,
-    });
+    }).returning({ id: users.id });
     revalidatePath('/users');
+    writeAuditLog({
+      userId: session.user.id,
+      role: session.user.role,
+      action: 'create',
+      entity: 'users',
+      entityId: newUser.id,
+      after: { email: parsed.data.email, name: parsed.data.name, role: parsed.data.role },
+    });
     return { ok: true as const };
   } catch (e) {
     console.error('[createStaff]', e);
@@ -82,6 +92,14 @@ export async function updateStaff(input: unknown) {
 
     await db.update(users).set({ email: data.email, name: data.name, role: data.role }).where(eq(users.id, id));
     revalidatePath('/users');
+    writeAuditLog({
+      userId: session.user.id,
+      role: session.user.role,
+      action: 'update',
+      entity: 'users',
+      entityId: id,
+      after: { email: data.email, name: data.name, role: data.role },
+    });
     return { ok: true as const };
   } catch (e) {
     console.error('[updateStaff]', e);
@@ -90,12 +108,20 @@ export async function updateStaff(input: unknown) {
 }
 
 export async function resetStaffPassword(input: unknown) {
-  if (!await requireManageUsers()) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+  const session = await requireManageUsers();
+  if (!session) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
   const parsed = resetPasswordSchema.safeParse(input);
   if (!parsed.success) return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' };
   try {
     const passwordHash = await bcrypt.hash(parsed.data.password, 12);
     await db.update(users).set({ passwordHash }).where(eq(users.id, parsed.data.id));
+    writeAuditLog({
+      userId: session.user.id,
+      role: session.user.role,
+      action: 'reset_password',
+      entity: 'users',
+      entityId: parsed.data.id,
+    });
     return { ok: true as const };
   } catch (e) {
     console.error('[resetStaffPassword]', e);
@@ -110,6 +136,13 @@ export async function deleteStaff(id: string) {
   try {
     await db.delete(users).where(eq(users.id, id));
     revalidatePath('/users');
+    writeAuditLog({
+      userId: session.user.id,
+      role: session.user.role,
+      action: 'delete',
+      entity: 'users',
+      entityId: id,
+    });
     return { ok: true as const };
   } catch (e) {
     console.error('[deleteStaff]', e);

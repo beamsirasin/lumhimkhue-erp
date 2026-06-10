@@ -115,7 +115,7 @@ export function MenuPage({ initialData }: MenuPageProps) {
     <div className="p-6 space-y-6">
       {confirmDialog}
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">จัดการเมนู</h1>
+        <h1 className="text-lg font-semibold text-slate-900">จัดการเมนู</h1>
         <button
           type="button"
           onClick={() => setModal({ type: 'addCat' })}
@@ -176,7 +176,7 @@ export function MenuPage({ initialData }: MenuPageProps) {
         {/* Items panel */}
         <div className="lg:col-span-3">
           {selectedCat ? (
-            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+            <div className="rounded-xl bg-white overflow-hidden shadow-sm ring-1 ring-slate-900/5">
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                 <div className="flex items-center gap-3">
                   <span className="font-semibold text-slate-900">{selectedCat.name}</span>
@@ -494,6 +494,7 @@ function MenuItemForm({
   const [zoom, setZoom] = useState(1);
   const [aspect, setAspect] = useState<number | undefined>(1);
   const [croppedArea, setCroppedArea] = useState<Area | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const onCropComplete = useCallback((_: Area, pixels: Area) => {
     setCroppedArea(pixels);
@@ -514,10 +515,19 @@ function MenuItemForm({
 
   async function handleCropConfirm() {
     if (!cropSrc || !croppedArea) return;
+    setIsUploading(true);
     try {
-      const result = await applyCrop(cropSrc, croppedArea);
-      setValue('imageUrl' as never, result as never);
-    } catch { toast.error('ครอบรูปไม่ได้'); }
+      const base64 = await applyCrop(cropSrc, croppedArea);
+      const fetchRes = await fetch(base64);
+      const blob = await fetchRes.blob();
+      const form = new FormData();
+      form.append('file', blob, 'image.jpg');
+      const uploadRes = await fetch('/api/upload', { method: 'POST', body: form });
+      if (!uploadRes.ok) throw new Error('upload failed');
+      const { url } = await uploadRes.json() as { url: string };
+      setValue('imageUrl' as never, url as never);
+    } catch { toast.error('อัปโหลดรูปไม่ได้'); }
+    finally { setIsUploading(false); }
     setCropSrc(null);
   }
 
@@ -591,8 +601,8 @@ function MenuItemForm({
             <button type="button" onClick={() => setCropSrc(null)} className="flex-1 rounded-lg border border-slate-200 py-2 text-sm text-slate-700 hover:bg-slate-50">
               ยกเลิก
             </button>
-            <button type="button" onClick={handleCropConfirm} className="flex-1 rounded-lg bg-slate-800 py-2 text-sm font-medium text-white hover:bg-slate-700">
-              ยืนยัน
+            <button type="button" onClick={handleCropConfirm} disabled={isUploading} className="flex-1 rounded-lg bg-slate-800 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50">
+              {isUploading ? 'กำลังอัปโหลด…' : 'ยืนยัน'}
             </button>
           </div>
         </div>

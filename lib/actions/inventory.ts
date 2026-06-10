@@ -5,12 +5,14 @@ import { eq, asc, desc, sql, and, lt } from 'drizzle-orm';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
+import { writeAuditLog } from '@/lib/actions/audit';
 import {
   ingredientCategories,
   ingredients,
   suppliers,
   stockCounts,
   stockCountItems,
+  stockCountAdjustments,
   purchaseOrders,
   purchaseOrderItems,
 } from '@/lib/db/schema';
@@ -20,6 +22,7 @@ import {
   createSupplierSchema,
   updateSupplierSchema,
   saveStockCountSchema,
+  createStockAdjustmentSchema,
   createPurchaseOrderSchema,
   updatePurchaseOrderSchema,
   receivePurchaseOrderSchema,
@@ -292,10 +295,14 @@ export async function saveStockCount(input: unknown) {
         where: eq(stockCounts.countDate, countDate),
       });
 
+      // Submitted counts are immutable — use createStockAdjustment for corrections
+      if (existing?.status === 'submitted') {
+        return { ok: false as const, error: 'ไม่สามารถแก้ไขการนับสต็อกที่ส่งแล้ว' };
+      }
+
       let countId: string;
 
       if (existing) {
-        // if already submitted and we're trying to save draft, reopen it
         await tx.update(stockCounts).set({
           status: asDraft ? 'draft' : 'submitted',
           notes: notes ?? null,
@@ -333,11 +340,22 @@ export async function saveStockCount(input: unknown) {
         );
       }
 
-      return { countId };
+      return { ok: true as const, countId };
     });
 
+    if (!result.ok) return result;
     revalidatePath('/inventory/count');
     revalidatePath('/inventory');
+    if (!asDraft) {
+      writeAuditLog({
+        userId,
+        role: session.user.role,
+        action: 'submit',
+        entity: 'stock_counts',
+        entityId: result.countId,
+        after: { countDate, itemCount: items.length },
+      });
+    }
     return { ok: true as const, countId: result.countId };
   } catch (e) {
     console.error('[saveStockCount]', e);
@@ -365,6 +383,45 @@ export async function getLowStockItems(countId: string) {
 export type LowStockItem = NonNullable<
   Extract<Awaited<ReturnType<typeof getLowStockItems>>, { ok: true }>['data']
 >[number];
+
+export async function createStockAdjustment(input: unknown) {
+  const session = await requireStockCount();
+  if (!session) return { ok: false as const, error: 'ไม่มีสิทธิ์' };
+  const parsed = createStockAdjustmentSchema.safeParse(input);
+  if (!parsed.success) return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' };
+  const { stockCountId, ingredientId, adjustmentQty, reason } = parsed.data;
+  const userId = session.user.id as string;
+
+  try {
+    const count = await db.query.stockCounts.findFirst({
+      where: eq(stockCounts.id, stockCountId),
+    });
+    if (!count) return { ok: false as const, error: 'ไม่พบข้อมูลการนับ' };
+    if (count.status !== 'submitted') return { ok: false as const, error: 'สามารถปรับปรุงได้เฉพาะการนับที่ส่งแล้ว' };
+
+    const [adj] = await db.insert(stockCountAdjustments).values({
+      stockCountId,
+      ingredientId,
+      adjustmentQty: String(adjustmentQty.toFixed(2)),
+      reason,
+      createdBy: userId,
+    }).returning({ id: stockCountAdjustments.id });
+
+    revalidatePath('/inventory/count');
+    writeAuditLog({
+      userId,
+      role: session.user.role,
+      action: 'adjust',
+      entity: 'stock_count_adjustments',
+      entityId: adj.id,
+      after: { stockCountId, ingredientId, adjustmentQty, reason },
+    });
+    return { ok: true as const, data: { id: adj.id } };
+  } catch (e) {
+    console.error('[createStockAdjustment]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
 
 export async function getStockCountHistory() {
   if (!await requireView()) return { ok: false as const, error: 'ไม่มีสิทธิ์' };
@@ -608,7 +665,8 @@ export async function confirmOrder(id: string) {
 }
 
 export async function receiveOrder(input: unknown) {
-  if (!await requirePO()) return { ok: false as const, error: 'ไม่มีสิทธิ์' };
+  const poSession = await requirePO();
+  if (!poSession) return { ok: false as const, error: 'ไม่มีสิทธิ์' };
   const parsed = receivePurchaseOrderSchema.safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
   const { id, items, hasTaxInvoice, taxInvoiceNumber } = parsed.data;
@@ -652,6 +710,14 @@ export async function receiveOrder(input: unknown) {
     revalidatePath(`/inventory/orders/${id}`);
     revalidatePath('/inventory/ingredients');
     revalidatePath('/inventory');
+    writeAuditLog({
+      userId: poSession.user.id,
+      role: poSession.user.role,
+      action: 'receive',
+      entity: 'purchase_orders',
+      entityId: id,
+      after: { hasTaxInvoice, taxInvoiceNumber: taxInvoiceNumber ?? null, itemCount: items.length },
+    });
     return { ok: true as const };
   } catch (e) {
     console.error('[receiveOrder]', e);
@@ -753,3 +819,74 @@ export async function getInventoryDashboard() {
 export type InventoryDashboardData = NonNullable<
   Extract<Awaited<ReturnType<typeof getInventoryDashboard>>, { ok: true }>['data']
 >;
+
+// ── PO Approval Workflow ──────────────────────────────────────────────────────
+
+async function requireApprove() {
+  const s = await auth();
+  if (!s?.user || !can(s.user.role, 'purchase_order:approve')) return null;
+  return s;
+}
+
+export async function submitForApproval(id: string) {
+  if (!await requirePO()) return { ok: false as const, error: 'ไม่มีสิทธิ์' };
+  try {
+    const [po] = await db.select({ status: purchaseOrders.status }).from(purchaseOrders).where(eq(purchaseOrders.id, id)).limit(1);
+    if (!po) return { ok: false as const, error: 'ไม่พบใบสั่งซื้อ' };
+    if (po.status !== 'draft') return { ok: false as const, error: 'ส่งอนุมัติได้เฉพาะ PO ที่เป็น Draft' };
+    await db.update(purchaseOrders).set({ status: 'pending_approval', updatedAt: new Date() }).where(eq(purchaseOrders.id, id));
+    revalidatePath('/inventory/orders');
+    revalidatePath('/inventory');
+    return { ok: true as const };
+  } catch (e) {
+    console.error('[submitForApproval]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+export async function approveOrder(id: string) {
+  if (!await requireApprove()) return { ok: false as const, error: 'ไม่มีสิทธิ์' };
+  try {
+    const [po] = await db.select({ status: purchaseOrders.status }).from(purchaseOrders).where(eq(purchaseOrders.id, id)).limit(1);
+    if (!po) return { ok: false as const, error: 'ไม่พบใบสั่งซื้อ' };
+    if (po.status !== 'pending_approval') return { ok: false as const, error: 'อนุมัติได้เฉพาะ PO ที่รอการอนุมัติ' };
+    await db.update(purchaseOrders).set({ status: 'ordered', updatedAt: new Date() }).where(eq(purchaseOrders.id, id));
+    revalidatePath('/inventory/orders');
+    revalidatePath('/inventory');
+    return { ok: true as const };
+  } catch (e) {
+    console.error('[approveOrder]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+// ── Alert Count (no auth check — called from server layout after auth) ────────
+
+export async function getInventoryAlertCount(): Promise<{ lowStockCount: number; pendingApprovalCount: number }> {
+  try {
+    const [latestCount, pendingPoCount] = await Promise.all([
+      db.query.stockCounts.findFirst({
+        where: eq(stockCounts.status, 'submitted'),
+        orderBy: [desc(stockCounts.countDate)],
+        with: {
+          items: {
+            with: { ingredient: { columns: { id: true, minStock: true } } },
+          },
+        },
+      }),
+      db.select({ count: sql<number>`count(*)::int` })
+        .from(purchaseOrders)
+        .where(eq(purchaseOrders.status, 'pending_approval')),
+    ]);
+
+    const lowStockCount = latestCount
+      ? latestCount.items.filter(
+          (item) => Number(item.quantityOnHand) < Number(item.ingredient.minStock),
+        ).length
+      : 0;
+
+    return { lowStockCount, pendingApprovalCount: pendingPoCount[0].count };
+  } catch {
+    return { lowStockCount: 0, pendingApprovalCount: 0 };
+  }
+}

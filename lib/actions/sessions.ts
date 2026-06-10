@@ -8,6 +8,7 @@ import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
 import { sessions, tables, sessionGuests, pricingTiles, reservations } from '@/lib/db/schema';
 import { z } from 'zod';
+import { writeAuditLog } from '@/lib/actions/audit';
 
 /* ─── Shared schemas ─────────────────────────────────────────────────── */
 
@@ -140,6 +141,14 @@ export async function openSession(input: unknown) {
 
     revalidatePath('/tables');
     revalidatePath('/pos');
+    writeAuditLog({
+      userId: authSession.user.id,
+      role: authSession.user.role,
+      action: 'create',
+      entity: 'sessions',
+      entityId: newSession.id,
+      after: { tableId, linkedTableIds, sessionToken: newSession.sessionToken },
+    });
     return {
       ok: true as const,
       data: {
@@ -191,6 +200,13 @@ export async function closeSession(input: { sessionId: string }) {
 
     revalidatePath('/tables');
     revalidatePath('/pos');
+    writeAuditLog({
+      userId: authSession.user.id,
+      role: authSession.user.role,
+      action: 'close',
+      entity: 'sessions',
+      entityId: input.sessionId,
+    });
     return { ok: true as const };
   } catch (e) {
     console.error('[closeSession]', e);
