@@ -1143,6 +1143,24 @@ export const storeSettings = pgTable('store_settings', {
   billTaxInvoiceConfig:  jsonb('bill_tax_invoice_config').$type<BillConfig>(),
 });
 
+// ─── Monthly Expenses (P&L manual entries) ───────────────────────────────────
+
+export const monthlyExpenseCategoryEnum = pgEnum('monthly_expense_category', [
+  'rent', 'electricity', 'water', 'other',
+]);
+
+export const monthlyExpenses = pgTable('monthly_expenses', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** YYYY-MM */
+  month: varchar('month', { length: 7 }).notNull(),
+  category: monthlyExpenseCategoryEnum('category').notNull(),
+  amount: numeric('amount', { precision: 12, scale: 2 }).notNull().default('0'),
+  note: varchar('note', { length: 255 }),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('monthly_expenses_month_cat_unique').on(t.month, t.category),
+]);
+
 // ─── Inferred Types ───────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;
@@ -1219,3 +1237,9 @@ export type Recipe = typeof recipes.$inferSelect;
 export type NewRecipe = typeof recipes.$inferInsert;
 export type RecipeIngredient = typeof recipeIngredients.$inferSelect;
 export type NewRecipeIngredient = typeof recipeIngredients.$inferInsert;
+
+// ─── Monthly Expense Types ─────────────────────────────────────────────────────
+
+export type MonthlyExpense = typeof monthlyExpenses.$inferSelect;
+export type NewMonthlyExpense = typeof monthlyExpenses.$inferInsert;
+export type MonthlyExpenseCategory = typeof monthlyExpenseCategoryEnum.enumValues[number];

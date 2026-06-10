@@ -1,14 +1,14 @@
 'use server';
 
-import { eq, gte, and, not, desc, asc } from 'drizzle-orm';
+import { eq, gte, lt, and, not, desc, asc, inArray, isNull } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { format } from 'date-fns';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
-import { startOfDay, subDays } from 'date-fns';
+import { startOfDay, startOfISOWeek, startOfMonth, subDays, addDays, addMonths, subMonths, differenceInCalendarDays } from 'date-fns';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
-import { payments, sessions, sessionGuests, tables, orderItems, orders, menuItems } from '@/lib/db/schema';
+import { payments, sessions, sessionGuests, tables, orderItems, orders, menuItems, recipes, recipeIngredients, ingredients, payrollCycles, payrollItems } from '@/lib/db/schema';
 
 // Pre-aggregated guest totals per session — used as a derived table to replace
 // correlated subqueries. Joining once is O(n) vs O(n * index_lookup) per row.
@@ -209,3 +209,183 @@ export async function getReportSummary(fromDate: string, toDate: string) {
 export type ReportSummary = NonNullable<
   Extract<Awaited<ReturnType<typeof getReportSummary>>, { ok: true }>['data']
 >;
+
+// ── Period KPIs ───────────────────────────────────────────────────────────────
+
+export type KpiMetric = {
+  value: number;
+  prevValue: number;
+  changePct: number | null;
+  changeDir: 'up' | 'down' | 'flat';
+};
+
+export type PeriodKpis = {
+  period: 'today' | 'week' | 'month';
+  days: number;
+  revenue: KpiMetric;
+  sessions: KpiMetric;
+  guests: KpiMetric;
+  avgPerSession: KpiMetric;
+  foodCostPct: KpiMetric & { available: boolean };
+  laborCostPct: KpiMetric & { available: boolean };
+  avgTableTurns: KpiMetric;
+  revpash: KpiMetric;
+};
+
+function mkKpi(value: number, prevValue: number): KpiMetric {
+  const changePct = prevValue > 0 ? ((value - prevValue) / prevValue) * 100 : null;
+  const changeDir: KpiMetric['changeDir'] =
+    changePct === null ? 'flat' : changePct > 0.5 ? 'up' : changePct < -0.5 ? 'down' : 'flat';
+  return { value, prevValue, changePct, changeDir };
+}
+
+function periodRanges(period: 'today' | 'week' | 'month') {
+  const zonedNow = toZonedTime(new Date(), TZ);
+  if (period === 'today') {
+    const d = startOfDay(zonedNow);
+    return {
+      curStart: fromZonedTime(d, TZ),
+      curEnd: fromZonedTime(addDays(d, 1), TZ),
+      prevStart: fromZonedTime(subDays(d, 1), TZ),
+      prevEnd: fromZonedTime(d, TZ),
+      days: 1,
+    };
+  }
+  if (period === 'week') {
+    const w = startOfISOWeek(zonedNow);
+    return {
+      curStart: fromZonedTime(w, TZ),
+      curEnd: fromZonedTime(addDays(w, 7), TZ),
+      prevStart: fromZonedTime(subDays(w, 7), TZ),
+      prevEnd: fromZonedTime(w, TZ),
+      days: 7,
+    };
+  }
+  const m = startOfMonth(zonedNow);
+  const next = addMonths(m, 1);
+  const prev = subMonths(m, 1);
+  return {
+    curStart: fromZonedTime(m, TZ),
+    curEnd: fromZonedTime(next, TZ),
+    prevStart: fromZonedTime(prev, TZ),
+    prevEnd: fromZonedTime(m, TZ),
+    days: differenceInCalendarDays(next, m),
+  };
+}
+
+async function queryPeriodRevenue(start: Date, end: Date) {
+  const [row] = await db
+    .select({
+      revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
+      sessionCount: sql<number>`count(*)`,
+      guests: sql<number>`coalesce(sum("guest_sums"."total"), 0)`,
+    })
+    .from(payments)
+    .innerJoin(sessions, eq(payments.sessionId, sessions.id))
+    .leftJoin(guestSums, eq(guestSums.sessionId, sessions.id))
+    .where(and(gte(payments.paidAt, start), lt(payments.paidAt, end)));
+  return { revenue: Number(row.revenue), sessions: Number(row.sessionCount), guests: Number(row.guests) };
+}
+
+async function queryPeriodFoodCost(start: Date, end: Date): Promise<number> {
+  try {
+    const served = await db
+      .select({
+        menuItemId: orderItems.menuItemId,
+        qty: sql<string>`sum(${orderItems.quantity})`,
+      })
+      .from(orderItems)
+      .where(and(
+        eq(orderItems.status, 'served'),
+        gte(orderItems.servedAt, start),
+        lt(orderItems.servedAt, end),
+        not(isNull(orderItems.menuItemId)),
+      ))
+      .groupBy(orderItems.menuItemId);
+
+    if (!served.length) return 0;
+    const ids = served.map((r) => r.menuItemId!).filter(Boolean);
+    const activeRecipes = await db.query.recipes.findMany({
+      where: and(inArray(recipes.menuItemId, ids), eq(recipes.isActive, true)),
+      with: { ingredients: { with: { ingredient: { columns: { lastCost: true } } } } },
+    });
+    const costByItem = new Map<string, number>();
+    for (const rec of activeRecipes) {
+      if (!costByItem.has(rec.menuItemId)) {
+        const raw = rec.ingredients.reduce((s, ri) => s + parseFloat(ri.ingredient.lastCost) * parseFloat(ri.quantity), 0);
+        costByItem.set(rec.menuItemId, raw / rec.servingSize);
+      }
+    }
+    return served.reduce((s, r) => s + (costByItem.get(r.menuItemId!) ?? 0) * parseFloat(r.qty), 0);
+  } catch { return -1; }
+}
+
+async function queryPeriodLaborCost(start: Date, end: Date): Promise<number> {
+  try {
+    const startStr = format(toZonedTime(start, TZ), 'yyyy-MM-dd');
+    const endStr = format(toZonedTime(end, TZ), 'yyyy-MM-dd');
+    const cycles = await db
+      .select({ id: payrollCycles.id })
+      .from(payrollCycles)
+      .where(and(gte(payrollCycles.payDate, startStr), lt(payrollCycles.payDate, endStr)));
+    if (!cycles.length) return -1;
+    const [row] = await db
+      .select({ total: sql<number>`coalesce(sum(${payrollItems.gross}::numeric), 0)` })
+      .from(payrollItems)
+      .where(inArray(payrollItems.payrollCycleId, cycles.map((c) => c.id)));
+    return Number(row.total);
+  } catch { return -1; }
+}
+
+export async function getDashboardKpisForPeriod(period: 'today' | 'week' | 'month') {
+  const session = await requireOwner();
+  if (!session) return { ok: false as const, error: 'ไม่มีสิทธิ์' };
+
+  try {
+    const { curStart, curEnd, prevStart, prevEnd, days } = periodRanges(period);
+
+    const [cur, prev, totalCapacity, curFoodCost, prevFoodCost, curLabor, prevLabor] = await Promise.all([
+      queryPeriodRevenue(curStart, curEnd),
+      queryPeriodRevenue(prevStart, prevEnd),
+      db.select({ cap: sql<number>`coalesce(sum(${tables.capacity}), 1)` })
+        .from(tables)
+        .where(isNull(tables.deletedAt)),
+      queryPeriodFoodCost(curStart, curEnd),
+      queryPeriodFoodCost(prevStart, prevEnd),
+      queryPeriodLaborCost(curStart, curEnd),
+      queryPeriodLaborCost(prevStart, prevEnd),
+    ]);
+
+    const totalSeats = Math.max(1, Number(totalCapacity[0].cap));
+
+    const avgPerSession = cur.sessions > 0 ? cur.revenue / cur.sessions : 0;
+    const prevAvgPerSession = prev.sessions > 0 ? prev.revenue / prev.sessions : 0;
+    const avgTableTurns = days > 0 ? cur.sessions / days : 0;
+    const prevAvgTableTurns = days > 0 ? prev.sessions / days : 0;
+    const revpash = days > 0 ? cur.revenue / (totalSeats * days) : 0;
+    const prevRevpash = days > 0 ? prev.revenue / (totalSeats * days) : 0;
+
+    const foodCostPctVal = curFoodCost >= 0 && cur.revenue > 0 ? (curFoodCost / cur.revenue) * 100 : 0;
+    const prevFoodCostPctVal = prevFoodCost >= 0 && prev.revenue > 0 ? (prevFoodCost / prev.revenue) * 100 : 0;
+    const laborCostPctVal = curLabor >= 0 && cur.revenue > 0 ? (curLabor / cur.revenue) * 100 : 0;
+    const prevLaborCostPctVal = prevLabor >= 0 && prev.revenue > 0 ? (prevLabor / prev.revenue) * 100 : 0;
+
+    const kpis: PeriodKpis = {
+      period,
+      days,
+      revenue: mkKpi(cur.revenue, prev.revenue),
+      sessions: mkKpi(cur.sessions, prev.sessions),
+      guests: mkKpi(cur.guests, prev.guests),
+      avgPerSession: mkKpi(avgPerSession, prevAvgPerSession),
+      foodCostPct: { ...mkKpi(foodCostPctVal, prevFoodCostPctVal), available: curFoodCost >= 0 },
+      laborCostPct: { ...mkKpi(laborCostPctVal, prevLaborCostPctVal), available: curLabor >= 0 },
+      avgTableTurns: mkKpi(avgTableTurns, prevAvgTableTurns),
+      revpash: mkKpi(revpash, prevRevpash),
+    };
+
+    return { ok: true as const, data: kpis };
+  } catch (e) {
+    console.error('[getDashboardKpisForPeriod]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
