@@ -36,6 +36,8 @@ import {
   Clock,
   Wallet,
   BookOpen,
+  CalendarDays,
+  GitBranch,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -134,15 +136,17 @@ const NAV: Record<Role, NavSection[]> = {
     {
       heading: 'จัดการ',
       items: [
-        { href: '/dashboard',     label: 'แดชบอร์ด',     Icon: LayoutDashboard },
-        { href: '/menu',          label: 'เมนูอาหาร',    Icon: UtensilsCrossed },
-        { href: '/recipes',       label: 'สูตรอาหาร',    Icon: BookOpen },
-        { href: '/pricing-tiles', label: 'Pricing Tiles', Icon: Tag },
+        { href: '/dashboard',     label: 'แดชบอร์ด',      Icon: LayoutDashboard },
+        { href: '/reservations',  label: 'จองโต๊ะ',        Icon: CalendarDays },
+        { href: '/menu',          label: 'เมนูอาหาร',     Icon: UtensilsCrossed },
+        { href: '/recipes',       label: 'สูตรอาหาร',     Icon: BookOpen },
+        { href: '/pricing-tiles', label: 'Pricing Tiles',  Icon: Tag },
         hrGroup,
-        { href: '/reports',       label: 'รายงาน',        Icon: BarChart3 },
-        { href: '/settings',      label: 'ตั้งค่าบิล',    Icon: Settings },
-        { href: '/printers',      label: 'เครื่องพิมพ์',  Icon: Printer },
-        { href: '/system',        label: 'ข้อมูลระบบ',    Icon: Info },
+        { href: '/reports',       label: 'รายงาน',         Icon: BarChart3 },
+        { href: '/settings',      label: 'ตั้งค่าบิล',     Icon: Settings },
+        { href: '/printers',      label: 'เครื่องพิมพ์',   Icon: Printer },
+        { href: '/branches',      label: 'สาขา',            Icon: GitBranch },
+        { href: '/system',        label: 'ข้อมูลระบบ',     Icon: Info },
         inventoryGroup,
       ],
     },
@@ -217,6 +221,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/hr/time':               'บันทึกเวลา',
   '/hr/payroll':            'เงินเดือน',
   '/hr/settings':           'ตั้งค่า HR',
+  '/reservations':          'การจองโต๊ะ',
+  '/branches':              'จัดการสาขา',
 };
 
 const ROLE_LABEL: Record<Role, string> = {

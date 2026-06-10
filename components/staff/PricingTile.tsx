@@ -1,6 +1,7 @@
 'use client';
 
-import { Users, Package, Tag } from 'lucide-react';
+import type React from 'react';
+import { Users, Package, Tag, Gift } from 'lucide-react';
 import type { PricingTile as PricingTileType } from '@/lib/db/schema';
 
 export type TileMode = 'select' | 'edit' | 'display' | 'tap';
@@ -14,10 +15,11 @@ interface PricingTileProps {
   onEdit?: () => void;
 }
 
-const CATEGORY_ICON = {
+const CATEGORY_ICON: Record<string, React.ElementType> = {
   guest: Users,
   addon: Package,
   discount: Tag,
+  loyalty: Gift,
 };
 
 const DEFAULT_BG: Record<string, string> = {

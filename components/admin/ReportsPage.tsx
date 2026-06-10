@@ -12,13 +12,19 @@ import { getPayrollCycles, getPayrollSsfReport } from '@/lib/actions/hr';
 import { getFoodCostReport } from '@/lib/actions/recipes';
 import { getProfitLossReport, upsertMonthlyExpense } from '@/lib/actions/reports/pl';
 import { getMenuPerformanceReport } from '@/lib/actions/reports/menu-performance';
+import { getVatReport } from '@/lib/actions/reports/vat-report';
+import { getWhtReport } from '@/lib/actions/reports/wht-report';
+import { getSsfReport } from '@/lib/actions/reports/ssf-report';
 import type { ReportSummary } from '@/lib/actions/dashboard';
 import type { SsfReportRow } from '@/lib/actions/hr';
 import type { FoodCostRow } from '@/lib/actions/recipes';
 import type { PLReport } from '@/lib/actions/reports/pl';
 import type { MenuPerformanceRow } from '@/lib/actions/reports/menu-performance';
+import type { VatReport } from '@/lib/actions/reports/vat-report';
+import type { WhtReport } from '@/lib/actions/reports/wht-report';
+import type { SsfReport } from '@/lib/actions/reports/ssf-report';
 
-type Tab = 'revenue' | 'ssf' | 'foodcost' | 'pl' | 'menu';
+type Tab = 'revenue' | 'ssf' | 'foodcost' | 'pl' | 'menu' | 'vat' | 'wht' | 'ssf_tax';
 
 // ─── Revenue Report ────────────────────────────────────────────────────────────
 
@@ -642,6 +648,275 @@ function MenuReport() {
   );
 }
 
+// ─── VAT Report (ภ.พ.30) ───────────────────────────────────────────────────────
+
+function VatReportTab() {
+  const thisMonth = format(new Date(), 'yyyy-MM');
+  const [month, setMonth] = useState(thisMonth);
+  const [loading, setLoading] = useState(false);
+  const [report, setReport] = useState<VatReport | null>(null);
+
+  async function handleQuery() {
+    setLoading(true);
+    const r = await getVatReport(month);
+    setLoading(false);
+    if (!r.ok) { toast.error(r.error); return; }
+    setReport(r.data);
+  }
+
+  const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5">
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">เดือน</label>
+          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500" />
+        </div>
+        <button type="button" onClick={handleQuery} disabled={loading}
+          className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50">
+          {loading ? 'กำลังดึงข้อมูล…' : 'ดูรายงาน'}
+        </button>
+      </div>
+
+      {report && (
+        <>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5 text-center">
+              <p className="text-xs text-slate-500">ภาษีขาย (Output VAT)</p>
+              <p className="mt-1 text-xl font-bold text-slate-900">฿{fmt(report.outputVat)}</p>
+            </div>
+            <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5 text-center">
+              <p className="text-xs text-slate-500">ภาษีซื้อ (Input VAT)</p>
+              <p className="mt-1 text-xl font-bold text-slate-900">฿{fmt(report.inputVat)}</p>
+            </div>
+            <div className={`rounded-xl p-4 shadow-sm ring-1 ring-slate-900/5 text-center ${report.netVat >= 0 ? 'bg-red-50' : 'bg-green-50'}`}>
+              <p className="text-xs text-slate-500">ภาษีต้องชำระ</p>
+              <p className={`mt-1 text-xl font-bold ${report.netVat >= 0 ? 'text-red-700' : 'text-green-700'}`}>
+                ฿{fmt(Math.abs(report.netVat))} {report.netVat >= 0 ? '(ต้องจ่าย)' : '(ขอคืนได้)'}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-xl bg-white overflow-hidden shadow-sm ring-1 ring-slate-900/5">
+            <div className="px-4 py-3 bg-blue-50 border-b border-slate-100">
+              <p className="text-sm font-semibold text-blue-800">ภาษีขาย (จากยอดขาย {report.outputRows.length} รายการ)</p>
+            </div>
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr><Th>วันที่</Th><Th>เลขใบเสร็จ</Th><Th align="right">ยอดก่อนภาษี</Th><Th align="right">VAT {report.vatRate}%</Th><Th align="right">ยอดรวม</Th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {report.outputRows.map((r, i) => (
+                  <tr key={i}>
+                    <Td>{r.date}</Td>
+                    <Td><span className="font-mono text-xs">{r.refNo}</span></Td>
+                    <Td align="right">฿{fmt(r.baseAmount)}</Td>
+                    <Td align="right">฿{fmt(r.vatAmount)}</Td>
+                    <Td align="right">฿{fmt(r.total)}</Td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-slate-50 border-t border-slate-200 font-semibold">
+                <tr>
+                  <td colSpan={2} className="px-4 py-3 text-sm">รวม</td>
+                  <Td align="right">฿{fmt(report.outputBase)}</Td>
+                  <Td align="right">฿{fmt(report.outputVat)}</Td>
+                  <Td align="right">฿{fmt(report.outputBase + report.outputVat)}</Td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          {report.inputRows.length > 0 && (
+            <div className="rounded-xl bg-white overflow-hidden shadow-sm ring-1 ring-slate-900/5">
+              <div className="px-4 py-3 bg-emerald-50 border-b border-slate-100">
+                <p className="text-sm font-semibold text-emerald-800">ภาษีซื้อ (จากใบสั่งซื้อ {report.inputRows.length} รายการ)</p>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-100">
+                  <tr><Th>วันที่รับสินค้า</Th><Th>เลขใบกำกับภาษี</Th><Th align="right">ยอดก่อนภาษี</Th><Th align="right">VAT</Th><Th align="right">ยอดรวม</Th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {report.inputRows.map((r, i) => (
+                    <tr key={i}>
+                      <Td>{r.date}</Td>
+                      <Td><span className="font-mono text-xs">{r.refNo}</span></Td>
+                      <Td align="right">฿{fmt(r.baseAmount)}</Td>
+                      <Td align="right">฿{fmt(r.vatAmount)}</Td>
+                      <Td align="right">฿{fmt(r.total)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-slate-50 border-t border-slate-200 font-semibold">
+                  <tr>
+                    <td colSpan={2} className="px-4 py-3 text-sm">รวม</td>
+                    <Td align="right">฿{fmt(report.inputBase)}</Td>
+                    <Td align="right">฿{fmt(report.inputVat)}</Td>
+                    <Td align="right">฿{fmt(report.inputBase + report.inputVat)}</Td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── WHT Report (ภ.ง.ด.1) ─────────────────────────────────────────────────────
+
+function WhtReportTab() {
+  const thisMonth = format(new Date(), 'yyyy-MM');
+  const [month, setMonth] = useState(thisMonth);
+  const [loading, setLoading] = useState(false);
+  const [report, setReport] = useState<WhtReport | null>(null);
+
+  async function handleQuery() {
+    setLoading(true);
+    const r = await getWhtReport(month);
+    setLoading(false);
+    if (!r.ok) { toast.error(r.error); return; }
+    setReport(r.data);
+  }
+
+  const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5">
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">เดือน</label>
+          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500" />
+        </div>
+        <button type="button" onClick={handleQuery} disabled={loading}
+          className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50">
+          {loading ? 'กำลังดึงข้อมูล…' : 'ดูรายงาน'}
+        </button>
+      </div>
+
+      {report && (
+        <div className="rounded-xl bg-white overflow-hidden shadow-sm ring-1 ring-slate-900/5">
+          <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center">
+            <p className="text-sm font-semibold text-slate-800">ภ.ง.ด.1 — ภาษีหัก ณ ที่จ่าย เดือน {month}</p>
+            <div className="flex gap-4 text-sm">
+              <span className="text-slate-500">เงินได้: <strong className="text-slate-800">฿{fmt(report.totalGross)}</strong></span>
+              <span className="text-red-600">ภาษีหัก: <strong>฿{fmt(report.totalWht)}</strong></span>
+            </div>
+          </div>
+          {report.rows.length === 0 ? (
+            <p className="p-8 text-center text-sm text-slate-400">ไม่มีข้อมูลภาษีหัก ณ ที่จ่ายในเดือนนี้</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr><Th>ชื่อพนักงาน</Th><Th>เลขประจำตัวประชาชน</Th><Th align="right">เงินได้สุทธิ</Th><Th align="right">ภาษีหัก ณ ที่จ่าย</Th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {report.rows.map((r) => (
+                  <tr key={r.employeeId}>
+                    <Td>{r.fullName}</Td>
+                    <Td><span className="font-mono text-xs">{r.nationalId ?? '—'}</span></Td>
+                    <Td align="right">฿{fmt(r.gross)}</Td>
+                    <Td align="right" className="text-red-600">฿{fmt(r.withholdingTax)}</Td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-slate-50 border-t border-slate-200 font-semibold">
+                <tr>
+                  <td colSpan={2} className="px-4 py-3 text-sm">รวม</td>
+                  <Td align="right">฿{fmt(report.totalGross)}</Td>
+                  <Td align="right" className="text-red-600">฿{fmt(report.totalWht)}</Td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── SSF Tax Report (ประกันสังคม) ─────────────────────────────────────────────
+
+function SsfTaxTab() {
+  const thisMonth = format(new Date(), 'yyyy-MM');
+  const [month, setMonth] = useState(thisMonth);
+  const [loading, setLoading] = useState(false);
+  const [report, setReport] = useState<SsfReport | null>(null);
+
+  async function handleQuery() {
+    setLoading(true);
+    const r = await getSsfReport(month);
+    setLoading(false);
+    if (!r.ok) { toast.error(r.error); return; }
+    setReport(r.data);
+  }
+
+  const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5">
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">เดือน</label>
+          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500" />
+        </div>
+        <button type="button" onClick={handleQuery} disabled={loading}
+          className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50">
+          {loading ? 'กำลังดึงข้อมูล…' : 'ดูรายงาน'}
+        </button>
+      </div>
+
+      {report && (
+        <div className="rounded-xl bg-white overflow-hidden shadow-sm ring-1 ring-slate-900/5">
+          <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center">
+            <p className="text-sm font-semibold text-slate-800">ประกันสังคม เดือน {month}</p>
+            <div className="flex gap-4 text-sm">
+              <span className="text-slate-500">ลูกจ้าง: <strong>฿{fmt(report.totalSsfEmployee)}</strong></span>
+              <span className="text-slate-500">นายจ้าง: <strong>฿{fmt(report.totalSsfEmployer)}</strong></span>
+              <span className="text-blue-600">รวมนำส่ง: <strong>฿{fmt(report.totalSsf)}</strong></span>
+            </div>
+          </div>
+          {report.rows.length === 0 ? (
+            <p className="p-8 text-center text-sm text-slate-400">ไม่มีข้อมูลประกันสังคมในเดือนนี้</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr><Th>ชื่อพนักงาน</Th><Th>เลขประกันสังคม</Th><Th align="right">เงินเดือน</Th><Th align="right">ส่วนลูกจ้าง</Th><Th align="right">ส่วนนายจ้าง</Th><Th align="right">รวม</Th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {report.rows.map((r) => (
+                  <tr key={r.employeeId}>
+                    <Td>{r.fullName}</Td>
+                    <Td><span className="font-mono text-xs">{r.socialSecurityNumber ?? '—'}</span></Td>
+                    <Td align="right">฿{fmt(r.gross)}</Td>
+                    <Td align="right">฿{fmt(r.ssfEmployee)}</Td>
+                    <Td align="right">฿{fmt(r.ssfEmployer)}</Td>
+                    <Td align="right" className="font-medium">฿{fmt(r.total)}</Td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-slate-50 border-t border-slate-200 font-semibold">
+                <tr>
+                  <td colSpan={2} className="px-4 py-3 text-sm">รวม</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-sm" />
+                  <Td align="right">฿{fmt(report.totalSsfEmployee)}</Td>
+                  <Td align="right">฿{fmt(report.totalSsfEmployer)}</Td>
+                  <Td align="right" className="text-blue-700">฿{fmt(report.totalSsf)}</Td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Page shell ────────────────────────────────────────────────────────────────
 
 export function ReportsPage() {
@@ -653,6 +928,9 @@ export function ReportsPage() {
     { key: 'foodcost', label: 'ต้นทุนอาหาร' },
     { key: 'pl',       label: 'P&L' },
     { key: 'menu',     label: 'เมนู' },
+    { key: 'vat',      label: 'ภ.พ.30' },
+    { key: 'wht',      label: 'ภ.ง.ด.1' },
+    { key: 'ssf_tax',  label: 'ประกันสังคม' },
   ];
 
   return (
@@ -675,6 +953,9 @@ export function ReportsPage() {
       {tab === 'foodcost' && <FoodCostReport />}
       {tab === 'pl'       && <PLReportTab />}
       {tab === 'menu'     && <MenuReport />}
+      {tab === 'vat'      && <VatReportTab />}
+      {tab === 'wht'      && <WhtReportTab />}
+      {tab === 'ssf_tax'  && <SsfTaxTab />}
     </div>
   );
 }

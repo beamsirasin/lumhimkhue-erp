@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, desc, and, gte, lt } from 'drizzle-orm';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
@@ -211,6 +211,120 @@ export async function cancelReservation(reservationId: string) {
   } catch (e) {
     console.error('[cancelReservation]', e);
     return { ok: false as const, error: 'เน€เธเธดเธ”เธเนเธญเธเธดเธ”เธเธฅเธฒเธ” เธเธฃเธธเธ“เธฒเธฅเธญเธเนเธซเธกเน' };
+  }
+}
+
+/* ─── New reservation-calendar actions ──────────────────────────────── */
+
+export async function getReservations(date?: string) {
+  const s = await auth();
+  if (!s?.user) return { ok: false as const, error: 'ไม่มีสิทธิ์' };
+
+  try {
+    const whereClause = date ? eq(reservations.reservationDate, date) : undefined;
+    const rows = await db.query.reservations.findMany({
+      where: whereClause,
+      orderBy: [desc(reservations.reservationDate)],
+      with: {
+        table: { columns: { id: true, label: true, capacity: true } },
+        customer: { columns: { id: true, phone: true, name: true, loyaltyPoints: true } },
+        createdByUser: { columns: { id: true, name: true } },
+      },
+      limit: 300,
+    });
+    return { ok: true as const, data: rows };
+  } catch (e) {
+    console.error('[getReservations]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+const createReservationV2Schema = z.object({
+  tableId: z.string().uuid(),
+  customerId: z.string().uuid().optional().nullable(),
+  customerName: z.string().min(1).max(255),
+  customerPhone: z.string().max(20).optional().nullable(),
+  partySize: z.number().int().min(1),
+  reservationDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  reservationTime: z.string().regex(/^\d{2}:\d{2}$/),
+  depositAmount: z.coerce.number().min(0).default(0),
+  notes: z.string().max(500).optional().nullable(),
+});
+
+export async function createReservationV2(input: unknown) {
+  const s = await auth();
+  if (!s?.user || !can(s.user.role, 'manage_tables'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์' };
+
+  const parsed = createReservationV2Schema.safeParse(input);
+  if (!parsed.success) return { ok: false as const, error: parsed.error.issues[0].message };
+  const data = parsed.data;
+
+  try {
+    const reservedAt = new Date(`${data.reservationDate}T${data.reservationTime}:00+07:00`);
+    // Generate reservation number: R{DD}{MM}{4-digit ms suffix}
+    const dd = data.reservationDate.slice(8, 10);
+    const mm = data.reservationDate.slice(5, 7);
+    const seq = String(Date.now()).slice(-4);
+    const reservationNo = `R${dd}${mm}${seq}`;
+
+    const [created] = await db.insert(reservations).values({
+      reservationNo,
+      tableId: data.tableId,
+      customerId: data.customerId ?? null,
+      customerName: data.customerName,
+      customerPhone: data.customerPhone ?? null,
+      partySize: data.partySize,
+      reservationDate: data.reservationDate,
+      reservationTime: data.reservationTime,
+      reservedAt,
+      depositAmount: String(data.depositAmount),
+      notes: data.notes ?? null,
+      status: 'pending',
+      createdBy: s.user.id,
+    }).returning();
+
+    await db.update(tables).set({ status: 'reserved' }).where(eq(tables.id, data.tableId));
+
+    revalidatePath('/reservations');
+    revalidatePath('/tables');
+    return { ok: true as const, data: created };
+  } catch (e) {
+    console.error('[createReservationV2]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+const updateStatusSchema = z.object({
+  id: z.string().uuid(),
+  status: z.enum(['pending', 'confirmed', 'arrived', 'seated', 'cancelled', 'no_show']),
+});
+
+export async function updateReservationStatus(input: unknown) {
+  const s = await auth();
+  if (!s?.user || !can(s.user.role, 'manage_tables'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์' };
+
+  const parsed = updateStatusSchema.safeParse(input);
+  if (!parsed.success) return { ok: false as const, error: parsed.error.issues[0].message };
+  const { id, status } = parsed.data;
+
+  try {
+    const [updated] = await db.update(reservations)
+      .set({ status })
+      .where(eq(reservations.id, id))
+      .returning({ tableId: reservations.tableId, status: reservations.status });
+
+    if (status === 'cancelled' || status === 'no_show') {
+      await db.update(tables).set({ status: 'available' }).where(eq(tables.id, updated.tableId));
+    }
+
+    revalidatePath('/reservations');
+    revalidatePath('/tables');
+    return { ok: true as const };
+  } catch (e) {
+    console.error('[updateReservationStatus]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
   }
 }
 

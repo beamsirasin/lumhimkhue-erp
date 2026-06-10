@@ -6,6 +6,8 @@ import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
 import { writeAuditLog } from '@/lib/actions/audit';
+import { awardLoyaltyPoints } from '@/lib/actions/customers';
+import { generateTaxInvoiceNumber } from '@/lib/actions/tax-invoice';
 import {
   sessions,
   tables,
@@ -13,6 +15,7 @@ import {
   payments,
   paymentLineItems,
   pricingTiles,
+  storeSettings,
 } from '@/lib/db/schema';
 import { processPaymentSchema } from '@/lib/validations/pos';
 
@@ -123,6 +126,7 @@ export async function getActiveTilesForPos() {
         guests: addonTiles.filter((t) => t.category === 'guest'),
         addons: addonTiles.filter((t) => t.category === 'addon'),
         discounts: addonTiles.filter((t) => t.category === 'discount'),
+        loyalty: addonTiles.filter((t) => t.category === 'loyalty'),
       },
     };
   } catch (e) {
@@ -143,8 +147,8 @@ export async function processPayment(input: unknown) {
   const { sessionId, paymentMethod, receivedAmount, discount, notes, receiptNo, lineItems } = parsed.data;
 
   try {
-    // Parallel: session fetch + idempotency check (both need only sessionId)
-    const [session, existingPayment] = await Promise.all([
+    // Parallel: session fetch + idempotency check + store settings
+    const [session, existingPayment, [settings]] = await Promise.all([
       db.query.sessions.findFirst({
         where: eq(sessions.id, sessionId),
         with: {
@@ -156,6 +160,9 @@ export async function processPayment(input: unknown) {
       db.query.payments.findFirst({
         where: eq(payments.sessionId, sessionId),
       }),
+      db.select({
+        loyaltyPointsRedeemRate: storeSettings.loyaltyPointsRedeemRate,
+      }).from(storeSettings).limit(1),
     ]);
 
     if (!session) return { ok: false as const, error: 'session ไม่ถูกต้อง' };
@@ -192,9 +199,12 @@ export async function processPayment(input: unknown) {
       .filter((i) => i.status !== 'cancelled' && !i.menuItem?.isBuffet)
       .reduce((sum, i) => sum + Number(i.menuItem?.extraPrice ?? 0) * i.quantity, 0);
 
+    const redeemRate = settings?.loyaltyPointsRedeemRate ?? 10;
+
     // Resolve line items: fetch tiles to re-derive amounts server-side
     let addonTotal = 0;
     let discountFromTiles = 0;
+    let loyaltyPointsRedeemed = 0;
     const resolvedLineItems: Array<{ pricingTileId: string; quantity: number; amount: number }> = [];
 
     if (lineItems.length > 0) {
@@ -229,6 +239,13 @@ export async function processPayment(input: unknown) {
           }
           discountFromTiles += Math.abs(amount);
           resolvedLineItems.push({ pricingTileId: li.pricingTileId, quantity: li.quantity, amount });
+        } else if (tile.category === 'loyalty') {
+          // quantity = points to redeem; amount = -(points / redeemRate)
+          const pointsToRedeem = li.quantity;
+          const bahtDiscount = pointsToRedeem / redeemRate;
+          loyaltyPointsRedeemed += pointsToRedeem;
+          discountFromTiles += bahtDiscount;
+          resolvedLineItems.push({ pricingTileId: li.pricingTileId, quantity: li.quantity, amount: -bahtDiscount });
         }
       }
     }
@@ -270,6 +287,15 @@ export async function processPayment(input: unknown) {
       );
     }
 
+    // Generate tax invoice number if requested
+    let taxInvoiceNumber: string | undefined;
+    if (session.taxInvoiceRequested) {
+      taxInvoiceNumber = await generateTaxInvoiceNumber();
+      await db.update(sessions)
+        .set({ taxInvoiceNumber })
+        .where(eq(sessions.id, sessionId));
+    }
+
     // Mark session as paid (table cleared by staff separately)
     await db
       .update(sessions)
@@ -282,6 +308,16 @@ export async function processPayment(input: unknown) {
       .set({ status: 'paid' })
       .where(inArray(tables.id, allTableIds));
 
+    // Award loyalty points if session linked to a customer
+    if (session.customerId) {
+      await awardLoyaltyPoints({
+        customerId: session.customerId,
+        sessionId,
+        totalAmount: total,
+        pointsRedeemed: loyaltyPointsRedeemed,
+      });
+    }
+
     revalidatePath('/pos');
     revalidatePath('/tables');
     revalidatePath('/dashboard');
@@ -293,7 +329,10 @@ export async function processPayment(input: unknown) {
       entityId: payment.id,
       after: { sessionId, total, paymentMethod, receiptNo: receiptNo ?? null },
     });
-    return { ok: true as const, data: { total, changeAmount, receiptNo: receiptNo ?? undefined } };
+    return {
+      ok: true as const,
+      data: { total, changeAmount, receiptNo: receiptNo ?? undefined, taxInvoiceNumber },
+    };
   } catch (e) {
     console.error('[processPayment]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };

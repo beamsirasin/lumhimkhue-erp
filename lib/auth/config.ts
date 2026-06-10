@@ -58,12 +58,16 @@ export const authConfig: NextAuthConfig = {
       if (user) {
         token.id = user.id as string;
         token.role = user.role;
+        token.branchId = (user as { branchId?: string | null }).branchId ?? null;
+        token.activeBranchId = (user as { branchId?: string | null }).branchId ?? null;
       }
       return token;
     },
     session({ session, token }) {
       session.user.id = token.id as string;
       session.user.role = token.role as Role;
+      session.user.branchId = token.branchId as string | null | undefined;
+      session.user.activeBranchId = token.activeBranchId as string | null | undefined;
       return session;
     },
   },

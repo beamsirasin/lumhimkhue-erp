@@ -77,11 +77,12 @@ export const paymentMethodEnum = pgEnum('payment_method', [
   'card',
 ]);
 
-/** Pricing tile category: guest type | add-on item | discount */
+/** Pricing tile category: guest type | add-on item | discount | loyalty redemption */
 export const tileCategoryEnum = pgEnum('tile_category', [
   'guest',
   'addon',
   'discount',
+  'loyalty',
 ]);
 
 /** Discount tile type */
@@ -93,7 +94,9 @@ export const discountTypeEnum = pgEnum('discount_type', [
 /** Reservation lifecycle */
 export const reservationStatusEnum = pgEnum('reservation_status', [
   'pending',
+  'confirmed',
   'arrived',
+  'seated',
   'cancelled',
   'no_show',
 ]);
@@ -125,6 +128,17 @@ export const absenceTypeEnum = pgEnum('absence_type', ['absence', 'late']);
 
 // ─── Tables ──────────────────────────────────────────────────────────────────
 
+export const branches = pgTable('branches', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 100 }).notNull(),
+  address: text('address'),
+  phone: varchar('phone', { length: 20 }),
+  taxId: varchar('tax_id', { length: 20 }),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: varchar('email', { length: 255 }).notNull().unique(),
@@ -132,9 +146,29 @@ export const users = pgTable('users', {
   name: varchar('name', { length: 255 }).notNull(),
   role: roleEnum('role').notNull(),
   isActive: boolean('is_active').notNull().default(true),
+  branchId: uuid('branch_id').references(() => branches.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
+
+export const customers = pgTable(
+  'customers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    phone: varchar('phone', { length: 20 }).notNull().unique(),
+    name: varchar('name', { length: 100 }),
+    lineUserId: varchar('line_user_id', { length: 100 }),
+    birthDate: date('birth_date'),
+    loyaltyPoints: integer('loyalty_points').notNull().default(0),
+    totalVisits: integer('total_visits').notNull().default(0),
+    totalSpend: numeric('total_spend', { precision: 12, scale: 2 }).notNull().default('0'),
+    lastVisitDate: date('last_visit_date'),
+    notes: text('notes'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('customers_phone_idx').on(t.phone)],
+);
 
 export const tables = pgTable(
   'tables',
@@ -153,6 +187,7 @@ export const tables = pgTable(
     width: integer('width').notNull().default(80),
     height: integer('height').notNull().default(80),
     shape: tableShapeEnum('shape').notNull().default('square'),
+    branchId: uuid('branch_id').references(() => branches.id),
     /** Soft-delete: set when table has session history and is "removed" from floor plan */
     deletedAt: timestamp('deleted_at'),
   },
@@ -161,10 +196,11 @@ export const tables = pgTable(
 
 /**
  * Pricing tiles — replaces pricingTiers.
- * Three categories:
+ * Four categories:
  *   'guest'    — guest types (adult, child, …) used when opening table + billing
  *   'addon'    — add-on items (extra cup, …) used in POS checkout
  *   'discount' — discount tiles (10%, -50฿) used in POS checkout
+ *   'loyalty'  — loyalty points redemption tile
  */
 export const pricingTiles = pgTable('pricing_tiles', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -199,13 +235,16 @@ export const sessions = pgTable(
      * Linked-table support.
      * Primary session (the table that was opened first): null.
      * Child session (a table linked to the primary): set to primary session id.
-     * All child sessions share guests / orders through the primary session.
      */
     parentSessionId: uuid('parent_session_id'),
+    customerId: uuid('customer_id').references(() => customers.id),
+    branchId: uuid('branch_id').references(() => branches.id),
     startedAt: timestamp('started_at').notNull().defaultNow(),
     closedAt: timestamp('closed_at'),
     status: sessionStatusEnum('status').notNull().default('active'),
     sessionToken: varchar('session_token', { length: 24 }).notNull().unique(),
+    taxInvoiceRequested: boolean('tax_invoice_requested').notNull().default(false),
+    taxInvoiceNumber: varchar('tax_invoice_number', { length: 30 }),
     notes: text('notes'),
   },
   (t) => [
@@ -214,6 +253,23 @@ export const sessions = pgTable(
     index('sessions_table_id_idx').on(t.tableId),
     index('sessions_closed_at_idx').on(t.closedAt),
     index('sessions_parent_session_id_idx').on(t.parentSessionId),
+    index('sessions_customer_id_idx').on(t.customerId),
+  ],
+);
+
+export const customerVisits = pgTable(
+  'customer_visits',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    customerId: uuid('customer_id').notNull().references(() => customers.id),
+    sessionId: uuid('session_id').notNull().references(() => sessions.id),
+    pointsEarned: integer('points_earned').notNull().default(0),
+    pointsRedeemed: integer('points_redeemed').notNull().default(0),
+    visitDate: date('visit_date').notNull(),
+  },
+  (t) => [
+    index('customer_visits_customer_idx').on(t.customerId),
+    index('customer_visits_session_idx').on(t.sessionId),
   ],
 );
 
@@ -382,7 +438,7 @@ export const paymentLineItems = pgTable(
       .notNull()
       .references(() => pricingTiles.id),
     quantity: integer('quantity').notNull().default(1),
-    /** Positive = addon charge, negative = discount applied */
+    /** Positive = addon charge, negative = discount/loyalty applied */
     amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
     appliedAt: timestamp('applied_at').notNull().defaultNow(),
   },
@@ -412,13 +468,21 @@ export const reservations = pgTable(
   'reservations',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    /** Format: R{DDMM}{4-digit seq}, e.g. R06010001 */
+    reservationNo: varchar('reservation_no', { length: 20 }),
     tableId: uuid('table_id')
       .notNull()
       .references(() => tables.id),
+    customerId: uuid('customer_id').references(() => customers.id),
     reservedAt: timestamp('reserved_at').notNull(),
+    /** YYYY-MM-DD */
+    reservationDate: date('reservation_date'),
+    /** HH:mm (stored as text) */
+    reservationTime: varchar('reservation_time', { length: 5 }),
     customerName: varchar('customer_name', { length: 255 }).notNull(),
     customerPhone: varchar('customer_phone', { length: 20 }),
     partySize: integer('party_size').notNull(),
+    depositAmount: numeric('deposit_amount', { precision: 10, scale: 2 }).notNull().default('0'),
     notes: text('notes'),
     status: reservationStatusEnum('status').notNull().default('pending'),
     /** Points to the primary reservation for linked-table bookings */
@@ -433,6 +497,8 @@ export const reservations = pgTable(
     index('reservations_reserved_at_idx').on(t.reservedAt),
     index('reservations_status_idx').on(t.status),
     index('reservations_parent_id_idx').on(t.parentReservationId),
+    index('reservations_customer_id_idx').on(t.customerId),
+    index('reservations_date_idx').on(t.reservationDate),
   ],
 );
 
@@ -510,6 +576,7 @@ export const stockCounts = pgTable(
       .notNull()
       .references(() => users.id),
     status: stockCountStatusEnum('status').notNull().default('draft'),
+    branchId: uuid('branch_id').references(() => branches.id),
     notes: text('notes'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     submittedAt: timestamp('submitted_at'),
@@ -553,6 +620,7 @@ export const purchaseOrders = pgTable(
       .notNull()
       .references(() => suppliers.id),
     status: purchaseOrderStatusEnum('status').notNull().default('draft'),
+    branchId: uuid('branch_id').references(() => branches.id),
     orderDate: date('order_date').notNull(),
     expectedDate: date('expected_date'),
     receivedDate: date('received_date'),
@@ -650,6 +718,7 @@ export const employees = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    branchId: uuid('branch_id').references(() => branches.id),
     firstName: text('first_name').notNull(),
     lastName: text('last_name').notNull(),
     phone: text('phone'),
@@ -679,6 +748,7 @@ export const employees = pgTable(
 export const scheduleCycles = pgTable('schedule_cycles', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
+  branchId: uuid('branch_id').references(() => branches.id),
   startDate: date('start_date').notNull(),
   endDate: date('end_date').notNull(),
   status: scheduleCycleStatusEnum('status').notNull().default('draft'),
@@ -726,6 +796,7 @@ export const timeEntries = pgTable(
 export const payrollCycles = pgTable('payroll_cycles', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
+  branchId: uuid('branch_id').references(() => branches.id),
   workStartDate: date('work_start_date').notNull(),
   workEndDate: date('work_end_date').notNull(),
   payDate: date('pay_date').notNull(),
@@ -816,7 +887,19 @@ export const hrSettings = pgTable('hr_settings', {
 
 // ─── Relations ────────────────────────────────────────────────────────────────
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const branchesRelations = relations(branches, ({ many }) => ({
+  users: many(users),
+  tables: many(tables),
+  sessions: many(sessions),
+  stockCounts: many(stockCounts),
+  purchaseOrders: many(purchaseOrders),
+  employees: many(employees),
+  scheduleCycles: many(scheduleCycles),
+  payrollCycles: many(payrollCycles),
+}));
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  branch: one(branches, { fields: [users.branchId], references: [branches.id] }),
   payments: many(payments),
   auditLogs: many(auditLogs),
   reservations: many(reservations),
@@ -827,7 +910,19 @@ export const usersRelations = relations(users, ({ many }) => ({
   payrollCycles: many(payrollCycles),
 }));
 
-export const tablesRelations = relations(tables, ({ many }) => ({
+export const customersRelations = relations(customers, ({ many }) => ({
+  sessions: many(sessions),
+  reservations: many(reservations),
+  visits: many(customerVisits),
+}));
+
+export const customerVisitsRelations = relations(customerVisits, ({ one }) => ({
+  customer: one(customers, { fields: [customerVisits.customerId], references: [customers.id] }),
+  session: one(sessions, { fields: [customerVisits.sessionId], references: [sessions.id] }),
+}));
+
+export const tablesRelations = relations(tables, ({ one, many }) => ({
+  branch: one(branches, { fields: [tables.branchId], references: [branches.id] }),
   sessions: many(sessions),
   reservations: many(reservations),
 }));
@@ -840,7 +935,8 @@ export const pricingTilesRelations = relations(pricingTiles, ({ many }) => ({
 
 export const sessionsRelations = relations(sessions, ({ one, many }) => ({
   table: one(tables, { fields: [sessions.tableId], references: [tables.id] }),
-  /** Primary session: this points back to itself (null FK) — relation only used for child→parent */
+  branch: one(branches, { fields: [sessions.branchId], references: [branches.id] }),
+  customer: one(customers, { fields: [sessions.customerId], references: [customers.id] }),
   parentSession: one(sessions, {
     fields: [sessions.parentSessionId],
     references: [sessions.id],
@@ -853,6 +949,7 @@ export const sessionsRelations = relations(sessions, ({ one, many }) => ({
     fields: [sessions.id],
     references: [payments.sessionId],
   }),
+  customerVisits: many(customerVisits),
 }));
 
 export const sessionGuestsRelations = relations(sessionGuests, ({ one }) => ({
@@ -927,6 +1024,7 @@ export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
 
 export const reservationsRelations = relations(reservations, ({ one, many }) => ({
   table: one(tables, { fields: [reservations.tableId], references: [tables.id] }),
+  customer: one(customers, { fields: [reservations.customerId], references: [customers.id] }),
   createdByUser: one(users, { fields: [reservations.createdBy], references: [users.id] }),
   parentReservation: one(reservations, {
     fields: [reservations.parentReservationId],
@@ -995,6 +1093,7 @@ export const stockCountsRelations = relations(stockCounts, ({ one, many }) => ({
     fields: [stockCounts.countedBy],
     references: [users.id],
   }),
+  branch: one(branches, { fields: [stockCounts.branchId], references: [branches.id] }),
   items: many(stockCountItems),
   adjustments: many(stockCountAdjustments),
 }));
@@ -1030,6 +1129,7 @@ export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many })
     fields: [purchaseOrders.supplierId],
     references: [suppliers.id],
   }),
+  branch: one(branches, { fields: [purchaseOrders.branchId], references: [branches.id] }),
   createdByUser: one(users, {
     fields: [purchaseOrders.createdBy],
     references: [users.id],
@@ -1052,6 +1152,7 @@ export const purchaseOrderItemsRelations = relations(purchaseOrderItems, ({ one 
 
 export const employeesRelations = relations(employees, ({ one, many }) => ({
   user: one(users, { fields: [employees.userId], references: [users.id] }),
+  branch: one(branches, { fields: [employees.branchId], references: [branches.id] }),
   scheduleEntries: many(scheduleEntries),
   timeEntries: many(timeEntries),
   payrollItems: many(payrollItems),
@@ -1059,6 +1160,7 @@ export const employeesRelations = relations(employees, ({ one, many }) => ({
 
 export const scheduleCyclesRelations = relations(scheduleCycles, ({ one, many }) => ({
   createdByUser: one(users, { fields: [scheduleCycles.createdBy], references: [users.id] }),
+  branch: one(branches, { fields: [scheduleCycles.branchId], references: [branches.id] }),
   entries: many(scheduleEntries),
 }));
 
@@ -1073,6 +1175,7 @@ export const timeEntriesRelations = relations(timeEntries, ({ one }) => ({
 
 export const payrollCyclesRelations = relations(payrollCycles, ({ one, many }) => ({
   createdByUser: one(users, { fields: [payrollCycles.createdBy], references: [users.id] }),
+  branch: one(branches, { fields: [payrollCycles.branchId], references: [branches.id] }),
   items: many(payrollItems),
 }));
 
@@ -1136,6 +1239,10 @@ export const storeSettings = pgTable('store_settings', {
   taxInvoicePrefix: varchar('tax_invoice_prefix', { length: 20 }).notNull().default('LHK'),
   receiptCounter: integer('receipt_counter').notNull().default(0),
   receiptCounterDate: varchar('receipt_counter_date', { length: 10 }).notNull().default(''),
+  /** Loyalty: how many baht to earn 1 point (default: 10 → spend ฿10 = 1 point) */
+  loyaltyPointsPerBaht: integer('loyalty_points_per_baht').notNull().default(10),
+  /** Loyalty: how many points to redeem ฿1 (default: 10 → 10 pts = ฿1) */
+  loyaltyPointsRedeemRate: integer('loyalty_points_redeem_rate').notNull().default(10),
   /** Per-bill-type overrides (null = fall back to global fields above) */
   billPreviewConfig:     jsonb('bill_preview_config').$type<BillConfig>(),
   billMainConfig:        jsonb('bill_main_config').$type<BillConfig>(),
@@ -1161,10 +1268,25 @@ export const monthlyExpenses = pgTable('monthly_expenses', {
   uniqueIndex('monthly_expenses_month_cat_unique').on(t.month, t.category),
 ]);
 
+// ─── Tax Invoice Sequence ─────────────────────────────────────────────────────
+
+/** Sequential numbering for tax invoices, reset monthly. One row per YYYY-MM. */
+export const taxInvoiceSequence = pgTable('tax_invoice_sequence', {
+  month: varchar('month', { length: 7 }).primaryKey(), // YYYY-MM
+  lastNumber: integer('last_number').notNull().default(0),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 // ─── Inferred Types ───────────────────────────────────────────────────────────
 
+export type Branch = typeof branches.$inferSelect;
+export type NewBranch = typeof branches.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+export type Customer = typeof customers.$inferSelect;
+export type NewCustomer = typeof customers.$inferInsert;
+export type CustomerVisit = typeof customerVisits.$inferSelect;
+export type NewCustomerVisit = typeof customerVisits.$inferInsert;
 export type Table = typeof tables.$inferSelect;
 export type NewTable = typeof tables.$inferInsert;
 export type PricingTile = typeof pricingTiles.$inferSelect;
@@ -1243,3 +1365,7 @@ export type NewRecipeIngredient = typeof recipeIngredients.$inferInsert;
 export type MonthlyExpense = typeof monthlyExpenses.$inferSelect;
 export type NewMonthlyExpense = typeof monthlyExpenses.$inferInsert;
 export type MonthlyExpenseCategory = typeof monthlyExpenseCategoryEnum.enumValues[number];
+
+// ─── Tax Invoice Types ────────────────────────────────────────────────────────
+
+export type TaxInvoiceSequence = typeof taxInvoiceSequence.$inferSelect;

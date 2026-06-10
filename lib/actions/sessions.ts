@@ -26,6 +26,8 @@ const openSessionSchema = z.object({
   notes: z.string().max(500).optional(),
   /** If the table was reserved, supply the reservationId to mark it as arrived */
   reservationId: z.string().uuid().optional(),
+  /** Link a CRM customer to this session for loyalty tracking */
+  customerId: z.string().uuid().optional().nullable(),
 });
 
 export async function openSession(input: unknown) {
@@ -38,7 +40,7 @@ export async function openSession(input: unknown) {
   if (!parsed.success)
     return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' };
 
-  const { tableId, linkedTableIds, guests, notes, reservationId } = parsed.data;
+  const { tableId, linkedTableIds, guests, notes, reservationId, customerId } = parsed.data;
   const allTableIds = [tableId, ...linkedTableIds];
 
   // Filter out zero-quantity tiles
@@ -85,6 +87,7 @@ export async function openSession(input: unknown) {
         status: 'active',
         notes: notes ?? null,
         parentSessionId: null,
+        customerId: customerId ?? null,
       })
       .returning({ id: sessions.id, sessionToken: sessions.sessionToken });
 
