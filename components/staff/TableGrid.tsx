@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, CSSProperties } from 'react';
+import { useRouter } from 'next/navigation';
 import { useConfirm } from '@/components/shared/ConfirmDialog';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors, type Modifier } from '@dnd-kit/core';
@@ -22,6 +23,7 @@ import {
   Pencil,
   Loader2,
   Eye,
+  Receipt,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import {
@@ -122,18 +124,20 @@ interface TilePickerProps {
   tiles: PricingTileData[];
   quantities: Record<string, number>;
   onChange: (tileId: string, qty: number) => void;
+  tileSize?: 'sm' | 'lg';
 }
 
-function TilePicker({ tiles, quantities, onChange }: TilePickerProps) {
+function TilePicker({ tiles, quantities, onChange, tileSize = 'sm' }: TilePickerProps) {
   if (tiles.length === 0)
     return <p className="text-sm text-slate-400">ไม่มี pricing tile ที่ active — กรุณาตั้งค่า pricing tiles ก่อน</p>;
   return (
-    <div className="flex flex-wrap gap-3">
+    <div className={`flex flex-wrap ${tileSize === 'lg' ? 'gap-4' : 'gap-3'}`}>
       {tiles.map((tile) => (
         <PricingTile
           key={tile.id}
           tile={tile}
           mode="tap"
+          size={tileSize}
           quantity={quantities[tile.id] ?? 0}
           onIncrement={() => onChange(tile.id, (quantities[tile.id] ?? 0) + 1)}
         />
@@ -345,6 +349,7 @@ interface QrDialogProps {
 function SessionQrDialog({ open, data, onClose }: QrDialogProps) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
   const [qrView, setQrView] = useState<{ url: string; label: string } | null>(null);
+  const router = useRouter();
   if (!data) return null;
 
   const allEntries: TableQrEntry[] = [
@@ -404,7 +409,13 @@ function SessionQrDialog({ open, data, onClose }: QrDialogProps) {
             })}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-row gap-2 sm:justify-between">
+            <Button
+              variant="outline"
+              onClick={() => { onClose(); router.push(`/pos?session=${data.sessionId}`); }}
+            >
+              <Receipt className="mr-1.5 size-3.5" />บิล
+            </Button>
             <Button onClick={onClose}>ปิด</Button>
           </DialogFooter>
         </DialogContent>
@@ -430,6 +441,7 @@ interface TableQrEntry {
 }
 
 interface SessionOpenResult extends TableQrEntry {
+  sessionId: string;
   startedAt: string;
   linkedTables: TableQrEntry[];
 }
@@ -491,7 +503,7 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>
             เปิดโต๊ะ {table.label}
@@ -506,8 +518,8 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
         )}
 
         {step === 'tiles' && (
-          <div className="flex gap-5 h-[380px]">
-            {/* ── Left: tile picker + notes ── */}
+          <div className="flex gap-5 h-[65vh]">
+            {/* Left: tile picker + notes */}
             <div className="flex-1 min-w-0 overflow-y-auto space-y-4 pr-1">
               <TilePicker
                 tiles={pricingTiles}
@@ -520,7 +532,7 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
               </div>
             </div>
 
-            {/* ── Right: shared summary panel with +/- ── */}
+            {/* Right: summary panel */}
             <TileSummaryPanel
               pricingTiles={pricingTiles}
               quantities={quantities}
@@ -812,9 +824,9 @@ function EditGuestsDialog({ open, sessionId, currentGuests, pricingTiles, onClos
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-5xl">
         <DialogHeader><DialogTitle>แก้ไขประเภทผู้เข้าใช้</DialogTitle></DialogHeader>
-        <div className="flex gap-5 h-[380px]">
+        <div className="flex gap-5 h-[65vh]">
           {/* ── Left: tile picker ── */}
           <div className="flex-1 min-w-0 overflow-y-auto pr-1">
             <TilePicker
@@ -1240,6 +1252,29 @@ function TableSheet({
                 </div>
               )}
             </>
+          )}
+
+          {/* ── PAID (no session — table stuck in paid state) ── */}
+          {visualStatus === 'paid' && !sess && (
+            <div className="space-y-4">
+              <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3 text-sm text-emerald-700">
+                ชำระเงินแล้ว — กรุณาเคลียร์โต๊ะ
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  const r = await setTableAvailable({ tableId: table.id });
+                  setBusy(false);
+                  if (r.ok) { toast.success(`เคลียร์โต๊ะ ${table.label} แล้ว`); onClose(); onRefetch(); }
+                  else toast.error(r.error);
+                }}
+                className="w-full rounded-xl border-2 border-slate-800 bg-slate-800 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+              >
+                {busy ? 'กำลังเคลียร์…' : 'เคลียร์โต๊ะ'}
+              </button>
+            </div>
           )}
 
           {/* ── PAID ── */}

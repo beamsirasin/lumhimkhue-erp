@@ -155,6 +155,7 @@ export async function openSession(input: unknown) {
     return {
       ok: true as const,
       data: {
+        sessionId: newSession.id,
         sessionToken: newSession.sessionToken,
         tableQrToken: primaryTableRow.qrToken,
         tableLabel: primaryTableRow.label,

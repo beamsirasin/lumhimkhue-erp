@@ -5,10 +5,15 @@ import { getPosSessionsForPos } from '@/lib/actions/pos';
 
 export const metadata = { title: 'POS — ร้านชาบู ERP' };
 
-export default async function PosPage() {
-  const [session, result] = await Promise.all([
+export default async function PosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ session?: string }>;
+}) {
+  const [session, result, params] = await Promise.all([
     auth(),
     getPosSessionsForPos(),
+    searchParams,
   ]);
 
   if (!session?.user || !result.ok) redirect('/login');
@@ -17,6 +22,7 @@ export default async function PosPage() {
     <PosTerminal
       initialSessions={result.data}
       cashierName={session.user.name ?? 'พนักงาน'}
+      initialSelectedId={params.session ?? null}
     />
   );
 }

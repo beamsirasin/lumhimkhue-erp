@@ -10,6 +10,7 @@ import {
   getPosSessionDetail,
   getActiveTilesForPos,
   processPayment,
+  markBillPrinted,
 } from '@/lib/actions/pos';
 import { updateSessionGuests, closeSession, createContinuationSession } from '@/lib/actions/sessions';
 import { getStoreSettings } from '@/lib/actions/store';
@@ -18,7 +19,7 @@ import { resolveBillConfig } from '@/lib/utils/billConfig';
 import type { BillTypeKey } from '@/lib/utils/billConfig';
 import { incrementReceiptCounter } from '@/lib/actions/store';
 import type { PosSession, PosSessionDetail } from '@/lib/actions/pos';
-import { Printer, CheckCircle2, Tag, Package, X, Loader2 } from 'lucide-react';
+import { Printer, CheckCircle2, Tag, Package, X, Loader2, Receipt } from 'lucide-react';
 import { PricingTile as PricingTileCard } from '@/components/staff/PricingTile';
 import { print as printReceipt } from '@/lib/printer/service';
 import type { ReceiptData } from '@/lib/printer/types';
@@ -68,10 +69,11 @@ function Numpad({ value, onChange }: { value: string; onChange: (v: string) => v
 interface PosTerminalProps {
   initialSessions: PosSession[];
   cashierName: string;
+  initialSelectedId?: string | null;
 }
 
-export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+export function PosTerminal({ initialSessions, cashierName, initialSelectedId = null }: PosTerminalProps) {
+  const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [groupPickerId, setGroupPickerId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
@@ -151,7 +153,7 @@ export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) 
             const isGroupSelected = selectedId === s.id || linked.some((l) => l.id === selectedId);
             if (linked.length === 0) {
               return (
-                <SessionCard key={s.id} session={s} selected={selectedId === s.id} onSelect={handleSelectSession} linkedCount={0} />
+                <SessionCard key={s.id} session={s} selected={selectedId === s.id} onSelect={handleSelectSession} linkedCount={0} hasPrinted={!!s.billPrintedAt} />
               );
             }
             // If primary is paid but a child is pending (closing/active), show child as front card
@@ -171,6 +173,7 @@ export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) 
                     selected={isGroupSelected}
                     onSelect={urgentChild ? () => handleSelectSession(s.id) : handleSelectSession}
                     linkedCount={linked.length}
+                    hasPrinted={!!frontSession.billPrintedAt}
                   />
                 </div>
               </div>
@@ -268,7 +271,7 @@ export function PosTerminal({ initialSessions, cashierName }: PosTerminalProps) 
           onClick={() => setSelectedId(null)}
         >
           <div
-            className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl"
+            className="relative w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -291,7 +294,7 @@ function baseTotal(session: PosSession): number {
   return session.guests.reduce((sum, g) => sum + Number(g.pricingTile.price) * g.quantity, 0);
 }
 
-const SessionCard = memo(function SessionCard({ session, selected, onSelect, linkedCount = 0 }: { session: PosSession; selected: boolean; onSelect: (id: string) => void; linkedCount?: number }) {
+const SessionCard = memo(function SessionCard({ session, selected, onSelect, linkedCount = 0, hasPrinted = false }: { session: PosSession; selected: boolean; onSelect: (id: string) => void; linkedCount?: number; hasPrinted?: boolean }) {
   const handleClick = useCallback(() => onSelect(session.id), [onSelect, session.id]);
   const total = baseTotal(session);
   const isClosing = session.status === 'closing';
@@ -317,6 +320,12 @@ const SessionCard = memo(function SessionCard({ session, selected, onSelect, lin
           โต๊ะ {session.table.label}
         </span>
         <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+          {hasPrinted && (
+            <Receipt
+              aria-label="พิมพ์บิลแล้ว"
+              className={`size-3.5 ${selected ? 'text-sky-300' : 'text-sky-500'}`}
+            />
+          )}
           {isContinuation && (
             <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-amber-400 text-white' : 'bg-amber-100 text-amber-700'}`}>
               ต่อบิล
@@ -343,7 +352,7 @@ const SessionCard = memo(function SessionCard({ session, selected, onSelect, lin
           เชื่อม {linkedCount + 1} โต๊ะ
         </p>
       )}
-      <p className={`mt-0.5 text-[11px] ${selected ? 'text-slate-400' : 'text-slate-400'}`}>
+      <p suppressHydrationWarning className={`mt-0.5 text-[11px] ${selected ? 'text-slate-400' : 'text-slate-400'}`}>
         {formatDistanceToNowStrict(new Date(session.startedAt), { locale: th, addSuffix: true })}
       </p>
     </button>
@@ -663,19 +672,23 @@ function PaymentPanel({
       const qty = addonQty[t.id] ?? 0;
       if (qty > 0) receiptItems.push({ name: t.name, quantity: qty, total: Number(t.price) * qty });
     }
-    await printReceipt({
-      type: 'receipt',
-      payment: {
-        receiptType: 'bill',
-        ...shopInfo,
-        tableNumber:  hidden.has('tableNo')   ? '' : session.table.label,
-        cashierName:  hidden.has('cashier')   ? '' : cashierName,
-        paidAt:       hidden.has('date')      ? '' : now(),
-        items: receiptItems, subtotal: subtotalBeforeDiscount, discount: 0, serviceCharge: 0,
-        total: subtotalBeforeDiscount, receivedAmount: 0, changeAmount: 0,
-        paymentMethod: '', sessionId: session.id,
-      },
-    });
+    await Promise.all([
+      printReceipt({
+        type: 'receipt',
+        payment: {
+          receiptType: 'bill',
+          ...shopInfo,
+          tableNumber:  hidden.has('tableNo')   ? '' : session.table.label,
+          cashierName:  hidden.has('cashier')   ? '' : cashierName,
+          paidAt:       hidden.has('date')      ? '' : now(),
+          items: receiptItems, subtotal: subtotalBeforeDiscount, discount: 0, serviceCharge: 0,
+          total: subtotalBeforeDiscount, receivedAmount: 0, changeAmount: 0,
+          paymentMethod: '', sessionId: session.id,
+        },
+      }),
+      markBillPrinted(session.id),
+    ]);
+    queryClient.invalidateQueries({ queryKey: ['pos-sessions'] });
   }
 
   function buildLineItems() {

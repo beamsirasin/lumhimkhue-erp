@@ -18,6 +18,7 @@ import { relations } from 'drizzle-orm';
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
 export const roleEnum = pgEnum('role', ['owner', 'manager', 'cashier', 'kitchen']);
+export const uiLayoutEnum = pgEnum('ui_layout', ['touchscreen', 'desktop']);
 
 export const tableStatusEnum = pgEnum('table_status', [
   'available',
@@ -153,6 +154,8 @@ export const users = pgTable('users', {
   role: roleEnum('role').notNull(),
   isActive: boolean('is_active').notNull().default(true),
   branchId: uuid('branch_id').references(() => branches.id),
+  uiLayout: uiLayoutEnum('ui_layout'),
+  allowedModules: text('allowed_modules').array(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
@@ -252,6 +255,7 @@ export const sessions = pgTable(
     taxInvoiceRequested: boolean('tax_invoice_requested').notNull().default(false),
     taxInvoiceNumber: varchar('tax_invoice_number', { length: 30 }),
     notes: text('notes'),
+    billPrintedAt: timestamp('bill_printed_at'),
   },
   (t) => [
     index('sessions_status_idx').on(t.status),

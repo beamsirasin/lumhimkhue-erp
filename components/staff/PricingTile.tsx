@@ -10,6 +10,7 @@ interface PricingTileProps {
   tile: PricingTileType;
   mode?: TileMode;
   quantity?: number;
+  size?: 'sm' | 'lg';
   onIncrement?: () => void;
   onDecrement?: () => void;
   onEdit?: () => void;
@@ -49,6 +50,7 @@ export function PricingTile({
   tile,
   mode = 'display',
   quantity = 0,
+  size = 'sm',
   onIncrement,
   onDecrement,
   onEdit,
@@ -59,6 +61,9 @@ export function PricingTile({
   const priceText = formatPrice(tile);
   const isDiscount = tile.category === 'discount';
   const isTap = mode === 'tap';
+  const isLg = size === 'lg';
+
+  const dim = isLg ? 160 : 120;
 
   return (
     <div
@@ -71,7 +76,7 @@ export function PricingTile({
         ${isTap ? 'cursor-pointer hover:brightness-95 active:scale-95' : ''}
         ${!tile.isActive ? 'opacity-50' : ''}
       `}
-      style={{ width: 120, height: 120, backgroundColor: bg }}
+      style={{ width: dim, height: dim, backgroundColor: bg }}
     >
       {/* Image or icon */}
       <div className="flex flex-1 items-center justify-center pt-2">
@@ -80,15 +85,15 @@ export function PricingTile({
           <img
             src={tile.imageUrl}
             alt={tile.name}
-            className="h-9 w-9 rounded object-contain"
+            className={`rounded object-contain ${isLg ? 'h-14 w-14' : 'h-9 w-9'}`}
           />
         ) : (
-          <Icon className={`size-8 ${isDiscount ? 'text-red-400' : 'text-slate-400'} opacity-70`} />
+          <Icon className={`${isLg ? 'size-12' : 'size-8'} ${isDiscount ? 'text-red-400' : 'text-slate-400'} opacity-70`} />
         )}
       </div>
 
       {/* Name */}
-      <p className="line-clamp-1 px-1 text-center text-[11px] font-semibold leading-tight text-slate-800">
+      <p className={`line-clamp-1 px-1 text-center font-semibold leading-tight text-slate-800 ${isLg ? 'text-sm' : 'text-[11px]'}`}>
         {tile.name}
       </p>
 
@@ -100,25 +105,25 @@ export function PricingTile({
             aria-label="ลด"
             onClick={onDecrement}
             disabled={quantity === 0}
-            className="flex h-6 w-6 items-center justify-center rounded-full bg-white/80 text-base font-bold text-slate-700 shadow-sm hover:bg-white disabled:opacity-30"
+            className={`flex items-center justify-center rounded-full bg-white/80 font-bold text-slate-700 shadow-sm hover:bg-white disabled:opacity-30 ${isLg ? 'h-8 w-8 text-lg' : 'h-6 w-6 text-base'}`}
           >
             −
           </button>
-          <span className="w-5 text-center tabular-nums text-sm font-bold text-slate-900">
+          <span className={`text-center tabular-nums font-bold text-slate-900 ${isLg ? 'w-7 text-base' : 'w-5 text-sm'}`}>
             {quantity}
           </span>
           <button
             type="button"
             aria-label="เพิ่ม"
             onClick={onIncrement}
-            className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-800 text-base font-bold text-white shadow-sm hover:bg-slate-700"
+            className={`flex items-center justify-center rounded-full bg-slate-800 font-bold text-white shadow-sm hover:bg-slate-700 ${isLg ? 'h-8 w-8 text-lg' : 'h-6 w-6 text-base'}`}
           >
             +
           </button>
         </div>
       ) : (
         <p
-          className={`pb-2 pt-0.5 text-center text-xs font-bold ${
+          className={`pb-2 pt-0.5 text-center font-bold ${isLg ? 'text-sm' : 'text-xs'} ${
             isDiscount ? 'text-red-600' : 'text-slate-700'
           }`}
         >
@@ -126,9 +131,9 @@ export function PricingTile({
         </p>
       )}
 
-      {/* Quantity badge (select mode, qty > 0) */}
-      {mode === 'select' && quantity > 0 && (
-        <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-slate-800 px-1 text-[10px] font-bold text-white">
+      {/* Quantity badge (select/tap mode, qty > 0) */}
+      {(mode === 'select' || (isTap && isLg)) && quantity > 0 && (
+        <span className={`absolute -right-1.5 -top-1.5 flex min-w-[20px] items-center justify-center rounded-full bg-slate-800 px-1 font-bold text-white ${isLg ? 'h-6 text-xs' : 'h-5 text-[10px]'}`}>
           {quantity}
         </span>
       )}

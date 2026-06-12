@@ -107,6 +107,24 @@ export type PosSessionDetail = NonNullable<
   Extract<Awaited<ReturnType<typeof getPosSessionDetail>>, { ok: true }>['data']
 >;
 
+export async function markBillPrinted(sessionId: string) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'process_payment'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  try {
+    await db.update(sessions)
+      .set({ billPrintedAt: new Date() })
+      .where(eq(sessions.id, sessionId));
+    revalidatePath('/pos');
+    return { ok: true as const };
+  } catch (e) {
+    console.error('[markBillPrinted]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
 export async function getActiveTilesForPos() {
   const authSession = await auth();
   if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
