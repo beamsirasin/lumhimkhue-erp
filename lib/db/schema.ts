@@ -104,15 +104,21 @@ export const reservationStatusEnum = pgEnum('reservation_status', [
 export const stockCountStatusEnum = pgEnum('stock_count_status', [
   'draft',
   'submitted',
+  'reviewed',
 ]);
 
 export const purchaseOrderStatusEnum = pgEnum('purchase_order_status', [
   'draft',
   'pending_approval',
   'ordered',
+  'partial_received',
   'received',
   'cancelled',
 ]);
+
+export const countFrequencyEnum = pgEnum('count_frequency', ['daily', 'weekly']);
+export const adjustmentTypeEnum = pgEnum('adjustment_type', ['adjustment', 'waste']);
+export const discrepancyTypeEnum = pgEnum('discrepancy_type', ['none', 'short', 'wrong', 'spoiled']);
 
 // ─── HR / Payroll Enums ───────────────────────────────────────────────────────
 
@@ -538,6 +544,9 @@ export const suppliers = pgTable('suppliers', {
   email: text('email'),
   address: text('address'),
   taxId: text('tax_id'),
+  lineContact: text('line_contact'),
+  avgLeadTimeDays: integer('avg_lead_time_days').notNull().default(1),
+  minOrderAmount: numeric('min_order_amount', { precision: 10, scale: 2 }),
   notes: text('notes'),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -557,6 +566,15 @@ export const ingredients = pgTable(
     lastCost: numeric('last_cost', { precision: 10, scale: 2 }).notNull().default('0'),
     defaultSupplierId: uuid('default_supplier_id').references(() => suppliers.id),
     isActive: boolean('is_active').notNull().default(true),
+    /** ABC classification: daily = นับทุกวัน, weekly = นับรายสัปดาห์ */
+    countFrequency: countFrequencyEnum('count_frequency').notNull().default('daily'),
+    /** % ที่ใช้ได้จริงหลังตัดแต่ง (yield), e.g. ผัก 80 → ซื้อ 10kg ใช้ได้ 8kg */
+    yieldPercent: numeric('yield_percent', { precision: 5, scale: 2 }).notNull().default('100'),
+    /** หน่วยสั่งซื้อ เช่น "ลัง", "กล่อง" (null = same as unit) */
+    orderUnit: text('order_unit'),
+    /** กี่ unit ต่อ 1 orderUnit เช่น ลัง = 12 กก. → 12 */
+    orderUnitConversion: numeric('order_unit_conversion', { precision: 10, scale: 4 }).notNull().default('1'),
+    storageLocation: text('storage_location'),
     notes: text('notes'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -655,6 +673,7 @@ export const stockCountAdjustments = pgTable(
       .notNull()
       .references(() => ingredients.id),
     adjustmentQty: numeric('adjustment_qty', { precision: 10, scale: 2 }).notNull(),
+    adjustmentType: adjustmentTypeEnum('adjustment_type').notNull().default('adjustment'),
     reason: text('reason').notNull(),
     createdBy: uuid('created_by')
       .notNull()
@@ -684,6 +703,46 @@ export const purchaseOrderItems = pgTable(
     receivedQuantity: numeric('received_quantity', { precision: 10, scale: 2 }),
   },
   (t) => [index('po_items_po_idx').on(t.purchaseOrderId)],
+);
+
+// ─── Goods Receipts (partial / discrepancy-aware receiving) ──────────────────
+
+/** One delivery event per PO — supports multiple partial deliveries on different dates */
+export const goodsReceipts = pgTable(
+  'goods_receipts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    purchaseOrderId: uuid('purchase_order_id')
+      .notNull()
+      .references(() => purchaseOrders.id),
+    receivedDate: date('received_date').notNull(),
+    notes: text('notes'),
+    receivedBy: uuid('received_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('goods_receipts_po_idx').on(t.purchaseOrderId),
+    index('goods_receipts_date_idx').on(t.receivedDate),
+  ],
+);
+
+export const goodsReceiptItems = pgTable(
+  'goods_receipt_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    goodsReceiptId: uuid('goods_receipt_id')
+      .notNull()
+      .references(() => goodsReceipts.id),
+    purchaseOrderItemId: uuid('purchase_order_item_id')
+      .notNull()
+      .references(() => purchaseOrderItems.id),
+    receivedQuantity: numeric('received_quantity', { precision: 10, scale: 2 }).notNull(),
+    discrepancyType: discrepancyTypeEnum('discrepancy_type').notNull().default('none'),
+    discrepancyNotes: text('discrepancy_notes'),
+  },
+  (t) => [index('goods_receipt_items_receipt_idx').on(t.goodsReceiptId)],
 );
 
 // ─── Recipe Tables ───────────────────────────────────────────────────────────
@@ -1135,9 +1194,10 @@ export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many })
     references: [users.id],
   }),
   items: many(purchaseOrderItems),
+  goodsReceipts: many(goodsReceipts),
 }));
 
-export const purchaseOrderItemsRelations = relations(purchaseOrderItems, ({ one }) => ({
+export const purchaseOrderItemsRelations = relations(purchaseOrderItems, ({ one, many }) => ({
   purchaseOrder: one(purchaseOrders, {
     fields: [purchaseOrderItems.purchaseOrderId],
     references: [purchaseOrders.id],
@@ -1145,6 +1205,30 @@ export const purchaseOrderItemsRelations = relations(purchaseOrderItems, ({ one 
   ingredient: one(ingredients, {
     fields: [purchaseOrderItems.ingredientId],
     references: [ingredients.id],
+  }),
+  goodsReceiptItems: many(goodsReceiptItems),
+}));
+
+export const goodsReceiptsRelations = relations(goodsReceipts, ({ one, many }) => ({
+  purchaseOrder: one(purchaseOrders, {
+    fields: [goodsReceipts.purchaseOrderId],
+    references: [purchaseOrders.id],
+  }),
+  receivedByUser: one(users, {
+    fields: [goodsReceipts.receivedBy],
+    references: [users.id],
+  }),
+  items: many(goodsReceiptItems),
+}));
+
+export const goodsReceiptItemsRelations = relations(goodsReceiptItems, ({ one }) => ({
+  goodsReceipt: one(goodsReceipts, {
+    fields: [goodsReceiptItems.goodsReceiptId],
+    references: [goodsReceipts.id],
+  }),
+  purchaseOrderItem: one(purchaseOrderItems, {
+    fields: [goodsReceiptItems.purchaseOrderItemId],
+    references: [purchaseOrderItems.id],
   }),
 }));
 
@@ -1332,6 +1416,10 @@ export type PurchaseOrderItem = typeof purchaseOrderItems.$inferSelect;
 export type NewPurchaseOrderItem = typeof purchaseOrderItems.$inferInsert;
 export type StockCountAdjustment = typeof stockCountAdjustments.$inferSelect;
 export type NewStockCountAdjustment = typeof stockCountAdjustments.$inferInsert;
+export type GoodsReceipt = typeof goodsReceipts.$inferSelect;
+export type NewGoodsReceipt = typeof goodsReceipts.$inferInsert;
+export type GoodsReceiptItem = typeof goodsReceiptItems.$inferSelect;
+export type NewGoodsReceiptItem = typeof goodsReceiptItems.$inferInsert;
 
 // ─── HR Types ─────────────────────────────────────────────────────────────────
 

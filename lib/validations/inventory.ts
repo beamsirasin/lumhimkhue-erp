@@ -20,6 +20,11 @@ export const createIngredientSchema = z.object({
   parLevel: z.coerce.number().min(0, 'ต้องไม่ต่ำกว่า 0'),
   lastCost: z.coerce.number().min(0, 'ต้องไม่ต่ำกว่า 0'),
   defaultSupplierId: toNullableUuid.optional(),
+  countFrequency: z.enum(['daily', 'weekly']).default('daily'),
+  yieldPercent: z.coerce.number().min(0).max(100).default(100),
+  orderUnit: toNullableString.optional(),
+  orderUnitConversion: z.coerce.number().min(0.0001).default(1),
+  storageLocation: toNullableString.optional(),
   notes: toNullableString.optional(),
 });
 
@@ -39,6 +44,9 @@ export const createSupplierSchema = z.object({
   email: toNullableString.optional(),
   address: toNullableString.optional(),
   taxId: toNullableString.optional(),
+  lineContact: toNullableString.optional(),
+  avgLeadTimeDays: z.coerce.number().int().min(0).default(1),
+  minOrderAmount: z.coerce.number().min(0).optional(),
   notes: toNullableString.optional(),
 });
 
@@ -60,7 +68,8 @@ export const saveStockCountSchema = z.object({
       ingredientId: z.string().uuid(),
       openingBalance: z.coerce.number().min(0),
       receivedQty: z.coerce.number().min(0),
-      usedQty: z.coerce.number().min(0),
+      /** Physical count — what staff actually counts on the shelf */
+      physicalCount: z.coerce.number().min(0),
       unit: z.string().min(1),
       notes: toNullableString.optional(),
     }),
@@ -73,6 +82,7 @@ export const createStockAdjustmentSchema = z.object({
   stockCountId: z.string().uuid(),
   ingredientId: z.string().uuid('กรุณาเลือกวัตถุดิบ'),
   adjustmentQty: z.coerce.number().refine((n) => n !== 0, 'จำนวนต้องไม่เป็น 0'),
+  adjustmentType: z.enum(['adjustment', 'waste']).default('adjustment'),
   reason: z.string().min(1, 'กรุณาระบุเหตุผล').max(500),
 });
 
@@ -104,12 +114,17 @@ export const updatePurchaseOrderSchema = createPurchaseOrderSchema.extend({
 
 export const receivePurchaseOrderSchema = z.object({
   id: z.string().uuid(),
+  receivedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   hasTaxInvoice: z.boolean(),
   taxInvoiceNumber: toNullableString.optional(),
+  isPartial: z.boolean().default(false),
+  notes: toNullableString.optional(),
   items: z.array(
     z.object({
       id: z.string().uuid(),
       receivedQuantity: z.coerce.number().min(0),
+      discrepancyType: z.enum(['none', 'short', 'wrong', 'spoiled']).default('none'),
+      discrepancyNotes: toNullableString.optional(),
     }),
   ),
 });

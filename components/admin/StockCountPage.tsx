@@ -12,6 +12,9 @@ import {
   ShoppingCart,
   PenLine,
   X,
+  Flame,
+  Calendar,
+  Users,
 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -21,13 +24,14 @@ import {
   type StockCountPageData,
   type LowStockItem,
 } from '@/lib/actions/inventory';
+import { StockCountHistoryTab } from '@/components/admin/StockCountHistoryTab';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ItemState {
   openingBalance: number;
-  receivedQty: number;
-  usedQty: number;
+  receivedQty: number;    // auto-filled from today's PO receipts
+  physicalCount: number;  // user enters this (what's on the shelf)
   notes: string;
 }
 
@@ -37,6 +41,7 @@ interface Props {
   initialData: StockCountPageData;
   initialDataUpdatedAt: number;
   today: string;
+  defaultTab?: 'daily' | 'history';
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -49,36 +54,41 @@ function inputCls(highlight = false) {
   return `w-24 rounded-lg border px-2 py-1.5 text-right text-sm tabular-nums outline-none transition-colors disabled:bg-slate-50 disabled:text-slate-400 ${
     highlight
       ? 'border-red-300 bg-red-50 text-red-700 focus:border-red-400'
-      : 'border-slate-300 focus:border-slate-500'
+      : 'border-slate-300 bg-white focus:border-slate-500'
   }`;
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function StockCountPage({ initialData, today }: Props) {
+export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Props) {
+  const [activeTab, setActiveTab] = useState<'daily' | 'history'>(defaultTab);
   const existing = initialData.existingCount;
   const isSubmitted = existing?.status === 'submitted';
 
-  // Build initial item states from existing draft OR from openingBalances
+  // Build initial item states
   function buildInitialMap(): ItemMap {
     const map: ItemMap = {};
     for (const ing of initialData.ingredients) {
+      const opening = Number(initialData.openingBalances[ing.id] ?? '0');
+      const received = initialData.todayReceivedQty[ing.id] ?? 0;
+
       if (existing?.items.length) {
         const stored = existing.items.find((it) => it.ingredientId === ing.id);
         if (stored) {
+          // quantityOnHand IS the physicalCount in the new model
           map[ing.id] = {
             openingBalance: Number(stored.openingBalance),
             receivedQty: Number(stored.receivedQty),
-            usedQty: Number(stored.usedQty),
+            physicalCount: Number(stored.quantityOnHand),
             notes: stored.notes ?? '',
           };
           continue;
         }
       }
       map[ing.id] = {
-        openingBalance: Number(initialData.openingBalances[ing.id] ?? '0'),
-        receivedQty: 0,
-        usedQty: 0,
+        openingBalance: opening,
+        receivedQty: received,
+        physicalCount: 0,
         notes: '',
       };
     }
@@ -91,19 +101,21 @@ export function StockCountPage({ initialData, today }: Props) {
   const [showLowPanel, setShowLowPanel] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [readonly, setReadonly] = useState(isSubmitted);
+  const [showWeekly, setShowWeekly] = useState(false);
 
   // Adjustment dialog state
   const [showAdjDialog, setShowAdjDialog] = useState(false);
   const [adjIngredientId, setAdjIngredientId] = useState('');
   const [adjQty, setAdjQty] = useState('');
   const [adjReason, setAdjReason] = useState('');
+  const [adjType, setAdjType] = useState<'adjustment' | 'waste'>('adjustment');
   const [isAdjPending, startAdjTransition] = useTransition();
 
-  function updateItem(id: string, field: keyof Omit<ItemState, 'notes'>, raw: string) {
+  function updatePhysicalCount(id: string, raw: string) {
     const val = parseFloat(raw);
     setItemMap((prev) => ({
       ...prev,
-      [id]: { ...prev[id], [field]: isNaN(val) || val < 0 ? 0 : val },
+      [id]: { ...prev[id], physicalCount: isNaN(val) || val < 0 ? 0 : val },
     }));
   }
 
@@ -111,48 +123,60 @@ export function StockCountPage({ initialData, today }: Props) {
     setItemMap((prev) => ({ ...prev, [id]: { ...prev[id], notes: val } }));
   }
 
-  // Grouped by category
+  // Grouped by category, filtered by countFrequency
   const grouped = useMemo(
     () =>
       initialData.categories
         .map((cat) => ({
           category: cat,
-          items: initialData.ingredients.filter((i) => i.categoryId === cat.id),
+          items: initialData.ingredients.filter(
+            (i) =>
+              i.categoryId === cat.id &&
+              (showWeekly || i.countFrequency === 'daily'),
+          ),
         }))
         .filter((g) => g.items.length > 0),
-    [initialData],
+    [initialData, showWeekly],
+  );
+
+  const weeklyCount = useMemo(
+    () => initialData.ingredients.filter((i) => i.countFrequency === 'weekly').length,
+    [initialData.ingredients],
   );
 
   // Summary stats
   const stats = useMemo(() => {
     let filledCount = 0;
     let lowCount = 0;
-    let reorderCount = 0;
     for (const ing of initialData.ingredients) {
       const state = itemMap[ing.id];
       if (!state) continue;
-      const closing = state.openingBalance + state.receivedQty - state.usedQty;
+      const closing = state.physicalCount;
       const minStock = Number(ing.minStock);
-      if (state.receivedQty > 0 || state.usedQty > 0 || state.openingBalance > 0) filledCount++;
-      if (closing < minStock) lowCount++;
-      const parLevel = Number(ing.category ? 0 : 0);
-      if (closing < minStock) reorderCount++;
+      if (state.physicalCount > 0) filledCount++;
+      if (closing < minStock && minStock > 0) lowCount++;
     }
-    return { filledCount, lowCount, reorderCount };
+    return { filledCount, lowCount };
   }, [itemMap, initialData.ingredients]);
 
   function buildPayload(asDraft: boolean) {
+    // Only send ingredients that are visible to staff right now.
+    // Hidden weekly items are NOT included — their existing DB rows
+    // stay intact and serve as opening balance for future days.
+    const visibleIngredients = initialData.ingredients.filter(
+      (ing) => showWeekly || ing.countFrequency === 'daily',
+    );
     return {
       countDate: today,
       asDraft,
       notes: countNotes || null,
-      items: initialData.ingredients.map((ing) => {
-        const state = itemMap[ing.id] ?? { openingBalance: 0, receivedQty: 0, usedQty: 0, notes: '' };
+      items: visibleIngredients.map((ing) => {
+        const state = itemMap[ing.id] ?? { openingBalance: 0, receivedQty: 0, physicalCount: 0, notes: '' };
         return {
           ingredientId: ing.id,
           openingBalance: state.openingBalance,
           receivedQty: state.receivedQty,
-          usedQty: state.usedQty,
+          physicalCount: state.physicalCount,
           unit: ing.unit,
           notes: state.notes || null,
         };
@@ -196,6 +220,7 @@ export function StockCountPage({ initialData, today }: Props) {
         stockCountId: existing.id,
         ingredientId: adjIngredientId,
         adjustmentQty: qty,
+        adjustmentType: adjType,
         reason: adjReason.trim(),
       });
       if (!r.ok) { toast.error(r.error); return; }
@@ -204,11 +229,46 @@ export function StockCountPage({ initialData, today }: Props) {
       setAdjIngredientId('');
       setAdjQty('');
       setAdjReason('');
+      setAdjType('adjustment');
     });
   }
 
+  const guestCount = initialData.todayGuestCount;
+
   return (
     <div className="p-6 space-y-5">
+      {/* Tab navigation */}
+      <div className="border-b border-slate-200 -mx-6 px-6">
+        <div className="flex gap-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab('daily')}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'daily'
+                ? 'border-slate-800 text-slate-900'
+                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+            }`}
+          >
+            นับสต็อกรายวัน
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('history')}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'history'
+                ? 'border-slate-800 text-slate-900'
+                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+            }`}
+          >
+            ผลการนับสต็อก
+          </button>
+        </div>
+      </div>
+
+      {activeTab === 'history' && <StockCountHistoryTab />}
+
+      {activeTab === 'daily' && (
+      <>
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -218,6 +278,12 @@ export function StockCountPage({ initialData, today }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {guestCount > 0 && (
+            <span className="flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-200 px-3 py-1 text-xs font-medium text-blue-700">
+              <Users className="size-3.5" />
+              {guestCount.toLocaleString('th-TH')} หัว
+            </span>
+          )}
           {existing ? (
             <span
               className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
@@ -240,7 +306,7 @@ export function StockCountPage({ initialData, today }: Props) {
       </div>
 
       {/* Summary bar */}
-      <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-3 flex flex-wrap gap-6">
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-3 flex flex-wrap gap-6 items-center">
         <div className="text-sm">
           <span className="text-slate-500">รายการทั้งหมด </span>
           <span className="font-semibold text-slate-900">{initialData.ingredients.length}</span>
@@ -251,11 +317,33 @@ export function StockCountPage({ initialData, today }: Props) {
             {stats.lowCount}
           </span>
         </div>
+        {Object.keys(initialData.todayReceivedQty).length > 0 && (
+          <div className="text-xs text-blue-600 flex items-center gap-1">
+            <CheckCircle2 className="size-3.5" />
+            รับของวันนี้ {Object.keys(initialData.todayReceivedQty).length} รายการ (auto-filled)
+          </div>
+        )}
         {Object.keys(initialData.openingBalances).length === 0 && (
           <div className="text-xs text-slate-400 flex items-center gap-1">
             <AlertTriangle className="size-3.5" />
             ไม่มีข้อมูลวันก่อนหน้า — ยอดยกมาเป็น 0
           </div>
+        )}
+
+        {/* ABC toggle */}
+        {weeklyCount > 0 && !readonly && (
+          <button
+            type="button"
+            onClick={() => setShowWeekly((v) => !v)}
+            className={`ml-auto flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+              showWeekly
+                ? 'border-purple-300 bg-purple-50 text-purple-700'
+                : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <Calendar className="size-3.5" />
+            {showWeekly ? 'ซ่อนรายสัปดาห์' : `แสดงรายสัปดาห์ (${weeklyCount})`}
+          </button>
         )}
       </div>
 
@@ -295,61 +383,66 @@ export function StockCountPage({ initialData, today }: Props) {
       <div className="space-y-4">
         {grouped.map(({ category, items }) => (
           <div key={category.id} className="rounded-xl bg-white overflow-hidden shadow-sm ring-1 ring-slate-900/5">
-            {/* Category header */}
             <div className="flex items-center gap-2 bg-slate-50 border-b border-slate-200 px-4 py-2.5">
               <span className="text-xs font-semibold text-slate-700">{category.name}</span>
               <span className="text-xs text-slate-400">{items.length} รายการ</span>
             </div>
 
-            {/* Table */}
             <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[780px]">
+              <table className="w-full text-sm min-w-[860px]">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/50">
                     <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 w-48">วัตถุดิบ</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-slate-500 w-28">
-                      ยอดยกมา
+                    <th className="px-3 py-2 text-right text-xs font-medium text-slate-500 w-28">ยอดยกมา</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-blue-600 w-28 bg-blue-50/40">รับเข้า (auto)</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-slate-600 w-28 bg-slate-100/60">รวมมี</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-emerald-700 w-28 bg-emerald-50/50">
+                      ↑ นับได้จริง
                     </th>
-                    <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 w-28">
-                      รับเข้า
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-slate-600 w-28 bg-blue-50/40">
-                      รวมมี
-                    </th>
-                    <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 w-28">
-                      ใช้ไป
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-slate-600 w-28 bg-slate-100/60">
-                      คงเหลือ
-                    </th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-orange-600 w-32">
-                      ต้องสั่งเพิ่ม
-                    </th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-slate-500 w-28">ใช้ไป</th>
+                    {guestCount > 0 && (
+                      <th className="px-3 py-2 text-right text-xs font-medium text-blue-600 w-24">
+                        /หัว
+                      </th>
+                    )}
+                    <th className="px-3 py-2 text-right text-xs font-medium text-orange-600 w-28">ต้องสั่ง</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {items.map((ing) => {
-                    const state = itemMap[ing.id] ?? { openingBalance: 0, receivedQty: 0, usedQty: 0, notes: '' };
+                    const state = itemMap[ing.id] ?? { openingBalance: 0, receivedQty: 0, physicalCount: 0, notes: '' };
                     const total = state.openingBalance + state.receivedQty;
-                    const closing = Math.max(0, total - state.usedQty);
+                    const usedQty = Math.max(0, total - state.physicalCount);
+                    const closing = state.physicalCount;
                     const minStock = Number(ing.minStock);
                     const parLevel = Number(ing.parLevel ?? 0);
                     const isLow = closing < minStock && minStock > 0;
                     const reorderQty = isLow
                       ? Math.max(0, (parLevel > 0 ? parLevel : minStock) - closing)
                       : 0;
+                    const perHead = guestCount > 0 && readonly ? usedQty / guestCount : null;
+                    const isWeekly = ing.countFrequency === 'weekly';
 
                     return (
                       <tr key={ing.id} className={`transition-colors hover:bg-slate-50/50 ${isLow ? 'bg-red-50/20' : ''}`}>
                         {/* ชื่อ */}
                         <td className="px-4 py-3">
-                          <p className="font-medium text-slate-900">{ing.name}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">
-                            {ing.unit}
-                            {minStock > 0 && (
-                              <span className="ml-1.5">• จุดสั่ง {minStock.toLocaleString('th-TH')} {ing.unit}</span>
+                          <div className="flex items-center gap-2">
+                            <div>
+                              <p className="font-medium text-slate-900">{ing.name}</p>
+                              <p className="text-xs text-slate-400 mt-0.5">
+                                {ing.unit}
+                                {minStock > 0 && (
+                                  <span className="ml-1.5">• จุดสั่ง {minStock.toLocaleString('th-TH')}</span>
+                                )}
+                              </p>
+                            </div>
+                            {isWeekly && (
+                              <span className="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-600">
+                                สัปดาห์
+                              </span>
                             )}
-                          </p>
+                          </div>
                         </td>
 
                         {/* ยอดยกมา */}
@@ -358,52 +451,68 @@ export function StockCountPage({ initialData, today }: Props) {
                           <span className="text-xs text-slate-400 ml-1">{ing.unit}</span>
                         </td>
 
-                        {/* รับเข้า (input) */}
-                        <td className="px-3 py-3 text-center">
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            disabled={readonly}
-                            value={state.receivedQty === 0 ? '' : state.receivedQty}
-                            onChange={(e) => updateItem(ing.id, 'receivedQty', e.target.value)}
-                            onBlur={(e) => { if (e.target.value === '') updateItem(ing.id, 'receivedQty', '0'); }}
-                            placeholder="0"
-                            className={inputCls(false)}
-                          />
-                        </td>
-
-                        {/* รวมมี (auto) */}
-                        <td className="px-3 py-3 text-right bg-blue-50/30">
-                          <span className="tabular-nums font-medium text-blue-700">{fmtNum(total)}</span>
-                          <span className="text-xs text-slate-400 ml-1">{ing.unit}</span>
-                        </td>
-
-                        {/* ใช้ไป (input) */}
-                        <td className="px-3 py-3 text-center">
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            disabled={readonly}
-                            value={state.usedQty === 0 ? '' : state.usedQty}
-                            onChange={(e) => updateItem(ing.id, 'usedQty', e.target.value)}
-                            onBlur={(e) => { if (e.target.value === '') updateItem(ing.id, 'usedQty', '0'); }}
-                            placeholder="0"
-                            className={inputCls(false)}
-                          />
-                        </td>
-
-                        {/* คงเหลือ (auto) */}
-                        <td className="px-3 py-3 text-right bg-slate-50/60">
-                          <span className={`tabular-nums font-semibold ${isLow ? 'text-red-600' : 'text-slate-800'}`}>
-                            {fmtNum(closing)}
+                        {/* รับเข้า (auto-filled, read-only) */}
+                        <td className="px-3 py-3 text-right bg-blue-50/20">
+                          <span className={`tabular-nums ${state.receivedQty > 0 ? 'font-medium text-blue-700' : 'text-slate-300'}`}>
+                            {fmtNum(state.receivedQty)}
                           </span>
                           <span className="text-xs text-slate-400 ml-1">{ing.unit}</span>
-                          {isLow && <AlertTriangle className="inline ml-1 size-3.5 text-red-500 -mt-0.5" />}
                         </td>
 
-                        {/* ต้องสั่งเพิ่ม (auto) */}
+                        {/* รวมมี (computed) */}
+                        <td className="px-3 py-3 text-right bg-slate-50/40">
+                          <span className="tabular-nums text-slate-600">{fmtNum(total)}</span>
+                          <span className="text-xs text-slate-400 ml-1">{ing.unit}</span>
+                        </td>
+
+                        {/* นับได้จริง (USER INPUT) */}
+                        <td className="px-3 py-3 text-center bg-emerald-50/30">
+                          {readonly ? (
+                            <span className={`tabular-nums font-semibold ${isLow ? 'text-red-600' : 'text-slate-800'}`}>
+                              {fmtNum(closing)}
+                              {isLow && <AlertTriangle className="inline ml-1 size-3.5 text-red-500 -mt-0.5" />}
+                            </span>
+                          ) : (
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={state.physicalCount === 0 ? '' : state.physicalCount}
+                              onChange={(e) => updatePhysicalCount(ing.id, e.target.value)}
+                              onBlur={(e) => { if (e.target.value === '') updatePhysicalCount(ing.id, '0'); }}
+                              placeholder="นับได้..."
+                              className={`w-24 rounded-lg border px-2 py-1.5 text-right text-sm tabular-nums outline-none transition-colors ${
+                                isLow
+                                  ? 'border-red-300 bg-red-50 text-red-700 focus:border-red-400'
+                                  : 'border-emerald-300 bg-white text-emerald-800 focus:border-emerald-500'
+                              }`}
+                            />
+                          )}
+                          {!readonly && isLow && (
+                            <AlertTriangle className="inline ml-1 size-3.5 text-red-500 -mt-0.5" />
+                          )}
+                        </td>
+
+                        {/* ใช้ไป (computed) */}
+                        <td className="px-3 py-3 text-right">
+                          <span className="tabular-nums text-slate-500">{fmtNum(usedQty)}</span>
+                          <span className="text-xs text-slate-400 ml-1">{ing.unit}</span>
+                        </td>
+
+                        {/* ใช้/หัว (when submitted + guest count known) */}
+                        {guestCount > 0 && (
+                          <td className="px-3 py-3 text-right">
+                            {perHead !== null && usedQty > 0 ? (
+                              <span className="tabular-nums text-xs font-medium text-blue-700">
+                                {perHead.toFixed(3)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300 text-xs">—</span>
+                            )}
+                          </td>
+                        )}
+
+                        {/* ต้องสั่ง */}
                         <td className="px-3 py-3 text-right">
                           {reorderQty > 0 ? (
                             <span className="tabular-nums font-semibold text-orange-600">
@@ -477,6 +586,12 @@ export function StockCountPage({ initialData, today }: Props) {
                 เมื่อ {format(new Date(existing.submittedAt), 'HH:mm น. d MMM yyyy', { locale: th })}
               </p>
             )}
+            {guestCount > 0 && (
+              <p className="text-xs text-blue-600 mt-0.5">
+                <Users className="inline size-3 mr-0.5" />
+                {guestCount.toLocaleString('th-TH')} หัว — ดูยอดใช้/หัวในตารางด้านบน
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -485,7 +600,7 @@ export function StockCountPage({ initialData, today }: Props) {
               className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
             >
               <PenLine className="size-3.5" />
-              บันทึกปรับปรุง
+              ปรับปรุง
             </button>
             <Link
               href="/inventory/orders"
@@ -513,9 +628,41 @@ export function StockCountPage({ initialData, today }: Props) {
               </button>
             </div>
             <div className="px-5 py-4 space-y-4">
-              <p className="text-xs text-slate-500">
-                ใช้สำหรับแก้ไขข้อผิดพลาดหลังส่งผลการนับแล้ว ระบบจะบันทึกรายการปรับปรุงไว้แยกต่างหาก
-              </p>
+              {/* Type selector */}
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1.5">ประเภท</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAdjType('adjustment')}
+                    className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${
+                      adjType === 'adjustment'
+                        ? 'border-slate-800 bg-slate-800 text-white'
+                        : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    แก้ไขความผิดพลาด
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdjType('waste')}
+                    className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${
+                      adjType === 'waste'
+                        ? 'border-orange-600 bg-orange-600 text-white'
+                        : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Flame className="inline size-3 mr-1" />
+                    ของเสีย/สูญหาย
+                  </button>
+                </div>
+                <p className="mt-1.5 text-xs text-slate-400">
+                  {adjType === 'waste'
+                    ? 'บันทึกแยกจากยอดใช้ปกติ เพื่อคำนวณต้นทุนแม่นยำขึ้น'
+                    : 'แก้ไขตัวเลขที่กรอกผิดในขั้นตอนก่อนหน้า'}
+                </p>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">
                   วัตถุดิบ <span className="text-red-500">*</span>
@@ -572,7 +719,9 @@ export function StockCountPage({ initialData, today }: Props) {
                 type="button"
                 onClick={handleAdjustmentSubmit}
                 disabled={isAdjPending}
-                className="flex-1 rounded-lg bg-amber-600 py-2.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                className={`flex-1 rounded-lg py-2.5 text-sm font-medium text-white disabled:opacity-50 ${
+                  adjType === 'waste' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-amber-600 hover:bg-amber-700'
+                }`}
               >
                 {isAdjPending ? (
                   <span className="flex items-center justify-center gap-2">
@@ -583,6 +732,8 @@ export function StockCountPage({ initialData, today }: Props) {
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

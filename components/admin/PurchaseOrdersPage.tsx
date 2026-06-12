@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useTransition } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -11,10 +11,15 @@ import {
   Plus,
   Trash2,
   ShoppingBag,
-  ChevronDown,
   Printer,
   Loader2,
   PackageCheck,
+  ClipboardList,
+  X,
+  Copy,
+  ChevronDown,
+  ChevronRight,
+  PackagePlus,
 } from 'lucide-react';
 import type { Resolver } from 'react-hook-form';
 import {
@@ -26,9 +31,10 @@ import {
   receiveOrder,
   cancelOrder,
   getPurchaseOrderDetail,
+  getStockCountReorderItems,
   type POListData,
-  type POListItem,
   type PODetail,
+  type StockCountReorderItem,
 } from '@/lib/actions/inventory';
 import {
   createPurchaseOrderSchema,
@@ -42,12 +48,12 @@ import {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const INPUT = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500';
-const BTN_PRIMARY = 'w-full rounded-lg bg-slate-800 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50';
 
 const STATUS_LABEL: Record<string, string> = {
   draft: 'ร่าง',
   pending_approval: 'รออนุมัติ',
   ordered: 'ยืนยันแล้ว',
+  partial_received: 'รับบางส่วน',
   received: 'รับของแล้ว',
   cancelled: 'ยกเลิก',
 };
@@ -56,8 +62,16 @@ const STATUS_COLOR: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-600',
   pending_approval: 'bg-amber-100 text-amber-700',
   ordered: 'bg-blue-100 text-blue-700',
+  partial_received: 'bg-orange-100 text-orange-700',
   received: 'bg-green-100 text-green-700',
   cancelled: 'bg-red-100 text-red-600',
+};
+
+const DISCREPANCY_LABEL: Record<string, string> = {
+  none: 'ปกติ',
+  short: 'ขาด',
+  wrong: 'ผิดรายการ',
+  spoiled: 'เสียหาย',
 };
 
 function fmt(n: string | number) {
@@ -160,8 +174,8 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2 items-center">
-        <div className="flex gap-1">
-          {['all', 'draft', 'pending_approval', 'ordered', 'received', 'cancelled'].map((s) => (
+        <div className="flex gap-1 flex-wrap">
+          {['all', 'draft', 'pending_approval', 'ordered', 'partial_received', 'received', 'cancelled'].map((s) => (
             <button
               key={s}
               type="button"
@@ -303,6 +317,25 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
                             </button>
                           </>
                         )}
+                        {po.status === 'partial_received' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setModal({ type: 'receive', id: po.id })}
+                              className="flex items-center gap-1 text-xs text-orange-600 hover:text-orange-800 font-medium"
+                            >
+                              <PackagePlus className="size-3.5" />
+                              รับของเพิ่ม
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setModal({ type: 'detail', id: po.id })}
+                              className="text-xs text-slate-400 hover:text-slate-700"
+                            >
+                              รายละเอียด
+                            </button>
+                          </>
+                        )}
                         {(po.status === 'received' || po.status === 'cancelled') && (
                           <button
                             type="button"
@@ -352,9 +385,10 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
               />
             )}
             {modal.type === 'detail' && (
-              <PODetail
+              <PODetailModal
                 id={modal.id}
                 onClose={() => setModal(null)}
+                onReceive={(id) => setModal({ type: 'receive', id })}
               />
             )}
           </div>
@@ -374,8 +408,6 @@ interface POFormProps {
 }
 
 function POForm({ suppliers, initialValues, onClose, onSaved }: POFormProps) {
-  const [formData, setFormData] = useState<POListData>({ orders: [], suppliers });
-
   return (
     <POFormInner
       schema="create"
@@ -394,6 +426,8 @@ interface POFormInnerProps {
   onClose: () => void;
   onSaved: () => void;
 }
+
+type POFormIngredient = { id: string; name: string; unit: string; lastCost: string };
 
 function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, onSaved }: POFormInnerProps) {
   type FormValues = CreatePurchaseOrderInput | UpdatePurchaseOrderInput;
@@ -419,15 +453,11 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
         },
   });
 
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: 'items' as never,
-  });
+  const { fields, append, remove, replace } = useFieldArray({ control, name: 'items' as never });
 
   const watchedItems = watch('items') as Array<{ ingredientId: string; quantity: number; unit: string; unitCost: number }>;
   const watchedVatRate = watch('vatRate') as number;
 
-  // Load ingredient data for the form
   const [ingredients, setIngredients] = useState<POFormIngredient[]>([]);
   useState(() => {
     import('@/lib/actions/inventory').then(({ getPurchaseOrderFormData }) => {
@@ -455,6 +485,44 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
 
   const hasTaxInvoice = watch('hasTaxInvoice') as boolean;
 
+  // ── Import from stock count ──────────────────────────────────────────────────
+  const [importPanel, setImportPanel] = useState<{
+    loading: boolean;
+    countDate: string | null;
+    items: StockCountReorderItem[];
+    qtys: Record<string, number>;
+    selected: Set<string>;
+  } | null>(null);
+
+  async function openImportPanel() {
+    setImportPanel({ loading: true, countDate: null, items: [], qtys: {}, selected: new Set() });
+    const r = await getStockCountReorderItems();
+    if (!r.ok) { toast.error(r.error); setImportPanel(null); return; }
+    const qtys: Record<string, number> = {};
+    const selected = new Set<string>();
+    for (const item of r.data.items) {
+      qtys[item.ingredientId] = item.reorderQty;
+      selected.add(item.ingredientId);
+    }
+    setImportPanel({ loading: false, countDate: r.data.countDate, items: r.data.items, qtys, selected });
+  }
+
+  function handleImportConfirm() {
+    if (!importPanel) return;
+    const toImport = importPanel.items.filter((i) => importPanel.selected.has(i.ingredientId));
+    if (toImport.length === 0) { toast.error('กรุณาเลือกอย่างน้อย 1 รายการ'); return; }
+    replace(
+      toImport.map((i) => ({
+        ingredientId: i.ingredientId,
+        quantity: importPanel.qtys[i.ingredientId] ?? i.reorderQty,
+        unit: i.unit,
+        unitCost: i.lastCost,
+      })) as never[],
+    );
+    setImportPanel(null);
+    toast.success(`นำเข้า ${toImport.length} รายการแล้ว`);
+  }
+
   return (
     <div className="w-[700px] max-h-[90vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
       <div className="mb-5 flex items-center justify-between">
@@ -469,7 +537,6 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
           <input type="hidden" {...register('id' as keyof FormValues)} />
         )}
 
-        {/* Supplier + dates */}
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-3 sm:col-span-1">
             <label className="block text-xs font-medium text-slate-700 mb-1">Supplier <span className="text-red-500">*</span></label>
@@ -493,14 +560,130 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-semibold text-slate-700">รายการสั่งซื้อ</label>
-            <button
-              type="button"
-              onClick={() => append({ ingredientId: '', quantity: 1, unit: '', unitCost: 0 } as never)}
-              className="flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900"
-            >
-              <Plus className="size-3.5" /> เพิ่มรายการ
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={openImportPanel}
+                className="flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+              >
+                <ClipboardList className="size-3.5" /> นำเข้าจากผลนับสต็อก
+              </button>
+              <button
+                type="button"
+                onClick={() => append({ ingredientId: '', quantity: 1, unit: '', unitCost: 0 } as never)}
+                className="flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900"
+              >
+                <Plus className="size-3.5" /> เพิ่มรายการ
+              </button>
+            </div>
           </div>
+
+          {importPanel && (
+            <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-blue-800">
+                  นำเข้าจากผลนับสต็อก
+                  {importPanel.countDate && (
+                    <span className="ml-1.5 font-normal text-blue-600">
+                      (วันที่ {format(new Date(importPanel.countDate + 'T00:00:00'), 'd MMM yyyy', { locale: th })})
+                    </span>
+                  )}
+                </p>
+                <button type="button" onClick={() => setImportPanel(null)} className="text-blue-400 hover:text-blue-600" aria-label="ปิด">
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              {importPanel.loading ? (
+                <div className="flex items-center gap-2 py-4 justify-center">
+                  <Loader2 className="size-4 animate-spin text-blue-500" />
+                  <span className="text-xs text-blue-600">กำลังโหลด…</span>
+                </div>
+              ) : importPanel.items.length === 0 ? (
+                <p className="text-xs text-blue-600 py-3 text-center">
+                  {importPanel.countDate
+                    ? 'ไม่มีรายการที่ต้องสั่งเพิ่ม — สต็อกอยู่ในระดับปกติ'
+                    : 'ยังไม่มีผลการนับที่ผ่านการยืนยัน — กรุณากดยืนยันในหน้าผลการนับสต็อกก่อน'}
+                </p>
+              ) : (
+                <>
+                  <div className="rounded-lg overflow-hidden border border-blue-200 bg-white">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-blue-100 bg-blue-50/60">
+                          <th className="w-8 px-3 py-2">
+                            <input
+                              type="checkbox"
+                              checked={importPanel.selected.size === importPanel.items.length}
+                              onChange={(e) => {
+                                const all = new Set(e.target.checked ? importPanel.items.map((i) => i.ingredientId) : []);
+                                setImportPanel((prev) => prev ? { ...prev, selected: all } : null);
+                              }}
+                              className="rounded border-slate-300"
+                            />
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium text-slate-500">วัตถุดิบ</th>
+                          <th className="px-3 py-2 text-right font-medium text-slate-500">คงเหลือ</th>
+                          <th className="px-3 py-2 text-right font-medium text-orange-600">ต้องสั่ง</th>
+                          <th className="px-3 py-2 text-right font-medium text-slate-500">Supplier</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {importPanel.items.map((item) => (
+                          <tr key={item.ingredientId} className={importPanel.selected.has(item.ingredientId) ? '' : 'opacity-50'}>
+                            <td className="px-3 py-1.5 text-center">
+                              <input
+                                type="checkbox"
+                                checked={importPanel.selected.has(item.ingredientId)}
+                                onChange={(e) => {
+                                  const s = new Set(importPanel.selected);
+                                  e.target.checked ? s.add(item.ingredientId) : s.delete(item.ingredientId);
+                                  setImportPanel((prev) => prev ? { ...prev, selected: s } : null);
+                                }}
+                                className="rounded border-slate-300"
+                              />
+                            </td>
+                            <td className="px-3 py-1.5 font-medium text-slate-800">{item.ingredientName}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">
+                              {item.quantityOnHand.toLocaleString('th-TH', { minimumFractionDigits: 2 })} {item.unit}
+                            </td>
+                            <td className="px-3 py-1.5 text-right">
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                value={importPanel.qtys[item.ingredientId] ?? item.reorderQty}
+                                onChange={(e) => {
+                                  const v = parseFloat(e.target.value) || item.reorderQty;
+                                  setImportPanel((prev) => prev ? { ...prev, qtys: { ...prev.qtys, [item.ingredientId]: v } } : null);
+                                }}
+                                className="w-20 rounded border border-orange-200 px-2 py-0.5 text-right text-orange-700 outline-none focus:border-orange-400"
+                              />
+                              <span className="ml-1 text-slate-400">{item.unit}</span>
+                            </td>
+                            <td className="px-3 py-1.5 text-right text-slate-400">
+                              {item.defaultSupplierName ?? <span className="text-slate-300">—</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <p className="text-xs text-blue-600">เลือก {importPanel.selected.size} / {importPanel.items.length} รายการ</p>
+                    <button
+                      type="button"
+                      onClick={handleImportConfirm}
+                      disabled={importPanel.selected.size === 0}
+                      className="rounded-lg bg-blue-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-blue-800 disabled:opacity-50"
+                    >
+                      นำเข้ารายการที่เลือก
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           <div className="space-y-2">
             {fields.map((field, idx) => {
@@ -509,7 +692,6 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
               const lineTotal = (Number(watchedItems?.[idx]?.quantity) || 0) * (Number(watchedItems?.[idx]?.unitCost) || 0);
               return (
                 <div key={field.id} className="grid grid-cols-12 gap-2 items-start">
-                  {/* Ingredient select */}
                   <div className="col-span-4">
                     <select
                       {...register(`items.${idx}.ingredientId` as never)}
@@ -517,7 +699,6 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
                       onChange={(e) => {
                         const found = ingredients.find((i) => i.id === e.target.value);
                         if (found) {
-                          // auto-fill unit and lastCost
                           const unitInput = document.querySelector<HTMLInputElement>(`[name="items.${idx}.unit"]`);
                           const costInput = document.querySelector<HTMLInputElement>(`[name="items.${idx}.unitCost"]`);
                           if (unitInput) unitInput.value = found.unit;
@@ -531,51 +712,34 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
                       ))}
                     </select>
                   </div>
-                  {/* Qty */}
                   <div className="col-span-2">
                     <input
                       {...register(`items.${idx}.quantity` as never, { valueAsNumber: true })}
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      placeholder="จำนวน"
+                      type="number" step="0.01" min="0.01" placeholder="จำนวน"
                       className={`${INPUT} text-right text-xs`}
                     />
                   </div>
-                  {/* Unit */}
                   <div className="col-span-2">
                     <input
                       {...register(`items.${idx}.unit` as never)}
-                      placeholder="หน่วย"
-                      defaultValue={ing?.unit ?? ''}
+                      placeholder="หน่วย" defaultValue={ing?.unit ?? ''}
                       className={`${INPUT} text-xs`}
                     />
                   </div>
-                  {/* Unit cost */}
                   <div className="col-span-2">
                     <input
                       {...register(`items.${idx}.unitCost` as never, { valueAsNumber: true })}
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="ราคา/หน่วย"
+                      type="number" step="0.01" min="0" placeholder="ราคา/หน่วย"
                       defaultValue={ing ? Number(ing.lastCost) : 0}
                       className={`${INPUT} text-right text-xs`}
                     />
                   </div>
-                  {/* Line total */}
                   <div className="col-span-1 flex items-center justify-end pt-2">
                     <span className="text-xs tabular-nums text-slate-600">{fmt(lineTotal)}</span>
                   </div>
-                  {/* Remove */}
                   <div className="col-span-1 flex items-center justify-center pt-1.5">
                     {fields.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => remove(idx)}
-                        aria-label="ลบรายการ"
-                        className="text-slate-400 hover:text-red-500 transition-colors"
-                      >
+                      <button type="button" onClick={() => remove(idx)} aria-label="ลบรายการ" className="text-slate-400 hover:text-red-500">
                         <Trash2 className="size-3.5" />
                       </button>
                     )}
@@ -597,10 +761,7 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
               <span className="text-slate-500">VAT</span>
               <input
                 {...register('vatRate', { valueAsNumber: true })}
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
+                type="number" step="0.01" min="0" max="100"
                 className="w-16 rounded border border-slate-300 px-2 py-0.5 text-xs text-right outline-none"
               />
               <span className="text-slate-500 text-xs">%</span>
@@ -620,15 +781,10 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
             <span className="text-sm text-slate-700">มีใบกำกับภาษีจาก Supplier</span>
           </label>
           {hasTaxInvoice && (
-            <input
-              {...register('taxInvoiceNumber')}
-              placeholder="เลขที่ใบกำกับภาษี"
-              className={INPUT}
-            />
+            <input {...register('taxInvoiceNumber')} placeholder="เลขที่ใบกำกับภาษี" className={INPUT} />
           )}
         </div>
 
-        {/* Notes */}
         <div>
           <label className="block text-xs font-medium text-slate-700 mb-1">หมายเหตุ</label>
           <textarea {...register('notes')} rows={2} className={`${INPUT} resize-none`} />
@@ -647,14 +803,7 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
   );
 }
 
-// ── Edit PO wrapper (loads detail first) ──────────────────────────────────────
-
-type POFormIngredient = {
-  id: string;
-  name: string;
-  unit: string;
-  lastCost: string;
-};
+// ── Edit PO wrapper ───────────────────────────────────────────────────────────
 
 function POFormEdit({ id, suppliers, onClose, onSaved }: { id: string; suppliers: POListData['suppliers']; onClose: () => void; onSaved: () => void }) {
   const { data, isLoading } = useQuery({
@@ -713,12 +862,12 @@ function ReceiveForm({ id, onClose, onSaved }: { id: string; onClose: () => void
       if (!r.ok) throw new Error(r.error);
       return r.data;
     },
-    staleTime: 30_000,
+    staleTime: 0,
   });
 
   if (isLoading || !data) {
     return (
-      <div className="w-[560px] rounded-xl bg-white p-10 shadow-xl flex items-center justify-center gap-2 text-slate-500">
+      <div className="w-[620px] rounded-xl bg-white p-10 shadow-xl flex items-center justify-center gap-2 text-slate-500">
         <Loader2 className="size-5 animate-spin" /> กำลังโหลด…
       </div>
     );
@@ -728,68 +877,143 @@ function ReceiveForm({ id, onClose, onSaved }: { id: string; onClose: () => void
 }
 
 function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose: () => void; onSaved: () => void }) {
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+  const isPartialStatus = data.po.status === 'partial_received';
+
   const {
     register,
     handleSubmit,
     watch,
-    formState: { errors, isSubmitting },
+    formState: { isSubmitting },
   } = useForm<ReceivePurchaseOrderInput>({
     resolver: zodResolver(receivePurchaseOrderSchema) as Resolver<ReceivePurchaseOrderInput>,
     defaultValues: {
       id: data.po.id,
+      receivedDate: today,
       hasTaxInvoice: data.po.hasTaxInvoice,
       taxInvoiceNumber: data.po.taxInvoiceNumber ?? '',
-      items: data.po.items.map((item) => ({
-        id: item.id,
-        receivedQuantity: Number(item.quantity),
-      })),
+      isPartial: false,
+      items: data.po.items.map((item) => {
+        const alreadyReceived = Number(item.receivedQuantity ?? 0);
+        const remaining = Math.max(0, Number(item.quantity) - alreadyReceived);
+        return {
+          id: item.id,
+          receivedQuantity: remaining,
+          discrepancyType: 'none' as const,
+          discrepancyNotes: '',
+        };
+      }),
     },
   });
 
   const hasTaxInvoice = watch('hasTaxInvoice');
+  const isPartialChecked = watch('isPartial');
 
   async function onSubmit(formData: ReceivePurchaseOrderInput) {
     const result = await receiveOrder(formData);
     if (!result.ok) { toast.error(result.error); return; }
-    toast.success('บันทึกการรับของแล้ว — อัปเดตราคาวัตถุดิบแล้ว');
+    toast.success(formData.isPartial ? 'บันทึกการรับบางส่วนแล้ว' : 'บันทึกการรับของครบแล้ว — อัปเดตราคาวัตถุดิบแล้ว');
     onSaved();
   }
 
   return (
-    <div className="w-[560px] max-h-[90vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+    <div className="w-[620px] max-h-[90vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
       <div className="mb-5 flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">รับของ — {data.po.poNumber}</h2>
+          <h2 className="text-sm font-semibold text-slate-900">
+            {isPartialStatus ? 'รับของเพิ่ม' : 'รับของ'} — {data.po.poNumber}
+          </h2>
           <p className="text-xs text-slate-500 mt-0.5">{data.po.supplier.name}</p>
         </div>
         <button type="button" aria-label="ปิด" onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg">×</button>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         <input type="hidden" {...register('id')} />
 
-        {/* Line items */}
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-slate-700 mb-1">กรอกจำนวนที่รับได้จริง</p>
-          {data.po.items.map((item, idx) => (
-            <div key={item.id} className="flex items-center gap-3">
-              <input type="hidden" {...register(`items.${idx}.id`)} value={item.id} />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-slate-800">{item.ingredient.name}</p>
-                <p className="text-xs text-slate-500">สั่ง {fmt(item.quantity)} {item.unit}</p>
+        {/* Received date */}
+        <div>
+          <label className="block text-xs font-medium text-slate-700 mb-1">วันที่รับของ</label>
+          <input type="date" {...register('receivedDate')} className={INPUT} />
+        </div>
+
+        {/* Line items with discrepancy */}
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-slate-700">รายการสินค้า</p>
+          {data.po.items.map((item, idx) => {
+            const alreadyReceived = Number(item.receivedQuantity ?? 0);
+            const remaining = Math.max(0, Number(item.quantity) - alreadyReceived);
+            const discrepancyVal = watch(`items.${idx}.discrepancyType`);
+            return (
+              <div key={item.id} className="rounded-xl border border-slate-200 p-4 space-y-3">
+                <input type="hidden" {...register(`items.${idx}.id`)} value={item.id} />
+
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">{item.ingredient.name}</p>
+                    <p className="text-xs text-slate-500">
+                      สั่ง {fmt(item.quantity)} {item.unit}
+                      {alreadyReceived > 0 && (
+                        <span className="ml-2 text-green-600">• รับแล้ว {fmt(alreadyReceived)}</span>
+                      )}
+                      {remaining > 0 && alreadyReceived > 0 && (
+                        <span className="ml-2 text-orange-600">• ค้าง {fmt(remaining)}</span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <input
+                      {...register(`items.${idx}.receivedQuantity`, { valueAsNumber: true })}
+                      type="number" step="0.01" min="0"
+                      className="w-24 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-right outline-none focus:border-slate-500"
+                    />
+                    <span className="text-sm text-slate-500 w-8 shrink-0">{item.unit}</span>
+                  </div>
+                </div>
+
+                {/* Discrepancy */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">สถานะสินค้า</label>
+                    <select
+                      {...register(`items.${idx}.discrepancyType`)}
+                      className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs outline-none focus:border-slate-500"
+                    >
+                      <option value="none">ปกติ</option>
+                      <option value="short">ขาด</option>
+                      <option value="wrong">ผิดรายการ</option>
+                      <option value="spoiled">เสียหาย</option>
+                    </select>
+                  </div>
+                  {discrepancyVal !== 'none' && (
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-slate-600 mb-1">หมายเหตุ (ความผิดปกติ)</label>
+                      <input
+                        {...register(`items.${idx}.discrepancyNotes`)}
+                        type="text"
+                        placeholder="ระบุรายละเอียด"
+                        className="w-full rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <input
-                  {...register(`items.${idx}.receivedQuantity`, { valueAsNumber: true })}
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-sm text-right outline-none focus:border-slate-500"
-                />
-                <span className="text-sm text-slate-500 w-8 shrink-0">{item.unit}</span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
+        </div>
+
+        {/* Partial receipt toggle */}
+        <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 space-y-1">
+          <label className="flex items-center gap-2.5 cursor-pointer">
+            <input type="checkbox" {...register('isPartial')} className="rounded border-slate-300" />
+            <span className="text-sm text-slate-700 font-medium">รับของบางส่วน (ยังไม่ครบ)</span>
+          </label>
+          {isPartialChecked && (
+            <p className="text-xs text-orange-600 pl-6">PO จะเปลี่ยนเป็นสถานะ "รับบางส่วน" — สามารถรับเพิ่มได้ในภายหลัง</p>
+          )}
+          {!isPartialChecked && (
+            <p className="text-xs text-slate-400 pl-6">PO จะเปลี่ยนเป็นสถานะ "รับของแล้ว" และอัปเดตราคาวัตถุดิบ</p>
+          )}
         </div>
 
         {/* Tax invoice */}
@@ -802,23 +1026,25 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
             <input
               {...register('taxInvoiceNumber')}
               placeholder="เลขที่ใบกำกับภาษี"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+              className={INPUT}
             />
           )}
         </div>
 
-        <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
-          การรับของจะอัปเดตราคาล่าสุด (lastCost) ของวัตถุดิบโดยอัตโนมัติ
+        {/* Notes */}
+        <div>
+          <label className="block text-xs font-medium text-slate-700 mb-1">หมายเหตุ (ถ้ามี)</label>
+          <textarea {...register('notes')} rows={2} className={`${INPUT} resize-none`} placeholder="หมายเหตุสำหรับการรับของครั้งนี้" />
         </div>
 
         <div className="flex gap-3">
           <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-slate-300 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
             ยกเลิก
           </button>
-          <button type="submit" disabled={isSubmitting} className="flex-1 rounded-lg bg-green-700 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50">
+          <button type="submit" disabled={isSubmitting} className={`flex-1 rounded-lg py-2 text-sm font-medium text-white disabled:opacity-50 ${isPartialChecked ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-700 hover:bg-green-800'}`}>
             {isSubmitting ? (
               <span className="flex items-center justify-center gap-2"><Loader2 className="size-4 animate-spin" /> กำลังบันทึก…</span>
-            ) : 'ยืนยันรับของ'}
+            ) : isPartialChecked ? 'บันทึกรับบางส่วน' : 'ยืนยันรับของครบ'}
           </button>
         </div>
       </form>
@@ -826,9 +1052,9 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
   );
 }
 
-// ── PO Detail ─────────────────────────────────────────────────────────────────
+// ── PO Detail modal ───────────────────────────────────────────────────────────
 
-function PODetail({ id, onClose }: { id: string; onClose: () => void }) {
+function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => void; onReceive: (id: string) => void }) {
   const { data, isLoading } = useQuery({
     queryKey: ['po-detail', id],
     queryFn: async () => {
@@ -841,13 +1067,14 @@ function PODetail({ id, onClose }: { id: string; onClose: () => void }) {
 
   if (isLoading || !data) {
     return (
-      <div className="w-[560px] rounded-xl bg-white p-10 shadow-xl flex items-center justify-center gap-2 text-slate-500">
+      <div className="w-[600px] rounded-xl bg-white p-10 shadow-xl flex items-center justify-center gap-2 text-slate-500">
         <Loader2 className="size-5 animate-spin" /> กำลังโหลด…
       </div>
     );
   }
 
   const po = data.po;
+  const showReceived = po.status === 'received' || po.status === 'partial_received';
 
   function handlePrint() {
     const win = window.open('', '_blank', 'width=400,height=600');
@@ -896,18 +1123,52 @@ function PODetail({ id, onClose }: { id: string; onClose: () => void }) {
     win.print();
   }
 
+  function handleLineCopy() {
+    const lines: string[] = [
+      `📦 ใบสั่งซื้อ ${po.poNumber}`,
+      `Supplier: ${po.supplier.name}`,
+      `วันที่: ${fmtDate(po.orderDate)}`,
+      po.expectedDate ? `คาดรับ: ${fmtDate(po.expectedDate)}` : '',
+      '',
+      'รายการสั่งซื้อ:',
+      ...po.items.map(
+        (item) =>
+          `• ${item.ingredient.name}  ${fmt(item.quantity)} ${item.unit}  ฿${fmt(item.lineTotal)}`,
+      ),
+      '',
+      `ยอดก่อน VAT: ฿${fmt(po.subtotal)}`,
+      `VAT ${fmt(po.vatRate)}%: ฿${fmt(po.vatAmount)}`,
+      `ยอดรวม: ฿${fmt(po.total)}`,
+      po.notes ? `\nหมายเหตุ: ${po.notes}` : '',
+    ].filter((l) => l !== undefined);
+
+    navigator.clipboard.writeText(lines.filter(Boolean).join('\n')).then(() => {
+      toast.success('คัดลอกข้อความ LINE แล้ว');
+    }).catch(() => {
+      toast.error('ไม่สามารถคัดลอกได้ — กรุณาลองใหม่');
+    });
+  }
+
+  const [showReceipts, setShowReceipts] = useState(false);
+  const receipts = po.goodsReceipts ?? [];
+
   return (
-    <div className="w-[560px] max-h-[90vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+    <div className="w-[600px] max-h-[90vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
       <div className="mb-5 flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-slate-900 font-mono">{po.poNumber}</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[po.status]}`}>
-              {STATUS_LABEL[po.status]}
-            </span>
-          </p>
+          <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[po.status]}`}>
+            {STATUS_LABEL[po.status]}
+          </span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleLineCopy}
+            className="flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
+          >
+            <Copy className="size-3.5" /> คัดลอกสำหรับ LINE
+          </button>
           <button
             type="button"
             onClick={handlePrint}
@@ -945,35 +1206,43 @@ function PODetail({ id, onClose }: { id: string; onClose: () => void }) {
           </div>
         </div>
 
+        {/* Items table */}
         <div className="rounded-lg border border-slate-200 overflow-hidden">
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="px-3 py-2 text-left font-medium text-slate-500">รายการ</th>
                 <th className="px-3 py-2 text-right font-medium text-slate-500">สั่ง</th>
-                {po.status === 'received' && <th className="px-3 py-2 text-right font-medium text-slate-500">รับจริง</th>}
+                {showReceived && <th className="px-3 py-2 text-right font-medium text-green-600">รับรวม</th>}
                 <th className="px-3 py-2 text-right font-medium text-slate-500">ราคา/หน่วย</th>
                 <th className="px-3 py-2 text-right font-medium text-slate-500">รวม</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {po.items.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-3 py-2 font-medium text-slate-800">{item.ingredient.name}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmt(item.quantity)} {item.unit}</td>
-                  {po.status === 'received' && (
-                    <td className="px-3 py-2 text-right tabular-nums text-green-700">
-                      {item.receivedQuantity ? `${fmt(item.receivedQuantity)} ${item.unit}` : '—'}
-                    </td>
-                  )}
-                  <td className="px-3 py-2 text-right tabular-nums">฿{fmt(item.unitCost)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums font-medium">฿{fmt(item.lineTotal)}</td>
-                </tr>
-              ))}
+              {po.items.map((item) => {
+                const received = Number(item.receivedQuantity ?? 0);
+                const ordered = Number(item.quantity);
+                const isShort = showReceived && received < ordered;
+                return (
+                  <tr key={item.id}>
+                    <td className="px-3 py-2 font-medium text-slate-800">{item.ingredient.name}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmt(item.quantity)} {item.unit}</td>
+                    {showReceived && (
+                      <td className={`px-3 py-2 text-right tabular-nums ${isShort ? 'text-orange-600' : 'text-green-700'}`}>
+                        {fmt(received)} {item.unit}
+                        {isShort && <span className="ml-1 text-orange-400">(ขาด {fmt(ordered - received)})</span>}
+                      </td>
+                    )}
+                    <td className="px-3 py-2 text-right tabular-nums">฿{fmt(item.unitCost)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-medium">฿{fmt(item.lineTotal)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
+        {/* Totals */}
         <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 space-y-1">
           <div className="flex justify-between text-xs text-slate-500">
             <span>ยอดก่อน VAT</span>
@@ -989,14 +1258,80 @@ function PODetail({ id, onClose }: { id: string; onClose: () => void }) {
           </div>
         </div>
 
+        {/* Tax invoice */}
         {po.hasTaxInvoice && (
           <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-2.5 text-xs text-green-700">
             ✓ มีใบกำกับภาษี{po.taxInvoiceNumber ? ` — เลขที่: ${po.taxInvoiceNumber}` : ''}
           </div>
         )}
 
-        {po.notes && (
-          <p className="text-xs text-slate-500">หมายเหตุ: {po.notes}</p>
+        {po.notes && <p className="text-xs text-slate-500">หมายเหตุ: {po.notes}</p>}
+
+        {/* Goods receipts history */}
+        {receipts.length > 0 && (
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowReceipts((v) => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors"
+            >
+              <span className="text-xs font-semibold text-slate-700">
+                ประวัติการรับของ ({receipts.length} ครั้ง)
+              </span>
+              {showReceipts ? <ChevronDown className="size-4 text-slate-400" /> : <ChevronRight className="size-4 text-slate-400" />}
+            </button>
+            {showReceipts && (
+              <div className="divide-y divide-slate-100">
+                {receipts.map((receipt) => (
+                  <div key={receipt.id} className="px-4 py-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium text-slate-700">
+                        {fmtDate(receipt.receivedDate)}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        โดย {receipt.receivedByUser?.name ?? '—'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      {receipt.items.map((ri) => {
+                        const poItem = po.items.find((pi) => pi.id === ri.purchaseOrderItemId);
+                        return (
+                          <div key={ri.id} className="flex items-center justify-between text-xs">
+                            <span className="text-slate-600">{poItem?.ingredient.name ?? '—'}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="tabular-nums text-slate-700">
+                                {fmt(ri.receivedQuantity)} {poItem?.unit}
+                              </span>
+                              {ri.discrepancyType !== 'none' && (
+                                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-amber-700 font-medium">
+                                  {DISCREPANCY_LABEL[ri.discrepancyType]}
+                                  {ri.discrepancyNotes && `: ${ri.discrepancyNotes}`}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {receipt.notes && (
+                      <p className="text-xs text-slate-400 italic">{receipt.notes}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Receive more button for partial */}
+        {po.status === 'partial_received' && (
+          <button
+            type="button"
+            onClick={() => { onClose(); onReceive(po.id); }}
+            className="w-full flex items-center justify-center gap-2 rounded-lg bg-orange-600 py-2.5 text-sm font-medium text-white hover:bg-orange-700"
+          >
+            <PackagePlus className="size-4" /> รับของเพิ่ม
+          </button>
         )}
 
         <p className="text-xs text-slate-400">สร้างโดย: {po.createdByUser.name}</p>

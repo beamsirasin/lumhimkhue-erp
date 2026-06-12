@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
-import { Search, Plus, Package } from 'lucide-react';
+import { Search, Plus, Package, MapPin } from 'lucide-react';
 import type { Resolver } from 'react-hook-form';
 import {
   getIngredientPageData,
@@ -157,10 +157,10 @@ export function IngredientsPage({ initialData, initialDataUpdatedAt }: Props) {
                 <span className="text-xs text-slate-400">{items.length} รายการ</span>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm min-w-[800px]">
                   <thead>
                     <tr className="border-b border-slate-100 text-left">
-                      <th className="px-4 py-2.5 text-xs font-medium text-slate-500">ชื่อ</th>
+                      <th className="px-4 py-2.5 text-xs font-medium text-slate-500">ชื่อ / ความถี่</th>
                       <th className="px-4 py-2.5 text-xs font-medium text-slate-500">หน่วย</th>
                       <th className="px-4 py-2.5 text-xs font-medium text-slate-500 text-right">ราคาล่าสุด</th>
                       <th className="px-4 py-2.5 text-xs font-medium text-slate-500 text-right">จุดสั่งซื้อ</th>
@@ -171,50 +171,84 @@ export function IngredientsPage({ initialData, initialDataUpdatedAt }: Props) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {items.map((ing) => (
-                      <tr
-                        key={ing.id}
-                        className={`transition-colors hover:bg-slate-50 ${!ing.isActive ? 'opacity-50' : ''}`}
-                      >
-                        <td className="px-4 py-3 font-medium text-slate-900">{ing.name}</td>
-                        <td className="px-4 py-3 text-slate-500">{ing.unit}</td>
-                        <td className="px-4 py-3 text-right tabular-nums text-slate-700">
-                          {Number(ing.lastCost) > 0 ? `฿${fmt(ing.lastCost)}` : '—'}
-                        </td>
-                        <td className="px-4 py-3 text-right tabular-nums text-slate-500">
-                          {Number(ing.minStock) > 0 ? `${fmt(ing.minStock, 0)} ${ing.unit}` : '—'}
-                        </td>
-                        <td className="px-4 py-3 text-right tabular-nums text-slate-500">
-                          {Number(ing.parLevel) > 0 ? `${fmt(ing.parLevel, 0)} ${ing.unit}` : '—'}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-slate-500">
-                          {ing.defaultSupplier?.name ?? '—'}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            type="button"
-                            disabled={isToggling && toggleVar === ing.id}
-                            onClick={() => doToggle(ing.id)}
-                            className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors disabled:opacity-50 ${
-                              ing.isActive
-                                ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                            }`}
-                          >
-                            {isToggling && toggleVar === ing.id ? '…' : ing.isActive ? 'เปิด' : 'ปิด'}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setModal({ type: 'edit', ingredient: ing })}
-                            className="text-xs text-slate-400 hover:text-slate-700 transition-colors"
-                          >
-                            แก้ไข
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {items.map((ing) => {
+                      const yieldPct = Number(ing.yieldPercent ?? 100);
+                      const isWeekly = ing.countFrequency === 'weekly';
+                      return (
+                        <tr
+                          key={ing.id}
+                          className={`transition-colors hover:bg-slate-50 ${!ing.isActive ? 'opacity-50' : ''}`}
+                        >
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-slate-900">{ing.name}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <span
+                                className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${
+                                  isWeekly
+                                    ? 'bg-purple-100 text-purple-700'
+                                    : 'bg-blue-100 text-blue-700'
+                                }`}
+                              >
+                                {isWeekly ? 'รายสัปดาห์' : 'รายวัน'}
+                              </span>
+                              {yieldPct < 100 && (
+                                <span className="rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-xs text-amber-700">
+                                  yield {yieldPct}%
+                                </span>
+                              )}
+                              {ing.storageLocation && (
+                                <span className="flex items-center gap-0.5 text-xs text-slate-400">
+                                  <MapPin className="size-3" />{ing.storageLocation}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-slate-500">
+                            {ing.unit}
+                            {ing.orderUnit && ing.orderUnit !== ing.unit && (
+                              <p className="text-xs text-slate-400 mt-0.5">
+                                สั่ง: {ing.orderUnit} (×{ing.orderUnitConversion})
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-700">
+                            {Number(ing.lastCost) > 0 ? `฿${fmt(ing.lastCost)}` : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-500">
+                            {Number(ing.minStock) > 0 ? `${fmt(ing.minStock, 0)} ${ing.unit}` : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-500">
+                            {Number(ing.parLevel) > 0 ? `${fmt(ing.parLevel, 0)} ${ing.unit}` : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-slate-500">
+                            {ing.defaultSupplier?.name ?? '—'}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              type="button"
+                              disabled={isToggling && toggleVar === ing.id}
+                              onClick={() => doToggle(ing.id)}
+                              className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+                                ing.isActive
+                                  ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                              }`}
+                            >
+                              {isToggling && toggleVar === ing.id ? '…' : ing.isActive ? 'เปิด' : 'ปิด'}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => setModal({ type: 'edit', ingredient: ing })}
+                              className="text-xs text-slate-400 hover:text-slate-700 transition-colors"
+                            >
+                              แก้ไข
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -226,19 +260,16 @@ export function IngredientsPage({ initialData, initialDataUpdatedAt }: Props) {
       {/* Modal */}
       {modal && (
         <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4 py-8 overflow-y-auto"
           onClick={() => setModal(null)}
         >
-          <div onClick={(e) => e.stopPropagation()}>
+          <div onClick={(e) => e.stopPropagation()} className="my-auto">
             <IngredientForm
               initial={modal.type === 'edit' ? modal.ingredient : undefined}
               categories={data.categories}
               suppliers={data.suppliers}
               onClose={() => setModal(null)}
-              onSaved={() => {
-                invalidate();
-                setModal(null);
-              }}
+              onSaved={() => { invalidate(); setModal(null); }}
             />
           </div>
         </div>
@@ -266,6 +297,7 @@ function IngredientForm({
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema) as Resolver<FormValues>,
@@ -279,55 +311,59 @@ function IngredientForm({
           parLevel: Number(initial.parLevel),
           lastCost: Number(initial.lastCost),
           defaultSupplierId: initial.defaultSupplierId ?? '',
+          countFrequency: (initial.countFrequency ?? 'daily') as 'daily' | 'weekly',
+          yieldPercent: Number(initial.yieldPercent ?? 100),
+          orderUnit: initial.orderUnit ?? '',
+          orderUnitConversion: Number(initial.orderUnitConversion ?? 1),
+          storageLocation: initial.storageLocation ?? '',
           notes: initial.notes ?? '',
         }
-      : { minStock: 0, parLevel: 0, lastCost: 0, defaultSupplierId: '' },
+      : {
+          minStock: 0,
+          parLevel: 0,
+          lastCost: 0,
+          defaultSupplierId: '',
+          countFrequency: 'daily' as const,
+          yieldPercent: 100,
+          orderUnitConversion: 1,
+          orderUnit: '',
+          storageLocation: '',
+        },
   });
+
+  const watchedOrderUnit = watch('orderUnit' as keyof FormValues) as string;
 
   async function onSubmit(data: FormValues) {
     const result = initial ? await updateIngredient(data) : await createIngredient(data);
-    if (!result.ok) {
-      toast.error(result.error);
-      return;
-    }
+    if (!result.ok) { toast.error(result.error); return; }
     toast.success(initial ? 'แก้ไขวัตถุดิบแล้ว' : 'เพิ่มวัตถุดิบแล้ว');
     onSaved();
   }
 
   return (
-    <div className="w-[480px] max-h-[90vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+    <div className="w-[540px] max-h-[92vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
       <div className="mb-5 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-900">
           {initial ? 'แก้ไขวัตถุดิบ' : 'เพิ่มวัตถุดิบ'}
         </h2>
-        <button
-          type="button"
-          aria-label="ปิด"
-          onClick={onClose}
-          className="text-slate-400 hover:text-slate-600 text-lg leading-none"
-        >
-          ×
-        </button>
+        <button type="button" aria-label="ปิด" onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg leading-none">×</button>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {initial && (
-          <input
-            type="hidden"
-            {...register('id' as keyof (CreateIngredientInput | UpdateIngredientInput))}
-          />
+          <input type="hidden" {...register('id' as keyof (CreateIngredientInput | UpdateIngredientInput))} />
         )}
 
+        {/* Name */}
         <div>
           <label className="block text-xs font-medium text-slate-700 mb-1">
             ชื่อวัตถุดิบ <span className="text-red-500">*</span>
           </label>
           <input {...register('name')} placeholder="เช่น เนื้อวัวสไลซ์" className={INPUT} />
-          {errors.name && (
-            <p className="mt-1 text-xs text-red-600">{errors.name.message}</p>
-          )}
+          {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name.message}</p>}
         </div>
 
+        {/* Category + Unit */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">
@@ -336,19 +372,14 @@ function IngredientForm({
             <select {...register('categoryId')} className={INPUT}>
               <option value="">เลือกหมวด</option>
               {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
               ))}
             </select>
-            {errors.categoryId && (
-              <p className="mt-1 text-xs text-red-600">{errors.categoryId.message}</p>
-            )}
+            {errors.categoryId && <p className="mt-1 text-xs text-red-600">{errors.categoryId.message}</p>}
           </div>
-
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">
-              หน่วย <span className="text-red-500">*</span>
+              หน่วยนับ (สต็อก) <span className="text-red-500">*</span>
             </label>
             <input
               {...register('unit')}
@@ -357,39 +388,28 @@ function IngredientForm({
               className={INPUT}
             />
             <datalist id="unit-suggestions">
-              {COMMON_UNITS.map((u) => (
-                <option key={u} value={u} />
-              ))}
+              {COMMON_UNITS.map((u) => <option key={u} value={u} />)}
             </datalist>
-            {errors.unit && (
-              <p className="mt-1 text-xs text-red-600">{errors.unit.message}</p>
-            )}
+            {errors.unit && <p className="mt-1 text-xs text-red-600">{errors.unit.message}</p>}
           </div>
         </div>
 
+        {/* Stock levels + cost */}
         <div className="grid grid-cols-3 gap-3">
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">จุดสั่งซื้อ</label>
             <input
               {...register('minStock', { valueAsNumber: true })}
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0"
+              type="number" step="0.01" min="0" placeholder="0"
               className={INPUT}
             />
-            {errors.minStock && (
-              <p className="mt-1 text-xs text-red-600">{errors.minStock.message}</p>
-            )}
+            {errors.minStock && <p className="mt-1 text-xs text-red-600">{errors.minStock.message}</p>}
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-700 mb-1">ระดับที่ควรมี</label>
             <input
               {...register('parLevel', { valueAsNumber: true })}
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0"
+              type="number" step="0.01" min="0" placeholder="0"
               className={INPUT}
             />
           </div>
@@ -397,27 +417,91 @@ function IngredientForm({
             <label className="block text-xs font-medium text-slate-700 mb-1">ราคาล่าสุด (฿)</label>
             <input
               {...register('lastCost', { valueAsNumber: true })}
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0.00"
+              type="number" step="0.01" min="0" placeholder="0.00"
               className={INPUT}
             />
           </div>
         </div>
 
+        {/* ABC classification + yield */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+          <p className="text-xs font-semibold text-slate-700">การจัดการสต็อก</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">ความถี่การนับ</label>
+              <select {...register('countFrequency' as keyof FormValues)} className={INPUT}>
+                <option value="daily">รายวัน (A/B — สด / ราคาสูง)</option>
+                <option value="weekly">รายสัปดาห์ (C — ของแห้ง)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">
+                Yield (%) <span className="text-slate-400 font-normal">— สูญเสียจากการเตรียม</span>
+              </label>
+              <input
+                {...register('yieldPercent', { valueAsNumber: true })}
+                type="number" step="1" min="0" max="100" placeholder="100"
+                className={INPUT}
+              />
+              <p className="mt-1 text-xs text-slate-400">100% = ไม่มีสูญเสีย, 80% = เตรียมแล้วเหลือ 80%</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Order unit */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+          <p className="text-xs font-semibold text-slate-700">หน่วยสั่งซื้อ <span className="font-normal text-slate-400">(ถ้าต่างจากหน่วยนับสต็อก)</span></p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">หน่วยสั่งซื้อ</label>
+              <input
+                {...register('orderUnit' as keyof FormValues)}
+                placeholder="เช่น ลัง, ถุง 5กก."
+                className={INPUT}
+              />
+            </div>
+            {watchedOrderUnit && (
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  จำนวน (หน่วยสต็อก) ต่อ 1 หน่วยสั่งซื้อ
+                </label>
+                <input
+                  {...register('orderUnitConversion', { valueAsNumber: true })}
+                  type="number" step="0.001" min="0.001" placeholder="1"
+                  className={INPUT}
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  เช่น 1 ลัง = 12 ขวด → ใส่ 12
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Storage location */}
+        <div>
+          <label className="block text-xs font-medium text-slate-700 mb-1">
+            ที่จัดเก็บ <span className="text-slate-400 font-normal">(ถ้ามี)</span>
+          </label>
+          <input
+            {...register('storageLocation' as keyof FormValues)}
+            placeholder="เช่น ตู้เย็น A, ชั้น 2, คลังแห้ง"
+            className={INPUT}
+          />
+        </div>
+
+        {/* Supplier */}
         <div>
           <label className="block text-xs font-medium text-slate-700 mb-1">Supplier หลัก</label>
           <select {...register('defaultSupplierId')} className={INPUT}>
             <option value="">— ไม่ระบุ —</option>
             {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
+              <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
         </div>
 
+        {/* Notes */}
         <div>
           <label className="block text-xs font-medium text-slate-700 mb-1">หมายเหตุ</label>
           <textarea
@@ -428,9 +512,14 @@ function IngredientForm({
           />
         </div>
 
-        <button type="submit" disabled={isSubmitting} className={BTN_PRIMARY}>
-          {isSubmitting ? 'กำลังบันทึก…' : 'บันทึก'}
-        </button>
+        <div className="flex gap-3 pt-1">
+          <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-slate-300 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            ยกเลิก
+          </button>
+          <button type="submit" disabled={isSubmitting} className="flex-1 rounded-lg bg-slate-800 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50">
+            {isSubmitting ? 'กำลังบันทึก…' : 'บันทึก'}
+          </button>
+        </div>
       </form>
     </div>
   );
