@@ -16,6 +16,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
       userName={name}
       uiLayout={session.user.uiLayout ?? null}
       allowedModules={session.user.allowedModules ?? []}
+      navLayout={session.user.navLayout ?? null}
     >
       {children}
     </SidebarLayout>

@@ -156,6 +156,7 @@ export const users = pgTable('users', {
   branchId: uuid('branch_id').references(() => branches.id),
   uiLayout: uiLayoutEnum('ui_layout'),
   allowedModules: text('allowed_modules').array(),
+  navLayout: jsonb('nav_layout').$type<{ heading: string; modules: string[] }[] | null>(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

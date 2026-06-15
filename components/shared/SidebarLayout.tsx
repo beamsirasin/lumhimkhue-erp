@@ -38,7 +38,7 @@ import {
   Wallet,
   BookOpen,
   CalendarDays,
-  GitBranch,
+
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -84,7 +84,7 @@ const MODULE_HREFS: Record<string, string[]> = {
   settings:        ['/settings'],
   users:           ['/users'],
   hr:              ['/hr', '/hr/employees', '/hr/schedule', '/hr/time', '/hr/payroll', '/hr/settings'],
-  branches:        ['/branches'],
+
   printers:        ['/printers'],
   system:          ['/system'],
 };
@@ -123,6 +123,35 @@ function getModuleForNavItem(item: NavItem | NavGroup): string | null {
     }
   }
   return null;
+}
+
+function buildModuleItemMap(role: Role): Map<string, NavItem | NavGroup> {
+  const map = new Map<string, NavItem | NavGroup>();
+  for (const section of NAV[role] ?? []) {
+    for (const item of section.items) {
+      const modId = getModuleForNavItem(item);
+      if (modId) map.set(modId, item);
+    }
+  }
+  return map;
+}
+
+function buildSectionsFromNavLayout(
+  navLayout: { heading: string; modules: string[] }[],
+  role: Role,
+  allowedModules: string[],
+): NavSection[] {
+  const modMap = buildModuleItemMap(role);
+  const enabledSet = new Set(allowedModules);
+  return navLayout
+    .map(({ heading, modules }) => ({
+      heading: heading || undefined,
+      items: modules
+        .filter((m) => !enabledSet.size || enabledSet.has(m))
+        .map((m) => modMap.get(m))
+        .filter((item): item is NavItem | NavGroup => item != null),
+    }))
+    .filter((s) => s.items.length > 0);
 }
 
 function reorderSections(sections: NavSection[], modules: string[]): NavSection[] {
@@ -245,7 +274,7 @@ const NAV: Record<Role, NavSection[]> = {
       items: [
         { href: '/settings', label: 'ตั้งค่าบิล',   Icon: Settings },
         { href: '/users',    label: 'บัญชีผู้ใช้',   Icon: Users },
-        { href: '/branches', label: 'สาขา',           Icon: GitBranch },
+
         { href: '/printers', label: 'เครื่องพิมพ์',  Icon: Printer },
         { href: '/system',   label: 'ข้อมูลระบบ',    Icon: Info },
       ],
@@ -323,7 +352,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/hr/payroll':            'เงินเดือน',
   '/hr/settings':           'ตั้งค่า HR',
   '/reservations':          'การจองโต๊ะ',
-  '/branches':              'จัดการสาขา',
+
 };
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -760,6 +789,11 @@ function SidebarInner({
   );
 }
 
+/* ─── Persist tablet collapsed state across client-side navigations ─ */
+// Module-level: survives segment boundary remounts; resets only on full page reload.
+// Server always sees false (fresh module per request) → no hydration mismatch.
+let _tabletCollapsed = false;
+
 /* ─── Standard sidebar layout (owner / manager / desktop) ───── */
 
 function StandardSidebarLayout({
@@ -769,6 +803,7 @@ function StandardSidebarLayout({
   pathname,
   badgeCounts,
   allowedModules,
+  navLayout,
   variant = 'default',
 }: {
   role: Role;
@@ -777,18 +812,27 @@ function StandardSidebarLayout({
   pathname: string;
   badgeCounts?: Record<string, number>;
   allowedModules: string[];
+  navLayout?: { heading: string; modules: string[] }[] | null;
   variant?: 'default' | 'tablet';
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const isTablet = variant === 'tablet';
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => isTablet ? _tabletCollapsed : false);
   const rawSections = NAV[role] ?? [];
-  const sections = reorderSections(filterSections(rawSections, allowedModules), allowedModules);
+  const sections = navLayout?.length
+    ? buildSectionsFromNavLayout(navLayout, role, allowedModules)
+    : reorderSections(filterSections(rawSections, allowedModules), allowedModules);
   const pageTitle = getPageTitle(pathname);
 
-  const isTablet = variant === 'tablet';
   const size: 'default' | 'large' = isTablet ? 'large' : 'default';
 
-  const toggleCollapse = () => setSidebarCollapsed((c) => !c);
+  const toggleCollapse = () => {
+    setSidebarCollapsed((c) => {
+      const next = !c;
+      _tabletCollapsed = next;
+      return next;
+    });
+  };
 
   const innerProps = {
     role, userName, sections, pathname, badgeCounts, size,
@@ -1080,6 +1124,7 @@ interface SidebarLayoutProps {
   badgeCounts?: Record<string, number>;
   uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null;
   allowedModules?: string[] | null;
+  navLayout?: { heading: string; modules: string[] }[] | null;
 }
 
 export function SidebarLayout({
@@ -1089,6 +1134,7 @@ export function SidebarLayout({
   badgeCounts,
   uiLayout,
   allowedModules,
+  navLayout,
 }: SidebarLayoutProps) {
   const pathname = usePathname();
   const modules = allowedModules ?? [];
@@ -1132,6 +1178,7 @@ export function SidebarLayout({
       pathname={pathname}
       badgeCounts={badgeCounts}
       allowedModules={modules}
+      navLayout={navLayout}
       variant={useTablet ? 'tablet' : 'default'}
     >
       {children}

@@ -33,6 +33,7 @@ export async function getStaffList() {
         isActive: users.isActive,
         uiLayout: users.uiLayout,
         allowedModules: users.allowedModules,
+        navLayout: users.navLayout,
         createdAt: users.createdAt,
       })
       .from(users)
@@ -66,6 +67,7 @@ export async function createStaff(input: unknown) {
       passwordHash,
       uiLayout: parsed.data.uiLayout,
       allowedModules: parsed.data.allowedModules,
+      navLayout: parsed.data.navLayout ?? null,
     }).returning({ id: users.id });
     revalidatePath('/users');
     writeAuditLog({
@@ -106,6 +108,7 @@ export async function updateStaff(input: unknown) {
       role: data.role,
       uiLayout: data.uiLayout,
       allowedModules: data.allowedModules,
+      navLayout: data.navLayout ?? null,
     }).where(eq(users.id, id));
 
     const selfUpdated = id === session.user.id;
@@ -114,6 +117,7 @@ export async function updateStaff(input: unknown) {
         user: {
           allowedModules: data.allowedModules ?? [],
           uiLayout: data.uiLayout ?? null,
+          navLayout: data.navLayout ?? null,
           name: data.name,
         },
       });

@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { toast } from 'sonner';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Pencil, Plus, X } from 'lucide-react';
 import {
   DndContext,
   PointerSensor,
@@ -99,7 +99,6 @@ export const MODULE_GROUPS = [
     modules: [
       { id: 'settings', label: 'ตั้งค่าบิล' },
       { id: 'users',    label: 'บัญชีผู้ใช้' },
-      { id: 'branches', label: 'สาขา' },
       { id: 'printers', label: 'เครื่องพิมพ์' },
       { id: 'system',   label: 'ข้อมูลระบบ' },
     ],
@@ -314,10 +313,10 @@ function UiLayoutPicker({
   onChange,
 }: {
   value: 'touchscreen' | 'desktop' | 'tablet' | '';
-  onChange: (v: 'touchscreen' | 'desktop' | 'tablet') => void;
+  onChange: (v: 'touchscreen' | 'tablet') => void;
 }) {
   const options: {
-    key: 'touchscreen' | 'desktop' | 'tablet';
+    key: 'touchscreen' | 'tablet';
     label: string;
     desc: string;
     preview: React.ReactNode;
@@ -352,25 +351,10 @@ function UiLayoutPicker({
         </div>
       ),
     },
-    {
-      key: 'desktop',
-      label: 'Desktop / Sidebar',
-      desc: 'Left sidebar nav\nเหมาะ คอมพิวเตอร์',
-      preview: (
-        <div className="rounded-lg bg-muted border border-border overflow-hidden h-[60px] flex flex-row">
-          <div className="w-[18px] border-r border-border bg-primary/80 flex flex-col gap-1 py-1 px-0.5">
-            {[1,2,3].map((i) => (
-              <div key={i} className="h-1 rounded-sm bg-primary-foreground/30" />
-            ))}
-          </div>
-          <div className="flex-1 bg-muted/60" />
-        </div>
-      ),
-    },
   ];
 
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-2 gap-3">
       {options.map(({ key, label, desc, preview }) => (
         <button
           key={key}
@@ -402,16 +386,39 @@ const ALL_MODULE_MAP = new Map<string, { id: string; label: string }>(
 
 /* ─── Sortable row for ordering ─────────────────────────────── */
 
-function SortableModuleRow({ id, label }: { id: string; label: string }) {
+type NavLayoutSection = { heading: string; modules: string[] };
+
+function buildDefaultNavLayout(modules: string[]): NavLayoutSection[] {
+  return MODULE_GROUPS
+    .map((group) => ({
+      heading: group.label,
+      modules: modules.filter((m) => group.modules.some((gm) => gm.id === m)),
+    }))
+    .filter((s) => s.modules.length > 0);
+}
+
+function SortableModuleRowWithMove({
+  id,
+  label,
+  sections,
+  currentSection,
+  onMove,
+}: {
+  id: string;
+  label: string;
+  sections: string[];
+  currentSection: string;
+  onMove: (targetSection: string) => void;
+}) {
   const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition };
+  const otherSections = sections.filter((s) => s !== currentSection);
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 border-b border-border last:border-0 bg-card px-3 py-2 ${
-        isDragging ? 'opacity-60 shadow-sm z-10' : ''
-      }`}
+      className={`flex items-center gap-2 border-b border-border last:border-0 bg-card px-3 py-2 ${isDragging ? 'opacity-60 shadow-sm z-10' : ''}`}
     >
       <button
         type="button"
@@ -422,7 +429,20 @@ function SortableModuleRow({ id, label }: { id: string; label: string }) {
       >
         <GripVertical className="size-4" />
       </button>
-      <span className="text-xs text-foreground">{label}</span>
+      <span className="flex-1 text-xs text-foreground">{label}</span>
+      {otherSections.length > 0 && (
+        <select
+          value=""
+          onChange={(e) => { if (e.target.value) onMove(e.target.value); }}
+          onClick={(e) => e.stopPropagation()}
+          className="text-[10px] text-muted-foreground bg-card border border-border rounded px-1 py-0.5 cursor-pointer hover:bg-muted/50"
+        >
+          <option value="">ย้าย…</option>
+          {otherSections.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }
@@ -432,30 +452,118 @@ function SortableModuleRow({ id, label }: { id: string; label: string }) {
 function ModulePicker({
   value,
   onChange,
+  navLayout,
+  onNavLayoutChange,
   error,
 }: {
   value: string[];
   onChange: (v: string[]) => void;
+  navLayout: NavLayoutSection[];
+  onNavLayoutChange: (nl: NavLayoutSection[]) => void;
   error?: string;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+  const [editingSection, setEditingSection] = useState<number | null>(null);
+  const [editingHeading, setEditingHeading] = useState('');
 
   const toggle = (id: string) => {
-    onChange(value.includes(id) ? value.filter((m) => m !== id) : [...value, id]);
+    if (value.includes(id)) {
+      onChange(value.filter((m) => m !== id));
+      onNavLayoutChange(navLayout.map((s) => ({ ...s, modules: s.modules.filter((m) => m !== id) })));
+    } else {
+      onChange([...value, id]);
+      const defaultGroup = MODULE_GROUPS.find((g) => g.modules.some((m) => m.id === id));
+      const defaultHeading = defaultGroup?.label ?? navLayout[0]?.heading ?? '';
+      const sIdx = navLayout.findIndex((s) => s.heading === defaultHeading);
+      if (sIdx >= 0) {
+        onNavLayoutChange(navLayout.map((s, i) => i === sIdx ? { ...s, modules: [...s.modules, id] } : s));
+      } else if (navLayout.length > 0) {
+        onNavLayoutChange(navLayout.map((s, i) => i === 0 ? { ...s, modules: [...s.modules, id] } : s));
+      } else {
+        onNavLayoutChange([{ heading: defaultHeading || 'หน้าบ้าน', modules: [id] }]);
+      }
+    }
   };
 
   const groupAllSelected = (ids: string[]) => ids.every((id) => value.includes(id));
-  const toggleGroup = (ids: string[]) => {
+
+  const toggleGroup = (groupModules: { id: string }[], groupLabel: string) => {
+    const ids = groupModules.map((m) => m.id);
     if (groupAllSelected(ids)) {
       onChange(value.filter((m) => !ids.includes(m)));
+      onNavLayoutChange(navLayout.map((s) => ({ ...s, modules: s.modules.filter((m) => !ids.includes(m)) })));
     } else {
-      const merged = [...new Set([...value, ...ids])];
-      onChange(merged);
+      const toAdd = ids.filter((id) => !value.includes(id));
+      onChange([...new Set([...value, ...ids])]);
+      let updated = navLayout.map((s) => ({ ...s, modules: [...s.modules] }));
+      for (const id of toAdd) {
+        const sIdx = updated.findIndex((s) => s.heading === groupLabel);
+        if (sIdx >= 0) {
+          updated[sIdx].modules.push(id);
+        } else if (updated.length > 0) {
+          updated[0].modules.push(id);
+        } else {
+          updated = [{ heading: groupLabel, modules: [id] }];
+        }
+      }
+      onNavLayoutChange(updated);
     }
   };
+
+  const handleSectionDragEnd = (event: DragEndEvent, sectionIdx: number) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const updated = navLayout.map((s) => ({ ...s, modules: [...s.modules] }));
+    const mods = updated[sectionIdx].modules;
+    const oldIdx = mods.indexOf(active.id as string);
+    const newIdx = mods.indexOf(over.id as string);
+    if (oldIdx < 0 || newIdx < 0) return;
+    updated[sectionIdx].modules = arrayMove(mods, oldIdx, newIdx);
+    onNavLayoutChange(updated);
+    const newOrder = updated.flatMap((s) => s.modules);
+    onChange([...value].sort((a, b) => {
+      const ia = newOrder.indexOf(a);
+      const ib = newOrder.indexOf(b);
+      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+    }));
+  };
+
+  const saveHeading = (sectionIdx: number) => {
+    const trimmed = editingHeading.trim();
+    if (trimmed) {
+      onNavLayoutChange(navLayout.map((s, i) => i === sectionIdx ? { ...s, heading: trimmed } : s));
+    }
+    setEditingSection(null);
+  };
+
+  const deleteSection = (sectionIdx: number) => {
+    const updated = navLayout.map((s) => ({ ...s, modules: [...s.modules] }));
+    const [removed] = updated.splice(sectionIdx, 1);
+    if (updated.length > 0 && removed.modules.length > 0) {
+      updated[0].modules = [...updated[0].modules, ...removed.modules];
+    }
+    onNavLayoutChange(updated);
+  };
+
+  const addSection = () => {
+    const updated = [...navLayout, { heading: 'หมวดใหม่', modules: [] }];
+    onNavLayoutChange(updated);
+    setEditingSection(updated.length - 1);
+    setEditingHeading('หมวดใหม่');
+  };
+
+  const moveModule = (moduleId: string, fromSectionIdx: number, toHeading: string) => {
+    const updated = navLayout.map((s) => ({ ...s, modules: [...s.modules] }));
+    updated[fromSectionIdx].modules = updated[fromSectionIdx].modules.filter((m) => m !== moduleId);
+    const toIdx = updated.findIndex((s) => s.heading === toHeading);
+    if (toIdx >= 0) updated[toIdx].modules.push(moduleId);
+    onNavLayoutChange(updated);
+  };
+
+  const sectionNames = navLayout.map((s) => s.heading);
 
   return (
     <div className="space-y-3">
@@ -468,7 +576,7 @@ function ModulePicker({
               <span className="text-xs font-semibold text-foreground">{group.label}</span>
               <button
                 type="button"
-                onClick={() => toggleGroup(ids)}
+                onClick={() => toggleGroup(group.modules, group.label)}
                 className="text-[10px] text-muted-foreground hover:text-foreground underline transition-colors"
               >
                 {allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}
@@ -494,45 +602,110 @@ function ModulePicker({
         );
       })}
 
-      {/* Drag-to-reorder: split by group, only shows groups with ≥1 selected module */}
+      {/* Nav layout editor */}
       {value.length >= 2 && (
         <div className="rounded-lg border border-border overflow-hidden">
           <div className="flex items-center justify-between bg-muted/50 px-3 py-2 border-b border-border">
             <span className="text-xs font-semibold text-foreground">จัดลำดับแสดงในแถบนำทาง</span>
-            <span className="text-[10px] text-muted-foreground">ลากเพื่อจัดเรียง</span>
+            <span className="text-[10px] text-muted-foreground">ลาก / เปลี่ยนชื่อ / ย้ายหมวด</span>
           </div>
-          {MODULE_GROUPS.map((group) => {
-            const groupIds = group.modules.map((m) => m.id);
-            const selectedInGroup = value.filter((id) => groupIds.includes(id));
-            if (selectedInGroup.length < 1) return null;
+
+          {navLayout.map((section, sectionIdx) => {
+            const modulesInSection = section.modules.filter((m) => value.includes(m));
             return (
-              <div key={group.label} className="border-b border-border last:border-0">
-                <div className="bg-muted/30 px-3 py-1.5 border-b border-border">
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{group.label}</span>
+              <div key={`${section.heading}-${sectionIdx}`} className="border-b border-border last:border-0">
+                <div className="bg-muted/30 px-3 py-1.5 border-b border-border flex items-center gap-1.5">
+                  {editingSection === sectionIdx ? (
+                    <>
+                      <input
+                        value={editingHeading}
+                        onChange={(e) => setEditingHeading(e.target.value)}
+                        onBlur={() => saveHeading(sectionIdx)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); saveHeading(sectionIdx); }
+                          if (e.key === 'Escape') setEditingSection(null);
+                        }}
+                        autoFocus
+                        className="flex-1 bg-transparent border-b border-primary text-[10px] font-semibold text-foreground uppercase tracking-wide outline-none py-0"
+                      />
+                      <button
+                        type="button"
+                        onMouseDown={(e) => { e.preventDefault(); saveHeading(sectionIdx); }}
+                        className="shrink-0 text-[10px] text-primary hover:underline"
+                      >
+                        บันทึก
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                        {section.heading}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`เปลี่ยนชื่อหมวด ${section.heading}`}
+                        onClick={() => { setEditingSection(sectionIdx); setEditingHeading(section.heading); }}
+                        className="shrink-0 text-muted-foreground/50 hover:text-foreground transition-colors"
+                      >
+                        <Pencil className="size-3" />
+                      </button>
+                    </>
+                  )}
+                  {navLayout.length > 1 && (
+                    <button
+                      type="button"
+                      aria-label={`ลบหมวด ${section.heading}`}
+                      onClick={() => deleteSection(sectionIdx)}
+                      className="shrink-0 text-muted-foreground/50 hover:text-red-400 transition-colors"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  )}
                 </div>
+
                 <DndContext
+                  id={`nav-dnd-${sectionIdx}`}
                   sensors={sensors}
                   collisionDetection={closestCenter}
-                  onDragEnd={(event) => {
-                    const { active, over } = event;
-                    if (!over || active.id === over.id) return;
-                    const oldIdx = value.indexOf(active.id as string);
-                    const newIdx = value.indexOf(over.id as string);
-                    if (oldIdx < 0 || newIdx < 0) return;
-                    onChange(arrayMove(value, oldIdx, newIdx));
-                  }}
+                  onDragEnd={(e) => handleSectionDragEnd(e, sectionIdx)}
                 >
-                  <SortableContext items={selectedInGroup} strategy={verticalListSortingStrategy}>
-                    {selectedInGroup.map((id) => {
+                  <SortableContext items={modulesInSection} strategy={verticalListSortingStrategy}>
+                    {modulesInSection.map((id) => {
                       const info = ALL_MODULE_MAP.get(id);
                       if (!info) return null;
-                      return <SortableModuleRow key={id} id={id} label={info.label} />;
+                      return (
+                        <SortableModuleRowWithMove
+                          key={id}
+                          id={id}
+                          label={info.label}
+                          sections={sectionNames}
+                          currentSection={section.heading}
+                          onMove={(targetHeading) => moveModule(id, sectionIdx, targetHeading)}
+                        />
+                      );
                     })}
                   </SortableContext>
                 </DndContext>
+
+                {modulesInSection.length === 0 && (
+                  <p className="px-3 py-2 text-[10px] text-muted-foreground/50 italic">
+                    ว่าง — ใช้ปุ่ม "ย้าย…" บนแต่ละเมนูเพื่อย้ายมาที่นี่
+                  </p>
+                )}
               </div>
             );
           })}
+
+          <div className="px-3 py-2">
+            <button
+              type="button"
+              onClick={addSection}
+              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Plus className="size-3" />
+              เพิ่มหมวด
+            </button>
+          </div>
         </div>
       )}
 
@@ -557,6 +730,10 @@ function StaffForm({
   const defaultModules = initial?.allowedModules ?? [];
   const defaultUiLayout = initial?.uiLayout ?? ('' as '');
 
+  const [navLayout, setNavLayout] = useState<NavLayoutSection[]>(() =>
+    initial?.navLayout ?? buildDefaultNavLayout(defaultModules),
+  );
+
   const {
     register,
     handleSubmit,
@@ -580,7 +757,9 @@ function StaffForm({
   });
 
   async function onSubmit(data: CreateStaffInput | UpdateStaffInput) {
-    const result = initial ? await updateStaff(data) : await createStaff(data);
+    const cleanLayout = navLayout.filter((s) => s.modules.length > 0);
+    const payload = { ...data, navLayout: cleanLayout.length > 0 ? cleanLayout : null };
+    const result = initial ? await updateStaff(payload) : await createStaff(payload);
     if (!result.ok) { toast.error(result.error); return; }
     toast.success(initial ? 'แก้ไขข้อมูลแล้ว' : 'เพิ่ม User แล้ว');
     if ('selfUpdated' in result && result.selfUpdated) {
@@ -643,7 +822,7 @@ function StaffForm({
               render={({ field }) => (
                 <UiLayoutPicker
                   value={(field.value ?? '') as 'touchscreen' | 'desktop' | 'tablet' | ''}
-                  onChange={field.onChange}
+                  onChange={(v: 'touchscreen' | 'tablet') => field.onChange(v)}
                 />
               )}
             />
@@ -662,6 +841,8 @@ function StaffForm({
                 <ModulePicker
                   value={field.value ?? []}
                   onChange={field.onChange}
+                  navLayout={navLayout}
+                  onNavLayoutChange={setNavLayout}
                   error={errors.allowedModules?.message ?? (errors.allowedModules as { root?: { message?: string } })?.root?.message}
                 />
               )}

@@ -9,6 +9,7 @@ declare module 'next-auth' {
       activeBranchId?: string | null;
       uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null;
       allowedModules?: string[] | null;
+      navLayout?: { heading: string; modules: string[] }[] | null;
     } & DefaultSession['user'];
   }
 
@@ -17,6 +18,7 @@ declare module 'next-auth' {
     branchId?: string | null;
     uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null;
     allowedModules?: string[] | null;
+    navLayout?: { heading: string; modules: string[] }[] | null;
   }
 }
 
@@ -28,5 +30,6 @@ declare module 'next-auth/jwt' {
     activeBranchId?: string | null;
     uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null;
     allowedModules?: string[] | null;
+    navLayout?: { heading: string; modules: string[] }[] | null;
   }
 }

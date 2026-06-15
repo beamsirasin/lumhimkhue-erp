@@ -26,6 +26,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       badgeCounts={badgeCounts}
       uiLayout={session.user.uiLayout ?? null}
       allowedModules={session.user.allowedModules ?? []}
+      navLayout={session.user.navLayout ?? null}
     >
       {children}
     </SidebarLayout>
