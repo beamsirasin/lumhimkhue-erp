@@ -536,6 +536,8 @@ function PaymentPanel({
   const [completedRounds, setCompletedRounds] = useState<CompletedRound[]>([]);
   const [roundMethod,     setRoundMethod]     = useState<'cash' | 'qr_promptpay' | 'cash_qr'>('qr_promptpay');
   const [roundNumpad,     setRoundNumpad]     = useState('0');
+  const [roundCashQrField, setRoundCashQrField] = useState<'qr' | 'cash'>('qr');
+  const [roundCashQrCashInput, setRoundCashQrCashInput] = useState('0');
 
   // Keep numpad in sync with round subtotal when QR is selected
   useEffect(() => {
@@ -556,6 +558,8 @@ function PaymentPanel({
     setCompletedRounds([]);
     setRoundMethod('qr_promptpay');
     setRoundNumpad('0');
+    setRoundCashQrField('qr');
+    setRoundCashQrCashInput('0');
   }
 
   function getRoundSubtotal(): number {
@@ -580,7 +584,11 @@ function PaymentPanel({
     const items = [...guestTiles, ...addonTiles]
       .filter((t) => (roundSelection[t.id] ?? 0) > 0)
       .map((t) => ({ pricingTileId: t.id, name: t.name, qty: roundSelection[t.id]!, price: Number(t.price) }));
-    const cashPortion = roundMethod === 'cash_qr' ? Number(roundNumpad) : undefined;
+    // roundNumpad = QR amount for cash_qr (mirrors main view); cashPortion is auto-calculated
+    const roundNumpadNum = Number(roundNumpad) || 0;
+    const cashPortion = roundMethod === 'cash_qr'
+      ? sub - Math.min(roundNumpadNum, sub)
+      : undefined;
     setCompletedRounds((prev) => [...prev, { items, subtotal: sub, method: roundMethod, cashPortion }]);
     setRoundRemaining((prev) => {
       const next = { ...prev };
@@ -592,6 +600,8 @@ function PaymentPanel({
     });
     setRoundSelection({});
     setRoundNumpad('0');
+    setRoundCashQrField('qr');
+    setRoundCashQrCashInput('0');
   }
 
   // Tax invoice state
@@ -1170,11 +1180,16 @@ function PaymentPanel({
     const roundSubtotal = getRoundSubtotal();
     const roundNumpadNum = Number(roundNumpad) || 0;
     const roundChange = roundMethod === 'cash' ? roundNumpadNum - roundSubtotal : 0;
+    // cash_qr computed values (mirrors main payment view)
+    const roundCashQrCashNum = Number(roundCashQrCashInput) || 0;
+    const roundCashQrQrPortion = roundMethod === 'cash_qr' ? Math.min(roundNumpadNum, roundSubtotal) : 0;
+    const roundCashQrCashPortion = roundMethod === 'cash_qr' ? roundSubtotal - roundCashQrQrPortion : 0;
+    const roundCashQrChange = roundCashQrCashPortion > 0 ? roundCashQrCashNum - roundCashQrCashPortion : 0;
     const canConfirmRound =
       roundSubtotal > 0 &&
       (roundMethod === 'qr_promptpay' ||
        (roundMethod === 'cash' && roundNumpadNum >= roundSubtotal) ||
-       (roundMethod === 'cash_qr' && roundNumpadNum > 0 && roundNumpadNum < roundSubtotal));
+       (roundMethod === 'cash_qr' && roundNumpadNum > 0 && (roundCashQrCashPortion === 0 || roundCashQrChange >= 0)));
     const completedTotal = completedRounds.reduce((s, r) => s + r.subtotal, 0);
     const allDone = !hasRemaining;
 
@@ -1186,8 +1201,12 @@ function PaymentPanel({
       push(t); push(rd(t, 10)); push(rd(t, 100)); push(rd(t, 500)); push(rd(t, 1000));
       return out;
     };
-    const roundQuickAmounts = roundSubtotal > 0 && roundMethod === 'cash'
-      ? predictRoundAmounts(roundSubtotal)
+    const roundQuickAmounts = roundSubtotal > 0
+      ? (roundMethod === 'cash'
+          ? predictRoundAmounts(roundSubtotal)
+          : (roundMethod === 'cash_qr' && roundCashQrField === 'cash' && roundCashQrCashPortion > 0)
+            ? predictRoundAmounts(roundCashQrCashPortion)
+            : [])
       : [];
 
     function handleConfirmRound() {
@@ -1491,6 +1510,8 @@ function PaymentPanel({
                     onClick={() => {
                       setRoundMethod(m);
                       if (m !== 'qr_promptpay') setRoundNumpad('0');
+                      setRoundCashQrField('qr');
+                      setRoundCashQrCashInput('0');
                     }}
                     className={`flex-1 rounded-lg border py-2.5 text-xs font-medium transition-colors ${
                       roundMethod === m ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-foreground hover:bg-muted/50'
@@ -1501,71 +1522,107 @@ function PaymentPanel({
               </div>
             </div>
 
-            {/* Display */}
-            <div className="shrink-0 rounded-2xl border border-border bg-card px-5 py-4 text-right">
-              <p className="text-xs font-medium text-muted-foreground mb-1">
-                {roundMethod === 'qr_promptpay' ? 'ยอดชำระ QR' : roundMethod === 'cash_qr' ? 'เงินสด (กรอกยอดสด)' : 'รับเงิน'}
-              </p>
-              <p className="text-4xl font-bold tabular-nums text-foreground leading-none">
-                ฿{Number(roundNumpad).toLocaleString('th-TH')}
-              </p>
-              {roundMethod === 'cash' && roundNumpadNum > 0 && (
-                <p className={`text-sm mt-2 tabular-nums font-semibold ${roundChange >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>
-                  {roundChange >= 0 ? `เงินทอน ฿${roundChange.toLocaleString('th-TH')}` : 'ไม่เพียงพอ'}
-                </p>
-              )}
-              {roundMethod === 'cash_qr' && roundNumpadNum > 0 && roundNumpadNum < roundSubtotal && (
-                <p className="text-sm text-muted-foreground mt-2 tabular-nums">
-                  QR PromptPay <span className="font-semibold text-foreground">฿{(roundSubtotal - roundNumpadNum).toLocaleString('th-TH')}</span>
-                </p>
-              )}
-            </div>
-
-            {/* Numpad — always visible; QR keys are disabled (amount is auto-filled) */}
-            <div className="flex-1 grid grid-cols-3 gap-2 content-start">
-              {(['7','8','9','4','5','6','1','2','3','C','0','⌫'] as const).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  disabled={roundMethod === 'qr_promptpay'}
-                  onClick={() => {
-                    if (k === '⌫') setRoundNumpad((v) => v.length > 1 ? v.slice(0, -1) : '0');
-                    else if (k === 'C') setRoundNumpad('0');
-                    else setRoundNumpad((v) => {
-                      const next = v === '0' ? k : v + k;
-                      return next.length <= 7 ? next : v;
-                    });
-                  }}
-                  className={`rounded-2xl text-xl font-bold transition-colors active:scale-95 select-none h-14 ${
-                    roundMethod === 'qr_promptpay'
-                      ? 'bg-muted/30 border border-border text-muted-foreground/30 cursor-not-allowed'
-                      : k === 'C'  ? 'bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 dark:bg-red-950/30 dark:border-red-900 dark:text-red-400' :
-                        k === '⌫' ? 'bg-muted border border-border text-foreground hover:bg-muted/70' :
-                                     'bg-card border border-border text-foreground hover:bg-muted/50 shadow-sm'
-                  }`}
-                >
-                  {k}
+            {/* Display — two fields for cash_qr, single for others */}
+            {roundMethod === 'cash_qr' ? (
+              <div className="shrink-0 space-y-2">
+                <button type="button" onClick={() => setRoundCashQrField('qr')}
+                  className={`w-full rounded-2xl border px-5 py-3 text-right transition-colors ${
+                    roundCashQrField === 'qr' ? 'border-primary ring-2 ring-primary/20 bg-card' : 'border-border bg-card hover:border-primary/40'
+                  }`}>
+                  <p className="text-xs font-medium text-muted-foreground mb-0.5">QR PromptPay</p>
+                  <p className="text-3xl font-bold tabular-nums text-foreground leading-none">
+                    ฿{roundCashQrQrPortion.toLocaleString('th-TH')}
+                  </p>
                 </button>
-              ))}
-            </div>
+                <button type="button" onClick={() => setRoundCashQrField('cash')}
+                  className={`w-full rounded-2xl border px-5 py-3 text-right transition-colors ${
+                    roundCashQrField === 'cash' ? 'border-primary ring-2 ring-primary/20 bg-card' : 'border-border bg-card hover:border-primary/40'
+                  }`}>
+                  <p className="text-xs font-medium text-muted-foreground mb-0.5">
+                    เงินสด{roundCashQrCashPortion > 0 ? ` — ส่วนลูกค้า ฿${roundCashQrCashPortion.toLocaleString('th-TH')}` : ''}
+                  </p>
+                  <p className="text-3xl font-bold tabular-nums text-foreground leading-none">
+                    ฿{roundCashQrCashNum.toLocaleString('th-TH')}
+                  </p>
+                  {roundCashQrCashNum > 0 && roundCashQrCashPortion > 0 && (
+                    <p className={`text-sm mt-1 tabular-nums font-semibold ${roundCashQrChange >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                      {roundCashQrChange >= 0 ? `เงินทอน ฿${roundCashQrChange.toLocaleString('th-TH')}` : 'ไม่เพียงพอ'}
+                    </p>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <div className="shrink-0 rounded-2xl border border-border bg-card px-5 py-4 text-right">
+                <p className="text-xs font-medium text-muted-foreground mb-1">
+                  {roundMethod === 'qr_promptpay' ? 'ยอดชำระ QR' : 'รับเงิน'}
+                </p>
+                <p className="text-4xl font-bold tabular-nums text-foreground leading-none">
+                  ฿{Number(roundNumpad).toLocaleString('th-TH')}
+                </p>
+                {roundMethod === 'cash' && roundNumpadNum > 0 && (
+                  <p className={`text-sm mt-2 tabular-nums font-semibold ${roundChange >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>
+                    {roundChange >= 0 ? `เงินทอน ฿${roundChange.toLocaleString('th-TH')}` : 'ไม่เพียงพอ'}
+                  </p>
+                )}
+              </div>
+            )}
 
-            {/* Quick amounts (cash only) */}
-            {roundQuickAmounts.length > 0 && roundMethod === 'cash' && (
+            {/* Numpad — QR disabled (auto-filled); cash_qr switches target by active field */}
+            {(() => {
+              const roundSetter = roundMethod === 'cash_qr' && roundCashQrField === 'cash'
+                ? setRoundCashQrCashInput
+                : setRoundNumpad;
+              return (
+                <div className="flex-1 grid grid-cols-3 gap-2 content-start">
+                  {(['7','8','9','4','5','6','1','2','3','C','0','⌫'] as const).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      disabled={roundMethod === 'qr_promptpay'}
+                      onClick={() => {
+                        if (k === '⌫') roundSetter((v) => v.length > 1 ? v.slice(0, -1) : '0');
+                        else if (k === 'C') roundSetter('0');
+                        else roundSetter((v) => {
+                          const next = v === '0' ? k : v + k;
+                          return next.length <= 7 ? next : v;
+                        });
+                      }}
+                      className={`rounded-2xl text-xl font-bold transition-colors active:scale-95 select-none h-14 ${
+                        roundMethod === 'qr_promptpay'
+                          ? 'bg-muted/30 border border-border text-muted-foreground/30 cursor-not-allowed'
+                          : k === 'C'  ? 'bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 dark:bg-red-950/30 dark:border-red-900 dark:text-red-400' :
+                            k === '⌫' ? 'bg-muted border border-border text-foreground hover:bg-muted/70' :
+                                         'bg-card border border-border text-foreground hover:bg-muted/50 shadow-sm'
+                      }`}
+                    >
+                      {k}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* Quick amounts (cash and cash_qr cash field) */}
+            {roundQuickAmounts.length > 0 && (roundMethod === 'cash' || (roundMethod === 'cash_qr' && roundCashQrField === 'cash')) && (
               <div className="shrink-0 flex gap-1.5">
-                {roundQuickAmounts.map((amt) => (
-                  <button
-                    key={amt}
-                    type="button"
-                    onClick={() => setRoundNumpad(String(amt))}
-                    className={`flex-1 rounded-xl border py-2.5 text-xs font-semibold tabular-nums transition-colors ${
-                      roundNumpad === String(amt)
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-border bg-card text-foreground hover:bg-muted/50'
-                    }`}
-                  >
-                    ฿{amt.toLocaleString('th-TH')}
-                  </button>
-                ))}
+                {roundQuickAmounts.map((amt) => {
+                  const activeVal = roundMethod === 'cash_qr' ? roundCashQrCashInput : roundNumpad;
+                  const activeSetter = roundMethod === 'cash_qr' ? setRoundCashQrCashInput : setRoundNumpad;
+                  return (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => activeSetter(String(amt))}
+                      className={`flex-1 rounded-xl border py-2.5 text-xs font-semibold tabular-nums transition-colors ${
+                        activeVal === String(amt)
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-border bg-card text-foreground hover:bg-muted/50'
+                      }`}
+                    >
+                      ฿{amt.toLocaleString('th-TH')}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
