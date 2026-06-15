@@ -27,43 +27,45 @@ export function LoginForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
       <div className="space-y-1.5">
-        <Label htmlFor="email">อีเมล</Label>
+        <Label htmlFor="email" className="text-sm font-medium text-foreground">อีเมล</Label>
         <Input
           id="email"
           type="email"
           placeholder="owner@shabu.local"
           autoComplete="email"
           aria-invalid={!!errors.email}
+          className="h-10 transition-colors"
           {...register('email')}
         />
         {errors.email && (
-          <p className="text-sm text-destructive">{errors.email.message}</p>
+          <p className="text-xs text-destructive mt-1">{errors.email.message}</p>
         )}
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="password">รหัสผ่าน</Label>
+        <Label htmlFor="password" className="text-sm font-medium text-foreground">รหัสผ่าน</Label>
         <Input
           id="password"
           type="password"
           autoComplete="current-password"
           aria-invalid={!!errors.password}
+          className="h-10 transition-colors"
           {...register('password')}
         />
         {errors.password && (
-          <p className="text-sm text-destructive">{errors.password.message}</p>
+          <p className="text-xs text-destructive mt-1">{errors.password.message}</p>
         )}
       </div>
 
       {serverError && (
-        <p role="alert" className="text-sm text-destructive">
-          {serverError}
-        </p>
+        <div role="alert" className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5">
+          <p className="text-sm text-destructive">{serverError}</p>
+        </div>
       )}
 
-      <Button type="submit" className="w-full" disabled={isSubmitting}>
+      <Button type="submit" className="w-full h-10 font-medium transition-all" disabled={isSubmitting}>
         {isSubmitting ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
       </Button>
     </form>

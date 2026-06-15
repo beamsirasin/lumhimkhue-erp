@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 
@@ -26,15 +26,15 @@ export function ConfirmDialog({
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl"
+        className="w-full max-w-sm rounded-xl bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="text-sm text-slate-700 mb-5 leading-relaxed">{message}</p>
+        <p className="text-sm text-foreground mb-5 leading-relaxed">{message}</p>
         <div className="flex justify-end gap-3">
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            className="rounded-lg border border-border px-4 py-2 text-sm text-foreground hover:bg-muted/30"
           >
             ยกเลิก
           </button>
@@ -44,7 +44,7 @@ export function ConfirmDialog({
             className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${
               variant === 'danger'
                 ? 'bg-red-600 hover:bg-red-700'
-                : 'bg-slate-800 hover:bg-slate-700'
+                : 'bg-primary hover:bg-primary/90'
             }`}
           >
             {confirmLabel}

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useTransition, useMemo } from 'react';
 import { format } from 'date-fns';
@@ -73,15 +73,15 @@ function DetailModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto">
-      <div className="w-full max-w-4xl my-8 rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-4xl my-8 rounded-2xl bg-card shadow-xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div>
-            <h2 className="text-sm font-semibold text-slate-900">
+            <h2 className="text-sm font-semibold text-foreground">
               ผลการนับสต็อก {data ? fmtDate(data.countDate) : ''}
             </h2>
             {data && (
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 ผู้นับ: {data.countedByUser?.name ?? '—'}
                 {data.submittedAt &&
                   ` • ส่งเมื่อ ${format(new Date(data.submittedAt), 'HH:mm น.', { locale: th })}`}
@@ -91,7 +91,7 @@ function DetailModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            className="rounded-lg p-1 text-muted-foreground hover:bg-muted/50 hover:text-muted-foreground"
             aria-label="ปิด"
           >
             <X className="size-4" />
@@ -102,7 +102,7 @@ function DetailModal({
         <div className="px-6 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
           {loading && (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="size-6 animate-spin text-slate-400" />
+              <Loader2 className="size-6 animate-spin text-muted-foreground" />
             </div>
           )}
           {error && <p className="text-sm text-red-600">{error}</p>}
@@ -110,25 +110,25 @@ function DetailModal({
             <>
               {/* Count table by category */}
               {grouped.map(({ catName, items }) => (
-                <div key={catName} className="rounded-xl overflow-hidden ring-1 ring-slate-900/5">
-                  <div className="bg-slate-50 border-b border-slate-200 px-4 py-2 flex items-center gap-2">
-                    <span className="text-xs font-semibold text-slate-700">{catName}</span>
-                    <span className="text-xs text-slate-400">{items.length} รายการ</span>
+                <div key={catName} className="rounded-xl overflow-hidden ring-1 ring-border/40">
+                  <div className="bg-muted/30 border-b border-border px-4 py-2 flex items-center gap-2">
+                    <span className="text-xs font-semibold text-foreground">{catName}</span>
+                    <span className="text-xs text-muted-foreground">{items.length} รายการ</span>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm min-w-[600px]">
                       <thead>
-                        <tr className="border-b border-slate-100 bg-slate-50/50">
-                          <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 w-40">วัตถุดิบ</th>
-                          <th className="px-3 py-2 text-right text-xs font-medium text-slate-500">ยอดยกมา</th>
-                          <th className="px-3 py-2 text-right text-xs font-medium text-slate-500">รับเข้า</th>
+                        <tr className="border-b border-border bg-muted/30/50">
+                          <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground w-40">วัตถุดิบ</th>
+                          <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">ยอดยกมา</th>
+                          <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">รับเข้า</th>
                           <th className="px-3 py-2 text-right text-xs font-medium text-blue-600 bg-blue-50/40">รวมมี</th>
-                          <th className="px-3 py-2 text-right text-xs font-medium text-slate-500">ใช้ไป</th>
-                          <th className="px-3 py-2 text-right text-xs font-medium text-slate-600 bg-slate-100/60">คงเหลือ</th>
+                          <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">ใช้ไป</th>
+                          <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground bg-muted/50/60">คงเหลือ</th>
                           <th className="px-3 py-2 text-right text-xs font-medium text-orange-600">ต้องสั่งเพิ่ม</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-50">
+                      <tbody className="divide-y divide-border/30">
                         {items.map((item) => {
                           const closing = Number(item.quantityOnHand);
                           const minStock = Number(item.ingredient.minStock);
@@ -139,28 +139,28 @@ function DetailModal({
                           return (
                             <tr key={item.id} className={isLow ? 'bg-red-50/20' : ''}>
                               <td className="px-4 py-2.5">
-                                <p className="font-medium text-slate-900 text-xs">{item.ingredient.name}</p>
-                                <p className="text-xs text-slate-400">
+                                <p className="font-medium text-foreground text-xs">{item.ingredient.name}</p>
+                                <p className="text-xs text-muted-foreground">
                                   {item.unit}
                                   {minStock > 0 && (
                                     <span className="ml-1.5">• จุดสั่ง {minStock.toLocaleString('th-TH')} {item.unit}</span>
                                   )}
                                 </p>
                               </td>
-                              <td className="px-3 py-2.5 text-right text-xs tabular-nums text-slate-500">
+                              <td className="px-3 py-2.5 text-right text-xs tabular-nums text-muted-foreground">
                                 {fmtNum(item.openingBalance)} {item.unit}
                               </td>
-                              <td className="px-3 py-2.5 text-right text-xs tabular-nums text-slate-500">
+                              <td className="px-3 py-2.5 text-right text-xs tabular-nums text-muted-foreground">
                                 {fmtNum(item.receivedQty)} {item.unit}
                               </td>
                               <td className="px-3 py-2.5 text-right text-xs tabular-nums font-medium text-blue-700 bg-blue-50/30">
                                 {fmtNum(total)} {item.unit}
                               </td>
-                              <td className="px-3 py-2.5 text-right text-xs tabular-nums text-slate-500">
+                              <td className="px-3 py-2.5 text-right text-xs tabular-nums text-muted-foreground">
                                 {fmtNum(item.usedQty)} {item.unit}
                               </td>
-                              <td className="px-3 py-2.5 text-right text-xs tabular-nums font-semibold bg-slate-50/60">
-                                <span className={isLow ? 'text-red-600' : 'text-slate-800'}>
+                              <td className="px-3 py-2.5 text-right text-xs tabular-nums font-semibold bg-muted/30/60">
+                                <span className={isLow ? 'text-red-600' : 'text-foreground'}>
                                   {fmtNum(closing)} {item.unit}
                                 </span>
                                 {isLow && <AlertTriangle className="inline ml-1 size-3 text-red-500 -mt-0.5" />}
@@ -169,7 +169,7 @@ function DetailModal({
                                 {reorderQty > 0 ? (
                                   <span className="font-semibold text-orange-600">+{fmtNum(reorderQty)} {item.unit}</span>
                                 ) : (
-                                  <span className="text-slate-300">—</span>
+                                  <span className="text-muted-foreground/60">—</span>
                                 )}
                               </td>
                             </tr>
@@ -184,30 +184,30 @@ function DetailModal({
               {/* Adjustments */}
               {data.adjustments.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold text-slate-700 mb-2">รายการปรับปรุง ({data.adjustments.length})</p>
-                  <div className="rounded-xl ring-1 ring-slate-900/5 overflow-hidden">
+                  <p className="text-xs font-semibold text-foreground mb-2">รายการปรับปรุง ({data.adjustments.length})</p>
+                  <div className="rounded-xl ring-1 ring-border/40 overflow-hidden">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="border-b border-slate-100 bg-slate-50">
-                          <th className="px-4 py-2 text-left font-medium text-slate-500">วัตถุดิบ</th>
-                          <th className="px-3 py-2 text-right font-medium text-slate-500">จำนวน</th>
-                          <th className="px-3 py-2 text-left font-medium text-slate-500">เหตุผล</th>
-                          <th className="px-3 py-2 text-left font-medium text-slate-500">โดย</th>
-                          <th className="px-3 py-2 text-left font-medium text-slate-500">เวลา</th>
+                        <tr className="border-b border-border bg-muted/30">
+                          <th className="px-4 py-2 text-left font-medium text-muted-foreground">วัตถุดิบ</th>
+                          <th className="px-3 py-2 text-right font-medium text-muted-foreground">จำนวน</th>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">เหตุผล</th>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">โดย</th>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">เวลา</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-50">
+                      <tbody className="divide-y divide-border/30">
                         {data.adjustments.map((adj) => {
                           const qty = Number(adj.adjustmentQty);
                           return (
                             <tr key={adj.id}>
-                              <td className="px-4 py-2 font-medium text-slate-900">{adj.ingredient.name}</td>
+                              <td className="px-4 py-2 font-medium text-foreground">{adj.ingredient.name}</td>
                               <td className={`px-3 py-2 text-right tabular-nums font-semibold ${qty >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                 {qty >= 0 ? '+' : ''}{fmtNum(qty)} {adj.ingredient.unit}
                               </td>
-                              <td className="px-3 py-2 text-slate-600">{adj.reason}</td>
-                              <td className="px-3 py-2 text-slate-500">{adj.createdByUser?.name ?? '—'}</td>
-                              <td className="px-3 py-2 text-slate-400">
+                              <td className="px-3 py-2 text-muted-foreground">{adj.reason}</td>
+                              <td className="px-3 py-2 text-muted-foreground">{adj.createdByUser?.name ?? '—'}</td>
+                              <td className="px-3 py-2 text-muted-foreground">
                                 {format(new Date(adj.createdAt), 'HH:mm', { locale: th })}
                               </td>
                             </tr>
@@ -221,9 +221,9 @@ function DetailModal({
 
               {/* Notes */}
               {data.notes && (
-                <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3">
-                  <p className="text-xs font-medium text-slate-500 mb-1">หมายเหตุ</p>
-                  <p className="text-sm text-slate-700">{data.notes}</p>
+                <div className="rounded-lg bg-muted/30 border border-border px-4 py-3">
+                  <p className="text-xs font-medium text-muted-foreground mb-1">หมายเหตุ</p>
+                  <p className="text-sm text-foreground">{data.notes}</p>
                 </div>
               )}
             </>
@@ -249,18 +249,18 @@ function DeleteConfirmDialog({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-sm rounded-2xl bg-card shadow-xl">
         <div className="px-5 py-5 space-y-3">
           <div className="flex items-center gap-3">
             <div className="flex size-10 items-center justify-center rounded-full bg-red-100">
               <Trash2 className="size-5 text-red-600" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-900">ลบการนับสต็อก</p>
-              <p className="text-xs text-slate-500">{fmtDate(count.countDate)}</p>
+              <p className="text-sm font-semibold text-foreground">ลบการนับสต็อก</p>
+              <p className="text-xs text-muted-foreground">{fmtDate(count.countDate)}</p>
             </div>
           </div>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted-foreground">
             ยืนยันการลบ? รายการนับสต็อกและการปรับปรุงทั้งหมดของวันนี้จะถูกลบออกถาวร
           </p>
           {count.status === 'submitted' && (
@@ -270,12 +270,12 @@ function DeleteConfirmDialog({
             </div>
           )}
         </div>
-        <div className="flex gap-3 border-t border-slate-100 px-5 py-4">
+        <div className="flex gap-3 border-t border-border px-5 py-4">
           <button
             type="button"
             onClick={onCancel}
             disabled={isPending}
-            className="flex-1 rounded-lg border border-slate-300 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/30 disabled:opacity-50"
           >
             ยกเลิก
           </button>
@@ -366,54 +366,54 @@ export function StockCountHistoryTab() {
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
-          <label className="text-xs font-medium text-slate-600">วันที่</label>
+          <label className="text-xs font-medium text-muted-foreground">วันที่</label>
           <input
             type="date"
             value={filterDate}
             onChange={(e) => setFilterDate(e.target.value)}
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-slate-500"
+            className="rounded-lg border border-border px-3 py-1.5 text-sm outline-none focus:border-primary"
           />
         </div>
         {filterDate && (
           <button
             type="button"
             onClick={() => setFilterDate('')}
-            className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-50"
+            className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted/30"
           >
             <X className="size-3" /> ล้างตัวกรอง
           </button>
         )}
-        <span className="ml-auto text-xs text-slate-400">{filtered.length} รายการ</span>
+        <span className="ml-auto text-xs text-muted-foreground">{filtered.length} รายการ</span>
       </div>
 
       {/* List */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <Loader2 className="size-6 animate-spin text-slate-400" />
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 py-16 text-center">
-          <ClipboardList className="mx-auto size-8 text-slate-300 mb-3" />
-          <p className="text-sm text-slate-400">ยังไม่มีผลการนับสต็อก</p>
+        <div className="rounded-xl border border-border bg-muted/30 py-16 text-center">
+          <ClipboardList className="mx-auto size-8 text-muted-foreground/60 mb-3" />
+          <p className="text-sm text-muted-foreground">ยังไม่มีผลการนับสต็อก</p>
         </div>
       ) : (
-        <div className="rounded-xl overflow-hidden ring-1 ring-slate-900/5">
+        <div className="rounded-xl overflow-hidden ring-1 ring-border/40">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500">วันที่</th>
-                <th className="px-3 py-3 text-center text-xs font-medium text-slate-500">สถานะ</th>
-                <th className="px-3 py-3 text-center text-xs font-medium text-slate-500">รายการ</th>
-                <th className="px-3 py-3 text-left text-xs font-medium text-slate-500">ผู้นับ</th>
-                <th className="px-3 py-3 text-left text-xs font-medium text-slate-500">เวลาที่ส่ง</th>
-                <th className="px-3 py-3 text-right text-xs font-medium text-slate-500">จัดการ</th>
+              <tr className="border-b border-border bg-muted/30">
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">วันที่</th>
+                <th className="px-3 py-3 text-center text-xs font-medium text-muted-foreground">สถานะ</th>
+                <th className="px-3 py-3 text-center text-xs font-medium text-muted-foreground">รายการ</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground">ผู้นับ</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground">เวลาที่ส่ง</th>
+                <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground">จัดการ</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
+            <tbody className="divide-y divide-border bg-card">
               {filtered.map((count) => (
-                <tr key={count.id} className="hover:bg-slate-50/50 transition-colors">
+                <tr key={count.id} className="hover:bg-muted/30/50 transition-colors">
                   <td className="px-4 py-3">
-                    <span className="font-medium text-slate-900">{fmtDate(count.countDate)}</span>
+                    <span className="font-medium text-foreground">{fmtDate(count.countDate)}</span>
                   </td>
                   <td className="px-3 py-3 text-center">
                     {count.status === 'reviewed' ? (
@@ -430,13 +430,13 @@ export function StockCountHistoryTab() {
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-3 text-center tabular-nums text-slate-600">
+                  <td className="px-3 py-3 text-center tabular-nums text-muted-foreground">
                     {count.items.length}
                   </td>
-                  <td className="px-3 py-3 text-slate-600 text-xs">
+                  <td className="px-3 py-3 text-muted-foreground text-xs">
                     {count.countedByUser?.name ?? '—'}
                   </td>
-                  <td className="px-3 py-3 text-slate-400 text-xs">
+                  <td className="px-3 py-3 text-muted-foreground text-xs">
                     {count.submittedAt
                       ? format(new Date(count.submittedAt), 'HH:mm น. d MMM', { locale: th })
                       : '—'}
@@ -446,7 +446,7 @@ export function StockCountHistoryTab() {
                       <button
                         type="button"
                         onClick={() => setViewingId(count.id)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                        className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/30"
                         aria-label="ดูรายละเอียด"
                       >
                         <Eye className="size-3.5" /> ดู
@@ -455,7 +455,7 @@ export function StockCountHistoryTab() {
                         <button
                           type="button"
                           onClick={() => handleEdit(count)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                          className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/30"
                           aria-label="แก้ไข"
                         >
                           <PenLine className="size-3.5" /> แก้ไข
@@ -477,7 +477,7 @@ export function StockCountHistoryTab() {
                           type="button"
                           disabled={isUnreviewing}
                           onClick={() => handleUnreview(count)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                          className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/30 disabled:opacity-50"
                           aria-label="ยกเลิกการยืนยัน"
                         >
                           ยกเลิกยืนยัน

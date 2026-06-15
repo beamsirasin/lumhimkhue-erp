@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -73,8 +73,8 @@ export function BranchesPage({ initialBranches }: { initialBranches: Branch[] })
     <div className="p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-slate-900">จัดการสาขา</h1>
-          <p className="text-xs text-slate-400 mt-0.5">{branches.length} สาขา</p>
+          <h1 className="text-lg font-semibold text-foreground">จัดการสาขา</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">{branches.length} สาขา</p>
         </div>
         <Button onClick={openCreate}>
           <Plus className="size-4 mr-1.5" />
@@ -83,22 +83,22 @@ export function BranchesPage({ initialBranches }: { initialBranches: Branch[] })
       </div>
 
       {branches.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl bg-white py-16 shadow-sm ring-1 ring-slate-900/5">
-          <GitBranch className="size-10 text-slate-300 mb-3" />
-          <p className="text-sm text-slate-500">ยังไม่มีสาขา</p>
+        <div className="flex flex-col items-center justify-center rounded-xl bg-card py-16 shadow-sm ring-1 ring-border/40">
+          <GitBranch className="size-10 text-muted-foreground/60 mb-3" />
+          <p className="text-sm text-muted-foreground">ยังไม่มีสาขา</p>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {branches.map((b) => (
-            <div key={b.id} className={`rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-900/5 ${!b.isActive ? 'opacity-60' : ''}`}>
+            <div key={b.id} className={`rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/40 ${!b.isActive ? 'opacity-60' : ''}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="font-semibold text-slate-900 truncate">{b.name}</p>
-                  {b.address && <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{b.address}</p>}
-                  {b.phone && <p className="text-xs text-slate-400 mt-1">{b.phone}</p>}
-                  {b.taxId && <p className="text-xs text-slate-400">เลขภาษี: {b.taxId}</p>}
+                  <p className="font-semibold text-foreground truncate">{b.name}</p>
+                  {b.address && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{b.address}</p>}
+                  {b.phone && <p className="text-xs text-muted-foreground mt-1">{b.phone}</p>}
+                  {b.taxId && <p className="text-xs text-muted-foreground">เลขภาษี: {b.taxId}</p>}
                 </div>
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${b.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${b.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-muted/50 text-muted-foreground'}`}>
                   {b.isActive ? 'ใช้งาน' : 'ปิด'}
                 </span>
               </div>
@@ -112,7 +112,7 @@ export function BranchesPage({ initialBranches }: { initialBranches: Branch[] })
                   type="button"
                   onClick={() => toggleMut.mutate({ id: b.id, isActive: !b.isActive })}
                   aria-label={b.isActive ? 'ปิดสาขา' : 'เปิดสาขา'}
-                  className="ml-auto text-slate-400 hover:text-slate-600 transition-colors"
+                  className="ml-auto text-muted-foreground hover:text-muted-foreground transition-colors"
                 >
                   {b.isActive
                     ? <ToggleRight className="size-6 text-emerald-500" />

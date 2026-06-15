@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
@@ -89,14 +89,14 @@ function ElapsedTimer({ startedAt }: { startedAt: Date }) {
     return () => clearInterval(id);
   }, [startedAt]);
 
-  return <span className="tabular-nums font-semibold text-slate-900 text-sm">{display}</span>;
+  return <span className="tabular-nums font-semibold text-foreground text-sm">{display}</span>;
 }
 
 /* ─── TH / EN pill switch ────────────────────────────────────────────────────── */
 
 function LangSwitch({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => void }) {
   return (
-    <div className="flex items-center overflow-hidden rounded-full border border-slate-300 text-xs font-medium">
+    <div className="flex items-center overflow-hidden rounded-full border border-border text-xs font-medium">
       {(['th', 'en'] as const).map((l) => (
         <button
           key={l}
@@ -104,8 +104,8 @@ function LangSwitch({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => voi
           onClick={() => onChange(l)}
           className={`px-2.5 py-1 transition-colors ${
             lang === l
-              ? 'bg-slate-800 text-white'
-              : 'bg-white text-slate-500 hover:bg-slate-100'
+              ? 'bg-primary text-white'
+              : 'bg-card text-muted-foreground hover:bg-muted/50'
           }`}
         >
           {l.toUpperCase()}
@@ -174,9 +174,9 @@ export function CustomerMenuPage({
   const isClosed = session.status === 'closing' || session.status === 'closed';
 
   return (
-    <div className="min-h-screen bg-slate-50 pt-[88px] pb-28">
+    <div className="min-h-screen bg-muted/30 pt-[88px] pb-28">
       {/* Header */}
-      <header className="fixed inset-x-0 top-0 z-10 bg-white border-b border-slate-200">
+      <header className="fixed inset-x-0 top-0 z-10 bg-card border-b border-border">
         <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2">
           {/* Logo + table */}
           <div className="flex items-center gap-2 min-w-0">
@@ -188,20 +188,20 @@ export function CustomerMenuPage({
               className="rounded-md object-contain shrink-0"
             />
             <div className="min-w-0">
-              <p className="text-[10px] text-slate-400 leading-none">{t.table}</p>
-              <p className="text-sm font-semibold text-slate-800 leading-tight">{table.label}</p>
+              <p className="text-[10px] text-muted-foreground leading-none">{t.table}</p>
+              <p className="text-sm font-semibold text-foreground leading-tight">{table.label}</p>
             </div>
           </div>
 
           {/* Right: timer + my orders + lang switch */}
           <div className="flex items-center gap-3 shrink-0">
             <div className="text-right">
-              <p className="text-[10px] text-slate-400 leading-none">{t.timeLabel}</p>
+              <p className="text-[10px] text-muted-foreground leading-none">{t.timeLabel}</p>
               <ElapsedTimer startedAt={session.startedAt} />
             </div>
             <a
               href={`/t/${table.qrToken}/s/${sessionToken}/orders`}
-              className="text-xs font-medium text-slate-700 underline underline-offset-2 whitespace-nowrap"
+              className="text-xs font-medium text-foreground underline underline-offset-2 whitespace-nowrap"
             >
               {t.myOrders}
             </a>
@@ -225,8 +225,8 @@ export function CustomerMenuPage({
                 onClick={() => setActiveCategoryId(cat.id)}
                 className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                   activeCategoryId === cat.id
-                    ? 'bg-slate-800 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    ? 'bg-primary text-white'
+                    : 'bg-muted/50 text-muted-foreground hover:bg-muted'
                 }`}
               >
                 {catName}
@@ -260,7 +260,7 @@ export function CustomerMenuPage({
       {/* Menu grid */}
       <main className="p-4">
         {activeCategory && activeCategory.menuItems.length === 0 && (
-          <p className="py-12 text-center text-sm text-slate-400">{t.noItems}</p>
+          <p className="py-12 text-center text-sm text-muted-foreground">{t.noItems}</p>
         )}
         <div className="grid grid-cols-2 gap-3">
           {activeCategory?.menuItems.map((mi) => {
@@ -289,7 +289,7 @@ export function CustomerMenuPage({
             return (
               <div
                 key={mi.id}
-                className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white"
+                className="flex flex-col overflow-hidden rounded-lg border border-border bg-card"
               >
                 {/* Image */}
                 {mi.hasImage ? (
@@ -304,14 +304,14 @@ export function CustomerMenuPage({
                     />
                   </div>
                 ) : (
-                  <div className="aspect-square w-full bg-slate-100" />
+                  <div className="aspect-square w-full bg-muted/50" />
                 )}
 
                 {/* Info */}
                 <div className="flex flex-1 flex-col p-2 gap-1">
                   {/* Name + type badge */}
                   <div className="flex items-start justify-between gap-1">
-                    <p className="text-xs font-semibold leading-tight text-slate-900 flex-1">
+                    <p className="text-xs font-semibold leading-tight text-foreground flex-1">
                       {displayName}
                     </p>
                     <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${
@@ -325,7 +325,7 @@ export function CustomerMenuPage({
 
                   {/* Description */}
                   {description && (
-                    <p className="text-[11px] leading-snug text-slate-400 line-clamp-2">
+                    <p className="text-[11px] leading-snug text-muted-foreground line-clamp-2">
                       {description}
                     </p>
                   )}
@@ -344,7 +344,7 @@ export function CustomerMenuPage({
                         type="button"
                         disabled={isClosed || atCatMax}
                         onClick={() => setQuantity(cartItem, 1)}
-                        className="w-full rounded-md bg-slate-800 py-1.5 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-40"
+                        className="w-full rounded-md bg-primary py-1.5 text-xs font-medium text-white hover:bg-primary/90 disabled:opacity-40"
                       >
                         {atCatMax ? t.full : t.add}
                       </button>
@@ -354,7 +354,7 @@ export function CustomerMenuPage({
                           type="button"
                           aria-label={t.decreaseQty}
                           onClick={() => setQuantity(cartItem, qty - 1)}
-                          className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-sm font-bold text-slate-700 hover:bg-slate-300"
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-sm font-bold text-foreground hover:bg-muted/80"
                         >
                           −
                         </button>
@@ -364,7 +364,7 @@ export function CustomerMenuPage({
                           aria-label={t.increaseQty}
                           disabled={atMax || atCatMax}
                           onClick={() => setQuantity(cartItem, qty + 1)}
-                          className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-800 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-40"
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-sm font-bold text-white hover:bg-primary/90 disabled:opacity-40"
                         >
                           +
                         </button>
@@ -380,8 +380,8 @@ export function CustomerMenuPage({
 
       {/* Cart bar */}
       {totalItems > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3">
-          <div className="text-sm text-slate-600">
+        <div className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3 border-t border-border bg-card px-4 py-3">
+          <div className="text-sm text-muted-foreground">
             <span className="tabular-nums font-semibold">{totalItems}</span>{' '}
             {t.cartItems}
             {totalExtra > 0 && (
@@ -394,7 +394,7 @@ export function CustomerMenuPage({
             type="button"
             onClick={handleOrder}
             disabled={submitting || isClosed || hasUnserved}
-            className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-5 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
           >
             {submitting && <Loader2 className="size-3.5 animate-spin" />}
             {submitting ? t.ordering : hasUnserved ? t.waitingBtn : t.order}

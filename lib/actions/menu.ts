@@ -228,3 +228,41 @@ export async function swapMenuItemOrder(idA: string, idB: string) {
     return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
   }
 }
+
+export async function batchUpdateMenuItemsSortOrder(
+  items: { id: string; sortOrder: number }[],
+) {
+  if (!await requireManageMenu()) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+  if (!items.length) return { ok: true as const };
+  try {
+    await Promise.all(
+      items.map((item) =>
+        db.update(menuItems).set({ sortOrder: item.sortOrder }).where(eq(menuItems.id, item.id)),
+      ),
+    );
+    revalidatePath('/menu');
+    return { ok: true as const };
+  } catch (e) {
+    console.error('[batchUpdateMenuItemsSortOrder]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+export async function batchUpdateCategoriesSortOrder(
+  items: { id: string; sortOrder: number }[],
+) {
+  if (!await requireManageMenu()) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+  if (!items.length) return { ok: true as const };
+  try {
+    await Promise.all(
+      items.map((item) =>
+        db.update(categories).set({ sortOrder: item.sortOrder }).where(eq(categories.id, item.id)),
+      ),
+    );
+    revalidatePath('/menu');
+    return { ok: true as const };
+  } catch (e) {
+    console.error('[batchUpdateCategoriesSortOrder]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}

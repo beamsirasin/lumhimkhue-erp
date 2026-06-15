@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -56,18 +56,18 @@ function PayslipContent({ item, cycle, settings }: { item: EnrichedItem; cycle: 
   return (
     <div className="payslip-print text-sm space-y-3">
       <div className="text-center font-bold text-base mb-1">ใบจ่ายเงินเดือน</div>
-      <div className="text-center text-xs text-slate-500 mb-3">งวด: {cycle.name}</div>
+      <div className="text-center text-xs text-muted-foreground mb-3">งวด: {cycle.name}</div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-3">
-        <span className="text-slate-500">ชื่อ-สกุล:</span>
+        <span className="text-muted-foreground">ชื่อ-สกุล:</span>
         <span className="font-medium">{emp?.firstName} {emp?.lastName}</span>
-        <span className="text-slate-500">ประเภท:</span>
+        <span className="text-muted-foreground">ประเภท:</span>
         <span>{item.employeeType === 'full_time' ? 'พนักงานประจำ' : 'พาร์ทไทม์'}</span>
-        <span className="text-slate-500">ธนาคาร:</span>
+        <span className="text-muted-foreground">ธนาคาร:</span>
         <span>{emp?.bankName ?? '-'} {emp?.bankAccountNumber ? `(${emp.bankAccountNumber})` : ''}</span>
       </div>
       <Separator />
       <div className="space-y-1 text-xs">
-        <p className="font-semibold text-slate-700">รายได้</p>
+        <p className="font-semibold text-foreground">รายได้</p>
         {item.employeeType === 'full_time' ? (
           <>
             <div className="flex justify-between"><span>เงินเดือนฐาน</span><span className="tabular-nums">฿{fmtMoney(item.baseSalary)}</span></div>
@@ -82,7 +82,7 @@ function PayslipContent({ item, cycle, settings }: { item: EnrichedItem; cycle: 
         <>
           <Separator />
           <div className="space-y-1 text-xs">
-            <p className="font-semibold text-slate-700">หัก</p>
+            <p className="font-semibold text-foreground">หัก</p>
             {item.deductions.filter((d) => d.type === 'advance').map((d) => (
               <div key={d.id} className="flex justify-between text-red-600">
                 <span>เบิก: {d.reason}</span><span className="tabular-nums">-฿{fmtMoney(d.amount)}</span>
@@ -114,7 +114,7 @@ function PayslipContent({ item, cycle, settings }: { item: EnrichedItem; cycle: 
       <Separator />
       <div className="flex justify-between font-bold text-base">
         <span>เงินสุทธิ</span>
-        <span className="tabular-nums text-slate-900">฿{fmtMoney(item.netPay)}</span>
+        <span className="tabular-nums text-foreground">฿{fmtMoney(item.netPay)}</span>
       </div>
       {item.isPaid && (
         <p className="text-xs text-green-600 text-center">
@@ -220,8 +220,8 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
   return (
     <div className="space-y-4">
       {/* Summary */}
-      <div className="rounded-lg border border-slate-200 p-4 space-y-2 text-sm">
-        <div className="font-semibold text-slate-900 flex items-center justify-between">
+      <div className="rounded-lg border border-border p-4 space-y-2 text-sm">
+        <div className="font-semibold text-foreground flex items-center justify-between">
           <span>{emp?.firstName} {emp?.lastName}</span>
           <Badge variant={item.isPaid ? 'default' : 'outline'}>
             {item.isPaid ? 'จ่ายแล้ว' : 'ยังไม่จ่าย'}
@@ -230,7 +230,7 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
 
         {/* รายได้ */}
         <div className="space-y-1 text-xs">
-          <p className="font-semibold text-slate-600 mt-2">รายได้</p>
+          <p className="font-semibold text-muted-foreground mt-2">รายได้</p>
           {item.employeeType === 'full_time' ? (
             <>
               <div className="flex justify-between"><span>เงินเดือนฐาน</span><span className="tabular-nums">฿{fmtMoney(item.baseSalary)}</span></div>
@@ -245,7 +245,7 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
               <span className="tabular-nums">฿{fmtMoney(item.hourlyTotal)}</span>
             </div>
           )}
-          <div className="flex justify-between font-semibold border-t border-slate-100 pt-1">
+          <div className="flex justify-between font-semibold border-t border-border pt-1">
             <span>รวมรายได้</span>
             <span className="tabular-nums">฿{fmtMoney(item.gross)}</span>
           </div>
@@ -254,15 +254,15 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
         {/* หัก */}
         <div className="space-y-1 text-xs">
           <div className="flex items-center justify-between mt-2">
-            <p className="font-semibold text-slate-600">หักเงิน</p>
+            <p className="font-semibold text-muted-foreground">หักเงิน</p>
             {!locked && (
               <div className="flex gap-1">
                 <button onClick={() => openAdd('advance')} className="text-xs text-blue-600 hover:underline">+เบิก</button>
-                <span className="text-slate-300">|</span>
+                <span className="text-muted-foreground/60">|</span>
                 <button onClick={() => openAdd('damage')} className="text-xs text-blue-600 hover:underline">+เสียหาย</button>
-                <span className="text-slate-300">|</span>
+                <span className="text-muted-foreground/60">|</span>
                 <button onClick={() => openAdd('absence')} className="text-xs text-blue-600 hover:underline">+ขาด</button>
-                <span className="text-slate-300">|</span>
+                <span className="text-muted-foreground/60">|</span>
                 <button onClick={() => openAdd('late')} className="text-xs text-blue-600 hover:underline">+สาย</button>
               </div>
             )}
@@ -306,7 +306,7 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
           ))}
 
           {Number(item.totalDeduction) > 0 && (
-            <div className="flex justify-between font-semibold text-red-600 border-t border-slate-100 pt-1">
+            <div className="flex justify-between font-semibold text-red-600 border-t border-border pt-1">
               <span>รวมหัก</span>
               <span className="tabular-nums">-฿{fmtMoney(item.totalDeduction)}</span>
             </div>
@@ -316,7 +316,7 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
         <Separator />
         <div className="flex justify-between font-bold text-base">
           <span>เงินสุทธิ</span>
-          <span className="tabular-nums text-slate-900">฿{fmtMoney(item.netPay)}</span>
+          <span className="tabular-nums text-foreground">฿{fmtMoney(item.netPay)}</span>
         </div>
       </div>
 
@@ -479,12 +479,12 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
     <div className="p-6">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/hr/payroll" className="text-slate-500 hover:text-slate-700">
+        <Link href="/hr/payroll" className="text-muted-foreground hover:text-foreground">
           <ChevronLeft className="size-5" />
         </Link>
         <div className="flex-1">
-          <h2 className="text-lg font-semibold text-slate-900">{detail.cycle.name}</h2>
-          <p className="text-xs text-slate-500">
+          <h2 className="text-lg font-semibold text-foreground">{detail.cycle.name}</h2>
+          <p className="text-xs text-muted-foreground">
             ช่วงงาน {fmtDate(detail.cycle.workStartDate)} – {fmtDate(detail.cycle.workEndDate)} |
             วันจ่าย {fmtDate(detail.cycle.payDate)}
           </p>
@@ -501,8 +501,8 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
       <div className="flex gap-6">
         {/* Left: employee list */}
         <div className="w-64 shrink-0">
-          <div className="rounded-lg border border-slate-200 overflow-hidden">
-            <div className="bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">พนักงาน ({detail.items.length} คน)</div>
+          <div className="rounded-lg border border-border overflow-hidden">
+            <div className="bg-muted/30 px-3 py-2 text-xs font-semibold text-muted-foreground">พนักงาน ({detail.items.length} คน)</div>
             {detail.items.map((item) => {
               const emp = item.employee;
               const isSelected = item.id === selectedItemId;
@@ -510,12 +510,12 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
                 <button
                   key={item.id}
                   onClick={() => setSelectedItemId(item.id)}
-                  className={`w-full text-left px-3 py-2.5 border-t border-slate-100 transition-colors ${isSelected ? 'bg-slate-800 text-white' : 'hover:bg-slate-50'}`}
+                  className={`w-full text-left px-3 py-2.5 border-t border-border transition-colors ${isSelected ? 'bg-primary text-white' : 'hover:bg-muted/30'}`}
                 >
-                  <div className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-slate-900'}`}>
+                  <div className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-foreground'}`}>
                     {emp?.firstName} {emp?.lastName}
                   </div>
-                  <div className={`text-xs flex items-center justify-between mt-0.5 ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
+                  <div className={`text-xs flex items-center justify-between mt-0.5 ${isSelected ? 'text-muted-foreground/60' : 'text-muted-foreground'}`}>
                     <span>฿{fmtMoney(item.netPay)}</span>
                     {item.isPaid && <CheckCircle2 className="size-3 text-green-400" />}
                   </div>
@@ -525,14 +525,14 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
           </div>
 
           {/* Summary */}
-          <div className="mt-3 rounded-lg border border-slate-200 p-3 text-xs space-y-1">
+          <div className="mt-3 rounded-lg border border-border p-3 text-xs space-y-1">
             <div className="flex justify-between font-semibold">
               <span>รวมสุทธิทั้งหมด</span>
               <span className="tabular-nums">
                 ฿{detail.items.reduce((s, i) => s + Number(i.netPay), 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
               </span>
             </div>
-            <div className="flex justify-between text-slate-500">
+            <div className="flex justify-between text-muted-foreground">
               <span>จ่ายแล้ว</span>
               <span>{detail.items.filter((i) => i.isPaid).length}/{detail.items.length} คน</span>
             </div>
@@ -550,7 +550,7 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
               settings={settings}
             />
           ) : (
-            <div className="text-center py-12 text-slate-400">เลือกพนักงานด้านซ้ายเพื่อดูรายละเอียด</div>
+            <div className="text-center py-12 text-muted-foreground">เลือกพนักงานด้านซ้ายเพื่อดูรายละเอียด</div>
           )}
         </div>
       </div>

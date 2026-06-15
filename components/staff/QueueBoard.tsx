@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -116,19 +116,19 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-muted/30">
       {/* Header */}
-      <header className="border-b border-slate-200 bg-white px-6 py-4 flex items-center justify-between">
+      <header className="border-b border-border bg-card px-6 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-slate-900">จัดการคิว</h1>
-          <p className="text-xs text-slate-500">
+          <h1 className="text-lg font-semibold text-foreground">จัดการคิว</h1>
+          <p className="text-xs text-muted-foreground">
             รอ {waiting.length} กลุ่ม · เรียกแล้ว {called.length} กลุ่ม
           </p>
         </div>
         <button
           type="button"
           onClick={() => { setShowForm(true); setAddedToken(null); }}
-          className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
         >
           + เพิ่มคิว
         </button>
@@ -150,7 +150,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
               type="button"
               aria-label="พิมพ์ตั๋วซ้ำ"
               onClick={() => void printQueueQr({ type: 'queue_qr', queueEntry: addedToken.queueQrData })}
-              className="flex items-center gap-1.5 rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50"
+              className="flex items-center gap-1.5 rounded-md border border-green-300 bg-card px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-50"
             >
               <Printer className="size-3.5" />
               พิมพ์ตั๋ว
@@ -171,14 +171,14 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
       <main className="grid grid-cols-1 gap-6 p-6 md:grid-cols-2">
         {/* Waiting */}
         <section>
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
             <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
             รอเรียก
-            <span className="ml-auto tabular-nums text-slate-400">{waiting.length}</span>
+            <span className="ml-auto tabular-nums text-muted-foreground">{waiting.length}</span>
           </h2>
           <div className="space-y-3">
             {waiting.length === 0 && (
-              <p className="py-8 text-center text-sm text-slate-400">ไม่มีคิวที่รอ</p>
+              <p className="py-8 text-center text-sm text-muted-foreground">ไม่มีคิวที่รอ</p>
             )}
             {waiting.map((e, idx) => (
               <QueueCard
@@ -196,14 +196,14 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
 
         {/* Called */}
         <section>
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
             <span className="inline-block h-2 w-2 rounded-full bg-blue-500" />
             เรียกแล้ว
-            <span className="ml-auto tabular-nums text-slate-400">{called.length}</span>
+            <span className="ml-auto tabular-nums text-muted-foreground">{called.length}</span>
           </h2>
           <div className="space-y-3">
             {called.length === 0 && (
-              <p className="py-8 text-center text-sm text-slate-400">ยังไม่มีคิวที่เรียก</p>
+              <p className="py-8 text-center text-sm text-muted-foreground">ยังไม่มีคิวที่เรียก</p>
             )}
             {called.map((e) => (
               <QueueCard
@@ -226,29 +226,29 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
           onClick={() => setShowForm(false)}
         >
           <div
-            className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl"
+            className="w-full max-w-sm rounded-xl bg-card p-6 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-slate-900">เพิ่มคิวใหม่</h2>
+              <h2 className="text-base font-semibold text-foreground">เพิ่มคิวใหม่</h2>
               <button
                 type="button"
                 aria-label="ปิด"
                 onClick={() => setShowForm(false)}
-                className="text-slate-400 hover:text-slate-600 text-xl leading-none"
+                className="text-muted-foreground hover:text-muted-foreground text-xl leading-none"
               >
                 ×
               </button>
             </div>
             <form onSubmit={handleSubmit(onAddSubmit)} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
+                <label className="block text-xs font-medium text-foreground mb-1">
                   ชื่อลูกค้า <span className="text-red-500">*</span>
                 </label>
                 <input
                   {...register('customerName')}
                   placeholder="เช่น สมชาย"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
                 />
                 {errors.customerName && (
                   <p className="mt-1 text-xs text-red-600">{errors.customerName.message}</p>
@@ -257,7 +257,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                  <label className="block text-xs font-medium text-foreground mb-1">
                     จำนวนคน <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -265,37 +265,37 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
                     type="number"
                     min={1}
                     max={99}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
                   />
                   {errors.partySize && (
                     <p className="mt-1 text-xs text-red-600">{errors.partySize.message}</p>
                   )}
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                  <label className="block text-xs font-medium text-foreground mb-1">
                     เบอร์โทร
                   </label>
                   <input
                     {...register('phone')}
                     placeholder="08x-xxx-xxxx"
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">โซน</label>
+                <label className="block text-xs font-medium text-foreground mb-1">โซน</label>
                 <input
                   {...register('preferredZone')}
                   placeholder="เช่น ในร่ม, ริมหน้าต่าง"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-800 py-2.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
               >
                 {isSubmitting && <Loader2 className="size-3.5 animate-spin" />}
                 {isSubmitting ? 'กำลังเพิ่ม…' : 'เพิ่มคิว'}
@@ -321,24 +321,24 @@ interface QueueCardProps {
 
 function QueueCard({ entry, position, onCall, onSeat, onRemove, isCallPending, isSeatPending, isRemovePending }: QueueCardProps) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="rounded-lg border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           {position !== undefined && (
-            <span className="text-xs tabular-nums text-slate-400">#{position}</span>
+            <span className="text-xs tabular-nums text-muted-foreground">#{position}</span>
           )}
-          <span className="text-xl font-bold tabular-nums text-slate-900">
+          <span className="text-xl font-bold tabular-nums text-foreground">
             {entry.queueNumber}
           </span>
         </div>
-        <span className="text-xs tabular-nums text-slate-500">
+        <span className="text-xs tabular-nums text-muted-foreground">
           {formatDistanceToNowStrict(new Date(entry.createdAt), { locale: th, addSuffix: true })}
         </span>
       </div>
 
       <div className="mt-2">
-        <p className="text-sm font-medium text-slate-900">{entry.customerName}</p>
-        <p className="text-xs text-slate-500">
+        <p className="text-sm font-medium text-foreground">{entry.customerName}</p>
+        <p className="text-xs text-muted-foreground">
           {entry.partySize} คน
           {entry.preferredZone && ` · ${entry.preferredZone}`}
           {entry.phone && ` · ${entry.phone}`}
@@ -373,7 +373,7 @@ function QueueCard({ entry, position, onCall, onSeat, onRemove, isCallPending, i
           aria-label="นำออกจากคิว"
           onClick={onRemove}
           disabled={isRemovePending}
-          className="flex items-center gap-1 rounded-md border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-60"
+          className="flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/30 disabled:opacity-60"
         >
           {isRemovePending && <Loader2 className="size-3 animate-spin" />}
           นำออก

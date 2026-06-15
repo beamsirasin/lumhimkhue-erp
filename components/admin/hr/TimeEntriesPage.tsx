@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { format } from 'date-fns';
@@ -119,8 +119,8 @@ export function TimeEntriesPage({ initialEmployees }: Props) {
   if (employees.length === 0) {
     return (
       <div className="p-6">
-        <h2 className="text-lg font-semibold text-slate-900 mb-2">บันทึกเวลา</h2>
-        <p className="text-slate-400">ไม่มีพนักงานพาร์ทไทม์ active ในระบบ</p>
+        <h2 className="text-lg font-semibold text-foreground mb-2">บันทึกเวลา</h2>
+        <p className="text-muted-foreground">ไม่มีพนักงานพาร์ทไทม์ active ในระบบ</p>
       </div>
     );
   }
@@ -128,7 +128,7 @@ export function TimeEntriesPage({ initialEmployees }: Props) {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold text-slate-900">บันทึกเวลา (พาร์ทไทม์)</h2>
+        <h2 className="text-lg font-semibold text-foreground">บันทึกเวลา (พาร์ทไทม์)</h2>
         <Button size="sm" onClick={openCreate}>
           <Plus className="size-4 mr-1.5" />
           เพิ่มบันทึก
@@ -150,7 +150,7 @@ export function TimeEntriesPage({ initialEmployees }: Props) {
           </SelectContent>
         </Select>
         <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-40" />
-        <span className="self-center text-slate-400 text-sm">–</span>
+        <span className="self-center text-muted-foreground text-sm">–</span>
         <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-40" />
         <Button variant="outline" onClick={loadEntries} disabled={pending}>
           แสดง
@@ -160,9 +160,9 @@ export function TimeEntriesPage({ initialEmployees }: Props) {
       {/* Table */}
       {loaded && (
         <>
-          <div className="rounded-lg border border-slate-200 overflow-hidden mb-3">
+          <div className="rounded-lg border border-border overflow-hidden mb-3">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-slate-600">
+              <thead className="bg-muted/30 text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3 text-left font-medium">วันที่</th>
                   <th className="px-4 py-3 text-center font-medium">เข้า</th>
@@ -172,15 +172,15 @@ export function TimeEntriesPage({ initialEmployees }: Props) {
                   <th className="px-4 py-3 w-20" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-border">
                 {entries.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-400">ไม่มีข้อมูล</td>
+                    <td colSpan={6} className="py-8 text-center text-muted-foreground">ไม่มีข้อมูล</td>
                   </tr>
                 ) : (
                   entries.map((entry) => (
-                    <tr key={entry.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 text-slate-900">
+                    <tr key={entry.id} className="hover:bg-muted/30">
+                      <td className="px-4 py-3 text-foreground">
                         {format(new Date(entry.workDate + 'T00:00'), 'd MMM yyyy', { locale: th })}
                       </td>
                       <td className="px-4 py-3 text-center">{entry.clockIn}</td>
@@ -204,22 +204,22 @@ export function TimeEntriesPage({ initialEmployees }: Props) {
                 )}
               </tbody>
               {entries.length > 0 && (
-                <tfoot className="bg-slate-50">
+                <tfoot className="bg-muted/30">
                   <tr>
-                    <td colSpan={4} className="px-4 py-2.5 text-sm font-semibold text-slate-700">
+                    <td colSpan={4} className="px-4 py-2.5 text-sm font-semibold text-foreground">
                       รวม {entries.length} วัน
                     </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-sm font-bold text-slate-900">
+                    <td className="px-4 py-2.5 text-right tabular-nums text-sm font-bold text-foreground">
                       {totalHours.toFixed(2)} ชม.
                     </td>
                     <td />
                   </tr>
                   {selectedEmp?.hourlyRate && (
                     <tr>
-                      <td colSpan={4} className="px-4 py-1 text-xs text-slate-500">
+                      <td colSpan={4} className="px-4 py-1 text-xs text-muted-foreground">
                         ประมาณรายได้ ({totalHours.toFixed(2)} × ฿{Number(selectedEmp.hourlyRate).toLocaleString()}/ชม.)
                       </td>
-                      <td className="px-4 py-1 text-right tabular-nums text-xs font-semibold text-slate-700">
+                      <td className="px-4 py-1 text-right tabular-nums text-xs font-semibold text-foreground">
                         ฿{(totalHours * Number(selectedEmp.hourlyRate)).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
                       </td>
                       <td />
@@ -273,7 +273,7 @@ export function TimeEntriesPage({ initialEmployees }: Props) {
               <Input type="number" min="0" value={form.breakMinutes} onChange={(e) => setForm((p) => ({ ...p, breakMinutes: e.target.value }))} />
             </div>
             {previewHours > 0 && (
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 รวม: <strong>{previewHours.toFixed(2)} ชม.</strong>
               </p>
             )}

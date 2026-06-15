@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, createContext, useContext, type ReactNode } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -44,6 +44,10 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { logoutAction } from '@/lib/actions/auth';
 import type { Role } from '@/lib/auth/permissions';
 
+/* ─── Header slot context (lets pages inject content into CashierLayout header) ─ */
+
+export const CashierHeaderSlotContext = createContext<((node: ReactNode) => void) | null>(null);
+
 /* ─── Types ─────────────────────────────────────────────────── */
 
 type NavItem = { href: string; label: string; Icon: LucideIcon };
@@ -62,6 +66,86 @@ function isNavGroup(item: NavItem | NavGroup): item is NavGroup {
   return 'children' in item;
 }
 
+/* ─── Module → hrefs mapping ────────────────────────────────── */
+
+const MODULE_HREFS: Record<string, string[]> = {
+  pos:             ['/pos', '/pos/history'],
+  kds:             ['/kds', '/kds/history'],
+  queue:           ['/queue'],
+  tables:          ['/tables', '/tables/history'],
+  dashboard:       ['/dashboard'],
+  reservations:    ['/reservations'],
+  menu:            ['/menu'],
+  recipes:         ['/recipes'],
+  'pricing-tiles': ['/pricing-tiles'],
+  inventory:       ['/inventory', '/inventory/count', '/inventory/ingredients', '/inventory/suppliers', '/inventory/orders'],
+  reports:         ['/reports'],
+  settings:        ['/settings'],
+  users:           ['/users'],
+  hr:              ['/hr', '/hr/employees', '/hr/schedule', '/hr/time', '/hr/payroll', '/hr/settings'],
+  branches:        ['/branches'],
+  printers:        ['/printers'],
+  system:          ['/system'],
+};
+
+function isHrefAllowed(href: string, modules: string[]): boolean {
+  if (!modules.length) return true;
+  return modules.some((m) => {
+    const hrefs = MODULE_HREFS[m] ?? [];
+    return hrefs.some((h) => href === h || href.startsWith(h + '/'));
+  });
+}
+
+function filterSections(sections: NavSection[], modules: string[]): NavSection[] {
+  if (!modules.length) return sections;
+  return sections
+    .map((section) => ({
+      ...section,
+      items: section.items
+        .map((item) => {
+          if (isNavGroup(item)) {
+            const filteredChildren = item.children.filter((c) => isHrefAllowed(c.href, modules));
+            return filteredChildren.length ? { ...item, children: filteredChildren } : null;
+          }
+          return isHrefAllowed(item.href, modules) ? item : null;
+        })
+        .filter(Boolean) as (NavItem | NavGroup)[],
+    }))
+    .filter((s) => s.items.length > 0);
+}
+
+function getModuleForNavItem(item: NavItem | NavGroup): string | null {
+  const testHref = isNavGroup(item) ? item.matchPrefix : item.href;
+  for (const [mod, hrefs] of Object.entries(MODULE_HREFS)) {
+    if (hrefs.some((h) => h === testHref || testHref.startsWith(h + '/') || h.startsWith(testHref + '/'))) {
+      return mod;
+    }
+  }
+  return null;
+}
+
+function reorderSections(sections: NavSection[], modules: string[]): NavSection[] {
+  if (!modules.length) return sections;
+  return sections.map((section) => ({
+    ...section,
+    items: [...section.items].sort((a, b) => {
+      const ma = getModuleForNavItem(a);
+      const mb = getModuleForNavItem(b);
+      const ia = ma ? modules.indexOf(ma) : 999;
+      const ib = mb ? modules.indexOf(mb) : 999;
+      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+    }),
+  }));
+}
+
+/* Module ID → primary touchscreen tab href */
+const TOUCHSCREEN_TAB_MODULE: Record<string, string> = {
+  pos:    '/pos',
+  kds:    '/kds',
+  tables: '/tables',
+  queue:  '/queue',
+};
+
 /* ─── Nav config per role ────────────────────────────────────── */
 
 const hrGroup: NavGroup = {
@@ -69,13 +153,12 @@ const hrGroup: NavGroup = {
   Icon: UserCog,
   matchPrefix: '/hr',
   children: [
-    { href: '/hr',           label: 'ภาพรวม',           Icon: LayoutDashboard },
-    { href: '/hr/employees', label: 'ข้อมูลพนักงาน',     Icon: UsersRound },
-    { href: '/hr/schedule',  label: 'ตารางงาน',           Icon: Calendar },
-    { href: '/hr/time',      label: 'บันทึกเวลา',         Icon: Clock },
-    { href: '/hr/payroll',   label: 'เงินเดือน',           Icon: Wallet },
-    { href: '/hr/settings',  label: 'ตั้งค่า HR',          Icon: Settings },
-    { href: '/users',        label: 'บัญชีผู้ใช้ระบบ',     Icon: Users },
+    { href: '/hr',           label: 'ภาพรวม',       Icon: LayoutDashboard },
+    { href: '/hr/employees', label: 'ข้อมูลพนักงาน', Icon: UsersRound },
+    { href: '/hr/schedule',  label: 'ตารางงาน',       Icon: Calendar },
+    { href: '/hr/time',      label: 'บันทึกเวลา',     Icon: Clock },
+    { href: '/hr/payroll',   label: 'เงินเดือน',       Icon: Wallet },
+    { href: '/hr/settings',  label: 'ตั้งค่า HR',      Icon: Settings },
   ],
 };
 
@@ -136,18 +219,24 @@ const NAV: Record<Role, NavSection[]> = {
     {
       heading: 'จัดการ',
       items: [
-        { href: '/dashboard',     label: 'แดชบอร์ด',      Icon: LayoutDashboard },
-        { href: '/reservations',  label: 'จองโต๊ะ',        Icon: CalendarDays },
-        { href: '/menu',          label: 'เมนูอาหาร',     Icon: UtensilsCrossed },
-        { href: '/recipes',       label: 'สูตรอาหาร',     Icon: BookOpen },
-        { href: '/pricing-tiles', label: 'Pricing Tiles',  Icon: Tag },
-        hrGroup,
-        { href: '/reports',       label: 'รายงาน',         Icon: BarChart3 },
-        { href: '/settings',      label: 'ตั้งค่าบิล',     Icon: Settings },
-        { href: '/printers',      label: 'เครื่องพิมพ์',   Icon: Printer },
-        { href: '/branches',      label: 'สาขา',            Icon: GitBranch },
-        { href: '/system',        label: 'ข้อมูลระบบ',     Icon: Info },
+        { href: '/dashboard',     label: 'แดชบอร์ด',     Icon: LayoutDashboard },
+        { href: '/reservations',  label: 'จองโต๊ะ',       Icon: CalendarDays },
+        { href: '/menu',          label: 'เมนูอาหาร',    Icon: UtensilsCrossed },
+        { href: '/recipes',       label: 'สูตรอาหาร',    Icon: BookOpen },
+        { href: '/pricing-tiles', label: 'Pricing Tiles', Icon: Tag },
         inventoryGroup,
+        { href: '/reports',       label: 'รายงาน',        Icon: BarChart3 },
+        hrGroup,
+      ],
+    },
+    {
+      heading: 'ตั้งค่า / Admin',
+      items: [
+        { href: '/settings', label: 'ตั้งค่าบิล',   Icon: Settings },
+        { href: '/users',    label: 'บัญชีผู้ใช้',   Icon: Users },
+        { href: '/branches', label: 'สาขา',           Icon: GitBranch },
+        { href: '/printers', label: 'เครื่องพิมพ์',  Icon: Printer },
+        { href: '/system',   label: 'ข้อมูลระบบ',    Icon: Info },
       ],
     },
   ],
@@ -245,7 +334,7 @@ function getPageTitle(pathname: string): string {
 function NavBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+    <span className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow-sm">
       {count > 99 ? '99+' : count}
     </span>
   );
@@ -273,20 +362,20 @@ function NavGroupItem({
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+      <CollapsibleTrigger className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 ${
         isGroupActive
-          ? 'bg-slate-700 text-white'
-          : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+          ? 'bg-card/12 text-white'
+          : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
       }`}>
         <Icon className="size-4 shrink-0" />
         <span className="flex-1 text-left">{group.label}</span>
         {!open && totalGroupBadge > 0 && (
-          <span className="size-2 rounded-full bg-red-500" />
+          <span className="size-2 rounded-full bg-red-400 shadow-sm" />
         )}
-        <ChevronDown className={`size-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`size-3.5 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="mt-0.5 ml-4 border-l border-slate-700 pl-3 space-y-0.5">
+        <div className="mt-0.5 ml-4 border-l border-white/10 pl-3 space-y-0.5">
           {group.children.map(({ href, label, Icon: ChildIcon }) => {
             const isActive = href === '/tables'
               ? pathname === '/tables'
@@ -298,10 +387,10 @@ function NavGroupItem({
                 href={href}
                 prefetch={false}
                 onClick={onNavigate}
-                className={`flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm font-medium transition-all ${
+                className={`flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm font-medium transition-all duration-150 ${
                   isActive
-                    ? 'bg-slate-700 text-white'
-                    : 'text-slate-500 hover:bg-slate-800 hover:text-white'
+                    ? 'bg-card/15 text-white'
+                    : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
                 }`}
               >
                 <ChildIcon className="size-3.5 shrink-0" />
@@ -334,7 +423,7 @@ function NavItems({
       {sections.map((section, i) => (
         <div key={i}>
           {section.heading && (
-            <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+            <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
               {section.heading}
             </p>
           )}
@@ -361,13 +450,13 @@ function NavItems({
                   href={href}
                   prefetch={false}
                   onClick={onNavigate}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 ${
                     isActive
-                      ? 'bg-slate-700 text-white'
-                      : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                      ? 'bg-card/15 text-white shadow-sm'
+                      : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
                   }`}
                 >
-                  <Icon className="size-4 shrink-0" />
+                  <Icon className={`size-4 shrink-0 transition-colors ${isActive ? 'text-blue-300' : ''}`} />
                   {label}
                   <NavBadge count={badge} />
                 </Link>
@@ -396,10 +485,10 @@ function SidebarInner({
   badgeCounts?: Record<string, number>;
 }) {
   return (
-    <div className="flex h-full flex-col bg-slate-900">
+    <div className="flex h-full flex-col" style={{ background: 'oklch(0.14 0.025 248)' }}>
       {/* Logo */}
-      <div className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-800 px-4">
-        <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-slate-700">
+      <div className="flex h-14 shrink-0 items-center gap-3 border-b border-white/8 px-4">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-600/20 ring-1 ring-blue-400/30">
           <Image
             src="/images/logo.png"
             alt="ร้านชาบู ERP"
@@ -408,27 +497,30 @@ function SidebarInner({
             className="rounded object-contain"
           />
         </div>
-        <span className="text-sm font-semibold text-white">ร้านชาบู ERP</span>
+        <div className="min-w-0">
+          <span className="block text-sm font-semibold text-white leading-tight">ร้านชาบู ERP</span>
+          <span className="block text-[10px] text-muted-foreground leading-tight">Restaurant Management</span>
+        </div>
       </div>
 
       {/* Navigation */}
       <NavItems sections={sections} pathname={pathname} onNavigate={onNavigate} badgeCounts={badgeCounts} />
 
       {/* User info + logout */}
-      <div className="shrink-0 border-t border-slate-800 p-3">
-        <div className="flex items-center gap-2.5 rounded-lg px-3 py-2">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-slate-700 text-xs font-semibold text-white ring-2 ring-slate-600">
+      <div className="shrink-0 border-t border-white/8 p-3">
+        <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-blue-600/30 text-xs font-semibold text-blue-200 ring-1 ring-blue-400/30">
             {userName.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-white">{userName}</p>
-            <p className="truncate text-xs text-slate-400">{ROLE_LABEL[role]}</p>
+            <p className="truncate text-[11px] text-muted-foreground">{ROLE_LABEL[role]}</p>
           </div>
         </div>
         <form action={logoutAction} className="mt-1">
           <button
             type="submit"
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-400 transition-all hover:bg-slate-800 hover:text-white"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-all duration-150 hover:bg-red-500/10 hover:text-red-300"
           >
             <LogOut className="size-4 shrink-0" />
             ออกจากระบบ
@@ -439,7 +531,7 @@ function SidebarInner({
   );
 }
 
-/* ─── Standard sidebar layout (owner / manager / kitchen) ───── */
+/* ─── Standard sidebar layout (owner / manager / desktop) ───── */
 
 function StandardSidebarLayout({
   role,
@@ -447,20 +539,23 @@ function StandardSidebarLayout({
   children,
   pathname,
   badgeCounts,
+  allowedModules,
 }: {
   role: Role;
   userName: string;
   children: React.ReactNode;
   pathname: string;
   badgeCounts?: Record<string, number>;
+  allowedModules: string[];
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const sections = NAV[role] ?? [];
+  const rawSections = NAV[role] ?? [];
+  const sections = reorderSections(filterSections(rawSections, allowedModules), allowedModules);
   const pageTitle = getPageTitle(pathname);
   const innerProps = { role, userName, sections, pathname, badgeCounts };
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-slate-50">
+    <div className="flex h-dvh overflow-hidden bg-background">
       {/* Desktop sidebar */}
       <aside className="hidden lg:block fixed inset-y-0 left-0 z-20 w-64">
         <SidebarInner {...innerProps} />
@@ -469,11 +564,11 @@ function StandardSidebarLayout({
       {/* Right content area */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden lg:pl-64">
         {/* Top bar */}
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-100 bg-white px-4 shadow-sm">
+        <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border bg-card px-5 shadow-none">
           <Sheet open={mobileOpen} onOpenChange={(open) => setMobileOpen(open)}>
             <SheetTrigger
               aria-label="เปิดเมนู"
-              className="flex lg:hidden items-center justify-center rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+              className="flex lg:hidden items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <Menu className="size-5" />
             </SheetTrigger>
@@ -486,7 +581,7 @@ function StandardSidebarLayout({
           </Sheet>
 
           {pageTitle && (
-            <h1 className="text-sm font-semibold text-slate-800">{pageTitle}</h1>
+            <h1 className="text-[15px] font-semibold text-foreground">{pageTitle}</h1>
           )}
         </header>
 
@@ -498,12 +593,26 @@ function StandardSidebarLayout({
   );
 }
 
-/* ─── Bottom-tab layout (cashier + kitchen) ───────────────────── */
+/* ─── Bottom-tab layout (touchscreen) ─────────────────────────── */
 
-type TabItem     = { href: string; label: string; Icon: LucideIcon };
-type MoreItem    = { href: string; label: string; Icon: LucideIcon };
+type TabItem  = { href: string; label: string; Icon: LucideIcon };
+type MoreItem = { href: string; label: string; Icon: LucideIcon };
 
-const BOTTOM_TABS: Record<'cashier' | 'kitchen', TabItem[]> = {
+const ALL_TOUCHSCREEN_TABS: TabItem[] = [
+  { href: '/pos',    label: 'POS',  Icon: ShoppingCart },
+  { href: '/kds',    label: 'ครัว', Icon: ChefHat },
+  { href: '/tables', label: 'โต๊ะ', Icon: Grid3X3 },
+  { href: '/queue',  label: 'คิว',  Icon: UsersRound },
+];
+
+const ALL_TOUCHSCREEN_MORE: MoreItem[] = [
+  { href: '/kds/history',    label: 'ประวัติครัว',     Icon: ChefHat },
+  { href: '/tables/history', label: 'ประวัติโต๊ะ',    Icon: History },
+  { href: '/pos/history',    label: 'ประวัติชำระเงิน', Icon: CreditCard },
+  { href: '/printers',       label: 'เครื่องพิมพ์',    Icon: Printer },
+];
+
+const ROLE_TOUCHSCREEN_TABS: Record<'cashier' | 'kitchen', TabItem[]> = {
   cashier: [
     { href: '/pos',    label: 'POS',  Icon: ShoppingCart },
     { href: '/kds',    label: 'ครัว', Icon: ChefHat },
@@ -517,7 +626,7 @@ const BOTTOM_TABS: Record<'cashier' | 'kitchen', TabItem[]> = {
   ],
 };
 
-const BOTTOM_MORE_ITEMS: Record<'cashier' | 'kitchen', MoreItem[]> = {
+const ROLE_TOUCHSCREEN_MORE: Record<'cashier' | 'kitchen', MoreItem[]> = {
   cashier: [
     { href: '/kds/history',    label: 'ประวัติครัว',     Icon: ChefHat },
     { href: '/tables/history', label: 'ประวัติโต๊ะ',    Icon: History },
@@ -536,14 +645,19 @@ function CashierLayout({
   userName,
   children,
   pathname,
+  tabs,
+  moreTabs,
 }: {
-  role: 'cashier' | 'kitchen';
+  role: Role;
   userName: string;
   children: React.ReactNode;
   pathname: string;
+  tabs: TabItem[];
+  moreTabs: MoreItem[];
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [headerSlotContent, setHeaderSlotContent] = useState<ReactNode>(null);
 
   useEffect(() => {
     const sync = () => setIsFullscreen(!!document.fullscreenElement);
@@ -562,9 +676,10 @@ function CashierLayout({
   const pageTitle = getPageTitle(pathname);
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-slate-50">
+    <CashierHeaderSlotContext.Provider value={setHeaderSlotContent}>
+    <div className="flex h-dvh flex-col overflow-hidden bg-background">
       {/* Thin top header */}
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-4">
+      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-card px-4">
         <Image
           src="/images/logo.png"
           alt="ERP"
@@ -572,19 +687,16 @@ function CashierLayout({
           height={22}
           className="rounded object-contain shrink-0"
         />
-        <h1 className="flex-1 truncate text-sm font-semibold text-slate-900">
+        <h1 className="truncate text-sm font-semibold text-foreground">
           {pageTitle || 'ร้านชาบู ERP'}
         </h1>
-        <span className="shrink-0 text-xs text-slate-400">{userName}</span>
-        <form action={logoutAction}>
-          <button
-            type="submit"
-            aria-label="ออกจากระบบ"
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-          >
-            <LogOut className="size-4" />
-          </button>
-        </form>
+        {headerSlotContent && (
+          <div className="flex flex-1 items-center gap-2 min-w-0 overflow-hidden">
+            {headerSlotContent}
+          </div>
+        )}
+        {!headerSlotContent && <span className="flex-1" />}
+        <span className="shrink-0 text-xs text-muted-foreground">{userName}</span>
       </header>
 
       {/* Page content */}
@@ -593,9 +705,8 @@ function CashierLayout({
       </main>
 
       {/* Bottom tab bar */}
-      <nav className="relative flex h-[60px] shrink-0 items-stretch border-t border-slate-200 bg-white">
-        {/* Nav tabs */}
-        {BOTTOM_TABS[role].map(({ href, label, Icon: TabIcon }) => {
+      <nav className="relative flex h-[62px] shrink-0 items-stretch border-t border-border bg-card">
+        {tabs.map(({ href, label, Icon: TabIcon }) => {
           const isActive =
             href === '/tables'
               ? pathname === '/tables' || pathname.startsWith('/tables/')
@@ -605,12 +716,12 @@ function CashierLayout({
               key={href}
               href={href}
               prefetch={false}
-              className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors ${
-                isActive ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'
+              className={`relative flex flex-1 flex-col items-center justify-center gap-1 transition-colors duration-150 ${
+                isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               {isActive && (
-                <span className="absolute inset-x-3 top-0 h-0.5 rounded-b-full bg-slate-800" />
+                <span className="absolute inset-x-4 top-0 h-0.5 rounded-b-full bg-primary" />
               )}
               <TabIcon className="size-[22px]" />
               <span className="text-[10px] font-medium leading-none">{label}</span>
@@ -623,7 +734,7 @@ function CashierLayout({
           type="button"
           onClick={toggleFullscreen}
           aria-label={isFullscreen ? 'ออกจากเต็มจอ' : 'เปิดเต็มจอ'}
-          className="relative flex flex-1 flex-col items-center justify-center gap-0.5 text-slate-400 hover:text-slate-600 transition-colors"
+          className="relative flex flex-1 flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground transition-colors duration-150"
         >
           {isFullscreen ? (
             <Minimize2 className="size-[22px]" />
@@ -640,12 +751,12 @@ function CashierLayout({
           type="button"
           onClick={() => setMoreOpen((o) => !o)}
           aria-label="เมนูเพิ่มเติม"
-          className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors ${
-            moreOpen ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'
+          className={`relative flex flex-1 flex-col items-center justify-center gap-1 transition-colors duration-150 ${
+            moreOpen ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
           {moreOpen && (
-            <span className="absolute inset-x-3 top-0 h-0.5 rounded-b-full bg-slate-800" />
+            <span className="absolute inset-x-4 top-0 h-0.5 rounded-b-full bg-primary" />
           )}
           <MoreHorizontal className="size-[22px]" />
           <span className="text-[10px] font-medium leading-none">เพิ่มเติม</span>
@@ -659,8 +770,8 @@ function CashierLayout({
               onClick={() => setMoreOpen(false)}
               aria-hidden="true"
             />
-            <div className="absolute bottom-[calc(100%+6px)] right-0 z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
-              {BOTTOM_MORE_ITEMS[role].map(({ href, label, Icon: ItemIcon }) => {
+            <div className="absolute bottom-[calc(100%+8px)] right-2 z-50 w-56 overflow-hidden rounded-xl border border-border bg-popover shadow-xl">
+              {moreTabs.map(({ href, label, Icon: ItemIcon }) => {
                 const isActive = pathname === href || pathname.startsWith(href + '/');
                 return (
                   <Link
@@ -668,22 +779,22 @@ function CashierLayout({
                     href={href}
                     prefetch={false}
                     onClick={() => setMoreOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3.5 text-sm font-medium transition-colors ${
+                    className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors duration-100 ${
                       isActive
-                        ? 'bg-slate-50 text-slate-900'
-                        : 'text-slate-700 hover:bg-slate-50'
+                        ? 'bg-accent text-accent-foreground'
+                        : 'text-popover-foreground hover:bg-accent'
                     }`}
                   >
-                    <ItemIcon className="size-4 shrink-0 text-slate-500" />
+                    <ItemIcon className="size-4 shrink-0 text-muted-foreground" />
                     {label}
                   </Link>
                 );
               })}
-              <div className="border-t border-slate-100" />
+              <div className="border-t border-border" />
               <form action={logoutAction} onSubmit={() => setMoreOpen(false)}>
                 <button
                   type="submit"
-                  className="flex w-full items-center gap-3 px-4 py-3.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
                 >
                   <LogOut className="size-4 shrink-0" />
                   ออกจากระบบ
@@ -694,6 +805,7 @@ function CashierLayout({
         )}
       </nav>
     </div>
+    </CashierHeaderSlotContext.Provider>
   );
 }
 
@@ -704,21 +816,60 @@ interface SidebarLayoutProps {
   userName: string;
   children: React.ReactNode;
   badgeCounts?: Record<string, number>;
+  uiLayout?: 'touchscreen' | 'desktop' | null;
+  allowedModules?: string[] | null;
 }
 
-export function SidebarLayout({ role, userName, children, badgeCounts }: SidebarLayoutProps) {
+export function SidebarLayout({
+  role,
+  userName,
+  children,
+  badgeCounts,
+  uiLayout,
+  allowedModules,
+}: SidebarLayoutProps) {
   const pathname = usePathname();
+  const modules = allowedModules ?? [];
 
-  if (role === 'cashier' || role === 'kitchen') {
+  // Determine layout: explicit uiLayout overrides role-based fallback
+  const useTouchscreen =
+    uiLayout === 'touchscreen' ||
+    (uiLayout == null && (role === 'cashier' || role === 'kitchen'));
+
+  if (useTouchscreen) {
+    // Compute bottom tabs: use allowedModules if set, else fall back to role defaults
+    let tabs: TabItem[];
+    let moreTabs: MoreItem[];
+    if (modules.length > 0) {
+      const filtered = ALL_TOUCHSCREEN_TABS.filter((t) => isHrefAllowed(t.href, modules));
+      tabs = [...filtered].sort((a, b) => {
+        const ma = Object.entries(TOUCHSCREEN_TAB_MODULE).find(([, href]) => href === a.href)?.[0];
+        const mb = Object.entries(TOUCHSCREEN_TAB_MODULE).find(([, href]) => href === b.href)?.[0];
+        const ia = ma ? modules.indexOf(ma) : 999;
+        const ib = mb ? modules.indexOf(mb) : 999;
+        return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+      });
+      moreTabs = ALL_TOUCHSCREEN_MORE.filter((t) => isHrefAllowed(t.href, modules));
+    } else {
+      const r = (role === 'cashier' || role === 'kitchen') ? role : 'cashier';
+      tabs = ROLE_TOUCHSCREEN_TABS[r];
+      moreTabs = ROLE_TOUCHSCREEN_MORE[r];
+    }
     return (
-      <CashierLayout role={role} userName={userName} pathname={pathname}>
+      <CashierLayout role={role} userName={userName} pathname={pathname} tabs={tabs} moreTabs={moreTabs}>
         {children}
       </CashierLayout>
     );
   }
 
   return (
-    <StandardSidebarLayout role={role} userName={userName} pathname={pathname} badgeCounts={badgeCounts}>
+    <StandardSidebarLayout
+      role={role}
+      userName={userName}
+      pathname={pathname}
+      badgeCounts={badgeCounts}
+      allowedModules={modules}
+    >
       {children}
     </StandardSidebarLayout>
   );

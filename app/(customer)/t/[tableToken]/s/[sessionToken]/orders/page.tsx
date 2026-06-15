@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+﻿import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getSessionData, getSessionOrders } from '@/lib/actions/orders';
 import { OrderList } from '@/components/customer/OrderList';
@@ -18,16 +18,16 @@ export default async function MyOrdersPage({ params }: Props) {
   if (!sessionResult.ok) notFound();
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="sticky top-0 z-10 bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3">
+    <div className="min-h-screen bg-muted/30">
+      <header className="sticky top-0 z-10 bg-card border-b border-border px-4 py-3 flex items-center gap-3">
         <Link
           href={`/t/${tableToken}/s/${sessionToken}`}
-          className="text-slate-500 hover:text-slate-700 text-sm"
+          className="text-muted-foreground hover:text-foreground text-sm"
           aria-label="กลับไปสั่งอาหาร"
         >
           ←
         </Link>
-        <h1 className="text-base font-medium text-slate-900">รายการที่สั่ง</h1>
+        <h1 className="text-base font-medium text-foreground">รายการที่สั่ง</h1>
       </header>
 
       <OrderList

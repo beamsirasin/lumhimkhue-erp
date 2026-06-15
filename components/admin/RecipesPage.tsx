@@ -190,28 +190,28 @@ function RecipeEditor({
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+      <div className="flex items-center justify-between border-b border-border px-5 py-4">
         <div>
-          <p className="text-xs text-slate-500">สูตรอาหารสำหรับ</p>
-          <h2 className="text-base font-semibold text-slate-900">{menuItem.name}</h2>
+          <p className="text-xs text-muted-foreground">สูตรอาหารสำหรับ</p>
+          <h2 className="text-base font-semibold text-foreground">{menuItem.name}</h2>
         </div>
         <button
           type="button"
           aria-label="ปิด"
           onClick={onClose}
-          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
         >
           <X className="size-4" />
         </button>
       </div>
 
-      <div className="flex flex-1 min-h-0 gap-0 divide-x divide-slate-200">
+      <div className="flex flex-1 min-h-0 gap-0 divide-x divide-border">
         {/* Left: existing recipes list */}
         <div className="w-44 shrink-0 overflow-y-auto p-3 space-y-1">
           <button
             type="button"
             onClick={newRecipe}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground"
           >
             <Plus className="size-3.5" />
             สูตรใหม่
@@ -223,8 +223,8 @@ function RecipeEditor({
               onClick={() => loadRecipe(recipe)}
               className={`w-full truncate rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors ${
                 editingRecipeId === recipe.id
-                  ? 'bg-slate-800 text-white'
-                  : 'text-slate-600 hover:bg-slate-100'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-muted/50'
               }`}
             >
               {recipe.name}
@@ -237,34 +237,34 @@ function RecipeEditor({
           {/* Recipe meta */}
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="block text-xs font-medium text-slate-600 mb-1">ชื่อสูตร</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">ชื่อสูตร</label>
               <input
                 value={recipeName}
                 onChange={(e) => setRecipeName(e.target.value)}
                 placeholder="เช่น สูตรมาตรฐาน"
-                className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-slate-500"
+                className="w-full rounded-lg border border-border bg-background text-foreground px-3 py-1.5 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
               />
             </div>
             <div className="w-24">
-              <label className="block text-xs font-medium text-slate-600 mb-1">ขนาดเสิร์ฟ</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">ขนาดเสิร์ฟ</label>
               <input
                 type="number"
                 min={1}
                 value={servingSize}
                 onChange={(e) => setServingSize(Math.max(1, parseInt(e.target.value) || 1))}
-                className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-slate-500"
+                className="w-full rounded-lg border border-border bg-background text-foreground px-3 py-1.5 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
               />
             </div>
           </div>
 
           {/* Ingredient search */}
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="ค้นหาวัตถุดิบ..."
-              className="w-full rounded-lg border border-slate-200 pl-8 pr-3 py-1.5 text-sm outline-none focus:border-slate-400"
+              className="w-full rounded-lg border border-border bg-background text-foreground pl-8 pr-3 py-1.5 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
             />
           </div>
 
@@ -280,7 +280,7 @@ function RecipeEditor({
                   <select
                     value={row.ingredientId}
                     onChange={(e) => handleIngredientSelect(row.key, e.target.value)}
-                    className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-slate-500"
+                    className="flex-1 rounded-lg border border-border bg-background text-foreground px-2 py-1.5 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
                   >
                     <option value="">เลือกวัตถุดิบ</option>
                     {filteredIngredients.map((i) => (
@@ -296,22 +296,22 @@ function RecipeEditor({
                     value={row.quantity || ''}
                     onChange={(e) => updateRow(row.key, { quantity: parseFloat(e.target.value) || 0 })}
                     placeholder="ปริมาณ"
-                    className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-slate-500"
+                    className="w-20 rounded-lg border border-border bg-background text-foreground px-2 py-1.5 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
                   />
                   <input
                     value={row.unit}
                     onChange={(e) => updateRow(row.key, { unit: e.target.value })}
                     placeholder="หน่วย"
-                    className="w-16 rounded-lg border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-slate-500"
+                    className="w-16 rounded-lg border border-border bg-background text-foreground px-2 py-1.5 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
                   />
-                  <span className="w-16 text-right text-xs text-slate-500 tabular-nums">
+                  <span className="w-16 text-right text-xs text-muted-foreground tabular-nums">
                     ฿{fmt(lineCost)}
                   </span>
                   <button
                     type="button"
                     aria-label="ลบ"
                     onClick={() => removeRow(row.key)}
-                    className="shrink-0 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-500"
+                    className="shrink-0 rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-500"
                   >
                     <Trash2 className="size-3.5" />
                   </button>
@@ -321,7 +321,7 @@ function RecipeEditor({
             <button
               type="button"
               onClick={addRow}
-              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
             >
               <Plus className="size-3.5" />
               เพิ่มวัตถุดิบ
@@ -329,20 +329,20 @@ function RecipeEditor({
           </div>
 
           {/* Live cost summary */}
-          <div className="rounded-lg bg-slate-50 px-4 py-3">
+          <div className="rounded-lg bg-muted/30 px-4 py-3">
             <div className="flex justify-between text-sm">
-              <span className="text-slate-600">ต้นทุนทางทฤษฎี / portion</span>
-              <span className="font-semibold text-slate-900">฿{fmt(liveTheoreticalCost)}</span>
+              <span className="text-muted-foreground">ต้นทุนทางทฤษฎี / portion</span>
+              <span className="font-semibold text-foreground">฿{fmt(liveTheoreticalCost)}</span>
             </div>
             {menuItem.price > 0 && (
               <div className="flex justify-between text-sm mt-1">
-                <span className="text-slate-600">Gross Margin</span>
+                <span className="text-muted-foreground">Gross Margin</span>
                 <span className={`font-semibold ${
                   liveTheoreticalCost > 0
                     ? ((menuItem.price - liveTheoreticalCost) / menuItem.price) * 100 < 30
                       ? 'text-red-600'
                       : 'text-green-600'
-                    : 'text-slate-500'
+                    : 'text-muted-foreground'
                 }`}>
                   {liveTheoreticalCost > 0
                     ? fmtPct(((menuItem.price - liveTheoreticalCost) / menuItem.price) * 100)
@@ -358,7 +358,7 @@ function RecipeEditor({
               type="button"
               onClick={handleSave}
               disabled={isPending}
-              className="flex items-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               <Save className="size-3.5" />
               บันทึก
@@ -423,20 +423,20 @@ export function RecipesPage({ initialMatrix, allIngredients }: Props) {
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left panel: menu item list */}
-      <div className={`flex flex-col ${selected ? 'hidden lg:flex w-96' : 'flex-1'} border-r border-slate-200 bg-white`}>
+      <div className={`flex flex-col ${selected ? 'hidden lg:flex w-96' : 'flex-1'} border-r border-border bg-card`}>
         {/* Header */}
-        <div className="border-b border-slate-200 px-5 py-4">
+        <div className="border-b border-border px-5 py-4">
           <div className="flex items-center justify-between mb-3">
-            <h1 className="text-lg font-semibold text-slate-900">สูตรอาหาร</h1>
-            <span className="text-xs text-slate-500">{totalWithRecipe}/{matrix.length} มีสูตร</span>
+            <h1 className="text-lg font-semibold text-foreground">สูตรอาหาร</h1>
+            <span className="text-xs text-muted-foreground">{totalWithRecipe}/{matrix.length} มีสูตร</span>
           </div>
           <div className="relative mb-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="ค้นหาเมนู..."
-              className="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-2 text-sm outline-none focus:border-slate-400"
+              className="w-full rounded-lg border border-border bg-background text-foreground pl-9 pr-3 py-2 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
             />
           </div>
           <button
@@ -445,7 +445,7 @@ export function RecipesPage({ initialMatrix, allIngredients }: Props) {
             className={`text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
               filterNoRecipe
                 ? 'bg-amber-100 text-amber-800'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                : 'bg-muted/50 text-muted-foreground hover:bg-muted'
             }`}
           >
             {filterNoRecipe ? 'แสดงทั้งหมด' : 'เฉพาะยังไม่มีสูตร'}
@@ -453,19 +453,19 @@ export function RecipesPage({ initialMatrix, allIngredients }: Props) {
         </div>
 
         {/* Stats row */}
-        <div className="flex gap-4 border-b border-slate-100 bg-slate-50 px-5 py-3">
+        <div className="flex gap-4 border-b border-border bg-muted/30 px-5 py-3">
           <div>
-            <p className="text-xs text-slate-500">ต้นทุนเฉลี่ย</p>
-            <p className="text-sm font-semibold text-slate-800">฿{fmt(avgCost)}</p>
+            <p className="text-xs text-muted-foreground">ต้นทุนเฉลี่ย</p>
+            <p className="text-sm font-semibold text-foreground">฿{fmt(avgCost)}</p>
           </div>
         </div>
 
         {/* List */}
-        <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+        <div className="flex-1 overflow-y-auto divide-y divide-border">
           {filtered.length === 0 && (
             <div className="py-12 text-center">
-              <BookOpen className="mx-auto size-8 text-slate-300 mb-2" />
-              <p className="text-sm text-slate-500">ไม่พบเมนู</p>
+              <BookOpen className="mx-auto size-8 text-muted-foreground/60 mb-2" />
+              <p className="text-sm text-muted-foreground">ไม่พบเมนู</p>
             </div>
           )}
           {filtered.map((item) => (
@@ -473,21 +473,21 @@ export function RecipesPage({ initialMatrix, allIngredients }: Props) {
               key={item.id}
               type="button"
               onClick={() => setSelected(item)}
-              className={`w-full flex items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-slate-50 ${
-                selected?.id === item.id ? 'bg-slate-50' : ''
+              className={`w-full flex items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-muted/30 ${
+                selected?.id === item.id ? 'bg-muted/30' : ''
               }`}
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium text-slate-800">{item.name}</span>
+                  <span className="truncate text-sm font-medium text-foreground">{item.name}</span>
                   {!item.hasRecipe && (
                     <AlertCircle className="size-3.5 shrink-0 text-amber-400" />
                   )}
                 </div>
-                <p className="text-xs text-slate-500">{item.categoryName}</p>
+                <p className="text-xs text-muted-foreground">{item.categoryName}</p>
               </div>
               <div className="text-right shrink-0">
-                <p className="text-sm font-medium text-slate-800">
+                <p className="text-sm font-medium text-foreground">
                   ฿{fmt(item.theoreticalCost)}
                 </p>
                 {item.margin !== null && (
@@ -496,7 +496,7 @@ export function RecipesPage({ initialMatrix, allIngredients }: Props) {
                   </p>
                 )}
               </div>
-              <ChevronRight className="size-4 shrink-0 text-slate-300" />
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground/60" />
             </button>
           ))}
         </div>
@@ -504,7 +504,7 @@ export function RecipesPage({ initialMatrix, allIngredients }: Props) {
 
       {/* Right panel: recipe editor */}
       {selected && (
-        <div className="flex-1 min-w-0 bg-white overflow-hidden">
+        <div className="flex-1 min-w-0 bg-card overflow-hidden">
           <RecipeEditor
             menuItem={selected}
             allIngredients={allIngredients}
@@ -515,10 +515,10 @@ export function RecipesPage({ initialMatrix, allIngredients }: Props) {
       )}
 
       {!selected && (
-        <div className="hidden lg:flex flex-1 items-center justify-center bg-slate-50">
+        <div className="hidden lg:flex flex-1 items-center justify-center bg-muted/30">
           <div className="text-center">
-            <BookOpen className="mx-auto size-10 text-slate-300 mb-3" />
-            <p className="text-sm text-slate-500">เลือกเมนูเพื่อจัดการสูตรอาหาร</p>
+            <BookOpen className="mx-auto size-10 text-muted-foreground/60 mb-3" />
+            <p className="text-sm text-muted-foreground">เลือกเมนูเพื่อจัดการสูตรอาหาร</p>
           </div>
         </div>
       )}

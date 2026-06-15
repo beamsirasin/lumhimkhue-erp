@@ -1,4 +1,4 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { auth, signOut } from '@/auth';
 
 const roleLabel: Record<string, string> = {
@@ -14,19 +14,19 @@ export async function AppHeader() {
   const { name, role } = session.user;
 
   return (
-    <header className="border-b bg-white">
+    <header className="border-b bg-card">
       <div className="mx-auto flex h-14 max-w-screen-xl items-center justify-between px-4">
         <Link
           href="/"
-          className="text-sm font-medium text-slate-900 hover:text-slate-700"
+          className="text-sm font-medium text-foreground hover:text-foreground"
         >
           ร้านชาบู ERP
         </Link>
 
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <p className="text-sm font-medium leading-tight text-slate-900">{name}</p>
-            <p className="text-xs leading-tight text-slate-500">
+            <p className="text-sm font-medium leading-tight text-foreground">{name}</p>
+            <p className="text-xs leading-tight text-muted-foreground">
               {roleLabel[role] ?? role}
             </p>
           </div>
@@ -39,7 +39,7 @@ export async function AppHeader() {
           >
             <button
               type="submit"
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
+              className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/30"
             >
               ออกจากระบบ
             </button>

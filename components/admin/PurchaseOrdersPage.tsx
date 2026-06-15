@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo, useTransition } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -47,7 +47,7 @@ import {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const INPUT = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500';
+const INPUT = 'w-full rounded-lg border border-border bg-background text-foreground px-3 py-2 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50';
 
 const STATUS_LABEL: Record<string, string> = {
   draft: 'ร่าง',
@@ -59,7 +59,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  draft: 'bg-slate-100 text-slate-600',
+  draft: 'bg-muted/50 text-muted-foreground',
   pending_approval: 'bg-amber-100 text-amber-700',
   ordered: 'bg-blue-100 text-blue-700',
   partial_received: 'bg-orange-100 text-orange-700',
@@ -159,13 +159,13 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-lg font-semibold text-slate-900">ใบสั่งซื้อ (PO)</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{data.orders.length} รายการทั้งหมด</p>
+          <h1 className="text-lg font-semibold text-foreground">ใบสั่งซื้อ (PO)</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{data.orders.length} รายการทั้งหมด</p>
         </div>
         <button
           type="button"
           onClick={() => setModal({ type: 'new' })}
-          className="flex shrink-0 items-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+          className="flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           <Plus className="size-4" />
           สร้างใบสั่งซื้อ
@@ -181,7 +181,7 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
               type="button"
               onClick={() => setStatusFilter(s)}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                statusFilter === s ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                statusFilter === s ? 'bg-primary text-primary-foreground' : 'bg-muted/50 text-muted-foreground hover:bg-muted'
               }`}
             >
               {s === 'all' ? 'ทั้งหมด' : STATUS_LABEL[s]}
@@ -191,7 +191,7 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
         <select
           value={supplierFilter}
           onChange={(e) => setSupplierFilter(e.target.value)}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 outline-none focus:border-slate-500"
+          className="rounded-lg border border-border bg-background text-foreground px-3 py-1.5 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
         >
           <option value="">ทุก Supplier</option>
           {data.suppliers.map((s) => (
@@ -201,50 +201,50 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
       </div>
 
       {/* Table */}
-      <div className="rounded-xl bg-white overflow-hidden shadow-sm ring-1 ring-slate-900/5">
+      <div className="rounded-xl bg-card overflow-hidden shadow-sm ring-1 ring-border">
         {filtered.length === 0 ? (
           <div className="py-16 text-center">
-            <ShoppingBag className="mx-auto size-8 text-slate-300 mb-2" />
-            <p className="text-sm text-slate-500">ไม่มีใบสั่งซื้อ</p>
+            <ShoppingBag className="mx-auto size-8 text-muted-foreground/60 mb-2" />
+            <p className="text-sm text-muted-foreground">ไม่มีใบสั่งซื้อ</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left">
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">เลข PO</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Supplier</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">วันที่สั่ง</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-center">สถานะ</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">ยอดรวม</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-center">ใบกำกับ</th>
+                <tr className="border-b border-border bg-muted/30 text-left">
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">เลข PO</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">Supplier</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">วันที่สั่ง</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground text-center">สถานะ</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground text-right">ยอดรวม</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground text-center">ใบกำกับ</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-border">
                 {filtered.map((po) => (
-                  <tr key={po.id} className="hover:bg-slate-50 transition-colors">
+                  <tr key={po.id} className="hover:bg-muted/30 transition-colors">
                     <td className="px-4 py-3">
                       <button
                         type="button"
                         onClick={() => setModal({ type: 'detail', id: po.id })}
-                        className="font-mono text-sm font-medium text-slate-800 hover:text-slate-600 underline-offset-2 hover:underline"
+                        className="font-mono text-sm font-medium text-foreground hover:text-muted-foreground underline-offset-2 hover:underline"
                       >
                         {po.poNumber}
                       </button>
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{po.supplier.name}</td>
-                    <td className="px-4 py-3 text-slate-500">{fmtDate(po.orderDate)}</td>
+                    <td className="px-4 py-3 text-foreground">{po.supplier.name}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{fmtDate(po.orderDate)}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[po.status]}`}>
                         {STATUS_LABEL[po.status]}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium text-slate-800">
+                    <td className="px-4 py-3 text-right tabular-nums font-medium text-foreground">
                       ฿{fmt(po.total)}
                     </td>
                     <td className="px-4 py-3 text-center text-base">
-                      {po.hasTaxInvoice ? '✓' : <span className="text-slate-300">—</span>}
+                      {po.hasTaxInvoice ? '✓' : <span className="text-muted-foreground/60">—</span>}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
@@ -253,7 +253,7 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
                             <button
                               type="button"
                               onClick={() => setModal({ type: 'edit', id: po.id })}
-                              className="text-xs text-slate-400 hover:text-slate-700"
+                              className="text-xs text-muted-foreground hover:text-foreground"
                             >
                               แก้ไข
                             </button>
@@ -330,7 +330,7 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
                             <button
                               type="button"
                               onClick={() => setModal({ type: 'detail', id: po.id })}
-                              className="text-xs text-slate-400 hover:text-slate-700"
+                              className="text-xs text-muted-foreground hover:text-foreground"
                             >
                               รายละเอียด
                             </button>
@@ -340,7 +340,7 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
                           <button
                             type="button"
                             onClick={() => setModal({ type: 'detail', id: po.id })}
-                            className="text-xs text-slate-400 hover:text-slate-700"
+                            className="text-xs text-muted-foreground hover:text-foreground"
                           >
                             ดูรายละเอียด
                           </button>
@@ -524,12 +524,12 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
   }
 
   return (
-    <div className="w-[700px] max-h-[90vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+    <div className="w-[700px] max-h-[90vh] overflow-y-auto rounded-xl bg-card p-6 shadow-xl">
       <div className="mb-5 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-900">
+        <h2 className="text-sm font-semibold text-foreground">
           {schemaType === 'edit' ? 'แก้ไขใบสั่งซื้อ' : 'สร้างใบสั่งซื้อ'}
         </h2>
-        <button type="button" aria-label="ปิด" onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg">×</button>
+        <button type="button" aria-label="ปิด" onClick={onClose} className="text-muted-foreground hover:text-foreground text-lg">×</button>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
@@ -539,7 +539,7 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
 
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-3 sm:col-span-1">
-            <label className="block text-xs font-medium text-slate-700 mb-1">Supplier <span className="text-red-500">*</span></label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Supplier <span className="text-red-500">*</span></label>
             <select {...register('supplierId')} className={INPUT}>
               <option value="">เลือก Supplier</option>
               {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -547,11 +547,11 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
             {errors.supplierId && <p className="mt-1 text-xs text-red-600">{errors.supplierId.message}</p>}
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">วันที่สั่ง</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">วันที่สั่ง</label>
             <input type="date" {...register('orderDate')} className={INPUT} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">วันที่คาดรับ</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">วันที่คาดรับ</label>
             <input type="date" {...register('expectedDate')} className={INPUT} />
           </div>
         </div>
@@ -559,7 +559,7 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
         {/* Line items */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label className="text-xs font-semibold text-slate-700">รายการสั่งซื้อ</label>
+            <label className="text-xs font-semibold text-foreground">รายการสั่งซื้อ</label>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -571,7 +571,7 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
               <button
                 type="button"
                 onClick={() => append({ ingredientId: '', quantity: 1, unit: '', unitCost: 0 } as never)}
-                className="flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900"
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
               >
                 <Plus className="size-3.5" /> เพิ่มรายการ
               </button>
@@ -607,7 +607,7 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
                 </p>
               ) : (
                 <>
-                  <div className="rounded-lg overflow-hidden border border-blue-200 bg-white">
+                  <div className="rounded-lg overflow-hidden border border-blue-200 bg-card">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-blue-100 bg-blue-50/60">
@@ -619,16 +619,16 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
                                 const all = new Set(e.target.checked ? importPanel.items.map((i) => i.ingredientId) : []);
                                 setImportPanel((prev) => prev ? { ...prev, selected: all } : null);
                               }}
-                              className="rounded border-slate-300"
+                              className="rounded border-border"
                             />
                           </th>
-                          <th className="px-3 py-2 text-left font-medium text-slate-500">วัตถุดิบ</th>
-                          <th className="px-3 py-2 text-right font-medium text-slate-500">คงเหลือ</th>
+                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">วัตถุดิบ</th>
+                          <th className="px-3 py-2 text-right font-medium text-muted-foreground">คงเหลือ</th>
                           <th className="px-3 py-2 text-right font-medium text-orange-600">ต้องสั่ง</th>
-                          <th className="px-3 py-2 text-right font-medium text-slate-500">Supplier</th>
+                          <th className="px-3 py-2 text-right font-medium text-muted-foreground">Supplier</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-50">
+                      <tbody className="divide-y divide-border">
                         {importPanel.items.map((item) => (
                           <tr key={item.ingredientId} className={importPanel.selected.has(item.ingredientId) ? '' : 'opacity-50'}>
                             <td className="px-3 py-1.5 text-center">
@@ -640,11 +640,11 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
                                   e.target.checked ? s.add(item.ingredientId) : s.delete(item.ingredientId);
                                   setImportPanel((prev) => prev ? { ...prev, selected: s } : null);
                                 }}
-                                className="rounded border-slate-300"
+                                className="rounded border-border"
                               />
                             </td>
-                            <td className="px-3 py-1.5 font-medium text-slate-800">{item.ingredientName}</td>
-                            <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">
+                            <td className="px-3 py-1.5 font-medium text-foreground">{item.ingredientName}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
                               {item.quantityOnHand.toLocaleString('th-TH', { minimumFractionDigits: 2 })} {item.unit}
                             </td>
                             <td className="px-3 py-1.5 text-right">
@@ -659,10 +659,10 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
                                 }}
                                 className="w-20 rounded border border-orange-200 px-2 py-0.5 text-right text-orange-700 outline-none focus:border-orange-400"
                               />
-                              <span className="ml-1 text-slate-400">{item.unit}</span>
+                              <span className="ml-1 text-muted-foreground">{item.unit}</span>
                             </td>
-                            <td className="px-3 py-1.5 text-right text-slate-400">
-                              {item.defaultSupplierName ?? <span className="text-slate-300">—</span>}
+                            <td className="px-3 py-1.5 text-right text-muted-foreground">
+                              {item.defaultSupplierName ?? <span className="text-muted-foreground/60">—</span>}
                             </td>
                           </tr>
                         ))}
@@ -735,11 +735,11 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
                     />
                   </div>
                   <div className="col-span-1 flex items-center justify-end pt-2">
-                    <span className="text-xs tabular-nums text-slate-600">{fmt(lineTotal)}</span>
+                    <span className="text-xs tabular-nums text-muted-foreground">{fmt(lineTotal)}</span>
                   </div>
                   <div className="col-span-1 flex items-center justify-center pt-1.5">
                     {fields.length > 1 && (
-                      <button type="button" onClick={() => remove(idx)} aria-label="ลบรายการ" className="text-slate-400 hover:text-red-500">
+                      <button type="button" onClick={() => remove(idx)} aria-label="ลบรายการ" className="text-muted-foreground hover:text-red-500">
                         <Trash2 className="size-3.5" />
                       </button>
                     )}
@@ -751,34 +751,34 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
         </div>
 
         {/* Totals */}
-        <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 space-y-1.5 text-sm">
+        <div className="rounded-lg bg-muted/30 border border-border p-4 space-y-1.5 text-sm">
           <div className="flex justify-between">
-            <span className="text-slate-500">ยอดก่อน VAT</span>
+            <span className="text-muted-foreground">ยอดก่อน VAT</span>
             <span className="tabular-nums font-medium">฿{fmt(subtotal)}</span>
           </div>
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
-              <span className="text-slate-500">VAT</span>
+              <span className="text-muted-foreground">VAT</span>
               <input
                 {...register('vatRate', { valueAsNumber: true })}
                 type="number" step="0.01" min="0" max="100"
-                className="w-16 rounded border border-slate-300 px-2 py-0.5 text-xs text-right outline-none"
+                className="w-16 rounded border border-border bg-background text-foreground px-2 py-0.5 text-xs text-right outline-none"
               />
-              <span className="text-slate-500 text-xs">%</span>
+              <span className="text-muted-foreground text-xs">%</span>
             </div>
             <span className="tabular-nums">฿{fmt(vatAmt)}</span>
           </div>
-          <div className="flex justify-between border-t border-slate-200 pt-1.5 font-semibold">
+          <div className="flex justify-between border-t border-border pt-1.5 font-semibold">
             <span>ยอดรวมทั้งสิ้น</span>
-            <span className="tabular-nums text-slate-900">฿{fmt(total)}</span>
+            <span className="tabular-nums text-foreground">฿{fmt(total)}</span>
           </div>
         </div>
 
         {/* Tax invoice */}
         <div className="space-y-2">
           <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" {...register('hasTaxInvoice')} className="rounded border-slate-300" />
-            <span className="text-sm text-slate-700">มีใบกำกับภาษีจาก Supplier</span>
+            <input type="checkbox" {...register('hasTaxInvoice')} className="rounded border-border" />
+            <span className="text-sm text-foreground">มีใบกำกับภาษีจาก Supplier</span>
           </label>
           {hasTaxInvoice && (
             <input {...register('taxInvoiceNumber')} placeholder="เลขที่ใบกำกับภาษี" className={INPUT} />
@@ -786,15 +786,15 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-slate-700 mb-1">หมายเหตุ</label>
+          <label className="block text-xs font-medium text-muted-foreground mb-1">หมายเหตุ</label>
           <textarea {...register('notes')} rows={2} className={`${INPUT} resize-none`} />
         </div>
 
         <div className="flex gap-3">
-          <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-slate-300 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-border py-2 text-sm font-medium text-foreground hover:bg-muted/30">
             ยกเลิก
           </button>
-          <button type="submit" disabled={isSubmitting} className="flex-1 rounded-lg bg-slate-800 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50">
+          <button type="submit" disabled={isSubmitting} className="flex-1 rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
             {isSubmitting ? 'กำลังบันทึก…' : 'บันทึก'}
           </button>
         </div>
@@ -818,7 +818,7 @@ function POFormEdit({ id, suppliers, onClose, onSaved }: { id: string; suppliers
 
   if (isLoading || !data) {
     return (
-      <div className="w-[700px] rounded-xl bg-white p-10 shadow-xl flex items-center justify-center gap-2 text-slate-500">
+      <div className="w-[700px] rounded-xl bg-card p-10 shadow-xl flex items-center justify-center gap-2 text-muted-foreground">
         <Loader2 className="size-5 animate-spin" /> กำลังโหลด…
       </div>
     );
@@ -867,7 +867,7 @@ function ReceiveForm({ id, onClose, onSaved }: { id: string; onClose: () => void
 
   if (isLoading || !data) {
     return (
-      <div className="w-[620px] rounded-xl bg-white p-10 shadow-xl flex items-center justify-center gap-2 text-slate-500">
+      <div className="w-[620px] rounded-xl bg-card p-10 shadow-xl flex items-center justify-center gap-2 text-muted-foreground">
         <Loader2 className="size-5 animate-spin" /> กำลังโหลด…
       </div>
     );
@@ -917,15 +917,15 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
   }
 
   return (
-    <div className="w-[620px] max-h-[90vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+    <div className="w-[620px] max-h-[90vh] overflow-y-auto rounded-xl bg-card p-6 shadow-xl">
       <div className="mb-5 flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">
+          <h2 className="text-sm font-semibold text-foreground">
             {isPartialStatus ? 'รับของเพิ่ม' : 'รับของ'} — {data.po.poNumber}
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">{data.po.supplier.name}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{data.po.supplier.name}</p>
         </div>
-        <button type="button" aria-label="ปิด" onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg">×</button>
+        <button type="button" aria-label="ปิด" onClick={onClose} className="text-muted-foreground hover:text-foreground text-lg">×</button>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
@@ -933,25 +933,25 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
 
         {/* Received date */}
         <div>
-          <label className="block text-xs font-medium text-slate-700 mb-1">วันที่รับของ</label>
+          <label className="block text-xs font-medium text-muted-foreground mb-1">วันที่รับของ</label>
           <input type="date" {...register('receivedDate')} className={INPUT} />
         </div>
 
         {/* Line items with discrepancy */}
         <div className="space-y-3">
-          <p className="text-xs font-semibold text-slate-700">รายการสินค้า</p>
+          <p className="text-xs font-semibold text-foreground">รายการสินค้า</p>
           {data.po.items.map((item, idx) => {
             const alreadyReceived = Number(item.receivedQuantity ?? 0);
             const remaining = Math.max(0, Number(item.quantity) - alreadyReceived);
             const discrepancyVal = watch(`items.${idx}.discrepancyType`);
             return (
-              <div key={item.id} className="rounded-xl border border-slate-200 p-4 space-y-3">
+              <div key={item.id} className="rounded-xl border border-border p-4 space-y-3">
                 <input type="hidden" {...register(`items.${idx}.id`)} value={item.id} />
 
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-slate-800">{item.ingredient.name}</p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-sm font-medium text-foreground">{item.ingredient.name}</p>
+                    <p className="text-xs text-muted-foreground">
                       สั่ง {fmt(item.quantity)} {item.unit}
                       {alreadyReceived > 0 && (
                         <span className="ml-2 text-green-600">• รับแล้ว {fmt(alreadyReceived)}</span>
@@ -965,19 +965,19 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
                     <input
                       {...register(`items.${idx}.receivedQuantity`, { valueAsNumber: true })}
                       type="number" step="0.01" min="0"
-                      className="w-24 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-right outline-none focus:border-slate-500"
+                      className="w-24 rounded-lg border border-border bg-background text-foreground px-3 py-1.5 text-sm text-right outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
                     />
-                    <span className="text-sm text-slate-500 w-8 shrink-0">{item.unit}</span>
+                    <span className="text-sm text-muted-foreground w-8 shrink-0">{item.unit}</span>
                   </div>
                 </div>
 
                 {/* Discrepancy */}
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">สถานะสินค้า</label>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">สถานะสินค้า</label>
                     <select
                       {...register(`items.${idx}.discrepancyType`)}
-                      className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs outline-none focus:border-slate-500"
+                      className="w-full rounded-lg border border-border bg-background text-foreground px-2 py-1.5 text-xs outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
                     >
                       <option value="none">ปกติ</option>
                       <option value="short">ขาด</option>
@@ -987,7 +987,7 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
                   </div>
                   {discrepancyVal !== 'none' && (
                     <div className="col-span-2">
-                      <label className="block text-xs font-medium text-slate-600 mb-1">หมายเหตุ (ความผิดปกติ)</label>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">หมายเหตุ (ความผิดปกติ)</label>
                       <input
                         {...register(`items.${idx}.discrepancyNotes`)}
                         type="text"
@@ -1003,24 +1003,24 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
         </div>
 
         {/* Partial receipt toggle */}
-        <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 space-y-1">
+        <div className="rounded-lg bg-muted/30 border border-border px-4 py-3 space-y-1">
           <label className="flex items-center gap-2.5 cursor-pointer">
-            <input type="checkbox" {...register('isPartial')} className="rounded border-slate-300" />
-            <span className="text-sm text-slate-700 font-medium">รับของบางส่วน (ยังไม่ครบ)</span>
+            <input type="checkbox" {...register('isPartial')} className="rounded border-border" />
+            <span className="text-sm text-foreground font-medium">รับของบางส่วน (ยังไม่ครบ)</span>
           </label>
           {isPartialChecked && (
             <p className="text-xs text-orange-600 pl-6">PO จะเปลี่ยนเป็นสถานะ "รับบางส่วน" — สามารถรับเพิ่มได้ในภายหลัง</p>
           )}
           {!isPartialChecked && (
-            <p className="text-xs text-slate-400 pl-6">PO จะเปลี่ยนเป็นสถานะ "รับของแล้ว" และอัปเดตราคาวัตถุดิบ</p>
+            <p className="text-xs text-muted-foreground pl-6">PO จะเปลี่ยนเป็นสถานะ "รับของแล้ว" และอัปเดตราคาวัตถุดิบ</p>
           )}
         </div>
 
         {/* Tax invoice */}
-        <div className="border-t border-slate-100 pt-4 space-y-2">
+        <div className="border-t border-border pt-4 space-y-2">
           <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" {...register('hasTaxInvoice')} className="rounded border-slate-300" />
-            <span className="text-sm text-slate-700">มีใบกำกับภาษี</span>
+            <input type="checkbox" {...register('hasTaxInvoice')} className="rounded border-border" />
+            <span className="text-sm text-foreground">มีใบกำกับภาษี</span>
           </label>
           {hasTaxInvoice && (
             <input
@@ -1033,12 +1033,12 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
 
         {/* Notes */}
         <div>
-          <label className="block text-xs font-medium text-slate-700 mb-1">หมายเหตุ (ถ้ามี)</label>
+          <label className="block text-xs font-medium text-muted-foreground mb-1">หมายเหตุ (ถ้ามี)</label>
           <textarea {...register('notes')} rows={2} className={`${INPUT} resize-none`} placeholder="หมายเหตุสำหรับการรับของครั้งนี้" />
         </div>
 
         <div className="flex gap-3">
-          <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-slate-300 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-border py-2 text-sm font-medium text-foreground hover:bg-muted/30">
             ยกเลิก
           </button>
           <button type="submit" disabled={isSubmitting} className={`flex-1 rounded-lg py-2 text-sm font-medium text-white disabled:opacity-50 ${isPartialChecked ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-700 hover:bg-green-800'}`}>
@@ -1067,7 +1067,7 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
 
   if (isLoading || !data) {
     return (
-      <div className="w-[600px] rounded-xl bg-white p-10 shadow-xl flex items-center justify-center gap-2 text-slate-500">
+      <div className="w-[600px] rounded-xl bg-card p-10 shadow-xl flex items-center justify-center gap-2 text-muted-foreground">
         <Loader2 className="size-5 animate-spin" /> กำลังโหลด…
       </div>
     );
@@ -1153,10 +1153,10 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
   const receipts = po.goodsReceipts ?? [];
 
   return (
-    <div className="w-[600px] max-h-[90vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+    <div className="w-[600px] max-h-[90vh] overflow-y-auto rounded-xl bg-card p-6 shadow-xl">
       <div className="mb-5 flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900 font-mono">{po.poNumber}</h2>
+          <h2 className="text-sm font-semibold text-foreground font-mono">{po.poNumber}</h2>
           <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[po.status]}`}>
             {STATUS_LABEL[po.status]}
           </span>
@@ -1172,34 +1172,34 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
           <button
             type="button"
             onClick={handlePrint}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/30"
           >
             <Printer className="size-3.5" /> พิมพ์
           </button>
-          <button type="button" aria-label="ปิด" onClick={onClose} className="text-slate-400 hover:text-slate-600 text-lg">×</button>
+          <button type="button" aria-label="ปิด" onClick={onClose} className="text-muted-foreground hover:text-foreground text-lg">×</button>
         </div>
       </div>
 
       <div className="space-y-4 text-sm">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-xs text-slate-500">Supplier</p>
-            <p className="font-medium text-slate-900">{po.supplier.name}</p>
-            {po.supplier.taxId && <p className="text-xs text-slate-500">เลขภาษี: {po.supplier.taxId}</p>}
-            {po.supplier.phone && <p className="text-xs text-slate-500">{po.supplier.phone}</p>}
+            <p className="text-xs text-muted-foreground">Supplier</p>
+            <p className="font-medium text-foreground">{po.supplier.name}</p>
+            {po.supplier.taxId && <p className="text-xs text-muted-foreground">เลขภาษี: {po.supplier.taxId}</p>}
+            {po.supplier.phone && <p className="text-xs text-muted-foreground">{po.supplier.phone}</p>}
           </div>
           <div>
-            <p className="text-xs text-slate-500">วันที่สั่ง</p>
+            <p className="text-xs text-muted-foreground">วันที่สั่ง</p>
             <p className="font-medium">{fmtDate(po.orderDate)}</p>
             {po.expectedDate && (
               <>
-                <p className="text-xs text-slate-500 mt-1">คาดรับ</p>
+                <p className="text-xs text-muted-foreground mt-1">คาดรับ</p>
                 <p className="font-medium">{fmtDate(po.expectedDate)}</p>
               </>
             )}
             {po.receivedDate && (
               <>
-                <p className="text-xs text-slate-500 mt-1">รับแล้ว</p>
+                <p className="text-xs text-muted-foreground mt-1">รับแล้ว</p>
                 <p className="font-medium text-green-700">{fmtDate(po.receivedDate)}</p>
               </>
             )}
@@ -1207,25 +1207,25 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
         </div>
 
         {/* Items table */}
-        <div className="rounded-lg border border-slate-200 overflow-hidden">
+        <div className="rounded-lg border border-border overflow-hidden">
           <table className="w-full text-xs">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-3 py-2 text-left font-medium text-slate-500">รายการ</th>
-                <th className="px-3 py-2 text-right font-medium text-slate-500">สั่ง</th>
+              <tr className="bg-muted/30 border-b border-border">
+                <th className="px-3 py-2 text-left font-medium text-muted-foreground">รายการ</th>
+                <th className="px-3 py-2 text-right font-medium text-muted-foreground">สั่ง</th>
                 {showReceived && <th className="px-3 py-2 text-right font-medium text-green-600">รับรวม</th>}
-                <th className="px-3 py-2 text-right font-medium text-slate-500">ราคา/หน่วย</th>
-                <th className="px-3 py-2 text-right font-medium text-slate-500">รวม</th>
+                <th className="px-3 py-2 text-right font-medium text-muted-foreground">ราคา/หน่วย</th>
+                <th className="px-3 py-2 text-right font-medium text-muted-foreground">รวม</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-border">
               {po.items.map((item) => {
                 const received = Number(item.receivedQuantity ?? 0);
                 const ordered = Number(item.quantity);
                 const isShort = showReceived && received < ordered;
                 return (
                   <tr key={item.id}>
-                    <td className="px-3 py-2 font-medium text-slate-800">{item.ingredient.name}</td>
+                    <td className="px-3 py-2 font-medium text-foreground">{item.ingredient.name}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{fmt(item.quantity)} {item.unit}</td>
                     {showReceived && (
                       <td className={`px-3 py-2 text-right tabular-nums ${isShort ? 'text-orange-600' : 'text-green-700'}`}>
@@ -1243,16 +1243,16 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
         </div>
 
         {/* Totals */}
-        <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 space-y-1">
-          <div className="flex justify-between text-xs text-slate-500">
+        <div className="rounded-lg bg-muted/30 border border-border p-4 space-y-1">
+          <div className="flex justify-between text-xs text-muted-foreground">
             <span>ยอดก่อน VAT</span>
             <span className="tabular-nums">฿{fmt(po.subtotal)}</span>
           </div>
-          <div className="flex justify-between text-xs text-slate-500">
+          <div className="flex justify-between text-xs text-muted-foreground">
             <span>VAT {fmt(po.vatRate)}%</span>
             <span className="tabular-nums">฿{fmt(po.vatAmount)}</span>
           </div>
-          <div className="flex justify-between font-semibold text-sm border-t border-slate-200 pt-1">
+          <div className="flex justify-between font-semibold text-sm border-t border-border pt-1">
             <span>ยอดรวม</span>
             <span className="tabular-nums">฿{fmt(po.total)}</span>
           </div>
@@ -1265,30 +1265,30 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
           </div>
         )}
 
-        {po.notes && <p className="text-xs text-slate-500">หมายเหตุ: {po.notes}</p>}
+        {po.notes && <p className="text-xs text-muted-foreground">หมายเหตุ: {po.notes}</p>}
 
         {/* Goods receipts history */}
         {receipts.length > 0 && (
-          <div className="rounded-xl border border-slate-200 overflow-hidden">
+          <div className="rounded-xl border border-border overflow-hidden">
             <button
               type="button"
               onClick={() => setShowReceipts((v) => !v)}
-              className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors"
+              className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors"
             >
-              <span className="text-xs font-semibold text-slate-700">
+              <span className="text-xs font-semibold text-foreground">
                 ประวัติการรับของ ({receipts.length} ครั้ง)
               </span>
-              {showReceipts ? <ChevronDown className="size-4 text-slate-400" /> : <ChevronRight className="size-4 text-slate-400" />}
+              {showReceipts ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
             </button>
             {showReceipts && (
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-border">
                 {receipts.map((receipt) => (
                   <div key={receipt.id} className="px-4 py-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-medium text-slate-700">
+                      <p className="text-xs font-medium text-foreground">
                         {fmtDate(receipt.receivedDate)}
                       </p>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-muted-foreground">
                         โดย {receipt.receivedByUser?.name ?? '—'}
                       </p>
                     </div>
@@ -1297,9 +1297,9 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
                         const poItem = po.items.find((pi) => pi.id === ri.purchaseOrderItemId);
                         return (
                           <div key={ri.id} className="flex items-center justify-between text-xs">
-                            <span className="text-slate-600">{poItem?.ingredient.name ?? '—'}</span>
+                            <span className="text-muted-foreground">{poItem?.ingredient.name ?? '—'}</span>
                             <div className="flex items-center gap-2">
-                              <span className="tabular-nums text-slate-700">
+                              <span className="tabular-nums text-foreground">
                                 {fmt(ri.receivedQuantity)} {poItem?.unit}
                               </span>
                               {ri.discrepancyType !== 'none' && (
@@ -1314,7 +1314,7 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
                       })}
                     </div>
                     {receipt.notes && (
-                      <p className="text-xs text-slate-400 italic">{receipt.notes}</p>
+                      <p className="text-xs text-muted-foreground italic">{receipt.notes}</p>
                     )}
                   </div>
                 ))}
@@ -1334,7 +1334,7 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
           </button>
         )}
 
-        <p className="text-xs text-slate-400">สร้างโดย: {po.createdByUser.name}</p>
+        <p className="text-xs text-muted-foreground">สร้างโดย: {po.createdByUser.name}</p>
       </div>
     </div>
   );

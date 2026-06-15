@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -34,7 +34,7 @@ const SHIFT_COLORS = {
   morning: 'bg-sky-100 text-sky-800 border-sky-200',
   afternoon: 'bg-violet-100 text-violet-800 border-violet-200',
   custom: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-  day_off: 'bg-slate-100 text-slate-400 border-slate-200',
+  day_off: 'bg-muted/50 text-muted-foreground border-border',
   leave: 'bg-orange-100 text-orange-700 border-orange-200',
 };
 
@@ -44,7 +44,7 @@ function entryKey(employeeId: string, date: string) {
 
 function CellDisplay({ entry }: { entry?: ScheduleEntry }) {
   if (!entry || entry.status === 'day_off') {
-    return <span className="text-slate-300 text-xs">หยุด</span>;
+    return <span className="text-muted-foreground/60 text-xs">หยุด</span>;
   }
   if (entry.status === 'leave') {
     return <span className="text-orange-600 text-xs font-medium">ลา</span>;
@@ -53,7 +53,7 @@ function CellDisplay({ entry }: { entry?: ScheduleEntry }) {
   return (
     <div className="text-center leading-tight">
       <div className="text-xs font-semibold">{shiftLabel}</div>
-      {entry.startTime && <div className="text-[10px] text-slate-500">{entry.startTime}</div>}
+      {entry.startTime && <div className="text-[10px] text-muted-foreground">{entry.startTime}</div>}
     </div>
   );
 }
@@ -198,7 +198,7 @@ export function SchedulePage({ initialCycles, settings, initialEmployees }: Prop
     <div className="p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4 print:hidden">
-        <h2 className="text-lg font-semibold text-slate-900">ตารางงาน</h2>
+        <h2 className="text-lg font-semibold text-foreground">ตารางงาน</h2>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handlePrint}>
             <Printer className="size-4 mr-1.5" />
@@ -238,7 +238,7 @@ export function SchedulePage({ initialCycles, settings, initialEmployees }: Prop
       <div className="hidden print:block mb-4">
         <h1 className="text-xl font-bold">ตารางงาน</h1>
         {selectedCycle && (
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted-foreground">
             {selectedCycle.name} | {selectedCycle.startDate} ถึง {selectedCycle.endDate}
           </p>
         )}
@@ -246,34 +246,34 @@ export function SchedulePage({ initialCycles, settings, initialEmployees }: Prop
 
       {/* Grid */}
       {loadingGrid ? (
-        <div className="py-12 text-center text-slate-400">กำลังโหลด...</div>
+        <div className="py-12 text-center text-muted-foreground">กำลังโหลด...</div>
       ) : !grid ? (
-        <div className="py-12 text-center text-slate-400">เลือกรอบตารางงานหรือสร้างรอบใหม่</div>
+        <div className="py-12 text-center text-muted-foreground">เลือกรอบตารางงานหรือสร้างรอบใหม่</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="border-collapse text-xs w-full print:text-[10px]">
             <thead>
-              <tr className="bg-slate-50">
-                <th className="border border-slate-200 px-3 py-2 text-left font-semibold text-slate-700 sticky left-0 bg-slate-50 z-10 min-w-[120px]">
+              <tr className="bg-muted/30">
+                <th className="border border-border px-3 py-2 text-left font-semibold text-foreground sticky left-0 bg-muted/30 z-10 min-w-[120px]">
                   พนักงาน
                 </th>
                 {days.map((day) => (
                   <th
                     key={day.toISOString()}
-                    className="border border-slate-200 px-1 py-2 font-medium text-slate-600 min-w-[56px] text-center"
+                    className="border border-border px-1 py-2 font-medium text-muted-foreground min-w-[56px] text-center"
                   >
                     <div>{format(day, 'd', { locale: th })}</div>
-                    <div className="text-[10px] text-slate-400">{format(day, 'EEE', { locale: th })}</div>
+                    <div className="text-[10px] text-muted-foreground">{format(day, 'EEE', { locale: th })}</div>
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {grid.employees.map((emp) => (
-                <tr key={emp.id} className="hover:bg-slate-50/50">
-                  <td className="border border-slate-200 px-3 py-2 font-medium text-slate-800 sticky left-0 bg-white z-10">
+                <tr key={emp.id} className="hover:bg-muted/30/50">
+                  <td className="border border-border px-3 py-2 font-medium text-foreground sticky left-0 bg-card z-10">
                     {emp.firstName} {emp.lastName}
-                    <span className="ml-1 text-[10px] text-slate-400">
+                    <span className="ml-1 text-[10px] text-muted-foreground">
                       {emp.type === 'part_time' ? '(PT)' : ''}
                     </span>
                   </td>
@@ -292,7 +292,7 @@ export function SchedulePage({ initialCycles, settings, initialEmployees }: Prop
                     return (
                       <td
                         key={dateStr}
-                        className="border border-slate-200 p-0"
+                        className="border border-border p-0"
                       >
                         <Popover
                           open={popoverKey === key}
@@ -302,7 +302,7 @@ export function SchedulePage({ initialCycles, settings, initialEmployees }: Prop
                           }}
                         >
                           <PopoverTrigger
-                            className={`w-full h-full min-h-[44px] flex items-center justify-center rounded transition-colors hover:opacity-80 print:pointer-events-none ${bg || 'hover:bg-slate-100'}`}
+                            className={`w-full h-full min-h-[44px] flex items-center justify-center rounded transition-colors hover:opacity-80 print:pointer-events-none ${bg || 'hover:bg-muted/50'}`}
                           >
                             <CellDisplay entry={entry} />
                           </PopoverTrigger>
@@ -318,8 +318,8 @@ export function SchedulePage({ initialCycles, settings, initialEmployees }: Prop
                                   onClick={() => setEntryForm((prev) => ({ ...prev, status: s }))}
                                   className={`flex-1 rounded py-1 text-xs font-medium border transition-colors ${
                                     entryForm.status === s
-                                      ? 'bg-slate-800 text-white border-slate-800'
-                                      : 'border-slate-200 text-slate-600 hover:border-slate-400'
+                                      ? 'bg-primary text-white border-primary'
+                                      : 'border-border text-muted-foreground hover:border-border'
                                   }`}
                                 >
                                   {s === 'working' ? 'ทำงาน' : s === 'day_off' ? 'หยุด' : 'ลา'}
@@ -339,7 +339,7 @@ export function SchedulePage({ initialCycles, settings, initialEmployees }: Prop
                                           ? t === 'morning' ? 'bg-sky-100 border-sky-300 text-sky-800'
                                             : t === 'afternoon' ? 'bg-violet-100 border-violet-300 text-violet-800'
                                             : 'bg-emerald-100 border-emerald-300 text-emerald-800'
-                                          : 'border-slate-200 text-slate-500'
+                                          : 'border-border text-muted-foreground'
                                       }`}
                                     >
                                       {t === 'morning' ? 'เช้า' : t === 'afternoon' ? 'บ่าย' : 'กำหนด'}
@@ -407,7 +407,7 @@ export function SchedulePage({ initialCycles, settings, initialEmployees }: Prop
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 bg-violet-100 border border-violet-200 rounded" /> บ่าย (บ)</span>
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 bg-emerald-100 border border-emerald-200 rounded" /> กำหนดเอง (ก)</span>
         <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 bg-orange-100 border border-orange-200 rounded" /> ลา (ล)</span>
-        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 bg-slate-100 border border-slate-200 rounded" /> หยุด (ห)</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 bg-muted/50 border border-border rounded" /> หยุด (ห)</span>
         <span className="ml-auto">พิมพ์: {new Date().toLocaleDateString('th-TH')}</span>
       </div>
 

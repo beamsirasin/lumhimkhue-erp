@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import type React from 'react';
 import { Users, Package, Tag, Gift } from 'lucide-react';
@@ -72,7 +72,7 @@ export function PricingTile({
       onClick={isTap ? onIncrement : undefined}
       onKeyDown={isTap ? (e) => { if (e.key === 'Enter' || e.key === ' ') onIncrement?.(); } : undefined}
       className={`relative flex flex-col items-center rounded-xl border-2 transition-all select-none
-        ${isSelected ? 'border-slate-800 shadow-md' : 'border-transparent'}
+        ${isSelected ? 'border-primary shadow-md' : 'border-transparent'}
         ${isTap ? 'cursor-pointer hover:brightness-95 active:scale-95' : ''}
         ${!tile.isActive ? 'opacity-50' : ''}
       `}
@@ -88,12 +88,12 @@ export function PricingTile({
             className={`rounded object-contain ${isLg ? 'h-14 w-14' : 'h-9 w-9'}`}
           />
         ) : (
-          <Icon className={`${isLg ? 'size-12' : 'size-8'} ${isDiscount ? 'text-red-400' : 'text-slate-400'} opacity-70`} />
+          <Icon className={`${isLg ? 'size-12' : 'size-8'} ${isDiscount ? 'text-red-400' : 'text-muted-foreground'} opacity-70`} />
         )}
       </div>
 
       {/* Name */}
-      <p className={`line-clamp-1 px-1 text-center font-semibold leading-tight text-slate-800 ${isLg ? 'text-sm' : 'text-[11px]'}`}>
+      <p className={`line-clamp-1 px-1 text-center font-semibold leading-tight text-foreground ${isLg ? 'text-sm' : 'text-[11px]'}`}>
         {tile.name}
       </p>
 
@@ -105,18 +105,18 @@ export function PricingTile({
             aria-label="ลด"
             onClick={onDecrement}
             disabled={quantity === 0}
-            className={`flex items-center justify-center rounded-full bg-white/80 font-bold text-slate-700 shadow-sm hover:bg-white disabled:opacity-30 ${isLg ? 'h-8 w-8 text-lg' : 'h-6 w-6 text-base'}`}
+            className={`flex items-center justify-center rounded-full bg-card/80 font-bold text-foreground shadow-sm hover:bg-card disabled:opacity-30 ${isLg ? 'h-8 w-8 text-lg' : 'h-6 w-6 text-base'}`}
           >
             −
           </button>
-          <span className={`text-center tabular-nums font-bold text-slate-900 ${isLg ? 'w-7 text-base' : 'w-5 text-sm'}`}>
+          <span className={`text-center tabular-nums font-bold text-foreground ${isLg ? 'w-7 text-base' : 'w-5 text-sm'}`}>
             {quantity}
           </span>
           <button
             type="button"
             aria-label="เพิ่ม"
             onClick={onIncrement}
-            className={`flex items-center justify-center rounded-full bg-slate-800 font-bold text-white shadow-sm hover:bg-slate-700 ${isLg ? 'h-8 w-8 text-lg' : 'h-6 w-6 text-base'}`}
+            className={`flex items-center justify-center rounded-full bg-primary font-bold text-white shadow-sm hover:bg-primary/90 ${isLg ? 'h-8 w-8 text-lg' : 'h-6 w-6 text-base'}`}
           >
             +
           </button>
@@ -124,7 +124,7 @@ export function PricingTile({
       ) : (
         <p
           className={`pb-2 pt-0.5 text-center font-bold ${isLg ? 'text-sm' : 'text-xs'} ${
-            isDiscount ? 'text-red-600' : 'text-slate-700'
+            isDiscount ? 'text-red-600' : 'text-foreground'
           }`}
         >
           {priceText}
@@ -133,7 +133,7 @@ export function PricingTile({
 
       {/* Quantity badge (select/tap mode, qty > 0) */}
       {(mode === 'select' || (isTap && isLg)) && quantity > 0 && (
-        <span className={`absolute -right-1.5 -top-1.5 flex min-w-[20px] items-center justify-center rounded-full bg-slate-800 px-1 font-bold text-white ${isLg ? 'h-6 text-xs' : 'h-5 text-[10px]'}`}>
+        <span className={`absolute -right-1.5 -top-1.5 flex min-w-[20px] items-center justify-center rounded-full bg-primary px-1 font-bold text-white ${isLg ? 'h-6 text-xs' : 'h-5 text-[10px]'}`}>
           {quantity}
         </span>
       )}

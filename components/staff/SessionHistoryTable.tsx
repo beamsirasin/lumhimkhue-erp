@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo } from 'react';
 import { format } from 'date-fns';
@@ -69,14 +69,14 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Summary — fixed */}
       <div className="shrink-0 grid grid-cols-2 gap-3 p-6 pb-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">จำนวน session</p>
-          <p className="mt-1 text-xl font-bold text-slate-900">{rows.length}</p>
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground">จำนวน session</p>
+          <p className="mt-1 text-xl font-bold text-foreground">{rows.length}</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">ผู้เข้าใช้รวม</p>
-          <p className="mt-1 text-xl font-bold text-slate-900">{totalGuests} คน</p>
-          <p className="mt-1 text-xs text-slate-400 leading-relaxed">
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground">ผู้เข้าใช้รวม</p>
+          <p className="mt-1 text-xl font-bold text-foreground">{totalGuests} คน</p>
+          <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
             {[
               totalAdults      > 0 && `ผู้ใหญ่ ${totalAdults}`,
               totalChildren    > 0 && `เด็ก ${totalChildren}`,
@@ -90,20 +90,20 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
 
       {/* Table — scrollable */}
       <div className="flex-1 overflow-y-auto px-6 pb-6">
-        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
           {rows.length === 0 ? (
-            <div className="py-16 text-center text-sm text-slate-400">
+            <div className="py-16 text-center text-sm text-muted-foreground">
               ไม่มีข้อมูลในวันที่ {format(new Date(date), 'd MMMM yyyy', { locale: th })}
             </div>
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">โต๊ะ</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">เริ่ม</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">สิ้นสุด</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">เวลา</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">ผู้เข้าใช้</th>
+                <tr className="border-b border-border">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">โต๊ะ</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">เริ่ม</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">สิ้นสุด</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">เวลา</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">ผู้เข้าใช้</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -118,7 +118,7 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
                   return (
                     <tr
                       key={row.sessionId}
-                      className="border-b border-slate-50 last:border-0 hover:bg-slate-50 cursor-pointer"
+                      className="border-b border-border/30 last:border-0 hover:bg-muted/30 cursor-pointer"
                       onClick={() => setDetailSessionId(row.sessionId)}
                     >
                       {/* Table label + link indicator */}
@@ -130,10 +130,10 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
                             style={{ backgroundColor: link && !link.isSplit ? link.border : 'transparent' }}
                           />
                           <div className="flex flex-col gap-0.5">
-                            <span className="font-semibold text-slate-900">
+                            <span className="font-semibold text-foreground">
                               {row.tableLabel}
                               {row.zone !== 'ทั่วไป' && (
-                                <span className="ml-1 text-xs font-normal text-slate-400">
+                                <span className="ml-1 text-xs font-normal text-muted-foreground">
                                   ({row.zone})
                                 </span>
                               )}
@@ -147,26 +147,26 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
                         </div>
                       </td>
 
-                      <td className="px-4 py-3 tabular-nums text-slate-600">
+                      <td className="px-4 py-3 tabular-nums text-muted-foreground">
                         {format(new Date(row.startedAt), 'HH:mm', { locale: th })}
                       </td>
-                      <td className="px-4 py-3 tabular-nums text-slate-600">
+                      <td className="px-4 py-3 tabular-nums text-muted-foreground">
                         {row.closedAt
                           ? format(new Date(row.closedAt), 'HH:mm', { locale: th })
                           : isOpen
                             ? <span className="text-green-600 text-xs font-medium">ยังเปิดอยู่</span>
                             : '—'}
                       </td>
-                      <td className="px-4 py-3 tabular-nums text-slate-500 text-xs">
+                      <td className="px-4 py-3 tabular-nums text-muted-foreground text-xs">
                         {durationMin !== null
                           ? durationMin >= 60
                             ? `${Math.floor(durationMin / 60)}ชม. ${durationMin % 60}น.`
                             : `${durationMin}น.`
                           : '—'}
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-600">
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
                         {row.guestCount === 0 ? (
-                          <span className="text-slate-400">—</span>
+                          <span className="text-muted-foreground">—</span>
                         ) : (
                           <div className="space-y-0.5">
                             {row.adultCount      > 0 && <div>ผู้ใหญ่ {row.adultCount}</div>}
@@ -178,7 +178,7 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <ChevronRight className="size-4 text-slate-400" />
+                        <ChevronRight className="size-4 text-muted-foreground" />
                       </td>
                     </tr>
                   );

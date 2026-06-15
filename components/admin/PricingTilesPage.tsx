@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useRef } from 'react';
 import { useConfirm } from '@/components/shared/ConfirmDialog';
@@ -123,7 +123,7 @@ function SortableTileCard({ tile, onEdit, onToggle, onDelete, isPending }: Sorta
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative flex flex-col rounded-xl bg-white shadow-sm ring-1 ring-slate-900/5 overflow-hidden
+      className={`relative flex flex-col rounded-xl bg-card shadow-sm ring-1 ring-border/40 overflow-hidden
         ${!tile.isActive ? 'opacity-50' : ''}
       `}
     >
@@ -131,7 +131,7 @@ function SortableTileCard({ tile, onEdit, onToggle, onDelete, isPending }: Sorta
       <button
         type="button"
         aria-label="ลาก"
-        className="absolute left-1.5 top-1.5 cursor-grab rounded p-0.5 text-slate-300 hover:text-slate-500 touch-none"
+        className="absolute left-1.5 top-1.5 cursor-grab rounded p-0.5 text-muted-foreground/60 hover:text-muted-foreground touch-none"
         {...listeners}
         {...attributes}
       >
@@ -147,7 +147,7 @@ function SortableTileCard({ tile, onEdit, onToggle, onDelete, isPending }: Sorta
           // eslint-disable-next-line @next/next/no-img-element
           <img src={tile.imageUrl} alt={tile.name} className="h-14 w-14 object-contain" />
         ) : (
-          <span className="text-2xl font-bold text-slate-300 select-none">
+          <span className="text-2xl font-bold text-muted-foreground/60 select-none">
             {tile.name.charAt(0)}
           </span>
         )}
@@ -155,24 +155,24 @@ function SortableTileCard({ tile, onEdit, onToggle, onDelete, isPending }: Sorta
 
       {/* Info */}
       <div className="flex flex-1 flex-col gap-0.5 px-3 py-2">
-        <p className="truncate text-sm font-semibold text-slate-900">{tile.name}</p>
-        <p className="font-mono text-xs text-slate-400">{tile.code}</p>
-        <p className={`mt-0.5 text-sm font-bold ${tile.category === 'discount' ? 'text-red-600' : 'text-slate-800'}`}>
+        <p className="truncate text-sm font-semibold text-foreground">{tile.name}</p>
+        <p className="font-mono text-xs text-muted-foreground">{tile.code}</p>
+        <p className={`mt-0.5 text-sm font-bold ${tile.category === 'discount' ? 'text-red-600' : 'text-foreground'}`}>
           {priceText}
         </p>
         {tile.notes && (
-          <p className="truncate text-[11px] text-slate-400">{tile.notes}</p>
+          <p className="truncate text-[11px] text-muted-foreground">{tile.notes}</p>
         )}
       </div>
 
       {/* Actions */}
-      <div className="flex items-center justify-between border-t border-slate-100 px-2 py-1.5">
+      <div className="flex items-center justify-between border-t border-border px-2 py-1.5">
         <button
           type="button"
           aria-label={tile.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
           disabled={isPending}
           onClick={() => onToggle(tile)}
-          className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800 disabled:opacity-50"
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
         >
           {tile.isActive ? (
             <><ToggleRight className="size-4 text-green-500" /><span className="text-green-600">{isPending ? '...' : 'เปิด'}</span></>
@@ -185,7 +185,7 @@ function SortableTileCard({ tile, onEdit, onToggle, onDelete, isPending }: Sorta
             type="button"
             aria-label={`แก้ไข ${tile.name}`}
             onClick={() => onEdit(tile)}
-            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            className="rounded p-1 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
           >
             <Pencil className="size-3.5" />
           </button>
@@ -194,7 +194,7 @@ function SortableTileCard({ tile, onEdit, onToggle, onDelete, isPending }: Sorta
             aria-label={`ลบ ${tile.name}`}
             disabled={isPending}
             onClick={() => onDelete(tile)}
-            className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+            className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
           >
             <Trash2 className="size-3.5" />
           </button>
@@ -336,19 +336,19 @@ function TileFormDialog({ open, editing, defaultCategory, onClose, onSaved }: Ti
               {form.imageUrl ? (
                 <div className="relative">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={form.imageUrl} alt="preview" className="h-14 w-14 rounded-lg object-contain border border-slate-200" />
+                  <img src={form.imageUrl} alt="preview" className="h-14 w-14 rounded-lg object-contain border border-border" />
                   <button
                     type="button"
                     aria-label="ลบรูป"
                     onClick={() => setField('imageUrl', '')}
-                    className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white border border-slate-300 shadow hover:bg-red-50"
+                    className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-card border border-border shadow hover:bg-red-50"
                   >
                     <X className="size-2.5 text-red-500" />
                   </button>
                 </div>
               ) : (
-                <div className="flex h-14 w-14 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50">
-                  <Upload className="size-5 text-slate-400" />
+                <div className="flex h-14 w-14 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30">
+                  <Upload className="size-5 text-muted-foreground" />
                 </div>
               )}
               <input
@@ -378,7 +378,7 @@ function TileFormDialog({ open, editing, defaultCategory, onClose, onSaved }: Ti
                   id="f-dtype"
                   value={form.discountType}
                   onChange={(e) => setField('discountType', e.target.value as DiscountType | '')}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
                   disabled={!!editing}
                 >
                   <option value="">— เลือก —</option>
@@ -434,7 +434,7 @@ function TileFormDialog({ open, editing, defaultCategory, onClose, onSaved }: Ti
                 type="color"
                 value={form.color || '#f8fafc'}
                 onChange={(e) => setField('color', e.target.value)}
-                className="h-9 w-9 cursor-pointer rounded border border-slate-300"
+                className="h-9 w-9 cursor-pointer rounded border border-border"
                 aria-label="เลือกสี"
               />
               <Input
@@ -449,7 +449,7 @@ function TileFormDialog({ open, editing, defaultCategory, onClose, onSaved }: Ti
                   type="button"
                   aria-label="ล้างสี"
                   onClick={() => setField('color', '')}
-                  className="text-xs text-slate-400 hover:text-red-500"
+                  className="text-xs text-muted-foreground hover:text-red-500"
                 >
                   <X className="size-4" />
                 </button>
@@ -471,7 +471,7 @@ function TileFormDialog({ open, editing, defaultCategory, onClose, onSaved }: Ti
               type="checkbox"
               checked={form.isActive}
               onChange={(e) => setField('isActive', e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300"
+              className="h-4 w-4 rounded border-border"
             />
             เปิดใช้งาน
           </label>
@@ -481,7 +481,7 @@ function TileFormDialog({ open, editing, defaultCategory, onClose, onSaved }: Ti
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+            className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted/30"
           >
             ยกเลิก
           </button>
@@ -587,7 +587,7 @@ function TabPanel({ category, tiles, onRefetch }: TabPanelProps) {
       </div>
 
       {localTiles.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 py-16 text-center text-sm text-slate-400">
+        <div className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
           ยังไม่มีข้อมูล — กด &ldquo;เพิ่ม&rdquo; เพื่อสร้าง
         </div>
       ) : (
@@ -645,12 +645,12 @@ export function PricingTilesPage({ initialData }: PricingTilesPageProps) {
     <div className="p-6 max-w-5xl">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-xl font-medium text-slate-900">Pricing Tiles</h1>
-        <p className="mt-0.5 text-sm text-slate-500">จัดการราคาและส่วนลดทุกประเภท</p>
+        <h1 className="text-xl font-medium text-foreground">Pricing Tiles</h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">จัดการราคาและส่วนลดทุกประเภท</p>
       </div>
 
       {/* Tabs */}
-      <div className="mb-6 flex gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
+      <div className="mb-6 flex gap-1 rounded-xl border border-border bg-muted/30 p-1">
         {TABS.map((tab) => {
           const count = allTiles.filter((t) => t.category === tab.key).length;
           return (
@@ -660,13 +660,13 @@ export function PricingTilesPage({ initialData }: PricingTilesPageProps) {
               onClick={() => setActiveTab(tab.key)}
               className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
                 activeTab === tab.key
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               {tab.label}
               <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                activeTab === tab.key ? 'bg-slate-100 text-slate-700' : 'bg-slate-200 text-slate-500'
+                activeTab === tab.key ? 'bg-muted/50 text-foreground' : 'bg-muted text-muted-foreground'
               }`}>
                 {count}
               </span>
@@ -676,7 +676,7 @@ export function PricingTilesPage({ initialData }: PricingTilesPageProps) {
       </div>
 
       {/* Tab description */}
-      <p className="mb-4 text-sm text-slate-500">{activeTabInfo.desc}</p>
+      <p className="mb-4 text-sm text-muted-foreground">{activeTabInfo.desc}</p>
 
       {/* Tab panel — remount when tab changes so state resets */}
       <TabPanel

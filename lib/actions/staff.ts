@@ -1,9 +1,9 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { eq, asc, ne } from 'drizzle-orm';
+import { eq, asc } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
-import { auth } from '@/auth';
+import { auth, unstable_update } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
 import { writeAuditLog } from '@/lib/actions/audit';
@@ -31,6 +31,8 @@ export async function getStaffList() {
         name: users.name,
         role: users.role,
         isActive: users.isActive,
+        uiLayout: users.uiLayout,
+        allowedModules: users.allowedModules,
         createdAt: users.createdAt,
       })
       .from(users)
@@ -62,6 +64,8 @@ export async function createStaff(input: unknown) {
       name: parsed.data.name,
       role: parsed.data.role,
       passwordHash,
+      uiLayout: parsed.data.uiLayout,
+      allowedModules: parsed.data.allowedModules,
     }).returning({ id: users.id });
     revalidatePath('/users');
     writeAuditLog({
@@ -70,7 +74,13 @@ export async function createStaff(input: unknown) {
       action: 'create',
       entity: 'users',
       entityId: newUser.id,
-      after: { email: parsed.data.email, name: parsed.data.name, role: parsed.data.role },
+      after: {
+        email: parsed.data.email,
+        name: parsed.data.name,
+        role: parsed.data.role,
+        uiLayout: parsed.data.uiLayout,
+        allowedModules: parsed.data.allowedModules,
+      },
     });
     return { ok: true as const };
   } catch (e) {
@@ -90,7 +100,25 @@ export async function updateStaff(input: unknown) {
     const [dup] = await db.select({ id: users.id }).from(users).where(eq(users.email, data.email)).limit(1);
     if (dup && dup.id !== id) return { ok: false as const, error: 'อีเมลนี้ถูกใช้งานแล้ว' };
 
-    await db.update(users).set({ email: data.email, name: data.name, role: data.role }).where(eq(users.id, id));
+    await db.update(users).set({
+      email: data.email,
+      name: data.name,
+      role: data.role,
+      uiLayout: data.uiLayout,
+      allowedModules: data.allowedModules,
+    }).where(eq(users.id, id));
+
+    const selfUpdated = id === session.user.id;
+    if (selfUpdated) {
+      await unstable_update({
+        user: {
+          allowedModules: data.allowedModules ?? [],
+          uiLayout: data.uiLayout ?? null,
+          name: data.name,
+        },
+      });
+    }
+
     revalidatePath('/users');
     writeAuditLog({
       userId: session.user.id,
@@ -98,9 +126,9 @@ export async function updateStaff(input: unknown) {
       action: 'update',
       entity: 'users',
       entityId: id,
-      after: { email: data.email, name: data.name, role: data.role },
+      after: { email: data.email, name: data.name, role: data.role, uiLayout: data.uiLayout, allowedModules: data.allowedModules },
     });
-    return { ok: true as const };
+    return { ok: true as const, selfUpdated };
   } catch (e) {
     console.error('[updateStaff]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด' };

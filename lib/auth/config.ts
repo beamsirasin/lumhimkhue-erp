@@ -54,12 +54,20 @@ export const authConfig: NextAuthConfig = {
 
       return true;
     },
-    jwt({ token, user }) {
+    jwt({ token, user, trigger, session: updateData }) {
       if (user) {
         token.id = user.id as string;
         token.role = user.role;
         token.branchId = (user as { branchId?: string | null }).branchId ?? null;
         token.activeBranchId = (user as { branchId?: string | null }).branchId ?? null;
+        token.uiLayout = (user as { uiLayout?: 'touchscreen' | 'desktop' | null }).uiLayout ?? null;
+        token.allowedModules = (user as { allowedModules?: string[] | null }).allowedModules ?? [];
+      }
+      if (trigger === 'update' && updateData && typeof updateData === 'object') {
+        const u = (updateData as { user?: Record<string, unknown> }).user ?? (updateData as Record<string, unknown>);
+        if ('allowedModules' in u) token.allowedModules = u.allowedModules as string[] | null;
+        if ('uiLayout' in u) token.uiLayout = u.uiLayout as 'touchscreen' | 'desktop' | null;
+        if ('name' in u) token.name = u.name as string;
       }
       return token;
     },
@@ -68,6 +76,8 @@ export const authConfig: NextAuthConfig = {
       session.user.role = token.role as Role;
       session.user.branchId = token.branchId as string | null | undefined;
       session.user.activeBranchId = token.activeBranchId as string | null | undefined;
+      session.user.uiLayout = token.uiLayout as 'touchscreen' | 'desktop' | null | undefined;
+      session.user.allowedModules = token.allowedModules as string[] | null | undefined;
       return session;
     },
   },

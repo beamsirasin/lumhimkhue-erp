@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -36,7 +36,7 @@ const STATUS_COLOR: Record<string, string> = {
   confirmed: 'bg-blue-100 text-blue-700',
   arrived:   'bg-emerald-100 text-emerald-700',
   seated:    'bg-green-100 text-green-700',
-  cancelled: 'bg-slate-100 text-slate-500',
+  cancelled: 'bg-muted/50 text-muted-foreground',
   no_show:   'bg-red-100 text-red-600',
 };
 
@@ -138,23 +138,23 @@ export function ReservationsPage({ tables }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button type="button" onClick={prevDay} aria-label="วันก่อนหน้า"
-            className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50">
+            className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-muted/30">
             <ChevronLeft className="size-4" />
           </button>
           <div className="flex items-center gap-2">
-            <CalendarDays className="size-4 text-slate-400" />
+            <CalendarDays className="size-4 text-muted-foreground" />
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+              className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
           </div>
           <button type="button" onClick={nextDay} aria-label="วันถัดไป"
-            className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50">
+            className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-muted/30">
             <ChevronRight className="size-4" />
           </button>
-          <span className="text-sm text-slate-500">
+          <span className="text-sm text-muted-foreground">
             {format(new Date(selectedDate + 'T00:00:00'), 'EEEE d MMMM yyyy', { locale: th })}
           </span>
         </div>
@@ -168,13 +168,13 @@ export function ReservationsPage({ tables }: Props) {
       {isLoading ? (
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-24 rounded-xl bg-slate-100 animate-pulse" />
+            <div key={i} className="h-24 rounded-xl bg-muted/50 animate-pulse" />
           ))}
         </div>
       ) : reservations.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl bg-white py-16 shadow-sm ring-1 ring-slate-900/5">
-          <CalendarDays className="size-10 text-slate-300 mb-3" />
-          <p className="text-sm text-slate-500">ไม่มีการจองในวันนี้</p>
+        <div className="flex flex-col items-center justify-center rounded-xl bg-card py-16 shadow-sm ring-1 ring-border/40">
+          <CalendarDays className="size-10 text-muted-foreground/60 mb-3" />
+          <p className="text-sm text-muted-foreground">ไม่มีการจองในวันนี้</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -317,22 +317,22 @@ function ReservationCard({
   }
 
   return (
-    <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-900/5">
+    <div className="rounded-xl bg-card p-4 shadow-sm ring-1 ring-border/40">
       <div className="flex flex-wrap items-start gap-3">
         {/* Time & table */}
-        <div className="flex flex-col items-center gap-0.5 rounded-lg bg-slate-50 px-3 py-2 min-w-[60px]">
-          <Clock className="size-3.5 text-slate-400" />
-          <span className="text-sm font-bold text-slate-800 tabular-nums">
+        <div className="flex flex-col items-center gap-0.5 rounded-lg bg-muted/30 px-3 py-2 min-w-[60px]">
+          <Clock className="size-3.5 text-muted-foreground" />
+          <span className="text-sm font-bold text-foreground tabular-nums">
             {reservation.reservationTime ?? '—'}
           </span>
-          <span className="text-[10px] text-slate-400">โต๊ะ {reservation.table.label}</span>
+          <span className="text-[10px] text-muted-foreground">โต๊ะ {reservation.table.label}</span>
         </div>
 
         {/* Guest info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-semibold text-sm text-slate-900">{reservation.customerName}</p>
-            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[status] ?? 'bg-slate-100 text-slate-500'}`}>
+            <p className="font-semibold text-sm text-foreground">{reservation.customerName}</p>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[status] ?? 'bg-muted/50 text-muted-foreground'}`}>
               {STATUS_LABEL[status] ?? status}
             </span>
             {reservation.customer && (
@@ -341,20 +341,20 @@ function ReservationCard({
               </span>
             )}
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+          <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
             {reservation.customerPhone && (
               <span className="flex items-center gap-1"><Phone className="size-3" />{reservation.customerPhone}</span>
             )}
             <span className="flex items-center gap-1"><Users className="size-3" />{reservation.partySize} คน</span>
             {reservation.reservationNo && (
-              <span className="font-mono text-slate-400">{reservation.reservationNo}</span>
+              <span className="font-mono text-muted-foreground">{reservation.reservationNo}</span>
             )}
             {Number(reservation.depositAmount) > 0 && (
               <span className="text-green-600">มัดจำ ฿{Number(reservation.depositAmount).toLocaleString('th-TH')}</span>
             )}
           </div>
           {reservation.notes && (
-            <p className="mt-1 text-xs text-slate-400 truncate">{reservation.notes}</p>
+            <p className="mt-1 text-xs text-muted-foreground truncate">{reservation.notes}</p>
           )}
         </div>
 

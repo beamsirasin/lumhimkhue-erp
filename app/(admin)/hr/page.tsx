@@ -1,4 +1,4 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { getHrDashboardStats } from '@/lib/actions/hr';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -21,52 +21,52 @@ export default async function HrDashboardPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <h2 className="text-lg font-semibold text-slate-900">ภาพรวม HR</h2>
+      <h2 className="text-lg font-semibold text-foreground">ภาพรวม HR</h2>
 
       {/* Cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <Users className="size-4" />
               ประจำ (active)
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-slate-900">{stats.fullTimeCount}</p>
-            <p className="text-xs text-slate-400">คน</p>
+            <p className="text-3xl font-bold text-foreground">{stats.fullTimeCount}</p>
+            <p className="text-xs text-muted-foreground">คน</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <Clock className="size-4" />
               พาร์ทไทม์ (active)
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-slate-900">{stats.partTimeCount}</p>
-            <p className="text-xs text-slate-400">คน</p>
+            <p className="text-3xl font-bold text-foreground">{stats.partTimeCount}</p>
+            <p className="text-xs text-muted-foreground">คน</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <Wallet className="size-4" />
               รอบจ่ายค้างอยู่
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-slate-900">{stats.unpaidCycles}</p>
-            <p className="text-xs text-slate-400">รอบ (draft)</p>
+            <p className="text-3xl font-bold text-foreground">{stats.unpaidCycles}</p>
+            <p className="text-xs text-muted-foreground">รอบ (draft)</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <Calendar className="size-4" />
               ลิงก์ด่วน
             </CardTitle>
@@ -88,29 +88,29 @@ export default async function HrDashboardPage() {
       {/* Recent payroll cycles */}
       {stats.recentCycles.length > 0 && (
         <div>
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">รอบจ่ายล่าสุด</h3>
-          <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <h3 className="text-sm font-semibold text-foreground mb-3">รอบจ่ายล่าสุด</h3>
+          <div className="rounded-lg border border-border overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50">
+              <thead className="bg-muted/30">
                 <tr>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-600">ชื่องวด</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-600">ช่วงงาน</th>
-                  <th className="px-4 py-2.5 text-center text-xs font-medium text-slate-600">สถานะ</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">ชื่องวด</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">ช่วงงาน</th>
+                  <th className="px-4 py-2.5 text-center text-xs font-medium text-muted-foreground">สถานะ</th>
                   <th className="px-4 py-2.5 w-8" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-border/30">
                 {stats.recentCycles.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-2.5 font-medium text-slate-900">{c.name}</td>
-                    <td className="px-4 py-2.5 text-xs text-slate-500">
+                  <tr key={c.id} className="hover:bg-muted/30">
+                    <td className="px-4 py-2.5 font-medium text-foreground">{c.name}</td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground">
                       {fmtDate(c.workStartDate)} – {fmtDate(c.workEndDate)}
                     </td>
                     <td className="px-4 py-2.5 text-center">
                       <Badge variant={STATUS_VARIANT[c.status]}>{STATUS_LABELS[c.status]}</Badge>
                     </td>
                     <td className="px-4 py-2.5">
-                      <Link href={`/hr/payroll/${c.id}`} className="text-slate-400 hover:text-slate-700">
+                      <Link href={`/hr/payroll/${c.id}`} className="text-muted-foreground hover:text-foreground">
                         <ChevronRight className="size-4" />
                       </Link>
                     </td>

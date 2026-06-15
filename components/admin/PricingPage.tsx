@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -128,8 +128,8 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
     <div className="p-6 max-w-3xl">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-medium text-slate-900">ราคาตามประเภทคน</h1>
-          <p className="mt-0.5 text-sm text-slate-500">กำหนดราคาบุฟเฟ่ต์แยกตามประเภทผู้เข้าใช้บริการ</p>
+          <h1 className="text-xl font-medium text-foreground">ราคาตามประเภทคน</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">กำหนดราคาบุฟเฟ่ต์แยกตามประเภทผู้เข้าใช้บริการ</p>
         </div>
         <Button onClick={openCreate}>
           <Plus className="mr-1.5 size-4" />
@@ -137,31 +137,31 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
         </Button>
       </div>
 
-      <div className="rounded-xl bg-white overflow-hidden shadow-sm ring-1 ring-slate-900/5">
+      <div className="rounded-xl bg-card overflow-hidden shadow-sm ring-1 ring-border/40">
         {tiers.length === 0 ? (
-          <div className="py-12 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</div>
+          <div className="py-12 text-center text-sm text-muted-foreground">ยังไม่มีข้อมูล</div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-100 text-left">
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500">ลำดับ</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500">รหัส</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500">ชื่อ</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">ราคา (฿)</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500">สถานะ</th>
+              <tr className="border-b border-border text-left">
+                <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">ลำดับ</th>
+                <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">รหัส</th>
+                <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">ชื่อ</th>
+                <th className="px-4 py-3 text-xs font-semibold text-muted-foreground text-right">ราคา (฿)</th>
+                <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">สถานะ</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
               {tiers.map((tier) => (
-                <tr key={tier.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50">
-                  <td className="px-4 py-3 tabular-nums text-slate-400">{tier.sortOrder}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-600">{tier.code}</td>
+                <tr key={tier.id} className="border-b border-border/30 last:border-0 hover:bg-muted/30">
+                  <td className="px-4 py-3 tabular-nums text-muted-foreground">{tier.sortOrder}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{tier.code}</td>
                   <td className="px-4 py-3">
-                    <p className="font-medium text-slate-900">{tier.name}</p>
-                    {tier.notes && <p className="text-xs text-slate-400">{tier.notes}</p>}
+                    <p className="font-medium text-foreground">{tier.name}</p>
+                    {tier.notes && <p className="text-xs text-muted-foreground">{tier.notes}</p>}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-900">
+                  <td className="px-4 py-3 text-right tabular-nums font-semibold text-foreground">
                     ฿{Number(tier.price).toLocaleString('th-TH')}
                   </td>
                   <td className="px-4 py-3">
@@ -174,7 +174,7 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
                       {tier.isActive ? (
                         <><ToggleRight className="size-5 text-green-500" /><span className="text-green-700">ใช้งาน</span></>
                       ) : (
-                        <><ToggleLeft className="size-5 text-slate-400" /><span className="text-slate-400">ปิด</span></>
+                        <><ToggleLeft className="size-5 text-muted-foreground" /><span className="text-muted-foreground">ปิด</span></>
                       )}
                     </button>
                   </td>
@@ -183,7 +183,7 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
                       type="button"
                       aria-label="แก้ไข"
                       onClick={() => openEdit(tier)}
-                      className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      className="rounded p-1 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                     >
                       <Pencil className="size-4" />
                     </button>
@@ -271,7 +271,7 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
               <input
                 type="checkbox"
                 {...register('isActive')}
-                className="h-4 w-4 rounded border-slate-300"
+                className="h-4 w-4 rounded border-border"
               />
               เปิดใช้งาน
             </label>
@@ -280,7 +280,7 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
             <button
               type="button"
               onClick={() => setDialogOpen(false)}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted/30"
             >
               ยกเลิก
             </button>

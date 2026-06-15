@@ -20,7 +20,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (pendingApprovalCount > 0) badgeCounts['/inventory/orders'] = pendingApprovalCount;
 
   return (
-    <SidebarLayout role={role} userName={name} badgeCounts={badgeCounts}>
+    <SidebarLayout
+      role={role}
+      userName={name}
+      badgeCounts={badgeCounts}
+      uiLayout={session.user.uiLayout ?? null}
+      allowedModules={session.user.allowedModules ?? []}
+    >
       {children}
     </SidebarLayout>
   );

@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { getStoreSettings } from '@/lib/actions/store';
@@ -15,7 +15,7 @@ export default async function Settings() {
 
   return (
     <div className="p-6">
-      <h1 className="text-xl font-semibold text-slate-900 mb-6">ตั้งค่าบิล</h1>
+      <h1 className="text-xl font-semibold text-foreground mb-6">ตั้งค่าบิล</h1>
       {settings && <StoreSettingsForm initialData={settings} />}
     </div>
   );

@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-import { useState, useEffect, useCallback, useRef, CSSProperties } from 'react';
+import { useState, useEffect, useCallback, useRef, useContext, CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import { useConfirm } from '@/components/shared/ConfirmDialog';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -66,6 +66,7 @@ import type { TableQrData } from '@/lib/printer/types';
 import { differenceInSeconds, formatDistanceToNowStrict, format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { PricingTile } from '@/components/staff/PricingTile';
+import { CashierHeaderSlotContext } from '@/components/shared/SidebarLayout';
 
 /* ─── Status config ────────────────────────────────────────────────── */
 
@@ -129,7 +130,7 @@ interface TilePickerProps {
 
 function TilePicker({ tiles, quantities, onChange, tileSize = 'sm' }: TilePickerProps) {
   if (tiles.length === 0)
-    return <p className="text-sm text-slate-400">ไม่มี pricing tile ที่ active — กรุณาตั้งค่า pricing tiles ก่อน</p>;
+    return <p className="text-sm text-muted-foreground">ไม่มี pricing tile ที่ active — กรุณาตั้งค่า pricing tiles ก่อน</p>;
   return (
     <div className={`flex flex-wrap ${tileSize === 'lg' ? 'gap-4' : 'gap-3'}`}>
       {tiles.map((tile) => (
@@ -155,15 +156,19 @@ interface TileSummaryPanelProps {
 }
 
 function TileSummaryPanel({ pricingTiles, quantities, onChange }: TileSummaryPanelProps) {
+  const [editingId, setEditingId] = useState<string | null>(null);
   const totalGuests = Object.values(quantities).reduce((s, q) => s + q, 0);
   const totalAmount = pricingTiles.reduce((s, t) => s + Number(t.price) * (quantities[t.id] ?? 0), 0);
   const selected = pricingTiles.filter((t) => (quantities[t.id] ?? 0) > 0);
 
+  const editingTile = editingId ? pricingTiles.find((t) => t.id === editingId) ?? null : null;
+  const editingQty = editingId ? (quantities[editingId] ?? 0) : 0;
+
   return (
-    <div className="w-44 shrink-0 rounded-xl border border-slate-200 bg-slate-50 p-3 flex flex-col h-full">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">รายการ</p>
+    <div className="w-full md:w-64 shrink-0 rounded-xl border border-border bg-muted/40 p-3 flex flex-col md:h-full">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">รายการ</p>
       {selected.length === 0 ? (
-        <p className="flex-1 flex items-center justify-center text-center text-xs text-slate-400 leading-relaxed">
+        <p className="flex-1 flex items-center justify-center text-center text-xs text-muted-foreground leading-relaxed">
           แตะ tile<br />เพื่อเพิ่ม
         </p>
       ) : (
@@ -172,49 +177,74 @@ function TileSummaryPanel({ pricingTiles, quantities, onChange }: TileSummaryPan
             const qty = quantities[t.id] ?? 0;
             const subtotal = Number(t.price) * qty;
             return (
-              <div key={t.id} className="rounded-lg bg-white border border-slate-100 px-2.5 py-2">
-                <div className="flex items-center gap-1">
-                  <span className="flex-1 text-sm font-medium text-slate-800 truncate min-w-0">{t.name}</span>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      aria-label="ลด"
-                      onClick={() => onChange(t.id, Math.max(0, qty - 1))}
-                      className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-700 hover:bg-red-100 hover:text-red-700 transition-colors"
-                    >
-                      −
-                    </button>
-                    <span className="w-5 text-center text-xs font-bold text-slate-900">{qty}</span>
-                    <button
-                      type="button"
-                      aria-label="เพิ่ม"
-                      onClick={() => onChange(t.id, qty + 1)}
-                      className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-800 text-xs font-bold text-white hover:bg-slate-700 transition-colors"
-                    >
-                      +
-                    </button>
-                  </div>
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setEditingId(t.id)}
+                className="w-full rounded-lg bg-card border border-border px-2.5 py-2 text-left hover:bg-muted/50 active:bg-muted transition-colors"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="flex-1 text-sm font-medium text-foreground truncate min-w-0">{t.name}</span>
+                  <span className="shrink-0 ml-2 text-sm font-bold text-foreground tabular-nums">×{qty}</span>
                 </div>
                 <div className="flex items-center justify-between mt-1">
-                  <span className="text-[11px] text-slate-400">฿{Number(t.price).toLocaleString('th-TH')} / คน</span>
-                  <span className="text-xs font-medium text-slate-600">฿{subtotal.toLocaleString('th-TH')}</span>
+                  <span className="text-[11px] text-muted-foreground">฿{Number(t.price).toLocaleString('th-TH')} / คน</span>
+                  <span className="text-xs font-medium text-foreground">฿{subtotal.toLocaleString('th-TH')}</span>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
       )}
       {totalGuests > 0 && (
-        <div className="mt-3 border-t border-slate-200 pt-3 space-y-1">
+        <div className="mt-3 border-t border-border pt-3 space-y-1">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-500">รวม</span>
-            <span className="font-bold text-slate-900">{totalGuests} คน</span>
+            <span className="text-muted-foreground">รวม</span>
+            <span className="font-bold text-foreground">{totalGuests} คน</span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-500">ยอดรวม</span>
-            <span className="font-bold text-slate-900">฿{totalAmount.toLocaleString('th-TH')}</span>
+            <span className="text-muted-foreground">ยอดรวม</span>
+            <span className="font-bold text-foreground">฿{totalAmount.toLocaleString('th-TH')}</span>
           </div>
         </div>
+      )}
+
+      {/* Quantity edit popup */}
+      {editingTile && (
+        <>
+          <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm" onClick={() => setEditingId(null)} />
+          <div className="fixed left-1/2 top-1/2 z-[101] w-72 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-card border border-border p-6 shadow-2xl">
+            <p className="text-center text-base font-semibold text-foreground">{editingTile.name}</p>
+            <p className="mt-0.5 text-center text-sm text-muted-foreground">฿{Number(editingTile.price).toLocaleString('th-TH')} / คน</p>
+            <div className="mt-5 flex items-center justify-center gap-6">
+              <button
+                type="button"
+                aria-label="ลด"
+                onClick={() => {
+                  const next = Math.max(0, editingQty - 1);
+                  onChange(editingId!, next);
+                  if (next === 0) setEditingId(null);
+                }}
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-2xl font-bold text-foreground hover:bg-red-100 hover:text-red-700 active:scale-95 transition-all"
+              >−</button>
+              <span className="w-12 text-center text-3xl font-bold tabular-nums text-foreground">{editingQty}</span>
+              <button
+                type="button"
+                aria-label="เพิ่ม"
+                onClick={() => onChange(editingId!, editingQty + 1)}
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-2xl font-bold text-primary-foreground hover:bg-primary/90 active:scale-95 transition-all"
+              >+</button>
+            </div>
+            <p className="mt-3 text-center text-sm font-semibold text-foreground">
+              รวม ฿{(Number(editingTile.price) * editingQty).toLocaleString('th-TH')}
+            </p>
+            <button
+              type="button"
+              onClick={() => setEditingId(null)}
+              className="mt-4 w-full rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
+            >ปิด</button>
+          </div>
+        </>
       )}
     </div>
   );
@@ -237,18 +267,18 @@ function LinkedTablePicker({ tables, primaryTableId, selected, onToggle }: Linke
   );
 
   if (available.size === 0)
-    return <p className="text-sm text-slate-400">ไม่มีโต๊ะว่างอื่นให้เชื่อมโยง</p>;
+    return <p className="text-sm text-muted-foreground">ไม่มีโต๊ะว่างอื่นให้เชื่อมโยง</p>;
 
   // Auto-fit: scale canvas so all tables are visible in a fixed 320px-tall container
   const canvasW = Math.max(600, ...tables.map((t) => t.positionX + t.width  + 20));
   const canvasH = Math.max(400, ...tables.map((t) => t.positionY + t.height + 20));
   const CONTAINER_H = 320;
-  const CONTAINER_W_APPROX = 560; // dialog is ~600px wide
+  const CONTAINER_W_APPROX = 900; // dialog is ~92vw wide
   const scale = Math.min(CONTAINER_W_APPROX / canvasW, CONTAINER_H / canvasH, 1);
 
   return (
     <div
-      className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100"
+      className="relative overflow-hidden rounded-xl border border-border bg-muted/50"
       style={{ height: CONTAINER_H }}
     >
       {/* scaled canvas */}
@@ -271,10 +301,10 @@ function LinkedTablePicker({ tables, primaryTableId, selected, onToggle }: Linke
           const isSelected = selected.includes(t.id);
           const isPickable = available.has(t.id);
 
-          let bg = 'bg-slate-200 border-slate-300 text-slate-400 cursor-not-allowed'; // occupied / unavailable
-          if (isPrimary)  bg = 'bg-slate-800 border-slate-900 text-white cursor-default';
-          else if (isSelected) bg = 'bg-slate-800 border-slate-900 text-white cursor-pointer ring-2 ring-offset-1 ring-slate-600';
-          else if (isPickable)  bg = 'bg-green-100 border-green-400 text-green-800 cursor-pointer hover:bg-green-200';
+          let bg = 'bg-muted border-border text-muted-foreground cursor-not-allowed'; // occupied / unavailable
+          if (isPrimary)  bg = 'bg-primary border-primary text-primary-foreground cursor-default';
+          else if (isSelected) bg = 'bg-primary border-primary text-primary-foreground cursor-pointer ring-2 ring-offset-1 ring-primary/50';
+          else if (isPickable)  bg = 'bg-emerald-100 border-emerald-400 text-emerald-800 cursor-pointer hover:bg-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-700 dark:text-emerald-300';
 
           return (
             <button
@@ -315,12 +345,12 @@ function QrViewModal({ url, label, onClose }: { url: string | null; label: strin
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xs rounded-2xl bg-white p-6 shadow-2xl text-center"
+        className="w-full max-w-xs rounded-2xl bg-card border border-border p-6 shadow-2xl text-center"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <p className="text-base font-semibold text-slate-900">QR โต๊ะ {label}</p>
-          <button type="button" onClick={onClose} aria-label="ปิด" className="text-slate-400 hover:text-slate-600">
+          <p className="text-base font-semibold text-foreground">QR โต๊ะ {label}</p>
+          <button type="button" onClick={onClose} aria-label="ปิด" className="text-muted-foreground hover:text-foreground transition-colors">
             <X className="size-5" />
           </button>
         </div>
@@ -329,10 +359,10 @@ function QrViewModal({ url, label, onClose }: { url: string | null; label: strin
           <img src={qrSrc} alt={`QR โต๊ะ ${label}`} className="mx-auto rounded-xl" width={240} height={240} />
         ) : (
           <div className="flex h-60 w-60 mx-auto items-center justify-center">
-            <Loader2 className="size-8 animate-spin text-slate-300" />
+            <Loader2 className="size-8 animate-spin text-muted-foreground" />
           </div>
         )}
-        <p className="mt-3 text-xs text-slate-400 break-all line-clamp-2">{url}</p>
+        <p className="mt-3 text-xs text-muted-foreground break-all line-clamp-2">{url}</p>
       </div>
     </div>
   );
@@ -373,9 +403,9 @@ function SessionQrDialog({ open, data, onClose }: QrDialogProps) {
               return (
                 <div
                   key={entry.sessionToken}
-                  className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3"
+                  className="flex items-center gap-2 rounded-xl border border-border bg-muted/30 px-4 py-3"
                 >
-                  <span className="flex-1 text-sm font-semibold text-slate-800">โต๊ะ {entry.tableLabel}</span>
+                  <span className="flex-1 text-sm font-semibold text-foreground">โต๊ะ {entry.tableLabel}</span>
                   <Button
                     variant="outline"
                     size="sm"
@@ -503,7 +533,7 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-5xl">
+      <DialogContent className="sm:max-w-[92vw] max-h-[95dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             เปิดโต๊ะ {table.label}
@@ -512,19 +542,20 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
         </DialogHeader>
 
         {step === 'link' && (
-          <p className="flex items-center gap-1.5 text-xs text-slate-500">
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Link2 className="size-3.5" />เลือกโต๊ะที่ต้องการเชื่อมโยง
           </p>
         )}
 
         {step === 'tiles' && (
-          <div className="flex gap-5 h-[65vh]">
+          <div className="flex flex-col md:flex-row gap-4 md:gap-5 md:h-[75dvh]">
             {/* Left: tile picker + notes */}
-            <div className="flex-1 min-w-0 overflow-y-auto space-y-4 pr-1">
+            <div className="flex-1 min-w-0 min-h-0 overflow-y-auto space-y-4 pr-1">
               <TilePicker
                 tiles={pricingTiles}
                 quantities={quantities}
                 onChange={(id, qty) => setQuantities((p) => ({ ...p, [id]: qty }))}
+                tileSize="lg"
               />
               <div className="space-y-1.5">
                 <Label htmlFor="open-notes">หมายเหตุ (ไม่บังคับ)</Label>
@@ -543,7 +574,7 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
 
         {step === 'link' && (
           <div className="space-y-3">
-            <p className="text-sm text-slate-600">เลือกโต๊ะที่ต้องการเชื่อมโยงกับโต๊ะ {table.label} (ไม่บังคับ)</p>
+            <p className="text-sm text-muted-foreground">เลือกโต๊ะที่ต้องการเชื่อมโยงกับโต๊ะ {table.label} (ไม่บังคับ)</p>
             <LinkedTablePicker
               tables={allTables}
               primaryTableId={table.id}
@@ -551,7 +582,7 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
               onToggle={(id) => setLinkedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])}
             />
             {linkedIds.length > 0 && (
-              <p className="text-xs text-slate-500">เชื่อมโยง {linkedIds.length} โต๊ะ — นับรวมเป็น session เดียวกัน</p>
+              <p className="text-xs text-muted-foreground">เชื่อมโยง {linkedIds.length} โต๊ะ — นับรวมเป็น session เดียวกัน</p>
             )}
           </div>
         )}
@@ -559,11 +590,11 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
         <DialogFooter>
           {step === 'tiles' ? (
             <>
-              <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">ยกเลิก</button>
+              <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
               <button
                 type="button"
                 onClick={() => setStep('link')}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
               >
                 <Link2 className="size-3.5" />เชื่อมโต๊ะ
               </button>
@@ -574,7 +605,7 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
             </>
           ) : (
             <>
-              <button type="button" onClick={() => setStep('tiles')} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">ย้อนกลับ</button>
+              <button type="button" onClick={() => setStep('tiles')} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted/50 transition-colors">ย้อนกลับ</button>
               <Button onClick={handleSubmit} disabled={submitting}>
                 {submitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
                 {submitting ? 'กำลังเปิด...' : 'เปิดโต๊ะ'}
@@ -665,8 +696,8 @@ function ReservationFlow({ open, table, allTables, pricingTiles, onClose, onSucc
         <div className="flex items-center gap-2 text-xs">
           {(['customer', 'tiles', 'link'] as ReserveStep[]).map((s, i) => (
             <span key={s} className="flex items-center gap-1.5">
-              {i > 0 && <ChevronRight className="size-3 text-slate-400" />}
-              <span className={`rounded-full px-2.5 py-0.5 font-medium ${step === s ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500'}`}>
+              {i > 0 && <ChevronRight className="size-3 text-muted-foreground" />}
+              <span className={`rounded-full px-2.5 py-0.5 font-medium ${step === s ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
                 {i + 1} {s === 'customer' ? 'ข้อมูลลูกค้า' : s === 'tiles' ? 'ประเภทลูกค้า' : 'เชื่อมโยงโต๊ะ'}
               </span>
             </span>
@@ -702,7 +733,7 @@ function ReservationFlow({ open, table, allTables, pricingTiles, onClose, onSucc
 
         {step === 'tiles' && (
           <div className="space-y-3">
-            <p className="text-sm text-slate-500">ระบุประเภทผู้เข้าใช้ล่วงหน้า (ไม่บังคับ)</p>
+            <p className="text-sm text-muted-foreground">ระบุประเภทผู้เข้าใช้ล่วงหน้า (ไม่บังคับ)</p>
             <TilePicker
               tiles={pricingTiles}
               quantities={quantities}
@@ -713,7 +744,7 @@ function ReservationFlow({ open, table, allTables, pricingTiles, onClose, onSucc
 
         {step === 'link' && (
           <div className="space-y-3">
-            <p className="text-sm text-slate-600">เลือกโต๊ะที่ต้องการจองร่วมกัน (ไม่บังคับ)</p>
+            <p className="text-sm text-muted-foreground">เลือกโต๊ะที่ต้องการจองร่วมกัน (ไม่บังคับ)</p>
             <LinkedTablePicker
               tables={allTables}
               primaryTableId={table.id}
@@ -726,19 +757,19 @@ function ReservationFlow({ open, table, allTables, pricingTiles, onClose, onSucc
         <DialogFooter>
           {step === 'customer' && (
             <>
-              <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">ยกเลิก</button>
+              <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
               <Button onClick={() => setStep('tiles')} disabled={!name.trim()}>ถัดไป <ChevronRight className="ml-1 size-4" /></Button>
             </>
           )}
           {step === 'tiles' && (
             <>
-              <button type="button" onClick={() => setStep('customer')} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">ย้อนกลับ</button>
+              <button type="button" onClick={() => setStep('customer')} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted/50 transition-colors">ย้อนกลับ</button>
               <Button onClick={() => setStep('link')}>ถัดไป <ChevronRight className="ml-1 size-4" /></Button>
             </>
           )}
           {step === 'link' && (
             <>
-              <button type="button" onClick={() => setStep('tiles')} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">ย้อนกลับ</button>
+              <button type="button" onClick={() => setStep('tiles')} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted/50 transition-colors">ย้อนกลับ</button>
               <Button onClick={handleSubmit} disabled={submitting}>
                 {submitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
                 {submitting ? 'กำลังจอง...' : 'ยืนยันจอง'}
@@ -824,15 +855,16 @@ function EditGuestsDialog({ open, sessionId, currentGuests, pricingTiles, onClos
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-5xl">
+      <DialogContent className="sm:max-w-[92vw] max-h-[95dvh] overflow-y-auto">
         <DialogHeader><DialogTitle>แก้ไขประเภทผู้เข้าใช้</DialogTitle></DialogHeader>
-        <div className="flex gap-5 h-[65vh]">
+        <div className="flex flex-col md:flex-row gap-4 md:gap-5 md:h-[75dvh]">
           {/* ── Left: tile picker ── */}
-          <div className="flex-1 min-w-0 overflow-y-auto pr-1">
+          <div className="flex-1 min-w-0 min-h-0 overflow-y-auto pr-1">
             <TilePicker
               tiles={pricingTiles}
               quantities={quantities}
               onChange={(id, qty) => setQuantities((p) => ({ ...p, [id]: qty }))}
+              tileSize="lg"
             />
           </div>
 
@@ -844,7 +876,7 @@ function EditGuestsDialog({ open, sessionId, currentGuests, pricingTiles, onClos
           />
         </div>
         <DialogFooter>
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">ยกเลิก</button>
+          <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
           <Button onClick={handleSubmit} disabled={submitting || totalGuests === 0}>
             {submitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
             {submitting ? 'กำลังบันทึก...' : 'บันทึก'}
@@ -882,6 +914,7 @@ function TableSheet({
   onMoveTable,
   onEditGuests,
 }: TableSheetProps) {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [qrView, setQrView] = useState<{ url: string; label: string } | null>(null);
   const { openConfirm, dialog: confirmDialog } = useConfirm();
@@ -967,12 +1000,12 @@ function TableSheet({
       {confirmDialog}
       <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="sm:max-w-sm p-0 flex flex-col max-h-[85vh]">
-        <DialogHeader className="shrink-0 border-b border-slate-200 px-5 py-4 pr-12">
+        <DialogHeader className="shrink-0 border-b border-border px-5 py-4 pr-12">
           <div className="flex items-center gap-2">
             <span className={`h-2.5 w-2.5 rounded-full ${STATUS_CONFIG[visualStatus].dot}`} />
             <DialogTitle className="text-base">
               โต๊ะ {table.label}
-              {table.zone !== 'ทั่วไป' && <span className="ml-1.5 text-sm font-normal text-slate-500">({table.zone})</span>}
+              {table.zone !== 'ทั่วไป' && <span className="ml-1.5 text-sm font-normal text-muted-foreground">({table.zone})</span>}
             </DialogTitle>
             {/* เปลี่ยนโต๊ะหลัก — shown only on secondary tables */}
             {sess?.parentSessionId && (
@@ -1001,15 +1034,15 @@ function TableSheet({
           {/* ── AVAILABLE ── */}
           {visualStatus === 'available' && (
             <>
-              <p className="text-sm text-slate-500">{table.capacity} ที่นั่ง — พร้อมรับลูกค้า</p>
+              <p className="text-sm text-muted-foreground">{table.capacity} ที่นั่ง — พร้อมรับลูกค้า</p>
               <button
                 type="button"
                 onClick={() => { onClose(); onOpenTable(table); }}
-                className="flex w-full items-center justify-between rounded-xl border-2 border-slate-800 bg-slate-800 px-4 py-4 text-left text-white hover:bg-slate-700 transition-colors"
+                className="flex w-full items-center justify-between rounded-xl border-2 border-primary bg-primary px-4 py-4 text-left text-primary-foreground hover:bg-primary/90 transition-colors"
               >
                 <div>
                   <p className="font-semibold">เปิดโต๊ะ</p>
-                  <p className="text-xs text-slate-300">เริ่ม session และเลือกประเภทผู้เข้าใช้</p>
+                  <p className="text-xs text-primary-foreground/70">เริ่ม session และเลือกประเภทผู้เข้าใช้</p>
                 </div>
                 <ChevronRight className="size-5 shrink-0" />
               </button>
@@ -1059,30 +1092,30 @@ function TableSheet({
                 return (
                   <>
                     {/* Session info — always from primary */}
-                    <div className="rounded-xl bg-slate-50 p-3 space-y-2 text-sm">
+                    <div className="rounded-xl bg-muted/50 border border-border p-3 space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="flex items-center gap-1.5 text-slate-500"><Clock className="size-3.5" />เริ่ม</span>
+                        <span className="flex items-center gap-1.5 text-muted-foreground"><Clock className="size-3.5" />เริ่ม</span>
                         <span className="font-medium">{new Date(displaySess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-500">เวลาที่ผ่านมา</span>
+                        <span className="text-muted-foreground">เวลาที่ผ่านมา</span>
                         <span className="font-medium">{formatDistanceToNowStrict(new Date(displaySess.startedAt), { locale: th })}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="flex items-center gap-1.5 text-slate-500"><Users className="size-3.5" />จำนวนคน</span>
+                        <span className="flex items-center gap-1.5 text-muted-foreground"><Users className="size-3.5" />จำนวนคน</span>
                         <span className="font-medium">{displaySess.totalGuests} คน</span>
                       </div>
                       {displaySess.guests.map((g) => (
-                        <div key={g.id} className="flex justify-between pl-3 text-xs text-slate-400">
+                        <div key={g.id} className="flex justify-between pl-3 text-xs text-muted-foreground">
                           <span>{g.pricingTile.name} ×{g.quantity}</span>
                           <span>฿{(Number(g.pricingTile.price) * g.quantity).toLocaleString('th-TH')}</span>
                         </div>
                       ))}
-                      <div className="flex justify-between border-t border-slate-200 pt-1.5">
-                        <span className="text-slate-500">ยอดค่าอาหาร</span>
-                        <span className="font-semibold text-slate-900">฿{displaySess.baseAmount.toLocaleString('th-TH')}</span>
+                      <div className="flex justify-between border-t border-border pt-1.5">
+                        <span className="text-muted-foreground">ยอดค่าอาหาร</span>
+                        <span className="font-semibold text-foreground">฿{displaySess.baseAmount.toLocaleString('th-TH')}</span>
                       </div>
-                      {displaySess.notes && <p className="text-xs text-slate-400 italic">{displaySess.notes}</p>}
+                      {displaySess.notes && <p className="text-xs text-muted-foreground italic">{displaySess.notes}</p>}
                     </div>
 
                     {/* Link + QR — all tables in the group */}
@@ -1092,14 +1125,14 @@ function TableSheet({
                         return (
                           <div key={entry.sessionToken} className="flex items-center gap-2">
                             {isMultiple && (
-                              <span className="w-12 shrink-0 text-xs font-medium text-slate-500">
+                              <span className="w-12 shrink-0 text-xs font-medium text-muted-foreground">
                                 โต๊ะ {entry.label}
                               </span>
                             )}
                             <button
                               type="button"
                               onClick={() => window.open(url, '_blank')}
-                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
                             >
                               <Link2 className="size-3.5" />Link
                             </button>
@@ -1107,7 +1140,7 @@ function TableSheet({
                               type="button"
                               onClick={() => setQrView({ url, label: entry.label })}
                               aria-label="ดู QR"
-                              className="flex items-center justify-center rounded-xl border border-slate-200 px-3 py-2.5 text-slate-600 hover:bg-slate-50 transition-colors"
+                              className="flex items-center justify-center rounded-xl border border-border px-3 py-2.5 text-foreground hover:bg-muted/50 transition-colors"
                             >
                               <Eye className="size-3.5" />
                             </button>
@@ -1117,7 +1150,7 @@ function TableSheet({
                                 const qrPrint: TableQrData = { tableNumber: entry.label, url, startedAt: startedAtStr };
                                 void printTableQr({ type: 'table_qr', table: qrPrint });
                               }}
-                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
                             >
                               <Printer className="size-3.5" />พิมพ์ QR
                             </button>
@@ -1132,12 +1165,20 @@ function TableSheet({
               <div className="space-y-2">
                 <button
                   type="button"
+                  onClick={() => { onClose(); router.push(`/pos?session=${sess.parentSessionId ?? sess.id}`); }}
+                  disabled={busy}
+                  className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
+                >
+                  <span className="flex items-center justify-center gap-2"><Receipt className="size-4" />บิล</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => {
                     onClose();
                     onEditGuests(sess.id, sess.guests.map((g) => ({ pricingTileId: g.pricingTile.id, quantity: g.quantity })));
                   }}
                   disabled={busy}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                  className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
                 >
                   <span className="flex items-center justify-center gap-2"><Pencil className="size-4" />แก้ไข</span>
                 </button>
@@ -1145,7 +1186,7 @@ function TableSheet({
                   type="button"
                   onClick={() => { onClose(); onMoveTable(sess.id, table.label); }}
                   disabled={busy}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                  className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
                 >
                   <span className="flex items-center justify-center gap-2"><MoveRight className="size-4" />ย้ายโต๊ะ</span>
                 </button>
@@ -1185,16 +1226,16 @@ function TableSheet({
                       )}
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">วันเวลา</span>
-                      <span className="font-medium text-slate-900">
+                      <span className="text-muted-foreground">วันเวลา</span>
+                      <span className="font-medium text-foreground">
                         {format(new Date(resv.reservedAt), 'd MMM HH:mm', { locale: th })}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">จำนวน</span>
+                      <span className="text-muted-foreground">จำนวน</span>
                       <span className="font-medium">{resv.partySize} คน</span>
                     </div>
-                    {resv.notes && <p className="text-xs text-slate-400 italic">{resv.notes}</p>}
+                    {resv.notes && <p className="text-xs text-muted-foreground italic">{resv.notes}</p>}
                   </div>
 
                   <button
@@ -1203,11 +1244,11 @@ function TableSheet({
                       onClose();
                       onOpenTable(table, resv.id);
                     }}
-                    className="flex w-full items-center justify-between rounded-xl border-2 border-slate-800 bg-slate-800 px-4 py-4 text-left text-white hover:bg-slate-700 transition-colors"
+                    className="flex w-full items-center justify-between rounded-xl border-2 border-primary bg-primary px-4 py-4 text-left text-primary-foreground hover:bg-primary/90 transition-colors"
                   >
                     <div>
                       <p className="font-semibold">ลูกค้ามาแล้ว — เปิดโต๊ะ</p>
-                      <p className="text-xs text-slate-300">เริ่ม session จากการจองนี้</p>
+                      <p className="text-xs text-primary-foreground/70">เริ่ม session จากการจองนี้</p>
                     </div>
                     <ChevronRight className="size-5 shrink-0" />
                   </button>
@@ -1224,11 +1265,11 @@ function TableSheet({
               ) : (
                 // Reserved via old setTableReserved (no reservation record)
                 <div className="space-y-3">
-                  <p className="text-sm text-slate-500">โต๊ะนี้ถูกจองไว้ (ไม่มีข้อมูลการจอง)</p>
+                  <p className="text-sm text-muted-foreground">โต๊ะนี้ถูกจองไว้ (ไม่มีข้อมูลการจอง)</p>
                   <button
                     type="button"
                     onClick={() => { onClose(); onOpenTable(table); }}
-                    className="flex w-full items-center justify-between rounded-xl border-2 border-slate-800 bg-slate-800 px-4 py-4 text-left text-white hover:bg-slate-700 transition-colors"
+                    className="flex w-full items-center justify-between rounded-xl border-2 border-primary bg-primary px-4 py-4 text-left text-primary-foreground hover:bg-primary/90 transition-colors"
                   >
                     <div>
                       <p className="font-semibold">เปิดโต๊ะ</p>
@@ -1270,7 +1311,7 @@ function TableSheet({
                   if (r.ok) { toast.success(`เคลียร์โต๊ะ ${table.label} แล้ว`); onClose(); onRefetch(); }
                   else toast.error(r.error);
                 }}
-                className="w-full rounded-xl border-2 border-slate-800 bg-slate-800 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+                className="w-full rounded-xl border-2 border-primary bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
               >
                 {busy ? 'กำลังเคลียร์…' : 'เคลียร์โต๊ะ'}
               </button>
@@ -1294,15 +1335,15 @@ function TableSheet({
                     ชำระเงินแล้ว — รอเคลียร์โต๊ะ
                   </div>
                   <div className="flex justify-between text-xs">
-                    <span className="text-slate-500">เริ่ม</span>
+                    <span className="text-muted-foreground">เริ่ม</span>
                     <span className="font-medium">{new Date(sess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
                   </div>
                   <div className="flex justify-between text-xs">
-                    <span className="text-slate-500">จำนวนคน</span>
+                    <span className="text-muted-foreground">จำนวนคน</span>
                     <span className="font-medium">{sess.totalGuests} คน</span>
                   </div>
                   <div className="flex justify-between text-xs border-t border-emerald-100 pt-1.5">
-                    <span className="text-slate-500">ยอดรวม</span>
+                    <span className="text-muted-foreground">ยอดรวม</span>
                     <span className="font-semibold text-emerald-800">฿{sess.baseAmount.toLocaleString('th-TH')}</span>
                   </div>
                   {hasGroup && (
@@ -1321,7 +1362,7 @@ function TableSheet({
                   <button
                     type="button"
                     onClick={async () => { await navigator.clipboard.writeText(paidUrl).catch(() => {}); toast.success('คัดลอก URL แล้ว'); }}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
                   >
                     <Link2 className="size-3.5" />Link
                   </button>
@@ -1329,14 +1370,14 @@ function TableSheet({
                     type="button"
                     aria-label="ดู QR"
                     onClick={() => setQrView({ url: paidUrl, label: table.label })}
-                    className="flex items-center justify-center rounded-xl border border-slate-200 px-3 py-2.5 text-slate-600 hover:bg-slate-50 transition-colors"
+                    className="flex items-center justify-center rounded-xl border border-border px-3 py-2.5 text-foreground hover:bg-muted/50 transition-colors"
                   >
                     <Eye className="size-3.5" />
                   </button>
                   <button
                     type="button"
                     onClick={() => { const qr: TableQrData = { tableNumber: table.label, url: paidUrl, startedAt: startedAtStr }; void printTableQr({ type: 'table_qr', table: qr }); }}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
                   >
                     <Printer className="size-3.5" />พิมพ์ QR
                   </button>
@@ -1347,7 +1388,7 @@ function TableSheet({
                       type="button"
                       onClick={handleForceSingle}
                       disabled={busy}
-                      className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                      className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-50 transition-colors"
                     >
                       ปิดโต๊ะนี้
                     </button>
@@ -1355,7 +1396,7 @@ function TableSheet({
                       type="button"
                       onClick={handleForceClose}
                       disabled={busy}
-                      className="rounded-xl border-2 border-slate-800 bg-slate-800 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+                      className="rounded-xl border-2 border-primary bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                     >
                       ปิดทั้งหมด
                     </button>
@@ -1365,7 +1406,7 @@ function TableSheet({
                     type="button"
                     onClick={handleForceClose}
                     disabled={busy}
-                    className="w-full rounded-xl border-2 border-slate-800 bg-slate-800 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+                    className="w-full rounded-xl border-2 border-primary bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                   >
                     ปิดโต๊ะ / เคลียร์โต๊ะ
                   </button>
@@ -1393,30 +1434,30 @@ function TableSheet({
 
                 return (
                   <>
-                    <div className="rounded-xl bg-slate-50 p-3 space-y-2 text-sm">
+                    <div className="rounded-xl bg-muted/50 border border-border p-3 space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="flex items-center gap-1.5 text-slate-500"><Clock className="size-3.5" />เริ่ม</span>
+                        <span className="flex items-center gap-1.5 text-muted-foreground"><Clock className="size-3.5" />เริ่ม</span>
                         <span className="font-medium">{new Date(displaySess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-500">เวลาที่ผ่านมา</span>
+                        <span className="text-muted-foreground">เวลาที่ผ่านมา</span>
                         <span className="font-medium">{formatDistanceToNowStrict(new Date(displaySess.startedAt), { locale: th })}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="flex items-center gap-1.5 text-slate-500"><Users className="size-3.5" />จำนวนคน</span>
+                        <span className="flex items-center gap-1.5 text-muted-foreground"><Users className="size-3.5" />จำนวนคน</span>
                         <span className="font-medium">{displaySess.totalGuests} คน</span>
                       </div>
                       {displaySess.guests.map((g) => (
-                        <div key={g.id} className="flex justify-between pl-3 text-xs text-slate-400">
+                        <div key={g.id} className="flex justify-between pl-3 text-xs text-muted-foreground">
                           <span>{g.pricingTile.name} ×{g.quantity}</span>
                           <span>฿{(Number(g.pricingTile.price) * g.quantity).toLocaleString('th-TH')}</span>
                         </div>
                       ))}
-                      <div className="flex justify-between border-t border-slate-200 pt-1.5">
-                        <span className="text-slate-500">ยอดค่าอาหาร</span>
-                        <span className="font-semibold text-slate-900">฿{displaySess.baseAmount.toLocaleString('th-TH')}</span>
+                      <div className="flex justify-between border-t border-border pt-1.5">
+                        <span className="text-muted-foreground">ยอดค่าอาหาร</span>
+                        <span className="font-semibold text-foreground">฿{displaySess.baseAmount.toLocaleString('th-TH')}</span>
                       </div>
-                      {displaySess.notes && <p className="text-xs text-slate-400 italic">{displaySess.notes}</p>}
+                      {displaySess.notes && <p className="text-xs text-muted-foreground italic">{displaySess.notes}</p>}
                     </div>
 
                     <div className="space-y-1.5">
@@ -1424,13 +1465,13 @@ function TableSheet({
                         const url = `${appUrl}/t/${entry.qrToken}/s/${entry.sessionToken}`;
                         return (
                           <div key={entry.sessionToken} className="flex items-center gap-2">
-                            {isMultiple && <span className="w-12 shrink-0 text-xs font-medium text-slate-500">โต๊ะ {entry.label}</span>}
+                            {isMultiple && <span className="w-12 shrink-0 text-xs font-medium text-muted-foreground">โต๊ะ {entry.label}</span>}
                             <button type="button" onClick={() => window.open(url, '_blank')}
-                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">
                               <Link2 className="size-3.5" />Link
                             </button>
                             <button type="button" onClick={() => { const qr: TableQrData = { tableNumber: entry.label, url, startedAt: startedAtStr }; void printTableQr({ type: 'table_qr', table: qr }); }}
-                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">
                               <Printer className="size-3.5" />พิมพ์ QR
                             </button>
                           </div>
@@ -1443,15 +1484,21 @@ function TableSheet({
 
               <div className="space-y-2">
                 <button type="button"
+                  onClick={() => { onClose(); router.push(`/pos?session=${sess.parentSessionId ?? sess.id}`); }}
+                  disabled={busy}
+                  className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
+                  <span className="flex items-center justify-center gap-2"><Receipt className="size-4" />บิล</span>
+                </button>
+                <button type="button"
                   onClick={() => { onClose(); onEditGuests(sess.id, sess.guests.map((g) => ({ pricingTileId: g.pricingTile.id, quantity: g.quantity }))); }}
                   disabled={busy}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors">
+                  className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
                   <span className="flex items-center justify-center gap-2"><Pencil className="size-4" />แก้ไข</span>
                 </button>
                 <button type="button"
                   onClick={() => { onClose(); onMoveTable(sess.id, table.label); }}
                   disabled={busy}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors">
+                  className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
                   <span className="flex items-center justify-center gap-2"><MoveRight className="size-4" />ย้ายโต๊ะ</span>
                 </button>
 
@@ -1546,7 +1593,7 @@ function TableNode({ table, editMode, moveMode, colorOverride, linkedTableLabels
       onClick={!editMode ? handleClick : undefined}
       className={`flex flex-col items-center justify-center border-2 shadow-sm select-none
         ${cfg.bg} ${cfg.border} ${shape}
-        ${editMode ? 'ring-2 ring-offset-1 ring-slate-400' : ''}
+        ${editMode ? 'ring-2 ring-offset-1 ring-primary/50' : ''}
         ${isMoveTarget && moveMode ? 'ring-2 ring-green-500 animate-pulse' : ''}
         ${moveMode && !isMoveTarget ? 'opacity-40' : 'hover:shadow-md transition-shadow'}
       `}
@@ -1576,9 +1623,9 @@ function TableNode({ table, editMode, moveMode, colorOverride, linkedTableLabels
           type="button"
           aria-label="แก้ไขโต๊ะ"
           onClick={(e) => { e.stopPropagation(); onClickEdit(table); }}
-          className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-white border border-slate-300 shadow hover:bg-slate-50"
+          className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-card border border-border shadow hover:bg-muted/50 transition-colors"
         >
-          <Settings2 className="h-3 w-3 text-slate-600" />
+          <Settings2 className="h-3 w-3 text-muted-foreground" />
         </button>
       )}
     </div>
@@ -1626,10 +1673,10 @@ function TableEditPanel({ table, onClose, onSaved, onDeleted }: TableEditPanelPr
   return (
     <>
       {confirmDialog}
-      <div className="w-64 shrink-0 border-l border-slate-200 bg-white p-4 space-y-4 overflow-y-auto">
+      <div className="w-64 shrink-0 border-l border-border bg-card p-4 space-y-4 overflow-y-auto">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-slate-800">แก้ไขโต๊ะ {table.label}</p>
-        <button type="button" aria-label="ปิด" onClick={onClose} className="rounded p-0.5 hover:bg-slate-100"><X className="h-4 w-4 text-slate-500" /></button>
+        <p className="text-sm font-semibold text-foreground">แก้ไขโต๊ะ {table.label}</p>
+        <button type="button" aria-label="ปิด" onClick={onClose} className="rounded p-0.5 hover:bg-muted/50 transition-colors"><X className="h-4 w-4 text-muted-foreground" /></button>
       </div>
       <div className="space-y-1.5"><Label htmlFor="el">ชื่อโต๊ะ</Label><Input id="el" value={label} onChange={(e) => setLabel(e.target.value)} /></div>
       <div className="space-y-1.5"><Label htmlFor="ec">จำนวนที่นั่ง</Label><Input id="ec" type="number" min={1} value={capacity} onChange={(e) => setCapacity(e.target.value)} /></div>
@@ -1688,7 +1735,7 @@ function AddTableDialog({ open, onClose, onCreated }: AddTableDialogProps) {
           </div>
         </div>
         <DialogFooter>
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">ยกเลิก</button>
+          <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
           <Button onClick={handleCreate} disabled={submitting}>{submitting ? 'กำลังเพิ่ม...' : 'เพิ่มโต๊ะ'}</Button>
         </DialogFooter>
       </DialogContent>
@@ -1827,6 +1874,42 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
     return acc;
   }, {});
 
+  // Inject status legend + edit controls into the CashierLayout header when in touchscreen mode
+  const setCashierHeaderSlot = useContext(CashierHeaderSlotContext);
+  useEffect(() => {
+    if (!setCashierHeaderSlot) return;
+    setCashierHeaderSlot(
+      <div className="flex flex-1 items-center justify-between min-w-0 gap-2">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <LegendDot color="bg-green-500" label={`ว่าง (${counts.available ?? 0})`} />
+          <LegendDot color="bg-red-500" label={`มีลูกค้า (${counts.occupied ?? 0})`} />
+          <LegendDot color="bg-blue-500" label={`จอง (${counts.reserved ?? 0})`} />
+          {(counts.linked ?? 0) > 0 && (
+            <LegendDot color="bg-violet-500" label={`เชื่อมโยง (${counts.linked})`} />
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {editMode && (
+            <Button size="sm" variant="outline" onClick={() => setAddDialogOpen(true)}>
+              <Plus className="mr-1 size-3.5" />เพิ่มโต๊ะ
+            </Button>
+          )}
+          <button
+            type="button"
+            onClick={() => { setEditMode((e) => !e); setEditingTable(null); }}
+            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+              editMode ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-foreground hover:bg-muted/50'
+            }`}
+          >
+            {editMode ? 'เสร็จสิ้น' : 'แก้ไขผัง'}
+          </button>
+        </div>
+      </div>
+    );
+    return () => setCashierHeaderSlot(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setCashierHeaderSlot, editMode, counts.available, counts.occupied, counts.reserved, counts.linked]);
+
   // Compute linked-table relationships for SVG lines + node badges
   const linkPairs: { from: TableData; to: TableData; colorHex: string }[] = [];
   const sessionLinkedLabels = new Map<string, string[]>(); // primarySessionId → child labels
@@ -1858,34 +1941,36 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Toolbar */}
-      <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-3 gap-4">
-        <div className="flex items-center gap-4">
-          <h1 className="text-base font-semibold text-slate-900">ผังโต๊ะ</h1>
-          <div className="hidden sm:flex items-center gap-3 text-xs text-slate-500">
-            <LegendDot color="bg-green-500" label={`ว่าง (${counts.available ?? 0})`} />
-            <LegendDot color="bg-red-500" label={`มีลูกค้า (${counts.occupied ?? 0})`} />
-            <LegendDot color="bg-blue-500" label={`จอง (${counts.reserved ?? 0})`} />
-            {(counts.linked ?? 0) > 0 && <LegendDot color="bg-violet-500" label={`เชื่อมโยง (${counts.linked})`} />}
+      {/* Toolbar — shown only in standard sidebar layout (touchscreen uses the header slot) */}
+      {!setCashierHeaderSlot && (
+        <div className="flex shrink-0 items-center justify-between border-b border-border bg-card px-6 py-3 gap-4">
+          <div className="flex items-center gap-4">
+            <h1 className="text-base font-semibold text-foreground">ผังโต๊ะ</h1>
+            <div className="hidden sm:flex items-center gap-3 text-xs text-muted-foreground">
+              <LegendDot color="bg-green-500" label={`ว่าง (${counts.available ?? 0})`} />
+              <LegendDot color="bg-red-500" label={`มีลูกค้า (${counts.occupied ?? 0})`} />
+              <LegendDot color="bg-blue-500" label={`จอง (${counts.reserved ?? 0})`} />
+              {(counts.linked ?? 0) > 0 && <LegendDot color="bg-violet-500" label={`เชื่อมโยง (${counts.linked})`} />}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {editMode && (
+              <Button size="sm" variant="outline" onClick={() => setAddDialogOpen(true)}>
+                <Plus className="mr-1 size-3.5" />เพิ่มโต๊ะ
+              </Button>
+            )}
+            <button
+              type="button"
+              onClick={() => { setEditMode((e) => !e); setEditingTable(null); }}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                editMode ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-foreground hover:bg-muted/50'
+              }`}
+            >
+              {editMode ? 'เสร็จสิ้น' : 'แก้ไขผัง'}
+            </button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {editMode && (
-            <Button size="sm" variant="outline" onClick={() => setAddDialogOpen(true)}>
-              <Plus className="mr-1 size-3.5" />เพิ่มโต๊ะ
-            </Button>
-          )}
-          <button
-            type="button"
-            onClick={() => { setEditMode((e) => !e); setEditingTable(null); }}
-            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-              editMode ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            {editMode ? 'เสร็จสิ้น' : 'แก้ไขผัง'}
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Move mode banner */}
       {moveSessionId && (
@@ -1900,12 +1985,12 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
       {/* Canvas + Edit Panel */}
       <div className="flex flex-1 overflow-hidden">
         {/* Canvas area: measures itself, scales canvas to fit without scrolling */}
-        <div ref={containerRef} className="flex-1 overflow-hidden bg-slate-100 flex items-center justify-center">
+        <div ref={containerRef} className="flex-1 overflow-hidden bg-muted/50 flex items-center justify-center">
           {/* Spacer: occupies the scaled dimensions so centering works correctly */}
           <div style={{ width: canvasW * scale, height: canvasH * scale, flexShrink: 0 }}>
           <DndContext sensors={sensors} modifiers={[snapModifier]} onDragEnd={handleDragEnd}>
             <div
-              className="relative bg-white rounded-xl shadow-inner border border-slate-200"
+              className="relative bg-card rounded-xl shadow-inner border border-border"
               style={{ width: canvasW, height: canvasH, transform: `scale(${scale})`, transformOrigin: 'top left' }}
               onClick={editMode ? (e) => { if (e.target === e.currentTarget) setEditingTable(null); } : undefined}
             >

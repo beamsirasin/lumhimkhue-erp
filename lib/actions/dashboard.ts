@@ -8,7 +8,7 @@ import { startOfDay, startOfISOWeek, startOfMonth, subDays, addDays, addMonths, 
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
-import { payments, sessions, sessionGuests, tables, orderItems, orders, menuItems, recipes, recipeIngredients, ingredients, payrollCycles, payrollItems } from '@/lib/db/schema';
+import { payments, sessions, sessionGuests, pricingTiles, tables, orderItems, orders, menuItems, recipes, recipeIngredients, ingredients, payrollCycles, payrollItems } from '@/lib/db/schema';
 
 // Pre-aggregated guest totals per session — used as a derived table to replace
 // correlated subqueries. Joining once is O(n) vs O(n * index_lookup) per row.
@@ -155,19 +155,30 @@ export type DashboardData = NonNullable<
   Extract<Awaited<ReturnType<typeof getDashboardData>>, { ok: true }>['data']
 >;
 
-export async function getReportSummary(fromDate: string, toDate: string) {
+export async function getReportSummary(
+  fromDate: string,
+  toDate: string,
+  sessionType: 'all' | 'primary' | 'secondary' = 'all',
+) {
   const session = await requireOwner();
   if (!session) return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
 
   try {
     const from = fromZonedTime(startOfDay(toZonedTime(new Date(fromDate), TZ)), TZ);
-    const toEnd = fromZonedTime(
-      startOfDay(toZonedTime(new Date(toDate), TZ)),
-      TZ,
-    );
-    // include full toDate day
+    const toEnd = fromZonedTime(startOfDay(toZonedTime(new Date(toDate), TZ)), TZ);
     toEnd.setDate(toEnd.getDate() + 1);
 
+    const sessionFilter =
+      sessionType === 'primary'
+        ? isNull(sessions.parentSessionId)
+        : sessionType === 'secondary'
+        ? not(isNull(sessions.parentSessionId))
+        : undefined;
+
+    const dateFilter = and(gte(payments.paidAt, from), not(gte(payments.paidAt, toEnd)));
+    const baseWhere = sessionFilter ? and(dateFilter, sessionFilter) : dateFilter;
+
+    // ── Per-day rows ───────────────────────────────────────────────────────
     const rows = await db
       .select({
         date: sql<string>`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`,
@@ -178,9 +189,37 @@ export async function getReportSummary(fromDate: string, toDate: string) {
       .from(payments)
       .innerJoin(sessions, eq(payments.sessionId, sessions.id))
       .leftJoin(guestSums, eq(guestSums.sessionId, sessions.id))
-      .where(and(gte(payments.paidAt, from), not(gte(payments.paidAt, toEnd))))
+      .where(baseWhere)
       .groupBy(sql`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`)
       .orderBy(sql`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`);
+
+    // ── Guest breakdown by pricing tile ────────────────────────────────────
+    const guestBreakdown = await db
+      .select({
+        name: pricingTiles.name,
+        sortOrder: pricingTiles.sortOrder,
+        total: sql<number>`coalesce(sum(${sessionGuests.quantity}), 0)`,
+      })
+      .from(sessionGuests)
+      .innerJoin(pricingTiles, eq(sessionGuests.pricingTileId, pricingTiles.id))
+      .innerJoin(sessions, eq(sessionGuests.sessionId, sessions.id))
+      .innerJoin(payments, eq(payments.sessionId, sessions.id))
+      .where(and(baseWhere, eq(pricingTiles.category, 'guest')))
+      .groupBy(pricingTiles.id, pricingTiles.name, pricingTiles.sortOrder)
+      .orderBy(pricingTiles.sortOrder);
+
+    // ── Payment method breakdown ───────────────────────────────────────────
+    const paymentBreakdown = await db
+      .select({
+        method: payments.paymentMethod,
+        revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
+        count: sql<number>`count(*)`,
+      })
+      .from(payments)
+      .innerJoin(sessions, eq(payments.sessionId, sessions.id))
+      .where(baseWhere)
+      .groupBy(payments.paymentMethod)
+      .orderBy(payments.paymentMethod);
 
     const data = rows.map((r) => ({
       date: r.date,
@@ -191,15 +230,23 @@ export async function getReportSummary(fromDate: string, toDate: string) {
     }));
 
     const totals = data.reduce(
-      (acc, r) => ({
-        sessions: acc.sessions + r.sessions,
-        guests: acc.guests + r.guests,
-        revenue: acc.revenue + r.revenue,
-      }),
+      (acc, r) => ({ sessions: acc.sessions + r.sessions, guests: acc.guests + r.guests, revenue: acc.revenue + r.revenue }),
       { sessions: 0, guests: 0, revenue: 0 },
     );
 
-    return { ok: true as const, data: { rows: data, totals } };
+    return {
+      ok: true as const,
+      data: {
+        rows: data,
+        totals,
+        guestBreakdown: guestBreakdown.map((r) => ({ name: r.name, total: Number(r.total) })),
+        paymentBreakdown: paymentBreakdown.map((r) => ({
+          method: r.method,
+          revenue: Number(r.revenue),
+          count: Number(r.count),
+        })),
+      },
+    };
   } catch (e) {
     console.error('[getReportSummary]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด' };

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -78,43 +78,43 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
         </DialogHeader>
 
         {isLoading && (
-          <div className="py-8 text-center text-sm text-slate-400">กำลังโหลด...</div>
+          <div className="py-8 text-center text-sm text-muted-foreground">กำลังโหลด...</div>
         )}
 
         {!isLoading && !data && (
-          <div className="py-8 text-center text-sm text-slate-400">ไม่พบข้อมูล</div>
+          <div className="py-8 text-center text-sm text-muted-foreground">ไม่พบข้อมูล</div>
         )}
 
         {data && (
           <div className="space-y-4">
             {/* Session header */}
-            <div className="rounded-lg bg-slate-50 p-4 space-y-2 text-sm">
+            <div className="rounded-lg bg-muted/30 p-4 space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-slate-500">โต๊ะ</span>
-                <span className="font-semibold text-slate-900">
+                <span className="text-muted-foreground">โต๊ะ</span>
+                <span className="font-semibold text-foreground">
                   {data.session.table.label}
                   {data.session.table.zone !== 'ทั่วไป' && (
-                    <span className="ml-1 font-normal text-slate-400">({data.session.table.zone})</span>
+                    <span className="ml-1 font-normal text-muted-foreground">({data.session.table.zone})</span>
                   )}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">เริ่มต้น</span>
-                <span className="tabular-nums text-slate-900">
+                <span className="text-muted-foreground">เริ่มต้น</span>
+                <span className="tabular-nums text-foreground">
                   {format(new Date(data.session.startedAt), 'HH:mm น. (d MMM yy)', { locale: th })}
                 </span>
               </div>
               {data.session.closedAt && (
                 <>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">สิ้นสุด</span>
-                    <span className="tabular-nums text-slate-900">
+                    <span className="text-muted-foreground">สิ้นสุด</span>
+                    <span className="tabular-nums text-foreground">
                       {format(new Date(data.session.closedAt), 'HH:mm น. (d MMM yy)', { locale: th })}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">เวลาที่ใช้</span>
-                    <span className="tabular-nums text-slate-900">
+                    <span className="text-muted-foreground">เวลาที่ใช้</span>
+                    <span className="tabular-nums text-foreground">
                       {(() => {
                         const min = differenceInMinutes(
                           new Date(data.session.closedAt!),
@@ -130,8 +130,8 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
               )}
               {data.session.notes && (
                 <div className="flex justify-between">
-                  <span className="text-slate-500">หมายเหตุ</span>
-                  <span className="text-slate-900">{data.session.notes}</span>
+                  <span className="text-muted-foreground">หมายเหตุ</span>
+                  <span className="text-foreground">{data.session.notes}</span>
                 </div>
               )}
             </div>
@@ -139,21 +139,21 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
             {/* Guests */}
             {data.session.guests.length > 0 && (
               <div>
-                <p className="mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   ผู้เข้าใช้บริการ
                 </p>
                 <div className="space-y-1.5">
                   {data.session.guests.map((g) => (
                     <div key={g.id} className="flex justify-between text-sm">
-                      <span className="text-slate-700">{g.pricingTile.name} ×{g.quantity}</span>
-                      <span className="tabular-nums font-medium text-slate-900">
+                      <span className="text-foreground">{g.pricingTile.name} ×{g.quantity}</span>
+                      <span className="tabular-nums font-medium text-foreground">
                         ฿{(Number(g.pricingTile.price) * g.quantity).toLocaleString('th-TH')}
                       </span>
                     </div>
                   ))}
-                  <div className="flex justify-between border-t border-slate-100 pt-1.5 text-sm font-semibold">
-                    <span className="text-slate-700">รวม</span>
-                    <span className="tabular-nums text-slate-900">
+                  <div className="flex justify-between border-t border-border pt-1.5 text-sm font-semibold">
+                    <span className="text-foreground">รวม</span>
+                    <span className="tabular-nums text-foreground">
                       ฿{data.session.guests
                         .reduce((s, g) => s + Number(g.pricingTile.price) * g.quantity, 0)
                         .toLocaleString('th-TH')}
@@ -166,44 +166,44 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
             {/* Payment */}
             {showPayment && data.session.payment && (
               <div>
-                <p className="mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   การชำระเงิน
                 </p>
 
                 {/* Payment details */}
                 <div className="rounded-lg bg-green-50 border border-green-200 p-3 space-y-1.5 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-slate-600">ยอดชำระ</span>
-                    <span className="tabular-nums font-bold text-slate-900">
+                    <span className="text-muted-foreground">ยอดชำระ</span>
+                    <span className="tabular-nums font-bold text-foreground">
                       ฿{Number(data.session.payment.total).toLocaleString('th-TH')}
                     </span>
                   </div>
                   {Number(data.session.payment.discount) > 0 && (
                     <div className="flex justify-between text-xs">
-                      <span className="text-slate-500">ส่วนลด</span>
+                      <span className="text-muted-foreground">ส่วนลด</span>
                       <span className="tabular-nums text-green-700">
                         −฿{Number(data.session.payment.discount).toLocaleString('th-TH')}
                       </span>
                     </div>
                   )}
                   <div className="flex justify-between text-xs">
-                    <span className="text-slate-500">วิธีชำระ</span>
-                    <span className="text-slate-700">
+                    <span className="text-muted-foreground">วิธีชำระ</span>
+                    <span className="text-foreground">
                       {METHOD_LABEL[data.session.payment.paymentMethod] ?? data.session.payment.paymentMethod}
                     </span>
                   </div>
                   {Number(data.session.payment.changeAmount) > 0 && (
                     <div className="flex justify-between text-xs">
-                      <span className="text-slate-500">เงินทอน</span>
-                      <span className="tabular-nums text-slate-700">
+                      <span className="text-muted-foreground">เงินทอน</span>
+                      <span className="tabular-nums text-foreground">
                         ฿{Number(data.session.payment.changeAmount).toLocaleString('th-TH')}
                       </span>
                     </div>
                   )}
                   {data.session.payment.notes && (
                     <div className="flex justify-between text-xs">
-                      <span className="text-slate-500">หมายเหตุ</span>
-                      <span className="text-right text-slate-700 max-w-[60%]">
+                      <span className="text-muted-foreground">หมายเหตุ</span>
+                      <span className="text-right text-foreground max-w-[60%]">
                         {data.session.payment.notes}
                       </span>
                     </div>
@@ -216,7 +216,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                     <button
                       type="button"
                       onClick={() => setEditConfirm(true)}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs font-medium text-foreground hover:bg-muted/30 transition-colors"
                     >
                       <Pencil className="size-3" />แก้ไขการชำระเงิน
                     </button>
@@ -242,7 +242,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                         type="button"
                         onClick={() => setEditConfirm(false)}
                         disabled={submitting}
-                        className="flex-1 rounded-lg border border-slate-200 py-1.5 text-xs font-medium text-slate-600 hover:bg-white disabled:opacity-50"
+                        className="flex-1 rounded-lg border border-border py-1.5 text-xs font-medium text-muted-foreground hover:bg-card disabled:opacity-50"
                       >
                         ยกเลิก
                       </button>
@@ -271,7 +271,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                         type="button"
                         onClick={() => setDelConfirm(false)}
                         disabled={submitting}
-                        className="flex-1 rounded-lg border border-slate-200 py-1.5 text-xs font-medium text-slate-600 hover:bg-white disabled:opacity-50"
+                        className="flex-1 rounded-lg border border-border py-1.5 text-xs font-medium text-muted-foreground hover:bg-card disabled:opacity-50"
                       >
                         ยกเลิก
                       </button>
@@ -293,20 +293,20 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
             {/* Orders */}
             {data.orders.length > 0 && (
               <div>
-                <p className="mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   รายการอาหาร ({data.orders.flatMap((o) => o.items).length} รายการ)
                 </p>
                 <div className="space-y-1.5 max-h-48 overflow-y-auto">
                   {data.orders.flatMap((o) =>
                     o.items.map((item) => (
-                      <div key={item.id} className="flex justify-between text-xs text-slate-700">
+                      <div key={item.id} className="flex justify-between text-xs text-foreground">
                         <span>
                           {item.menuItem?.name ?? (item as typeof item & { itemName?: string | null }).itemName ?? '-'}
-                          {item.notes && <span className="ml-1 text-slate-400">({item.notes})</span>}
+                          {item.notes && <span className="ml-1 text-muted-foreground">({item.notes})</span>}
                           {item.status === 'cancelled' && <span className="ml-1 text-red-400">[ยกเลิก]</span>}
                         </span>
                         <div className="flex gap-2 shrink-0">
-                          <span className="tabular-nums text-slate-500">×{item.quantity}</span>
+                          <span className="tabular-nums text-muted-foreground">×{item.quantity}</span>
                           {!item.menuItem?.isBuffet && (
                             <span className="tabular-nums text-red-600">
                               +฿{(Number(item.menuItem?.extraPrice ?? 0) * item.quantity).toLocaleString('th-TH')}

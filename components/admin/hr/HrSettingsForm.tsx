@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
@@ -53,7 +53,7 @@ export function HrSettingsForm({ initialData }: Props) {
     <form onSubmit={onSubmit} className="space-y-8">
       {/* เรทหักเงิน */}
       <section className="space-y-4">
-        <h3 className="text-sm font-semibold text-slate-700">เรทหักเงิน</h3>
+        <h3 className="text-sm font-semibold text-foreground">เรทหักเงิน</h3>
         <Separator />
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
@@ -83,7 +83,7 @@ export function HrSettingsForm({ initialData }: Props) {
 
       {/* เวลากะ */}
       <section className="space-y-4">
-        <h3 className="text-sm font-semibold text-slate-700">เวลากะงาน</h3>
+        <h3 className="text-sm font-semibold text-foreground">เวลากะงาน</h3>
         <Separator />
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">

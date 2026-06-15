@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -204,7 +204,7 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
     <div className="p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold text-slate-900">ข้อมูลพนักงาน</h2>
+        <h2 className="text-lg font-semibold text-foreground">ข้อมูลพนักงาน</h2>
         <Button onClick={openCreate} size="sm">
           <Plus className="size-4 mr-1.5" />
           เพิ่มพนักงาน
@@ -228,13 +228,13 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
       {/* Full-time section */}
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-3">
-          <div className="h-5 w-1 rounded-full bg-slate-800" />
-          <h3 className="text-sm font-semibold text-slate-800">พนักงานประจำ</h3>
-          <span className="text-xs text-slate-400 tabular-nums">{fullTime.length} คน</span>
+          <div className="h-5 w-1 rounded-full bg-primary" />
+          <h3 className="text-sm font-semibold text-foreground">พนักงานประจำ</h3>
+          <span className="text-xs text-muted-foreground tabular-nums">{fullTime.length} คน</span>
         </div>
-        <div className="rounded-lg border border-slate-200 overflow-hidden">
+        <div className="rounded-lg border border-border overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-600">
+            <thead className="bg-muted/30 text-muted-foreground">
               <tr>
                 <th className="px-4 py-3 text-left font-medium">ชื่อ-สกุล</th>
                 <th className="px-4 py-3 text-left font-medium">เบอร์</th>
@@ -245,28 +245,28 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
                 <th className="px-4 py-3 w-20" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-border">
               {fullTime.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-400 text-sm">
+                  <td colSpan={7} className="px-4 py-6 text-center text-muted-foreground text-sm">
                     ไม่มีพนักงานประจำ
                   </td>
                 </tr>
               ) : (
                 fullTime.map((emp) => (
-                  <tr key={emp.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-900">
+                  <tr key={emp.id} className="hover:bg-muted/30">
+                    <td className="px-4 py-3 font-medium text-foreground">
                       {emp.firstName} {emp.lastName}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{emp.phone ?? '-'}</td>
-                    <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                    <td className="px-4 py-3 text-muted-foreground">{emp.phone ?? '-'}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-foreground">
                       ฿{Number(emp.baseSalaryPerCycle ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 0 })}
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-slate-600">
+                    <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
                       ฿{Number(emp.incentivePerDay ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 0 })}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`text-xs ${emp.ssfRegistered ? 'text-green-700' : 'text-slate-400'}`}>
+                      <span className={`text-xs ${emp.ssfRegistered ? 'text-green-700' : 'text-muted-foreground'}`}>
                         {emp.ssfRegistered ? 'สมัครแล้ว' : 'ไม่ได้สมัคร'}
                       </span>
                     </td>
@@ -296,13 +296,13 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
       {/* Part-time section */}
       <div>
         <div className="flex items-center gap-3 mb-3">
-          <div className="h-5 w-1 rounded-full bg-slate-400" />
-          <h3 className="text-sm font-semibold text-slate-700">พาร์ทไทม์</h3>
-          <span className="text-xs text-slate-400 tabular-nums">{partTime.length} คน</span>
+          <div className="h-5 w-1 rounded-full bg-muted" />
+          <h3 className="text-sm font-semibold text-foreground">พาร์ทไทม์</h3>
+          <span className="text-xs text-muted-foreground tabular-nums">{partTime.length} คน</span>
         </div>
-        <div className="rounded-lg border border-slate-200 overflow-hidden">
+        <div className="rounded-lg border border-border overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-600">
+            <thead className="bg-muted/30 text-muted-foreground">
               <tr>
                 <th className="px-4 py-3 text-left font-medium">ชื่อ-สกุล</th>
                 <th className="px-4 py-3 text-left font-medium">เบอร์</th>
@@ -312,25 +312,25 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
                 <th className="px-4 py-3 w-20" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-border">
               {partTime.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-400 text-sm">
+                  <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground text-sm">
                     ไม่มีพนักงานพาร์ทไทม์
                   </td>
                 </tr>
               ) : (
                 partTime.map((emp) => (
-                  <tr key={emp.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-900">
+                  <tr key={emp.id} className="hover:bg-muted/30">
+                    <td className="px-4 py-3 font-medium text-foreground">
                       {emp.firstName} {emp.lastName}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{emp.phone ?? '-'}</td>
-                    <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                    <td className="px-4 py-3 text-muted-foreground">{emp.phone ?? '-'}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-foreground">
                       ฿{Number(emp.hourlyRate ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 0 })}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`text-xs ${emp.ssfRegistered ? 'text-green-700' : 'text-slate-400'}`}>
+                      <span className={`text-xs ${emp.ssfRegistered ? 'text-green-700' : 'text-muted-foreground'}`}>
                         {emp.ssfRegistered ? 'สมัครแล้ว' : 'ไม่ได้สมัคร'}
                       </span>
                     </td>
@@ -367,7 +367,7 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
           <div className="space-y-6 py-2">
             {/* ข้อมูลส่วนตัว */}
             <section className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">ข้อมูลส่วนตัว</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">ข้อมูลส่วนตัว</p>
               <Separator />
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -387,7 +387,7 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
 
             {/* ข้อมูลธนาคาร */}
             <section className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">ข้อมูลธนาคาร</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">ข้อมูลธนาคาร</p>
               <Separator />
               <div className="space-y-1.5">
                 <Label>ธนาคาร</Label>
@@ -416,10 +416,10 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
                 className="flex w-full items-center gap-2 text-left"
               >
                 {legalOpen
-                  ? <ChevronDown className="size-3.5 text-slate-400" />
-                  : <ChevronRight className="size-3.5 text-slate-400" />
+                  ? <ChevronDown className="size-3.5 text-muted-foreground" />
+                  : <ChevronRight className="size-3.5 text-muted-foreground" />
                 }
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">ข้อมูลการเงินและกฎหมาย</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">ข้อมูลการเงินและกฎหมาย</p>
               </button>
               {legalOpen && (
                 <>
@@ -438,12 +438,12 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
                         <Input
                           value={form.nationalId ? maskNationalId(form.nationalId) : ''}
                           disabled
-                          className="text-slate-400 bg-slate-50"
+                          className="text-muted-foreground bg-muted/30"
                           placeholder="—"
                         />
                       )}
                       {!isOwner && editingId && (
-                        <p className="text-[11px] text-slate-400">เฉพาะ owner เท่านั้นที่เห็นเลขเต็ม</p>
+                        <p className="text-[11px] text-muted-foreground">เฉพาะ owner เท่านั้นที่เห็นเลขเต็ม</p>
                       )}
                     </div>
                     <div className="space-y-1.5">
@@ -481,7 +481,7 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
                         checked={form.ssfRegistered}
                         onChange={(e) => setField('ssfRegistered', e.target.checked)}
                       />
-                      <span className="text-sm text-slate-700">สมัครประกันสังคม (SSF 5% สูงสุด ฿750/เดือน)</span>
+                      <span className="text-sm text-foreground">สมัครประกันสังคม (SSF 5% สูงสุด ฿750/เดือน)</span>
                     </label>
                   </div>
                 </>
@@ -490,7 +490,7 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
 
             {/* ประเภทการจ้าง */}
             <section className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">ประเภทการจ้าง</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">ประเภทการจ้าง</p>
               <Separator />
               <div className="flex gap-3">
                 {(['full_time', 'part_time'] as const).map((t) => (
@@ -498,8 +498,8 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
                     key={t}
                     className={`flex flex-1 items-center justify-center gap-2 rounded-lg border py-2.5 cursor-pointer text-sm font-medium transition-colors ${
                       form.type === t
-                        ? 'border-slate-800 bg-slate-800 text-white'
-                        : 'border-slate-200 text-slate-600 hover:border-slate-400'
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border text-muted-foreground hover:border-border'
                     }`}
                   >
                     <input
@@ -551,7 +551,7 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
 
             {/* อื่นๆ */}
             <section className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">อื่นๆ</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">อื่นๆ</p>
               <Separator />
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">

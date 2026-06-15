@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { renderReceiptHTML } from '@/lib/printer/templates';
@@ -118,13 +118,13 @@ body { margin: 0 auto; background: #fff; }
   return (
     <div className="flex flex-col items-center gap-2">
       {/* Paper label */}
-      <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
+      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
         {props.paperWidth}mm · ตัวอย่างบิล
       </span>
 
       {/* Paper shadow frame */}
       <div
-        className="bg-white shadow-md rounded"
+        className="bg-card shadow-md rounded"
         style={{ width: paperPx, minHeight: 200 }}
       >
         <iframe
@@ -144,7 +144,7 @@ body { margin: 0 auto; background: #fff; }
         />
       </div>
 
-      <p className="text-[10px] text-slate-400">* รายการและยอดเงินเป็นข้อมูลตัวอย่าง *</p>
+      <p className="text-[10px] text-muted-foreground">* รายการและยอดเงินเป็นข้อมูลตัวอย่าง *</p>
     </div>
   );
 }

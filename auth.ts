@@ -8,7 +8,7 @@ import { users } from '@/lib/db/schema';
 import { loginSchema } from '@/lib/validations/auth';
 import { isLoginRateLimited } from '@/lib/auth/ratelimit';
 
-export const { auth, handlers, signIn, signOut } = NextAuth({
+export const { auth, handlers, signIn, signOut, unstable_update } = NextAuth({
   ...authConfig,
   providers: [
     Credentials({
@@ -42,6 +42,8 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           name: user.name,
           role: user.role,
           branchId: user.branchId ?? null,
+          uiLayout: user.uiLayout ?? null,
+          allowedModules: user.allowedModules ?? [],
         };
       },
     }),

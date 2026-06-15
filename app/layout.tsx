@@ -23,7 +23,7 @@ export default function RootLayout({
     <html lang="th" className={`${ibmPlexSansThai.variable} h-full`}>
       <body className="min-h-full font-[family-name:var(--font-ibm-plex-sans-thai)] antialiased">
         <QueryProvider>{children}</QueryProvider>
-        <Toaster richColors position="top-right" />
+        <Toaster richColors position="top-center" />
       </body>
     </html>
   );

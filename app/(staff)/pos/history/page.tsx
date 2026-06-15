@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { format } from 'date-fns';
@@ -24,7 +24,7 @@ export default function PaymentHistoryPage() {
       </div>
       <div className="flex-1 min-w-0 overflow-hidden">
         {isLoading ? (
-          <div className="py-16 text-center text-sm text-slate-400">กำลังโหลด...</div>
+          <div className="py-16 text-center text-sm text-muted-foreground">กำลังโหลด...</div>
         ) : (
           <PaymentHistoryTable rows={rows} date={selectedDate} />
         )}

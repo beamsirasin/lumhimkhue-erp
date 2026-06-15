@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo, useTransition } from 'react';
 import { format } from 'date-fns';
@@ -51,10 +51,10 @@ function fmtNum(n: number) {
 }
 
 function inputCls(highlight = false) {
-  return `w-24 rounded-lg border px-2 py-1.5 text-right text-sm tabular-nums outline-none transition-colors disabled:bg-slate-50 disabled:text-slate-400 ${
+  return `w-24 rounded-lg border px-2 py-1.5 text-right text-sm tabular-nums outline-none transition-colors disabled:bg-muted/30 disabled:text-muted-foreground ${
     highlight
       ? 'border-red-300 bg-red-50 text-red-700 focus:border-red-400'
-      : 'border-slate-300 bg-white focus:border-slate-500'
+      : 'border-border bg-card focus:border-primary'
   }`;
 }
 
@@ -238,15 +238,15 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
   return (
     <div className="p-6 space-y-5">
       {/* Tab navigation */}
-      <div className="border-b border-slate-200 -mx-6 px-6">
+      <div className="border-b border-border -mx-6 px-6">
         <div className="flex gap-1">
           <button
             type="button"
             onClick={() => setActiveTab('daily')}
             className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
               activeTab === 'daily'
-                ? 'border-slate-800 text-slate-900'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
             }`}
           >
             นับสต็อกรายวัน
@@ -256,8 +256,8 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
             onClick={() => setActiveTab('history')}
             className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
               activeTab === 'history'
-                ? 'border-slate-800 text-slate-900'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
             }`}
           >
             ผลการนับสต็อก
@@ -272,8 +272,8 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-lg font-semibold text-slate-900">นับสต็อกรายวัน</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <h1 className="text-lg font-semibold text-foreground">นับสต็อกรายวัน</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             {format(new Date(today + 'T00:00:00'), 'd MMMM yyyy', { locale: th })}
           </p>
         </div>
@@ -300,20 +300,20 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
               {existing.status === 'submitted' ? 'ส่งแล้ว' : 'แบบร่าง'}
             </span>
           ) : (
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">ใหม่</span>
+            <span className="rounded-full bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground">ใหม่</span>
           )}
         </div>
       </div>
 
       {/* Summary bar */}
-      <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-3 flex flex-wrap gap-6 items-center">
+      <div className="rounded-xl border border-border bg-muted/30 px-5 py-3 flex flex-wrap gap-6 items-center">
         <div className="text-sm">
-          <span className="text-slate-500">รายการทั้งหมด </span>
-          <span className="font-semibold text-slate-900">{initialData.ingredients.length}</span>
+          <span className="text-muted-foreground">รายการทั้งหมด </span>
+          <span className="font-semibold text-foreground">{initialData.ingredients.length}</span>
         </div>
         <div className="text-sm">
-          <span className="text-slate-500">ต่ำกว่าจุดสั่งซื้อ </span>
-          <span className={`font-semibold ${stats.lowCount > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+          <span className="text-muted-foreground">ต่ำกว่าจุดสั่งซื้อ </span>
+          <span className={`font-semibold ${stats.lowCount > 0 ? 'text-red-600' : 'text-muted-foreground'}`}>
             {stats.lowCount}
           </span>
         </div>
@@ -324,7 +324,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
           </div>
         )}
         {Object.keys(initialData.openingBalances).length === 0 && (
-          <div className="text-xs text-slate-400 flex items-center gap-1">
+          <div className="text-xs text-muted-foreground flex items-center gap-1">
             <AlertTriangle className="size-3.5" />
             ไม่มีข้อมูลวันก่อนหน้า — ยอดยกมาเป็น 0
           </div>
@@ -338,7 +338,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
             className={`ml-auto flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
               showWeekly
                 ? 'border-purple-300 bg-purple-50 text-purple-700'
-                : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
+                : 'border-border bg-card text-muted-foreground hover:bg-muted/30'
             }`}
           >
             <Calendar className="size-3.5" />
@@ -382,24 +382,24 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
       {/* Stock count table grouped by category */}
       <div className="space-y-4">
         {grouped.map(({ category, items }) => (
-          <div key={category.id} className="rounded-xl bg-white overflow-hidden shadow-sm ring-1 ring-slate-900/5">
-            <div className="flex items-center gap-2 bg-slate-50 border-b border-slate-200 px-4 py-2.5">
-              <span className="text-xs font-semibold text-slate-700">{category.name}</span>
-              <span className="text-xs text-slate-400">{items.length} รายการ</span>
+          <div key={category.id} className="rounded-xl bg-card overflow-hidden shadow-sm ring-1 ring-border/40">
+            <div className="flex items-center gap-2 bg-muted/30 border-b border-border px-4 py-2.5">
+              <span className="text-xs font-semibold text-foreground">{category.name}</span>
+              <span className="text-xs text-muted-foreground">{items.length} รายการ</span>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[860px]">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/50">
-                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 w-48">วัตถุดิบ</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-slate-500 w-28">ยอดยกมา</th>
+                  <tr className="border-b border-border bg-muted/30/50">
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground w-48">วัตถุดิบ</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground w-28">ยอดยกมา</th>
                     <th className="px-3 py-2 text-right text-xs font-medium text-blue-600 w-28 bg-blue-50/40">รับเข้า (auto)</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-slate-600 w-28 bg-slate-100/60">รวมมี</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground w-28 bg-muted/50/60">รวมมี</th>
                     <th className="px-3 py-2 text-center text-xs font-medium text-emerald-700 w-28 bg-emerald-50/50">
                       ↑ นับได้จริง
                     </th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-slate-500 w-28">ใช้ไป</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground w-28">ใช้ไป</th>
                     {guestCount > 0 && (
                       <th className="px-3 py-2 text-right text-xs font-medium text-blue-600 w-24">
                         /หัว
@@ -408,7 +408,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
                     <th className="px-3 py-2 text-right text-xs font-medium text-orange-600 w-28">ต้องสั่ง</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-border/30">
                   {items.map((ing) => {
                     const state = itemMap[ing.id] ?? { openingBalance: 0, receivedQty: 0, physicalCount: 0, notes: '' };
                     const total = state.openingBalance + state.receivedQty;
@@ -424,13 +424,13 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
                     const isWeekly = ing.countFrequency === 'weekly';
 
                     return (
-                      <tr key={ing.id} className={`transition-colors hover:bg-slate-50/50 ${isLow ? 'bg-red-50/20' : ''}`}>
+                      <tr key={ing.id} className={`transition-colors hover:bg-muted/30/50 ${isLow ? 'bg-red-50/20' : ''}`}>
                         {/* ชื่อ */}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <div>
-                              <p className="font-medium text-slate-900">{ing.name}</p>
-                              <p className="text-xs text-slate-400 mt-0.5">
+                              <p className="font-medium text-foreground">{ing.name}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
                                 {ing.unit}
                                 {minStock > 0 && (
                                   <span className="ml-1.5">• จุดสั่ง {minStock.toLocaleString('th-TH')}</span>
@@ -447,28 +447,28 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
 
                         {/* ยอดยกมา */}
                         <td className="px-3 py-3 text-right">
-                          <span className="tabular-nums text-slate-500">{fmtNum(state.openingBalance)}</span>
-                          <span className="text-xs text-slate-400 ml-1">{ing.unit}</span>
+                          <span className="tabular-nums text-muted-foreground">{fmtNum(state.openingBalance)}</span>
+                          <span className="text-xs text-muted-foreground ml-1">{ing.unit}</span>
                         </td>
 
                         {/* รับเข้า (auto-filled, read-only) */}
                         <td className="px-3 py-3 text-right bg-blue-50/20">
-                          <span className={`tabular-nums ${state.receivedQty > 0 ? 'font-medium text-blue-700' : 'text-slate-300'}`}>
+                          <span className={`tabular-nums ${state.receivedQty > 0 ? 'font-medium text-blue-700' : 'text-muted-foreground/60'}`}>
                             {fmtNum(state.receivedQty)}
                           </span>
-                          <span className="text-xs text-slate-400 ml-1">{ing.unit}</span>
+                          <span className="text-xs text-muted-foreground ml-1">{ing.unit}</span>
                         </td>
 
                         {/* รวมมี (computed) */}
-                        <td className="px-3 py-3 text-right bg-slate-50/40">
-                          <span className="tabular-nums text-slate-600">{fmtNum(total)}</span>
-                          <span className="text-xs text-slate-400 ml-1">{ing.unit}</span>
+                        <td className="px-3 py-3 text-right bg-muted/30/40">
+                          <span className="tabular-nums text-muted-foreground">{fmtNum(total)}</span>
+                          <span className="text-xs text-muted-foreground ml-1">{ing.unit}</span>
                         </td>
 
                         {/* นับได้จริง (USER INPUT) */}
                         <td className="px-3 py-3 text-center bg-emerald-50/30">
                           {readonly ? (
-                            <span className={`tabular-nums font-semibold ${isLow ? 'text-red-600' : 'text-slate-800'}`}>
+                            <span className={`tabular-nums font-semibold ${isLow ? 'text-red-600' : 'text-foreground'}`}>
                               {fmtNum(closing)}
                               {isLow && <AlertTriangle className="inline ml-1 size-3.5 text-red-500 -mt-0.5" />}
                             </span>
@@ -484,7 +484,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
                               className={`w-24 rounded-lg border px-2 py-1.5 text-right text-sm tabular-nums outline-none transition-colors ${
                                 isLow
                                   ? 'border-red-300 bg-red-50 text-red-700 focus:border-red-400'
-                                  : 'border-emerald-300 bg-white text-emerald-800 focus:border-emerald-500'
+                                  : 'border-emerald-300 bg-card text-emerald-800 focus:border-emerald-500'
                               }`}
                             />
                           )}
@@ -495,8 +495,8 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
 
                         {/* ใช้ไป (computed) */}
                         <td className="px-3 py-3 text-right">
-                          <span className="tabular-nums text-slate-500">{fmtNum(usedQty)}</span>
-                          <span className="text-xs text-slate-400 ml-1">{ing.unit}</span>
+                          <span className="tabular-nums text-muted-foreground">{fmtNum(usedQty)}</span>
+                          <span className="text-xs text-muted-foreground ml-1">{ing.unit}</span>
                         </td>
 
                         {/* ใช้/หัว (when submitted + guest count known) */}
@@ -507,7 +507,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
                                 {perHead.toFixed(3)}
                               </span>
                             ) : (
-                              <span className="text-slate-300 text-xs">—</span>
+                              <span className="text-muted-foreground/60 text-xs">—</span>
                             )}
                           </td>
                         )}
@@ -519,7 +519,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
                               +{fmtNum(reorderQty)} {ing.unit}
                             </span>
                           ) : (
-                            <span className="text-slate-300 text-xs">—</span>
+                            <span className="text-muted-foreground/60 text-xs">—</span>
                           )}
                         </td>
                       </tr>
@@ -534,14 +534,14 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
 
       {/* Overall notes */}
       <div>
-        <label className="block text-xs font-medium text-slate-700 mb-1">หมายเหตุรวม (ถ้ามี)</label>
+        <label className="block text-xs font-medium text-foreground mb-1">หมายเหตุรวม (ถ้ามี)</label>
         <textarea
           value={countNotes}
           onChange={(e) => setCountNotes(e.target.value)}
           disabled={readonly}
           rows={2}
           placeholder="หมายเหตุสำหรับการนับครั้งนี้"
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500 resize-none disabled:bg-slate-50 disabled:text-slate-400"
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary resize-none disabled:bg-muted/30 disabled:text-muted-foreground"
         />
       </div>
 
@@ -552,7 +552,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
             type="button"
             onClick={handleSaveDraft}
             disabled={isPending}
-            className="flex-1 rounded-lg border border-slate-300 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+            className="flex-1 rounded-lg border border-border py-3 text-sm font-medium text-foreground hover:bg-muted/30 disabled:opacity-50 transition-colors"
           >
             {isPending ? (
               <span className="flex items-center justify-center gap-2">
@@ -564,7 +564,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
             type="button"
             onClick={handleSubmit}
             disabled={isPending}
-            className="flex-1 rounded-lg bg-slate-800 py-3 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+            className="flex-1 rounded-lg bg-primary py-3 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
             {isPending ? (
               <span className="flex items-center justify-center gap-2">
@@ -604,7 +604,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
             </button>
             <Link
               href="/inventory/orders"
-              className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-700"
+              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90"
             >
               สร้าง PO
             </Link>
@@ -615,13 +615,13 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
       {/* Stock Adjustment Dialog */}
       {showAdjDialog && existing?.id && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <h2 className="text-sm font-semibold text-slate-900">บันทึกปรับปรุงสต็อก</h2>
+          <div className="w-full max-w-md rounded-2xl bg-card shadow-xl">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <h2 className="text-sm font-semibold text-foreground">บันทึกปรับปรุงสต็อก</h2>
               <button
                 type="button"
                 onClick={() => setShowAdjDialog(false)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                className="rounded-lg p-1 text-muted-foreground hover:bg-muted/50 hover:text-muted-foreground"
                 aria-label="ปิด"
               >
                 <X className="size-4" />
@@ -630,15 +630,15 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
             <div className="px-5 py-4 space-y-4">
               {/* Type selector */}
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1.5">ประเภท</label>
+                <label className="block text-xs font-medium text-foreground mb-1.5">ประเภท</label>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => setAdjType('adjustment')}
                     className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${
                       adjType === 'adjustment'
-                        ? 'border-slate-800 bg-slate-800 text-white'
-                        : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border text-muted-foreground hover:bg-muted/30'
                     }`}
                   >
                     แก้ไขความผิดพลาด
@@ -649,14 +649,14 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
                     className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${
                       adjType === 'waste'
                         ? 'border-orange-600 bg-orange-600 text-white'
-                        : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                        : 'border-border text-muted-foreground hover:bg-muted/30'
                     }`}
                   >
                     <Flame className="inline size-3 mr-1" />
                     ของเสีย/สูญหาย
                   </button>
                 </div>
-                <p className="mt-1.5 text-xs text-slate-400">
+                <p className="mt-1.5 text-xs text-muted-foreground">
                   {adjType === 'waste'
                     ? 'บันทึกแยกจากยอดใช้ปกติ เพื่อคำนวณต้นทุนแม่นยำขึ้น'
                     : 'แก้ไขตัวเลขที่กรอกผิดในขั้นตอนก่อนหน้า'}
@@ -664,13 +664,13 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
+                <label className="block text-xs font-medium text-foreground mb-1">
                   วัตถุดิบ <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={adjIngredientId}
                   onChange={(e) => setAdjIngredientId(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
                 >
                   <option value="">— เลือกวัตถุดิบ —</option>
                   {initialData.ingredients.map((ing) => (
@@ -681,9 +681,9 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
+                <label className="block text-xs font-medium text-foreground mb-1">
                   จำนวนปรับปรุง <span className="text-red-500">*</span>
-                  <span className="ml-1 font-normal text-slate-400">(บวก = เพิ่ม, ลบ = ลด)</span>
+                  <span className="ml-1 font-normal text-muted-foreground">(บวก = เพิ่ม, ลบ = ลด)</span>
                 </label>
                 <input
                   type="number"
@@ -691,11 +691,11 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
                   value={adjQty}
                   onChange={(e) => setAdjQty(e.target.value)}
                   placeholder="เช่น 5 หรือ -3"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">
+                <label className="block text-xs font-medium text-foreground mb-1">
                   เหตุผล <span className="text-red-500">*</span>
                 </label>
                 <textarea
@@ -703,15 +703,15 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
                   onChange={(e) => setAdjReason(e.target.value)}
                   rows={2}
                   placeholder="ระบุเหตุผลในการปรับปรุง"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500 resize-none"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary resize-none"
                 />
               </div>
             </div>
-            <div className="flex gap-3 border-t border-slate-100 px-5 py-4">
+            <div className="flex gap-3 border-t border-border px-5 py-4">
               <button
                 type="button"
                 onClick={() => setShowAdjDialog(false)}
-                className="flex-1 rounded-lg border border-slate-300 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/30"
               >
                 ยกเลิก
               </button>

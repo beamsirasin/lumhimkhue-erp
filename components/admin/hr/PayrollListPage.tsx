@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -65,16 +65,16 @@ export function PayrollListPage({ initialCycles }: Props) {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold text-slate-900">เงินเดือน / รอบจ่าย</h2>
+        <h2 className="text-lg font-semibold text-foreground">เงินเดือน / รอบจ่าย</h2>
         <Button size="sm" onClick={() => setOpen(true)}>
           <Plus className="size-4 mr-1.5" />
           สร้างรอบจ่ายใหม่
         </Button>
       </div>
 
-      <div className="rounded-lg border border-slate-200 overflow-hidden">
+      <div className="rounded-lg border border-border overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-600">
+          <thead className="bg-muted/30 text-muted-foreground">
             <tr>
               <th className="px-4 py-3 text-left font-medium">ชื่องวด</th>
               <th className="px-4 py-3 text-left font-medium">ช่วงงาน</th>
@@ -85,32 +85,32 @@ export function PayrollListPage({ initialCycles }: Props) {
               <th className="px-4 py-3 w-10" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-border">
             {cycles.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-slate-400">ยังไม่มีรอบจ่าย</td>
+                <td colSpan={7} className="py-10 text-center text-muted-foreground">ยังไม่มีรอบจ่าย</td>
               </tr>
             ) : (
               cycles.map((c) => (
-                <tr key={c.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => router.push(`/hr/payroll/${c.id}`)}>
-                  <td className="px-4 py-3 font-medium text-slate-900">{c.name}</td>
-                  <td className="px-4 py-3 text-slate-600 text-xs">
+                <tr key={c.id} className="hover:bg-muted/30 cursor-pointer" onClick={() => router.push(`/hr/payroll/${c.id}`)}>
+                  <td className="px-4 py-3 font-medium text-foreground">{c.name}</td>
+                  <td className="px-4 py-3 text-muted-foreground text-xs">
                     {fmtDate(c.workStartDate)} – {fmtDate(c.workEndDate)}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 text-xs">{fmtDate(c.payDate)}</td>
+                  <td className="px-4 py-3 text-muted-foreground text-xs">{fmtDate(c.payDate)}</td>
                   <td className="px-4 py-3 text-center">
                     <Badge variant={STATUS_VARIANT[c.status]}>{STATUS_LABELS[c.status]}</Badge>
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-900">
+                  <td className="px-4 py-3 text-right tabular-nums font-semibold text-foreground">
                     ฿{c.totalNet.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
                   </td>
                   <td className="px-4 py-3 text-center text-sm">
-                    <span className={c.paidCount === c.totalCount && c.totalCount > 0 ? 'text-green-600 font-semibold' : 'text-slate-500'}>
+                    <span className={c.paidCount === c.totalCount && c.totalCount > 0 ? 'text-green-600 font-semibold' : 'text-muted-foreground'}>
                       {c.paidCount}/{c.totalCount}
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <ChevronRight className="size-4 text-slate-400" />
+                    <ChevronRight className="size-4 text-muted-foreground" />
                   </td>
                 </tr>
               ))
@@ -148,7 +148,7 @@ export function PayrollListPage({ initialCycles }: Props) {
               <Label>หมายเหตุ</Label>
               <Input value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} placeholder="ถ้ามี" />
             </div>
-            <p className="text-xs text-slate-500 bg-slate-50 rounded p-2">
+            <p className="text-xs text-muted-foreground bg-muted/30 rounded p-2">
               ระบบจะสร้าง payroll item ให้พนักงาน active ทุกคนอัตโนมัติ
               พร้อมคำนวณวันทำงานจากตารางงานและชั่วโมงจาก time entries
             </p>

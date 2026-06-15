@@ -9,7 +9,7 @@ import { SessionDetailDialog } from './SessionDetailDialog';
 
 const METHOD_LABEL: Record<string, string> = {
   cash:         'เงินสด',
-  cash_qr:      'สด+QR',
+  cash_qr:      'QR+เงินสด',
   qr_promptpay: 'QR',
   transfer:     'โอน',
   card:         'บัตร',
@@ -76,35 +76,35 @@ export function PaymentHistoryTable({ rows, date }: PaymentHistoryTableProps) {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Summary — fixed */}
       <div className="shrink-0 grid grid-cols-2 gap-3 p-6 pb-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">รายได้รวม</p>
-          <p className="mt-1 text-xl font-bold text-slate-900">
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">รายได้รวม</p>
+          <p className="mt-1.5 text-xl font-bold text-foreground">
             ฿{totalRevenue.toLocaleString('th-TH')}
           </p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">จำนวนบิล</p>
-          <p className="mt-1 text-xl font-bold text-slate-900">{paid.length}</p>
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">จำนวนบิล</p>
+          <p className="mt-1.5 text-xl font-bold text-foreground">{paid.length}</p>
         </div>
       </div>
 
       {/* Table — scrollable */}
       <div className="flex-1 overflow-y-auto px-6 pb-6">
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
         {paid.length === 0 ? (
-          <div className="py-16 text-center text-sm text-slate-400">
+          <div className="py-16 text-center text-sm text-muted-foreground">
             ไม่มีการชำระเงินในวันที่ {format(new Date(date), 'd MMMM yyyy', { locale: th })}
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-100">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">เลขที่บิล</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">โต๊ะ</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">เวลาปิด</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">ผู้เข้าใช้</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">ยอดชำระ</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">ช่องทาง</th>
+              <tr className="border-b border-border bg-muted/30">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">เลขที่บิล</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">โต๊ะ</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">เวลาปิด</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">ผู้เข้าใช้</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">ยอดชำระ</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">ช่องทาง</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -114,7 +114,7 @@ export function PaymentHistoryTable({ rows, date }: PaymentHistoryTableProps) {
                 return (
                 <tr
                   key={row.sessionId}
-                  className="border-b border-slate-50 last:border-0 cursor-pointer transition-colors hover:brightness-95"
+                  className="border-b border-border last:border-0 cursor-pointer transition-colors hover:bg-muted/30"
                   style={split ? {
                     borderLeft:   `3px solid ${split.borderColor}`,
                     borderRight:  `1px solid ${split.borderColor}`,
@@ -124,15 +124,15 @@ export function PaymentHistoryTable({ rows, date }: PaymentHistoryTableProps) {
                   } : undefined}
                   onClick={() => setDetailSessionId(row.sessionId)}
                 >
-                  <td className="px-4 py-3 tabular-nums text-xs text-slate-500 font-mono">
+                  <td className="px-4 py-3 tabular-nums text-xs text-muted-foreground font-mono">
                     {row.receiptNo ?? '—'}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-0.5">
-                      <span className="font-semibold text-slate-900">
+                      <span className="font-semibold text-foreground">
                         {row.tableLabel}
                         {row.zone !== 'ทั่วไป' && (
-                          <span className="ml-1 text-xs font-normal text-slate-400">
+                          <span className="ml-1 text-xs font-normal text-muted-foreground">
                             ({row.zone})
                           </span>
                         )}
@@ -144,14 +144,14 @@ export function PaymentHistoryTable({ rows, date }: PaymentHistoryTableProps) {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 tabular-nums text-slate-600">
+                  <td className="px-4 py-3 tabular-nums text-foreground">
                     {row.closedAt
                       ? format(new Date(row.closedAt), 'HH:mm', { locale: th })
                       : '—'}
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-600">
+                  <td className="px-4 py-3 text-xs text-foreground">
                     {row.guestCount === 0 ? (
-                      <span className="text-slate-400">—</span>
+                      <span className="text-muted-foreground">—</span>
                     ) : (
                       <div className="space-y-0.5">
                         {row.adultCount      > 0 && <div>ผู้ใหญ่ {row.adultCount}</div>}
@@ -162,18 +162,18 @@ export function PaymentHistoryTable({ rows, date }: PaymentHistoryTableProps) {
                       </div>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-900">
+                  <td className="px-4 py-3 text-right tabular-nums font-semibold text-foreground">
                     ฿{row.totalRevenue.toLocaleString('th-TH')}
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-500">
+                  <td className="px-4 py-3 text-xs text-muted-foreground">
                     {row.paymentMethod === 'cash_qr' ? (
                       <div className="space-y-0.5">
-                        <div className="font-medium text-slate-700">สด+QR</div>
-                        <div className="tabular-nums text-slate-400">
-                          สด ฿{row.receivedAmount.toLocaleString('th-TH')}
-                        </div>
-                        <div className="tabular-nums text-slate-400">
+                        <div className="font-medium text-foreground">QR+เงินสด</div>
+                        <div className="tabular-nums text-muted-foreground">
                           QR ฿{(row.totalRevenue - row.receivedAmount).toLocaleString('th-TH')}
+                        </div>
+                        <div className="tabular-nums text-muted-foreground">
+                          เงินสด ฿{row.receivedAmount.toLocaleString('th-TH')}
                         </div>
                       </div>
                     ) : (
@@ -181,7 +181,7 @@ export function PaymentHistoryTable({ rows, date }: PaymentHistoryTableProps) {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <ChevronRight className="size-4 text-slate-400" />
+                    <ChevronRight className="size-4 text-muted-foreground" />
                   </td>
                 </tr>
                 );

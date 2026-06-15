@@ -22,8 +22,8 @@ import {
   type UpdateSupplierInput,
 } from '@/lib/validations/inventory';
 
-const INPUT = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500';
-const BTN_PRIMARY = 'w-full rounded-lg bg-slate-800 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50';
+const INPUT = 'w-full rounded-lg border border-border bg-background text-foreground px-3 py-2 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50';
+const BTN_PRIMARY = 'w-full rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50';
 
 type Modal =
   | { type: 'add' }
@@ -65,13 +65,13 @@ export function SuppliersPage({ initialData, initialDataUpdatedAt }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-lg font-semibold text-slate-900">ผู้ขาย (Supplier)</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{suppliers.length} ราย</p>
+          <h1 className="text-lg font-semibold text-foreground">ผู้ขาย (Supplier)</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{suppliers.length} ราย</p>
         </div>
         <button
           type="button"
           onClick={() => setModal({ type: 'add' })}
-          className="flex shrink-0 items-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+          className="flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           <Plus className="size-4" />
           เพิ่ม Supplier
@@ -79,45 +79,45 @@ export function SuppliersPage({ initialData, initialDataUpdatedAt }: Props) {
       </div>
 
       {/* Table */}
-      <div className="rounded-xl bg-white overflow-hidden shadow-sm ring-1 ring-slate-900/5">
+      <div className="rounded-xl bg-card overflow-hidden shadow-sm ring-1 ring-border">
         {suppliers.length === 0 ? (
           <div className="py-16 text-center">
-            <Truck className="mx-auto size-8 text-slate-300 mb-2" />
-            <p className="text-sm text-slate-500">ยังไม่มีผู้ขาย</p>
+            <Truck className="mx-auto size-8 text-muted-foreground/60 mb-2" />
+            <p className="text-sm text-muted-foreground">ยังไม่มีผู้ขาย</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left">
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">ชื่อ</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">ผู้ติดต่อ</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">เบอร์โทร</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">เลขผู้เสียภาษี</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-center">จำนวน PO</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-center">สถานะ</th>
+                <tr className="border-b border-border bg-muted/30 text-left">
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">ชื่อ</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">ผู้ติดต่อ</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">เบอร์โทร</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">เลขผู้เสียภาษี</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground text-center">จำนวน PO</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground text-center">สถานะ</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-border">
                 {suppliers.map((s) => (
                   <tr
                     key={s.id}
-                    className={`transition-colors hover:bg-slate-50 ${!s.isActive ? 'opacity-50' : ''}`}
+                    className={`transition-colors hover:bg-muted/30 ${!s.isActive ? 'opacity-50' : ''}`}
                   >
                     <td className="px-4 py-3">
-                      <div className="font-medium text-slate-900">{s.name}</div>
+                      <div className="font-medium text-foreground">{s.name}</div>
                       {s.email && (
-                        <div className="text-xs text-slate-400 mt-0.5">{s.email}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">{s.email}</div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{s.contactName ?? '—'}</td>
-                    <td className="px-4 py-3 text-slate-600">{s.phone ?? '—'}</td>
-                    <td className="px-4 py-3 text-slate-500 font-mono text-xs">
+                    <td className="px-4 py-3 text-muted-foreground">{s.contactName ?? '—'}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{s.phone ?? '—'}</td>
+                    <td className="px-4 py-3 text-muted-foreground font-mono text-xs">
                       {s.taxId ?? '—'}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className="inline-flex items-center gap-1 text-slate-700 font-medium">
+                      <span className="inline-flex items-center gap-1 text-foreground font-medium">
                         {s.purchaseOrders.length}
                       </span>
                     </td>
@@ -129,7 +129,7 @@ export function SuppliersPage({ initialData, initialDataUpdatedAt }: Props) {
                         className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors disabled:opacity-50 ${
                           s.isActive
                             ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                            : 'bg-muted/50 text-muted-foreground hover:bg-muted'
                         }`}
                       >
                         {isToggling && toggleVar === s.id ? '…' : s.isActive ? 'เปิด' : 'ปิด'}
@@ -140,7 +140,7 @@ export function SuppliersPage({ initialData, initialDataUpdatedAt }: Props) {
                         {s.purchaseOrders.length > 0 && (
                           <Link
                             href={`/inventory/orders?supplierId=${s.id}`}
-                            className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-700 transition-colors"
+                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                           >
                             <ExternalLink className="size-3" />
                             ดู PO
@@ -149,7 +149,7 @@ export function SuppliersPage({ initialData, initialDataUpdatedAt }: Props) {
                         <button
                           type="button"
                           onClick={() => setModal({ type: 'edit', supplier: s })}
-                          className="text-xs text-slate-400 hover:text-slate-700 transition-colors"
+                          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                         >
                           แก้ไข
                         </button>
@@ -164,7 +164,7 @@ export function SuppliersPage({ initialData, initialDataUpdatedAt }: Props) {
       </div>
 
       {/* Notes row */}
-      <p className="text-xs text-slate-400">
+      <p className="text-xs text-muted-foreground">
         คลิก "ดู PO" เพื่อดูประวัติการสั่งซื้อของแต่ละผู้ขาย
       </p>
 
@@ -233,16 +233,16 @@ function SupplierForm({
   }
 
   return (
-    <div className="w-[480px] max-h-[90vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+    <div className="w-[480px] max-h-[90vh] overflow-y-auto rounded-xl bg-card p-6 shadow-xl">
       <div className="mb-5 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-900">
+        <h2 className="text-sm font-semibold text-foreground">
           {initial ? 'แก้ไขผู้ขาย' : 'เพิ่มผู้ขาย'}
         </h2>
         <button
           type="button"
           aria-label="ปิด"
           onClick={onClose}
-          className="text-slate-400 hover:text-slate-600 text-lg leading-none"
+          className="text-muted-foreground hover:text-foreground text-lg leading-none"
         >
           ×
         </button>
@@ -257,7 +257,7 @@ function SupplierForm({
         )}
 
         <div>
-          <label className="block text-xs font-medium text-slate-700 mb-1">
+          <label className="block text-xs font-medium text-muted-foreground mb-1">
             ชื่อผู้ขาย / บริษัท <span className="text-red-500">*</span>
           </label>
           <input
@@ -272,7 +272,7 @@ function SupplierForm({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">ผู้ติดต่อ</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">ผู้ติดต่อ</label>
             <input
               {...register('contactName')}
               placeholder="ชื่อผู้ติดต่อ"
@@ -280,7 +280,7 @@ function SupplierForm({
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">เบอร์โทร</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">เบอร์โทร</label>
             <input
               {...register('phone')}
               type="tel"
@@ -292,7 +292,7 @@ function SupplierForm({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">อีเมล</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">อีเมล</label>
             <input
               {...register('email')}
               type="email"
@@ -301,7 +301,7 @@ function SupplierForm({
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">เลขผู้เสียภาษี</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">เลขผู้เสียภาษี</label>
             <input
               {...register('taxId')}
               placeholder="0105512345678"
@@ -311,7 +311,7 @@ function SupplierForm({
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-slate-700 mb-1">ที่อยู่</label>
+          <label className="block text-xs font-medium text-muted-foreground mb-1">ที่อยู่</label>
           <textarea
             {...register('address')}
             rows={2}
@@ -321,7 +321,7 @@ function SupplierForm({
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-slate-700 mb-1">หมายเหตุ</label>
+          <label className="block text-xs font-medium text-muted-foreground mb-1">หมายเหตุ</label>
           <textarea
             {...register('notes')}
             rows={2}

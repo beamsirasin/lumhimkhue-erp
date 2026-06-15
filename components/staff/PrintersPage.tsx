@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { useConfirm } from '@/components/shared/ConfirmDialog';
@@ -28,7 +28,7 @@ const TYPE_LABEL: Record<PrinterType, string> = {
 const TYPE_BADGE: Record<PrinterType, string> = {
   usb:     'bg-blue-100 text-blue-700',
   network: 'bg-green-100 text-green-700',
-  browser: 'bg-slate-100 text-slate-600',
+  browser: 'bg-muted/50 text-muted-foreground',
 };
 
 /* ─── Form state ─────────────────────────────────────────────────────────── */
@@ -183,11 +183,11 @@ export function PrintersPage() {
       {confirmDialog}
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">เครื่องพิมพ์</h1>
+        <h1 className="text-xl font-semibold text-foreground">เครื่องพิมพ์</h1>
         <button
           type="button"
           onClick={openAdd}
-          className="flex items-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
         >
           <Plus className="size-4" />
           เพิ่มเครื่องพิมพ์
@@ -196,47 +196,47 @@ export function PrintersPage() {
 
       {/* Printer list */}
       {loading ? (
-        <div className="text-sm text-slate-400 py-12 text-center">กำลังโหลด…</div>
+        <div className="text-sm text-muted-foreground py-12 text-center">กำลังโหลด…</div>
       ) : printers.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 py-16 gap-3">
-          <Printer className="size-10 text-slate-300" />
-          <p className="text-sm text-slate-500">ยังไม่มีเครื่องพิมพ์</p>
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 gap-3">
+          <Printer className="size-10 text-muted-foreground/60" />
+          <p className="text-sm text-muted-foreground">ยังไม่มีเครื่องพิมพ์</p>
           <button
             type="button"
             onClick={openAdd}
-            className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
           >
             เพิ่มเครื่องพิมพ์ตัวแรก
           </button>
         </div>
       ) : (
-        <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">ชื่อ</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">ประเภท</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">กระดาษ</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500">ค่าเริ่มต้น</th>
+              <tr className="border-b border-border bg-muted/30">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">ชื่อ</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">ประเภท</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">กระดาษ</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">ค่าเริ่มต้น</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-border">
               {printers.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium text-slate-900">{p.name}</td>
+                <tr key={p.id} className="hover:bg-muted/30">
+                  <td className="px-4 py-3 font-medium text-foreground">{p.name}</td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${TYPE_BADGE[p.type]}`}>
                       {TYPE_LABEL[p.type]}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-500">{p.paperWidth} mm</td>
+                  <td className="px-4 py-3 text-muted-foreground">{p.paperWidth} mm</td>
                   <td className="px-4 py-3 text-center">
                     <button
                       type="button"
                       aria-label={p.isDefault ? 'ค่าเริ่มต้น' : 'ตั้งเป็นค่าเริ่มต้น'}
                       onClick={() => !p.isDefault && handleSetDefault(p)}
-                      className={p.isDefault ? 'text-amber-500' : 'text-slate-300 hover:text-amber-400'}
+                      className={p.isDefault ? 'text-amber-500' : 'text-muted-foreground/60 hover:text-amber-400'}
                     >
                       {p.isDefault ? <Star className="size-4 fill-current" /> : <StarOff className="size-4" />}
                     </button>
@@ -247,7 +247,7 @@ export function PrintersPage() {
                         type="button"
                         onClick={() => handleTest(p)}
                         disabled={!!testing}
-                        className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-700 disabled:opacity-50"
+                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
                       >
                         <FlaskConical className="size-3" />
                         {testing === p.id ? 'ทดสอบ…' : 'ทดสอบ'}
@@ -256,7 +256,7 @@ export function PrintersPage() {
                         type="button"
                         onClick={() => openEdit(p)}
                         aria-label="แก้ไข"
-                        className="text-slate-400 hover:text-slate-700"
+                        className="text-muted-foreground hover:text-foreground"
                       >
                         <Pencil className="size-3.5" />
                       </button>
@@ -264,7 +264,7 @@ export function PrintersPage() {
                         type="button"
                         onClick={() => handleDelete(p)}
                         aria-label="ลบ"
-                        className="text-slate-400 hover:text-red-600"
+                        className="text-muted-foreground hover:text-red-600"
                       >
                         <Trash2 className="size-3.5" />
                       </button>
@@ -287,14 +287,14 @@ export function PrintersPage() {
                   type="button"
                   aria-label="ย้อนกลับ"
                   onClick={() => setForm((f) => ({ ...f, step: (f.step - 1) as 1 | 2 | 3 }))}
-                  className="rounded p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                  className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted/50"
                 >
                   <ChevronLeft className="size-4" />
                 </button>
               )}
               <DialogTitle>
                 {form.mode === 'edit' ? 'แก้ไขเครื่องพิมพ์' : 'เพิ่มเครื่องพิมพ์'}
-                <span className="ml-2 text-xs font-normal text-slate-400">
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
                   ขั้นที่ {form.step}/3
                 </span>
               </DialogTitle>
@@ -302,7 +302,7 @@ export function PrintersPage() {
                 type="button"
                 aria-label="ปิด"
                 onClick={() => setModalOpen(false)}
-                className="ml-auto rounded p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                className="ml-auto rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted/50"
               >
                 ×
               </button>
@@ -400,7 +400,7 @@ function StepType({
 
   return (
     <div className="space-y-2.5 py-1">
-      <p className="text-sm text-slate-500">เลือกวิธีเชื่อมต่อเครื่องพิมพ์</p>
+      <p className="text-sm text-muted-foreground">เลือกวิธีเชื่อมต่อเครื่องพิมพ์</p>
       {options.map(({ type, icon, title, desc }) => {
         const disabled = type === 'usb' && !caps.usb;
         return (
@@ -410,13 +410,13 @@ function StepType({
             disabled={disabled}
             onClick={() => onSelect(type)}
             className={`w-full flex items-start gap-3 rounded-xl border p-4 text-left transition-colors
-              ${selected === type ? 'border-slate-800 bg-slate-50' : 'border-slate-200 hover:border-slate-400'}
+              ${selected === type ? 'border-primary bg-muted/30' : 'border-border hover:border-border'}
               ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
           >
-            <span className="mt-0.5 shrink-0 text-slate-600">{icon}</span>
+            <span className="mt-0.5 shrink-0 text-muted-foreground">{icon}</span>
             <div>
-              <p className="text-sm font-medium text-slate-900">{title}</p>
-              <p className="text-xs text-slate-500 mt-0.5">{desc}</p>
+              <p className="text-sm font-medium text-foreground">{title}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
               {disabled && (
                 <p className="text-xs text-red-500 mt-0.5">Browser ของคุณไม่รองรับ WebUSB</p>
               )}
@@ -467,14 +467,14 @@ function StepUsb({
           ✓ {usbLabel}
         </div>
       ) : (
-        <p className="text-sm text-slate-500">กด "เลือกอุปกรณ์ USB" แล้วเลือก printer ในรายการที่ปรากฏ</p>
+        <p className="text-sm text-muted-foreground">กด "เลือกอุปกรณ์ USB" แล้วเลือก printer ในรายการที่ปรากฏ</p>
       )}
       {error && <p className="text-xs text-red-600">{error}</p>}
       <button
         type="button"
         onClick={pick}
         disabled={picking}
-        className="w-full rounded-lg bg-slate-800 py-2.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+        className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
       >
         {picking ? 'กำลังเปิดตัวเลือก…' : usbLabel ? 'เลือกใหม่' : 'เลือกอุปกรณ์ USB'}
       </button>
@@ -509,17 +509,17 @@ function StepNetwork({
         </div>
       )}
       <div>
-        <label className="block text-xs font-medium text-slate-700 mb-1">IP Address</label>
+        <label className="block text-xs font-medium text-foreground mb-1">IP Address</label>
         <input
           value={ip}
           onChange={(e) => onIpChange(e.target.value)}
           placeholder="192.168.1.100"
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
         />
         {ip && !ipValid && <p className="mt-1 text-xs text-red-600">รูปแบบ IP ไม่ถูกต้อง</p>}
       </div>
       <div>
-        <label className="block text-xs font-medium text-slate-700 mb-1">Port</label>
+        <label className="block text-xs font-medium text-foreground mb-1">Port</label>
         <input
           value={port}
           onChange={(e) => onPortChange(e.target.value)}
@@ -527,14 +527,14 @@ function StepNetwork({
           type="number"
           min={1}
           max={65535}
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
         />
       </div>
       <button
         type="button"
         disabled={!ipValid}
         onClick={onNext}
-        className="w-full rounded-lg bg-slate-800 py-2.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+        className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
       >
         ถัดไป
       </button>
@@ -545,8 +545,8 @@ function StepNetwork({
 function StepBrowser({ onNext }: { onNext: () => void }) {
   return (
     <div className="space-y-4 py-1">
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 leading-relaxed">
-        <p className="font-medium text-slate-800 mb-2">🖨️ พิมพ์ผ่าน Browser</p>
+      <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground leading-relaxed">
+        <p className="font-medium text-foreground mb-2">🖨️ พิมพ์ผ่าน Browser</p>
         <ul className="space-y-1 text-xs list-disc list-inside">
           <li>เมื่อสั่งพิมพ์ จะเปิดหน้าต่าง Print ของระบบปฏิบัติการขึ้นมา</li>
           <li>เลือก printer ที่ต้องการในกล่องโต้ตอบ</li>
@@ -557,7 +557,7 @@ function StepBrowser({ onNext }: { onNext: () => void }) {
       <button
         type="button"
         onClick={onNext}
-        className="w-full rounded-lg bg-slate-800 py-2.5 text-sm font-medium text-white hover:bg-slate-700"
+        className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary/90"
       >
         ถัดไป
       </button>
@@ -597,17 +597,17 @@ function StepGeneral({
   return (
     <div className="space-y-4 py-1">
       <div>
-        <label className="block text-xs font-medium text-slate-700 mb-1">ชื่อเครื่องพิมพ์</label>
+        <label className="block text-xs font-medium text-foreground mb-1">ชื่อเครื่องพิมพ์</label>
         <input
           value={name}
           onChange={(e) => onNameChange(e.target.value)}
           placeholder="เช่น Xprinter ห้องครัว"
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
         />
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-slate-700 mb-2">ขนาดกระดาษ</label>
+        <label className="block text-xs font-medium text-foreground mb-2">ขนาดกระดาษ</label>
         <div className="flex gap-3">
           {([58, 80] as const).map((w) => (
             <label key={w} className="flex items-center gap-2 cursor-pointer">
@@ -617,14 +617,14 @@ function StepGeneral({
                 onChange={() => onPaperWidthChange(w)}
                 className="accent-slate-800"
               />
-              <span className="text-sm text-slate-700">{w} mm</span>
+              <span className="text-sm text-foreground">{w} mm</span>
             </label>
           ))}
         </div>
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-slate-700 mb-1">
+        <label className="block text-xs font-medium text-foreground mb-1">
           Codepage ภาษาไทย (CP874)
         </label>
         <select
@@ -632,7 +632,7 @@ function StepGeneral({
           onChange={(e) => {
             if (e.target.value !== 'custom') onThaiCodepageChange(Number(e.target.value));
           }}
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500 bg-white"
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary bg-card"
         >
           {THAI_CODEPAGE_PRESETS.map((p) => (
             <option key={p.value} value={p.value}>{p.label}</option>
@@ -640,17 +640,17 @@ function StepGeneral({
           {isCustom && <option value="custom">กำหนดเอง: {thaiCodepage}</option>}
         </select>
         <div className="mt-1.5 flex items-center gap-2">
-          <span className="text-[11px] text-slate-400">หรือกำหนดเลขเอง:</span>
+          <span className="text-[11px] text-muted-foreground">หรือกำหนดเลขเอง:</span>
           <input
             type="number"
             min={0}
             max={255}
             value={thaiCodepage}
             onChange={(e) => onThaiCodepageChange(Number(e.target.value))}
-            className="w-20 rounded border border-slate-200 px-2 py-1 text-xs outline-none focus:border-slate-400"
+            className="w-20 rounded border border-border px-2 py-1 text-xs outline-none focus:border-border"
           />
         </div>
-        <p className="mt-1 text-[11px] text-slate-400">
+        <p className="mt-1 text-[11px] text-muted-foreground">
           ถ้าภาษาไทยออกมาเป็นตัวอักษรแปลก ให้ลองหน้า 20 หรือ 21 สลับกัน
         </p>
       </div>
@@ -677,7 +677,7 @@ function StepGeneral({
           onChange={(e) => onDefaultChange(e.target.checked)}
           className="rounded accent-slate-800"
         />
-        <span className="text-sm text-slate-700">ตั้งเป็นเครื่องพิมพ์เริ่มต้น</span>
+        <span className="text-sm text-foreground">ตั้งเป็นเครื่องพิมพ์เริ่มต้น</span>
       </label>
 
       <div className="flex gap-2 pt-1">
@@ -685,7 +685,7 @@ function StepGeneral({
           type="button"
           disabled={saving || !name.trim()}
           onClick={onSave}
-          className="flex-1 rounded-lg border border-slate-300 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/30 disabled:opacity-50"
         >
           {saving ? 'กำลังบันทึก…' : 'บันทึก'}
         </button>
@@ -693,7 +693,7 @@ function StepGeneral({
           type="button"
           disabled={saving || !name.trim()}
           onClick={onSaveAndTest}
-          className="flex-1 rounded-lg bg-slate-800 py-2.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+          className="flex-1 rounded-lg bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
         >
           บันทึกและทดสอบ
         </button>

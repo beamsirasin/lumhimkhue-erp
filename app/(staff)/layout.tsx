@@ -11,7 +11,12 @@ export default async function StaffLayout({ children }: { children: React.ReactN
   const name = session.user.name ?? 'Staff';
 
   return (
-    <SidebarLayout role={role} userName={name}>
+    <SidebarLayout
+      role={role}
+      userName={name}
+      uiLayout={session.user.uiLayout ?? null}
+      allowedModules={session.user.allowedModules ?? []}
+    >
       {children}
     </SidebarLayout>
   );

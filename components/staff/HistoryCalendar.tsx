@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useRef, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, isToday } from 'date-fns';
@@ -67,27 +67,27 @@ export function HistoryCalendar({ selectedDate, onSelectDate }: HistoryCalendarP
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+        className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted/30 transition-colors shadow-sm"
       >
-        <CalendarDays className="size-4 text-slate-400" />
+        <CalendarDays className="size-4 text-muted-foreground" />
         <span>{selectedLabel}</span>
-        <ChevronDown className={`size-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`size-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {/* Dropdown panel */}
       {open && (
-        <div className="absolute top-full left-0 mt-1 z-30 rounded-xl border border-slate-200 bg-white p-4 shadow-lg w-72">
+        <div className="absolute top-full left-0 mt-1 z-30 rounded-xl border border-border bg-card p-4 shadow-lg w-72">
           {/* Month nav */}
           <div className="flex items-center justify-between mb-3">
             <button
               type="button"
               aria-label="เดือนก่อน"
               onClick={prevMonth}
-              className="rounded p-1 hover:bg-slate-100"
+              className="rounded p-1 hover:bg-muted/50"
             >
-              <ChevronLeft className="size-4 text-slate-600" />
+              <ChevronLeft className="size-4 text-muted-foreground" />
             </button>
-            <p className="text-sm font-semibold text-slate-900">
+            <p className="text-sm font-semibold text-foreground">
               {format(viewDate, 'MMMM yyyy', { locale: th })}
             </p>
             <button
@@ -95,16 +95,16 @@ export function HistoryCalendar({ selectedDate, onSelectDate }: HistoryCalendarP
               aria-label="เดือนถัดไป"
               onClick={nextMonth}
               disabled={isNextDisabled}
-              className="rounded p-1 hover:bg-slate-100 disabled:opacity-30"
+              className="rounded p-1 hover:bg-muted/50 disabled:opacity-30"
             >
-              <ChevronRight className="size-4 text-slate-600" />
+              <ChevronRight className="size-4 text-muted-foreground" />
             </button>
           </div>
 
           {/* Day names */}
           <div className="grid grid-cols-7 mb-1">
             {DAY_NAMES.map((d) => (
-              <div key={d} className="text-center text-[10px] font-medium text-slate-400 py-1">
+              <div key={d} className="text-center text-[10px] font-medium text-muted-foreground py-1">
                 {d}
               </div>
             ))}
@@ -131,14 +131,14 @@ export function HistoryCalendar({ selectedDate, onSelectDate }: HistoryCalendarP
                     setOpen(false);
                   }}
                   className={`relative flex flex-col items-center justify-center rounded-lg p-1.5 text-xs transition-colors
-                    ${isFuture ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-100'}
-                    ${isSelected ? 'bg-slate-800 text-white hover:bg-slate-700' : 'text-slate-700'}
-                    ${isToday(day) && !isSelected ? 'ring-1 ring-slate-400' : ''}
+                    ${isFuture ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer hover:bg-muted/50'}
+                    ${isSelected ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'text-foreground'}
+                    ${isToday(day) && !isSelected ? 'ring-1 ring-primary/50' : ''}
                   `}
                 >
                   <span className="font-medium leading-none">{format(day, 'd')}</span>
                   {count > 0 && (
-                    <span className={`mt-0.5 h-1 w-1 rounded-full ${isSelected ? 'bg-white' : 'bg-slate-400'}`} />
+                    <span className={`mt-0.5 h-1 w-1 rounded-full ${isSelected ? 'bg-card' : 'bg-muted'}`} />
                   )}
                 </button>
               );

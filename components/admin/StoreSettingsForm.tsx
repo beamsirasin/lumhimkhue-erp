@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
@@ -194,14 +194,14 @@ export function StoreSettingsForm({ initialData }: Props) {
     hiddenFields: [...(previewState?.hiddenFields ?? [])],
   };
 
-  const INPUT = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500 transition-colors';
+  const INPUT = 'w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary transition-colors';
 
   return (
     <div className="flex gap-6 items-start">
       {/* ── Left: Form ──────────────────────────────────────────────────── */}
       <form onSubmit={handleSubmit} className="w-[420px] shrink-0 space-y-4">
         {/* Tabs */}
-        <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+        <div className="flex flex-wrap gap-1 rounded-xl bg-muted/50 p-1">
           {BILL_TABS.map((t) => (
             <button
               key={t.key}
@@ -209,8 +209,8 @@ export function StoreSettingsForm({ initialData }: Props) {
               onClick={() => setActiveTab(t.key)}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                 activeTab === t.key
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               {t.label}
@@ -225,10 +225,10 @@ export function StoreSettingsForm({ initialData }: Props) {
             <Section title="โลโก้หัวบิล">
               {logoUrl ? (
                 <div className="flex items-start gap-4">
-                  <img src={logoUrl} alt="โลโก้" style={{ height: logoHeight }} className="max-w-[160px] object-contain rounded border border-slate-200 bg-white p-1" />
+                  <img src={logoUrl} alt="โลโก้" style={{ height: logoHeight }} className="max-w-[160px] object-contain rounded border border-border bg-card p-1" />
                   <div className="space-y-2 flex-1">
                     <div className="flex gap-2">
-                      <label className={`cursor-pointer rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors ${isLogoUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <label className={`cursor-pointer rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/30 transition-colors ${isLogoUploading ? 'opacity-50 pointer-events-none' : ''}`}>
                         <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={isLogoUploading} />
                         {isLogoUploading ? 'กำลังอัปโหลด…' : 'เปลี่ยนรูป'}
                       </label>
@@ -238,7 +238,7 @@ export function StoreSettingsForm({ initialData }: Props) {
                       </button>
                     </div>
                     <div>
-                      <label className="block text-[10px] text-slate-500 mb-1">ความสูงโลโก้: {logoHeight}px</label>
+                      <label className="block text-[10px] text-muted-foreground mb-1">ความสูงโลโก้: {logoHeight}px</label>
                       <input type="range" min={20} max={200} value={logoHeight}
                         onChange={e => setLogoHeight(Number(e.target.value))}
                         className="w-full accent-slate-800" />
@@ -248,11 +248,11 @@ export function StoreSettingsForm({ initialData }: Props) {
               ) : (
                 <label className={`flex flex-col items-center gap-2 cursor-pointer group ${isLogoUploading ? 'opacity-50 pointer-events-none' : ''}`}>
                   <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={isLogoUploading} />
-                  <div className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-600 group-hover:bg-slate-100 transition-colors w-full justify-center">
-                    <ImagePlus className="size-4 text-slate-400" />
+                  <div className="flex items-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3 text-sm font-medium text-muted-foreground group-hover:bg-muted/50 transition-colors w-full justify-center">
+                    <ImagePlus className="size-4 text-muted-foreground" />
                     {isLogoUploading ? 'กำลังอัปโหลด…' : 'เลือกรูปภาพ (PNG / JPG / SVG)'}
                   </div>
-                  <p className="text-[10px] text-slate-400">แนะนำขนาดไม่เกิน 200 KB</p>
+                  <p className="text-[10px] text-muted-foreground">แนะนำขนาดไม่เกิน 200 KB</p>
                 </label>
               )}
             </Section>
@@ -263,13 +263,13 @@ export function StoreSettingsForm({ initialData }: Props) {
                 {([58, 80] as const).map((w) => (
                   <button key={w} type="button" onClick={() => { setPaperWidth(w); setPreviewWidth(w); }}
                     className={`flex-1 rounded-lg border py-2 text-sm font-semibold transition-colors ${
-                      paperWidth === w ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      paperWidth === w ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-muted-foreground hover:bg-muted/30'
                     }`}>
                     {w} mm
                   </button>
                 ))}
               </div>
-              <p className="mt-1.5 text-[10px] text-slate-400">58mm — เครื่องพิมพ์ขนาดเล็ก · 80mm — เครื่องพิมพ์มาตรฐาน</p>
+              <p className="mt-1.5 text-[10px] text-muted-foreground">58mm — เครื่องพิมพ์ขนาดเล็ก · 80mm — เครื่องพิมพ์มาตรฐาน</p>
             </Section>
 
             {/* Info fields */}
@@ -313,7 +313,7 @@ export function StoreSettingsForm({ initialData }: Props) {
               <Field label={`Prefix เลขที่บิล (เช่น "LHK" → LHK03060001)`} span>
                 <input className={INPUT} value={taxInvoicePrefix} onChange={e => setTaxInvoicePrefix(e.target.value)} placeholder="LHK" maxLength={20} />
               </Field>
-              <p className="text-[10px] text-slate-400 mt-1">รูปแบบ: {taxInvoicePrefix || 'LHK'}{'{DDMM}'}{'{0001}'} — เลขที่ reset ทุกวัน เช่น {taxInvoicePrefix || 'LHK'}03060001, {taxInvoicePrefix || 'LHK'}03060002, …</p>
+              <p className="text-[10px] text-muted-foreground mt-1">รูปแบบ: {taxInvoicePrefix || 'LHK'}{'{DDMM}'}{'{0001}'} — เลขที่ reset ทุกวัน เช่น {taxInvoicePrefix || 'LHK'}03060001, {taxInvoicePrefix || 'LHK'}03060002, …</p>
             </Section>
           </div>
         )}
@@ -333,7 +333,7 @@ export function StoreSettingsForm({ initialData }: Props) {
                       onChange={() => setBillTypeLabel(activeTab, opt.value)}
                       className="accent-slate-800"
                     />
-                    <span className="text-sm text-slate-700">{opt.label}</span>
+                    <span className="text-sm text-foreground">{opt.label}</span>
                   </label>
                 ))}
               </div>
@@ -341,21 +341,21 @@ export function StoreSettingsForm({ initialData }: Props) {
 
             {/* Section toggles */}
             <Section title="แสดง / ซ่อน แต่ละส่วน">
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-border">
                 {SECTIONS.map((s) => {
                   const isHidden = billState.hiddenFields.has(s.key);
                   return (
                     <label key={s.key} className="flex items-center justify-between py-2.5 cursor-pointer group">
-                      <span className={`text-sm transition-colors ${isHidden ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+                      <span className={`text-sm transition-colors ${isHidden ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
                         {s.label}
                       </span>
                       <div
                         onClick={() => toggleSection(activeTab, s.key)}
                         className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                          isHidden ? 'bg-slate-200' : 'bg-slate-800'
+                          isHidden ? 'bg-muted' : 'bg-primary'
                         }`}
                       >
-                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-sm ${
+                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-card transition-transform shadow-sm ${
                           isHidden ? 'translate-x-1' : 'translate-x-4.5'
                         }`} />
                       </div>
@@ -363,28 +363,28 @@ export function StoreSettingsForm({ initialData }: Props) {
                   );
                 })}
               </div>
-              <p className="text-[11px] text-slate-400 pt-2">ปิดสวิตช์ = ซ่อน section นั้นออกจากบิลประเภทนี้</p>
+              <p className="text-[11px] text-muted-foreground pt-2">ปิดสวิตช์ = ซ่อน section นั้นออกจากบิลประเภทนี้</p>
             </Section>
           </div>
         )}
 
         <button type="submit" disabled={saving}
-          className="w-full rounded-lg bg-slate-800 py-2.5 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50 transition-colors">
+          className="w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50 transition-colors">
           {saving ? 'กำลังบันทึก…' : 'บันทึก'}
         </button>
       </form>
 
       {/* ── Right: Live Preview ──────────────────────────────────────── */}
       <div className="flex-1 min-w-0 sticky top-6">
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+        <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
           {/* Paper width toggle for preview */}
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-600">ตัวอย่างบิล</p>
-            <div className="flex gap-1 rounded-lg bg-white border border-slate-200 p-0.5">
+            <p className="text-xs font-semibold text-muted-foreground">ตัวอย่างบิล</p>
+            <div className="flex gap-1 rounded-lg bg-card border border-border p-0.5">
               {([58, 80] as const).map((w) => (
                 <button key={w} type="button" onClick={() => setPreviewWidth(w)}
                   className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-                    previewWidth === w ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-700'
+                    previewWidth === w ? 'bg-primary text-white' : 'text-muted-foreground hover:text-foreground'
                   }`}>
                   {w}mm
                 </button>
@@ -405,8 +405,8 @@ export function StoreSettingsForm({ initialData }: Props) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl bg-white p-4 space-y-3 shadow-sm ring-1 ring-slate-900/5">
-      <p className="text-xs font-semibold text-slate-700">{title}</p>
+    <div className="rounded-xl bg-card p-4 space-y-3 shadow-sm ring-1 ring-border/40">
+      <p className="text-xs font-semibold text-foreground">{title}</p>
       {children}
     </div>
   );
@@ -415,7 +415,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Field({ label, children, span }: { label: string; children: React.ReactNode; span?: boolean }) {
   return (
     <div className={span ? 'col-span-2' : ''}>
-      <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
+      <label className="block text-xs font-medium text-muted-foreground mb-1">{label}</label>
       {children}
     </div>
   );

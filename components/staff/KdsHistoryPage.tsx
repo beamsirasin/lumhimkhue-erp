@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { format, getDaysInMonth } from 'date-fns';
@@ -52,23 +52,23 @@ function Calendar({
     setView((v) => v.month === 11 ? { year: v.year + 1, month: 0 } : { ...v, month: v.month + 1 });
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 select-none">
+    <div className="rounded-xl border border-border bg-card p-4 select-none">
       {/* Month nav */}
       <div className="flex items-center justify-between mb-3">
-        <button type="button" onClick={prev} className="rounded p-1 hover:bg-slate-100">
-          <ChevronLeft className="size-4 text-slate-500" />
+        <button type="button" onClick={prev} className="rounded p-1 hover:bg-muted/50">
+          <ChevronLeft className="size-4 text-muted-foreground" />
         </button>
-        <p className="text-sm font-semibold text-slate-800">
+        <p className="text-sm font-semibold text-foreground">
           {format(new Date(view.year, view.month), 'LLLL yyyy', { locale: th })}
         </p>
-        <button type="button" onClick={next} className="rounded p-1 hover:bg-slate-100">
-          <ChevronRight className="size-4 text-slate-500" />
+        <button type="button" onClick={next} className="rounded p-1 hover:bg-muted/50">
+          <ChevronRight className="size-4 text-muted-foreground" />
         </button>
       </div>
       {/* Day headers */}
       <div className="grid grid-cols-7 mb-1">
         {['อา','จ','อ','พ','พฤ','ศ','ส'].map((d) => (
-          <div key={d} className="text-center text-[10px] font-medium text-slate-400">{d}</div>
+          <div key={d} className="text-center text-[10px] font-medium text-muted-foreground">{d}</div>
         ))}
       </div>
       {/* Cells */}
@@ -85,10 +85,10 @@ function Calendar({
               onClick={() => onSelect(dateStr)}
               className={`mx-auto flex size-7 items-center justify-center rounded-full text-xs transition-colors ${
                 isSelected
-                  ? 'bg-slate-800 text-white font-semibold'
+                  ? 'bg-primary text-white font-semibold'
                   : isToday
-                    ? 'border border-slate-400 text-slate-800 font-semibold hover:bg-slate-100'
-                    : 'text-slate-700 hover:bg-slate-100'
+                    ? 'border border-border text-foreground font-semibold hover:bg-muted/50'
+                    : 'text-foreground hover:bg-muted/50'
               }`}
             >
               {day}
@@ -112,7 +112,7 @@ function HistoryTable({ rows, date }: { rows: KdsHistoryRow[]; date: string }) {
 
   if (rows.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-sm text-slate-400">
+      <div className="rounded-xl border border-border bg-card py-16 text-center text-sm text-muted-foreground">
         ไม่มีข้อมูลในวันที่ {format(new Date(date), 'd MMMM yyyy', { locale: th })}
       </div>
     );
@@ -122,21 +122,21 @@ function HistoryTable({ rows, date }: { rows: KdsHistoryRow[]; date: string }) {
     <div className="space-y-4">
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">สั่งทั้งหมด</p>
-          <p className="mt-1 text-xl font-bold text-slate-900">{totalOrdered} รายการ</p>
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground">สั่งทั้งหมด</p>
+          <p className="mt-1 text-xl font-bold text-foreground">{totalOrdered} รายการ</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">เสิร์ฟแล้ว</p>
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground">เสิร์ฟแล้ว</p>
           <p className="mt-1 text-xl font-bold text-green-700">{totalServed} รายการ</p>
           {totalOrdered > 0 && (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-muted-foreground">
               {Math.round(totalServed / totalOrdered * 100)}%
             </p>
           )}
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">ยกเลิก</p>
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground">ยกเลิก</p>
           <p className="mt-1 text-xl font-bold text-red-600">{totalCancelled} รายการ</p>
         </div>
       </div>
@@ -146,32 +146,32 @@ function HistoryTable({ rows, date }: { rows: KdsHistoryRow[]; date: string }) {
         const stationRows = rows.filter((r) => r.station === station);
         const stTotal = stationRows.reduce((s, r) => s + r.totalQty, 0);
         return (
-          <div key={station} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+          <div key={station} className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <div className="flex items-center gap-2">
-                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATION_COLOR[station] ?? 'bg-slate-100 text-slate-600'}`}>
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATION_COLOR[station] ?? 'bg-muted/50 text-muted-foreground'}`}>
                   {STATION_LABEL[station] ?? station}
                 </span>
               </div>
-              <span className="text-xs text-slate-500">รวม {stTotal} รายการ</span>
+              <span className="text-xs text-muted-foreground">รวม {stTotal} รายการ</span>
             </div>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-50">
-                  <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500">รายการ</th>
-                  <th className="px-4 py-2 text-right text-xs font-semibold text-slate-500">สั่ง</th>
+                <tr className="border-b border-border/30">
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground">รายการ</th>
+                  <th className="px-4 py-2 text-right text-xs font-semibold text-muted-foreground">สั่ง</th>
                   <th className="px-4 py-2 text-right text-xs font-semibold text-green-600">เสิร์ฟ</th>
-                  <th className="px-4 py-2 text-right text-xs font-semibold text-slate-400">รอ</th>
+                  <th className="px-4 py-2 text-right text-xs font-semibold text-muted-foreground">รอ</th>
                   <th className="px-4 py-2 text-right text-xs font-semibold text-red-500">ยกเลิก</th>
                 </tr>
               </thead>
               <tbody>
                 {stationRows.map((row, i) => (
-                  <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-slate-50">
-                    <td className="px-4 py-2.5 font-medium text-slate-800">{row.itemName}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-slate-900">{row.totalQty}</td>
+                  <tr key={i} className="border-b border-border/30 last:border-0 hover:bg-muted/30">
+                    <td className="px-4 py-2.5 font-medium text-foreground">{row.itemName}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-foreground">{row.totalQty}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-green-700">{row.servedQty}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-slate-400">{row.pendingQty}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{row.pendingQty}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-red-500">{row.cancelledQty || '—'}</td>
                   </tr>
                 ))}
@@ -210,14 +210,14 @@ export function KdsHistoryPage() {
       {/* Main: history table */}
       <div className="flex-1 overflow-y-auto space-y-4">
         <div>
-          <h2 className="text-base font-semibold text-slate-900">ประวัติครัว</h2>
-          <p className="text-xs text-slate-500">
+          <h2 className="text-base font-semibold text-foreground">ประวัติครัว</h2>
+          <p className="text-xs text-muted-foreground">
             {format(new Date(selectedDate), 'EEEE d MMMM yyyy', { locale: th })}
           </p>
         </div>
 
         {isLoading ? (
-          <div className="py-16 text-center text-sm text-slate-400">กำลังโหลด…</div>
+          <div className="py-16 text-center text-sm text-muted-foreground">กำลังโหลด…</div>
         ) : error ? (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             เกิดข้อผิดพลาด: {(error as Error).message}
