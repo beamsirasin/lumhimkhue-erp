@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { differenceInSeconds } from 'date-fns';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCartStore, selectTotalItems, selectTotalExtra } from '@/lib/store/cart';
 import { placeOrder, hasUnservedItems } from '@/lib/actions/orders';
 import type { SessionData, MenuCategoriesData } from '@/lib/actions/orders';
@@ -134,12 +134,14 @@ export function CustomerMenuPage({
   const [lang, setLang] = useState<Lang>('th');
   const t = T[lang];
 
+  const queryClient = useQueryClient();
   const { items, initCart, setQuantity, clear } = useCartStore();
   const totalItems = useCartStore(selectTotalItems);
   const totalExtra = useCartStore(selectTotalExtra);
 
+  const UNSERVED_KEY = ['unserved', sessionToken];
   const { data: unservedData } = useQuery({
-    queryKey: ['unserved', sessionToken],
+    queryKey: UNSERVED_KEY,
     queryFn: () => hasUnservedItems(sessionToken).then((r) => (r.ok ? r.data : { hasUnserved: false })),
     refetchInterval: 5_000,
     staleTime: 2_000,
@@ -165,6 +167,8 @@ export function CustomerMenuPage({
 
     if (result.ok) {
       clear();
+      // Instantly block re-ordering — no waiting for the next poll cycle
+      queryClient.setQueryData(UNSERVED_KEY, { hasUnserved: true });
       toast.success(t.orderSuccess);
     } else {
       toast.error(result.error);
