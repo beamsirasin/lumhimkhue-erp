@@ -447,6 +447,24 @@ function SortableModuleRowWithMove({
   );
 }
 
+/* ─── Sortable section container (render-prop for drag handle) ── */
+
+function SortableSectionContainer({
+  id,
+  children,
+}: {
+  id: string;
+  children: (dragProps: Record<string, unknown>) => React.ReactNode;
+}) {
+  const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({ id });
+  const style = { transform: CSS.Transform.toString(transform), transition };
+  return (
+    <div ref={setNodeRef} style={style} className={isDragging ? 'opacity-50 relative z-10' : ''}>
+      {children({ ...attributes, ...listeners })}
+    </div>
+  );
+}
+
 /* ─── Module checkboxes ─────────────────────────────────────── */
 
 function ModulePicker({
@@ -610,91 +628,127 @@ function ModulePicker({
             <span className="text-[10px] text-muted-foreground">ลาก / เปลี่ยนชื่อ / ย้ายหมวด</span>
           </div>
 
-          {navLayout.map((section, sectionIdx) => {
-            const modulesInSection = section.modules.filter((m) => value.includes(m));
-            return (
-              <div key={`${section.heading}-${sectionIdx}`} className="border-b border-border last:border-0">
-                <div className="bg-muted/30 px-3 py-1.5 border-b border-border flex items-center gap-1.5">
-                  {editingSection === sectionIdx ? (
-                    <>
-                      <input
-                        value={editingHeading}
-                        onChange={(e) => setEditingHeading(e.target.value)}
-                        onBlur={() => saveHeading(sectionIdx)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') { e.preventDefault(); saveHeading(sectionIdx); }
-                          if (e.key === 'Escape') setEditingSection(null);
-                        }}
-                        autoFocus
-                        className="flex-1 bg-transparent border-b border-primary text-[10px] font-semibold text-foreground uppercase tracking-wide outline-none py-0"
-                      />
-                      <button
-                        type="button"
-                        onMouseDown={(e) => { e.preventDefault(); saveHeading(sectionIdx); }}
-                        className="shrink-0 text-[10px] text-primary hover:underline"
-                      >
-                        บันทึก
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="flex-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                        {section.heading}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label={`เปลี่ยนชื่อหมวด ${section.heading}`}
-                        onClick={() => { setEditingSection(sectionIdx); setEditingHeading(section.heading); }}
-                        className="shrink-0 text-muted-foreground/50 hover:text-foreground transition-colors"
-                      >
-                        <Pencil className="size-3" />
-                      </button>
-                    </>
-                  )}
-                  {navLayout.length > 1 && (
-                    <button
-                      type="button"
-                      aria-label={`ลบหมวด ${section.heading}`}
-                      onClick={() => deleteSection(sectionIdx)}
-                      className="shrink-0 text-muted-foreground/50 hover:text-red-400 transition-colors"
-                    >
-                      <X className="size-3" />
-                    </button>
-                  )}
-                </div>
+          {/* Outer DndContext handles section reordering */}
+          <DndContext
+            id="nav-sections"
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={(event) => {
+              const { active, over } = event;
+              if (!over || active.id === over.id) return;
+              const sectionIds = navLayout.map((_, i) => `scd-${i}`);
+              const oldIdx = sectionIds.indexOf(active.id as string);
+              const newIdx = sectionIds.indexOf(over.id as string);
+              if (oldIdx < 0 || newIdx < 0) return;
+              onNavLayoutChange(arrayMove(navLayout, oldIdx, newIdx));
+            }}
+          >
+            <SortableContext
+              items={navLayout.map((_, i) => `scd-${i}`)}
+              strategy={verticalListSortingStrategy}
+            >
+              {navLayout.map((section, sectionIdx) => {
+                const modulesInSection = section.modules.filter((m) => value.includes(m));
+                return (
+                  <SortableSectionContainer key={`${section.heading}-${sectionIdx}`} id={`scd-${sectionIdx}`}>
+                    {(dragHandleProps) => (
+                      <div className="border-b border-border last:border-0">
+                        <div className="bg-muted/30 px-3 py-1.5 border-b border-border flex items-center gap-1">
+                          {/* Section drag handle */}
+                          <button
+                            type="button"
+                            aria-label="ลากย้ายหมวด"
+                            {...(dragHandleProps as React.HTMLAttributes<HTMLButtonElement>)}
+                            className="shrink-0 cursor-grab active:cursor-grabbing touch-none text-muted-foreground/30 hover:text-muted-foreground/70 transition-colors"
+                          >
+                            <GripVertical className="size-3.5" />
+                          </button>
 
-                <DndContext
-                  id={`nav-dnd-${sectionIdx}`}
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={(e) => handleSectionDragEnd(e, sectionIdx)}
-                >
-                  <SortableContext items={modulesInSection} strategy={verticalListSortingStrategy}>
-                    {modulesInSection.map((id) => {
-                      const info = ALL_MODULE_MAP.get(id);
-                      if (!info) return null;
-                      return (
-                        <SortableModuleRowWithMove
-                          key={id}
-                          id={id}
-                          label={info.label}
-                          sections={sectionNames}
-                          currentSection={section.heading}
-                          onMove={(targetHeading) => moveModule(id, sectionIdx, targetHeading)}
-                        />
-                      );
-                    })}
-                  </SortableContext>
-                </DndContext>
+                          {editingSection === sectionIdx ? (
+                            <>
+                              <input
+                                value={editingHeading}
+                                onChange={(e) => setEditingHeading(e.target.value)}
+                                onBlur={() => saveHeading(sectionIdx)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') { e.preventDefault(); saveHeading(sectionIdx); }
+                                  if (e.key === 'Escape') setEditingSection(null);
+                                }}
+                                autoFocus
+                                className="flex-1 bg-transparent border-b border-primary text-[10px] font-semibold text-foreground uppercase tracking-wide outline-none py-0"
+                              />
+                              <button
+                                type="button"
+                                onMouseDown={(e) => { e.preventDefault(); saveHeading(sectionIdx); }}
+                                className="shrink-0 text-[10px] text-primary hover:underline"
+                              >
+                                บันทึก
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="flex-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                                {section.heading}
+                              </span>
+                              <button
+                                type="button"
+                                aria-label={`เปลี่ยนชื่อหมวด ${section.heading}`}
+                                onClick={() => { setEditingSection(sectionIdx); setEditingHeading(section.heading); }}
+                                className="shrink-0 text-muted-foreground/50 hover:text-foreground transition-colors"
+                              >
+                                <Pencil className="size-3" />
+                              </button>
+                            </>
+                          )}
+                          {navLayout.length > 1 && (
+                            <button
+                              type="button"
+                              aria-label={`ลบหมวด ${section.heading}`}
+                              onClick={() => deleteSection(sectionIdx)}
+                              className="shrink-0 text-muted-foreground/50 hover:text-red-400 transition-colors"
+                            >
+                              <X className="size-3" />
+                            </button>
+                          )}
+                        </div>
 
-                {modulesInSection.length === 0 && (
-                  <p className="px-3 py-2 text-[10px] text-muted-foreground/50 italic">
-                    ว่าง — ใช้ปุ่ม "ย้าย…" บนแต่ละเมนูเพื่อย้ายมาที่นี่
-                  </p>
-                )}
-              </div>
-            );
-          })}
+                        {/* Inner DndContext handles module reordering within this section */}
+                        <DndContext
+                          id={`nav-dnd-${sectionIdx}`}
+                          sensors={sensors}
+                          collisionDetection={closestCenter}
+                          onDragEnd={(e) => handleSectionDragEnd(e, sectionIdx)}
+                        >
+                          <SortableContext items={modulesInSection} strategy={verticalListSortingStrategy}>
+                            {modulesInSection.map((id) => {
+                              const info = ALL_MODULE_MAP.get(id);
+                              if (!info) return null;
+                              return (
+                                <SortableModuleRowWithMove
+                                  key={id}
+                                  id={id}
+                                  label={info.label}
+                                  sections={sectionNames}
+                                  currentSection={section.heading}
+                                  onMove={(targetHeading) => moveModule(id, sectionIdx, targetHeading)}
+                                />
+                              );
+                            })}
+                          </SortableContext>
+                        </DndContext>
+
+                        {modulesInSection.length === 0 && (
+                          <p className="px-3 py-2 text-[10px] text-muted-foreground/50 italic">
+                            ว่าง — ใช้ปุ่ม "ย้าย…" บนแต่ละเมนูเพื่อย้ายมาที่นี่
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </SortableSectionContainer>
+                );
+              })}
+            </SortableContext>
+          </DndContext>
 
           <div className="px-3 py-2">
             <button
