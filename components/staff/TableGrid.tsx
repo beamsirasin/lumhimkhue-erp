@@ -12,13 +12,11 @@ import {
   Settings2,
   X,
   Printer,
-  CalendarClock,
   Link2,
   MoveRight,
   ChevronRight,
   Users,
   Clock,
-  BadgeCheck,
   CheckCircle2,
   Pencil,
   Loader2,
@@ -60,10 +58,9 @@ import {
   updateSessionGuests,
   setTableAvailable,
 } from '@/lib/actions/sessions';
-import { createReservation, cancelReservation } from '@/lib/actions/reservations';
 import { print as printTableQr } from '@/lib/printer/service';
 import type { TableQrData } from '@/lib/printer/types';
-import { differenceInSeconds, formatDistanceToNowStrict, format } from 'date-fns';
+import { differenceInSeconds, formatDistanceToNowStrict } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { PricingTile } from '@/components/staff/PricingTile';
 import { CashierHeaderSlotContext } from '@/components/shared/SidebarLayout';
@@ -263,66 +260,87 @@ interface LinkedTablePickerProps {
 }
 
 function LinkedTablePicker({ tables, primaryTableId, selected, onToggle }: LinkedTablePickerProps) {
-  const available = new Set(
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  const availableIds = new Set(
     tables
       .filter((t) => t.id !== primaryTableId && (t.status === 'available' || selected.includes(t.id)))
       .map((t) => t.id),
   );
 
-  if (available.size === 0)
-    return <p className="text-sm text-muted-foreground">ไม่มีโต๊ะว่างอื่นให้เชื่อมโยง</p>;
+  const PAD = 24;
+  const canvasW = Math.max(400, ...tables.map((t) => t.positionX + t.width  + PAD));
+  const canvasH = Math.max(300, ...tables.map((t) => t.positionY + t.height + PAD));
 
-  // Auto-fit: scale canvas so all tables are visible in a fixed 320px-tall container
-  const canvasW = Math.max(600, ...tables.map((t) => t.positionX + t.width  + 20));
-  const canvasH = Math.max(400, ...tables.map((t) => t.positionY + t.height + 20));
-  const CONTAINER_H = 320;
-  const CONTAINER_W_APPROX = 900; // dialog is ~92vw wide
-  const scale = Math.min(CONTAINER_W_APPROX / canvasW, CONTAINER_H / canvasH, 1);
+  useEffect(() => {
+    const measure = () => {
+      if (!containerRef.current) return;
+      const { width, height } = containerRef.current.getBoundingClientRect();
+      setScale(Math.min(width / canvasW, height / canvasH, 1));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [canvasW, canvasH]);
 
   return (
-    <div
-      className="relative overflow-hidden rounded-xl border border-border bg-muted/50"
-      style={{ height: CONTAINER_H }}
-    >
-      {/* scaled canvas */}
+    <div ref={containerRef} className="relative w-full flex-1 min-h-0 overflow-hidden rounded-xl border border-border bg-slate-50/80">
+      {/* dot grid */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <pattern id="lp-dots" width="24" height="24" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="1" fill="#cbd5e1" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#lp-dots)" />
+      </svg>
+
+      {/* centered, scaled canvas */}
       <div
-        className="absolute top-0 left-0 origin-top-left"
-        style={{ width: canvasW, height: canvasH, transform: `scale(${scale})` }}
+        className="absolute"
+        style={{
+          left: '50%',
+          top: '50%',
+          width: canvasW * scale,
+          height: canvasH * scale,
+          transform: 'translate(-50%, -50%)',
+        }}
       >
-        {/* dot-grid background */}
-        <svg className="absolute inset-0 pointer-events-none" width={canvasW} height={canvasH}>
-          <defs>
-            <pattern id="lp-grid" width="20" height="20" patternUnits="userSpaceOnUse">
-              <circle cx="1" cy="1" r="0.8" fill="#e2e8f0" />
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#lp-grid)" />
-        </svg>
+        <div
+          className="absolute top-0 left-0 origin-top-left"
+          style={{ width: canvasW, height: canvasH, transform: `scale(${scale})` }}
+        >
+          {tables.map((t) => {
+            const isPrimary  = t.id === primaryTableId;
+            const isSelected = selected.includes(t.id);
+            const isPickable = availableIds.has(t.id);
 
-        {tables.map((t) => {
-          const isPrimary  = t.id === primaryTableId;
-          const isSelected = selected.includes(t.id);
-          const isPickable = available.has(t.id);
+            let cls = 'border-slate-200 bg-white/60 text-slate-300 cursor-not-allowed';
+            if (isPrimary)
+              cls = 'border-primary bg-primary text-primary-foreground cursor-default shadow-md';
+            else if (isSelected)
+              cls = 'border-primary bg-primary/10 text-primary cursor-pointer ring-2 ring-primary/40 shadow-sm';
+            else if (isPickable)
+              cls = 'border-emerald-400 bg-emerald-50 text-emerald-800 cursor-pointer hover:bg-emerald-100 hover:border-emerald-500 hover:shadow-md active:scale-95';
 
-          let bg = 'bg-muted border-border text-muted-foreground cursor-not-allowed'; // occupied / unavailable
-          if (isPrimary)  bg = 'bg-primary border-primary text-primary-foreground cursor-default';
-          else if (isSelected) bg = 'bg-primary border-primary text-primary-foreground cursor-pointer ring-2 ring-offset-1 ring-primary/50';
-          else if (isPickable)  bg = 'bg-emerald-100 border-emerald-400 text-emerald-800 cursor-pointer hover:bg-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-700 dark:text-emerald-300';
-
-          return (
-            <button
-              key={t.id}
-              type="button"
-              disabled={!isPickable && !isPrimary}
-              onClick={() => isPickable && onToggle(t.id)}
-              className={`absolute flex flex-col items-center justify-center rounded-xl border-2 font-semibold transition-colors select-none ${bg}`}
-              style={{ left: t.positionX, top: t.positionY, width: t.width, height: t.height }}
-            >
-              <span className="text-sm leading-tight">{t.label}</span>
-              {isSelected && <span className="text-[10px] mt-0.5 opacity-80">✓</span>}
-            </button>
-          );
-        })}
+            return (
+              <button
+                key={t.id}
+                type="button"
+                disabled={!isPickable && !isPrimary}
+                onClick={() => isPickable && onToggle(t.id)}
+                className={`absolute flex flex-col items-center justify-center rounded-xl border-2 font-semibold transition-all select-none ${cls}`}
+                style={{ left: t.positionX, top: t.positionY, width: t.width, height: t.height }}
+              >
+                <span className="text-base leading-tight">{t.label}</span>
+                {isSelected && <span className="text-[11px] font-normal opacity-75 mt-0.5">✓ เลือก</span>}
+                {isPrimary && <span className="text-[11px] font-normal opacity-75 mt-0.5">โต๊ะนี้</span>}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -481,13 +499,12 @@ interface OpenTableFlowProps {
   table: TableData | null;
   allTables: TableData[];
   pricingTiles: PricingTileData[];
-  reservationId?: string;     // if opening from reservation
   prefillGuests?: Record<string, number>;
   onClose: () => void;
   onSuccess: (data: SessionOpenResult) => void;
 }
 
-function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, prefillGuests, onClose, onSuccess }: OpenTableFlowProps) {
+function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, onClose, onSuccess }: OpenTableFlowProps) {
   const [step, setStep] = useState<OpenStep>('tiles');
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [linkedIds, setLinkedIds] = useState<string[]>([]);
@@ -517,7 +534,6 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
       linkedTableIds: linkedIds,
       guests,
       notes: notes || undefined,
-      reservationId,
     });
     setSubmitting(false);
     if (result.ok) {
@@ -533,63 +549,95 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-[92vw] max-h-[95dvh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            เปิดโต๊ะ {table.label}
-            {reservationId && <span className="ml-2 text-sm font-normal text-blue-600">(จากการจอง)</span>}
-          </DialogTitle>
-        </DialogHeader>
+      <DialogContent className={step === 'link'
+        ? 'flex flex-col sm:max-w-[96vw] w-[96vw] h-[92dvh] max-h-[92dvh] p-0 gap-0 overflow-hidden'
+        : 'sm:max-w-[92vw] max-h-[95dvh] overflow-y-auto'
+      }>
 
-        {step === 'link' && (
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Link2 className="size-3.5" />เลือกโต๊ะที่ต้องการเชื่อมโยง
-          </p>
-        )}
-
-        {step === 'tiles' && (
-          <div className="flex flex-col md:flex-row gap-4 md:gap-5 md:h-[75dvh]">
-            {/* Left: tile picker + notes */}
-            <div className="flex-1 min-w-0 min-h-0 overflow-y-auto space-y-4 pr-1">
-              <TilePicker
-                tiles={pricingTiles}
-                quantities={quantities}
-                onChange={(id, qty) => setQuantities((p) => ({ ...p, [id]: qty }))}
-                tileSize="lg"
-              />
-              <div className="space-y-1.5">
-                <Label htmlFor="open-notes">หมายเหตุ (ไม่บังคับ)</Label>
-                <Input id="open-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="เช่น ลูกค้า VIP" />
+        {step === 'link' ? (
+          <>
+            {/* Link step header */}
+            <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
+              <div className="flex items-center gap-3">
+                <Link2 className="size-5 text-primary shrink-0" />
+                <div>
+                  <p className="text-base font-semibold text-foreground">เชื่อมโต๊ะกับโต๊ะ {table.label}</p>
+                  <p className="text-xs text-muted-foreground">คลิกโต๊ะสีเขียวเพื่อเลือก — คลิกซ้ำเพื่อยกเลิก (ไม่บังคับ)</p>
+                </div>
               </div>
+              {linkedIds.length > 0 && (
+                <span className="rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+                  เลือก {linkedIds.length} โต๊ะ
+                </span>
+              )}
             </div>
 
-            {/* Right: summary panel */}
-            <TileSummaryPanel
-              pricingTiles={pricingTiles}
-              quantities={quantities}
-              onChange={(id, qty) => setQuantities((p) => ({ ...p, [id]: qty }))}
-            />
-          </div>
-        )}
+            {/* Canvas area */}
+            <div className="flex-1 min-h-0 p-4 flex">
+              <LinkedTablePicker
+                tables={allTables}
+                primaryTableId={table.id}
+                selected={linkedIds}
+                onToggle={(id) => setLinkedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])}
+              />
+            </div>
 
-        {step === 'link' && (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">เลือกโต๊ะที่ต้องการเชื่อมโยงกับโต๊ะ {table.label} (ไม่บังคับ)</p>
-            <LinkedTablePicker
-              tables={allTables}
-              primaryTableId={table.id}
-              selected={linkedIds}
-              onToggle={(id) => setLinkedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])}
-            />
-            {linkedIds.length > 0 && (
-              <p className="text-xs text-muted-foreground">เชื่อมโยง {linkedIds.length} โต๊ะ — นับรวมเป็น session เดียวกัน</p>
-            )}
-          </div>
-        )}
+            {/* Link step footer */}
+            <div className="flex items-center justify-between border-t border-border px-6 py-4 shrink-0">
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block size-3.5 rounded-md border-2 border-primary bg-primary" />โต๊ะที่เปิด
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block size-3.5 rounded-md border-2 border-emerald-400 bg-emerald-50" />ว่าง (เลือกได้)
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block size-3.5 rounded-md border-2 border-slate-200 bg-white/50 opacity-50" />ไม่ว่าง
+                </span>
+              </div>
+              <div className="flex gap-2.5">
+                <button type="button" onClick={() => setStep('tiles')} className="rounded-xl border border-border px-5 py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">
+                  ย้อนกลับ
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={submitting}
+                  className="flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                >
+                  {submitting && <Loader2 className="size-4 animate-spin" />}
+                  {submitting ? 'กำลังเปิด...' : 'เปิดโต๊ะ'}
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>เปิดโต๊ะ {table.label}</DialogTitle>
+            </DialogHeader>
 
-        <DialogFooter>
-          {step === 'tiles' ? (
-            <>
+            <div className="flex flex-col md:flex-row gap-4 md:gap-5 md:h-[75dvh]">
+              <div className="flex-1 min-w-0 min-h-0 overflow-y-auto space-y-4 pr-1">
+                <TilePicker
+                  tiles={pricingTiles}
+                  quantities={quantities}
+                  onChange={(id, qty) => setQuantities((p) => ({ ...p, [id]: qty }))}
+                  tileSize="lg"
+                />
+                <div className="space-y-1.5">
+                  <Label htmlFor="open-notes">หมายเหตุ (ไม่บังคับ)</Label>
+                  <Input id="open-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="เช่น ลูกค้า VIP" />
+                </div>
+              </div>
+              <TileSummaryPanel
+                pricingTiles={pricingTiles}
+                quantities={quantities}
+                onChange={(id, qty) => setQuantities((p) => ({ ...p, [id]: qty }))}
+              />
+            </div>
+
+            <DialogFooter>
               <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
               <button
                 type="button"
@@ -607,186 +655,9 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
                 {submitting && <Loader2 className="size-4 animate-spin" />}
                 {submitting ? 'กำลังเปิด...' : 'เปิดโต๊ะ'}
               </button>
-            </>
-          ) : (
-            <>
-              <button type="button" onClick={() => setStep('tiles')} className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ย้อนกลับ</button>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={submitting}
-                className="flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-              >
-                {submitting && <Loader2 className="size-4 animate-spin" />}
-                {submitting ? 'กำลังเปิด...' : 'เปิดโต๊ะ'}
-              </button>
-            </>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* ─── Reservation Flow ─────────────────────────────────────────────── */
-
-type ReserveStep = 'customer' | 'tiles' | 'link';
-
-interface ReservationFlowProps {
-  open: boolean;
-  table: TableData | null;
-  allTables: TableData[];
-  pricingTiles: PricingTileData[];
-  onClose: () => void;
-  onSuccess: () => void;
-}
-
-function ReservationFlow({ open, table, allTables, pricingTiles, onClose, onSuccess }: ReservationFlowProps) {
-  const [step, setStep] = useState<ReserveStep>('customer');
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [partySize, setPartySize] = useState('2');
-  // default: tomorrow same hour
-  const [reservedAt, setReservedAt] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setSeconds(0, 0);
-    return d.toISOString().slice(0, 16);
-  });
-  const [notes, setNotes] = useState('');
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [linkedIds, setLinkedIds] = useState<string[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      setStep('customer');
-      setName(''); setPhone(''); setPartySize('2'); setNotes('');
-      setQuantities({}); setLinkedIds([]);
-      const d = new Date();
-      d.setDate(d.getDate() + 1);
-      d.setSeconds(0, 0);
-      setReservedAt(d.toISOString().slice(0, 16));
-    }
-  }, [open]);
-
-  const handleSubmit = async () => {
-    if (!table) return;
-    setSubmitting(true);
-    const guests = pricingTiles
-      .map((t) => ({ pricingTileId: t.id, quantity: quantities[t.id] ?? 0 }))
-      .filter((g) => g.quantity > 0);
-    const result = await createReservation({
-      primaryTableId: table.id,
-      linkedTableIds: linkedIds,
-      customerName: name.trim(),
-      customerPhone: phone.trim() || undefined,
-      partySize: Number(partySize) || 1,
-      reservedAt: new Date(reservedAt).toISOString(),
-      notes: notes.trim() || undefined,
-      guests,
-    });
-    setSubmitting(false);
-    if (result.ok) {
-      toast.success(`จองโต๊ะ ${table.label} สำเร็จ`);
-      onSuccess();
-      onClose();
-    } else {
-      toast.error(result.error);
-    }
-  };
-
-  if (!table) return null;
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader><DialogTitle>จองโต๊ะ {table.label}</DialogTitle></DialogHeader>
-
-        <div className="flex items-center gap-2 text-xs">
-          {(['customer', 'tiles', 'link'] as ReserveStep[]).map((s, i) => (
-            <span key={s} className="flex items-center gap-1.5">
-              {i > 0 && <ChevronRight className="size-3 text-muted-foreground" />}
-              <span className={`rounded-full px-2.5 py-0.5 font-medium ${step === s ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-                {i + 1} {s === 'customer' ? 'ข้อมูลลูกค้า' : s === 'tiles' ? 'ประเภทลูกค้า' : 'เชื่อมโยงโต๊ะ'}
-              </span>
-            </span>
-          ))}
-        </div>
-
-        {step === 'customer' && (
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="res-name">ชื่อลูกค้า *</Label>
-              <Input id="res-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="คุณสมชาย" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="res-phone">เบอร์โทร</Label>
-                <Input id="res-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="081-xxx-xxxx" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="res-party">จำนวนคน</Label>
-                <Input id="res-party" type="number" min={1} value={partySize} onChange={(e) => setPartySize(e.target.value)} />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="res-dt">วันเวลาที่จอง</Label>
-              <Input id="res-dt" type="datetime-local" value={reservedAt} onChange={(e) => setReservedAt(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="res-notes">หมายเหตุ</Label>
-              <Input id="res-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </div>
-          </div>
+            </DialogFooter>
+          </>
         )}
-
-        {step === 'tiles' && (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">ระบุประเภทผู้เข้าใช้ล่วงหน้า (ไม่บังคับ)</p>
-            <TilePicker
-              tiles={pricingTiles}
-              quantities={quantities}
-              onChange={(id, qty) => setQuantities((p) => ({ ...p, [id]: qty }))}
-            />
-          </div>
-        )}
-
-        {step === 'link' && (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">เลือกโต๊ะที่ต้องการจองร่วมกัน (ไม่บังคับ)</p>
-            <LinkedTablePicker
-              tables={allTables}
-              primaryTableId={table.id}
-              selected={linkedIds}
-              onToggle={(id) => setLinkedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])}
-            />
-          </div>
-        )}
-
-        <DialogFooter>
-          {step === 'customer' && (
-            <>
-              <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
-              <Button onClick={() => setStep('tiles')} disabled={!name.trim()}>ถัดไป <ChevronRight className="ml-1 size-4" /></Button>
-            </>
-          )}
-          {step === 'tiles' && (
-            <>
-              <button type="button" onClick={() => setStep('customer')} className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ย้อนกลับ</button>
-              <Button onClick={() => setStep('link')}>ถัดไป <ChevronRight className="ml-1 size-4" /></Button>
-            </>
-          )}
-          {step === 'link' && (
-            <>
-              <button type="button" onClick={() => setStep('tiles')} className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ย้อนกลับ</button>
-              <Button onClick={handleSubmit} disabled={submitting}>
-                {submitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
-                {submitting ? 'กำลังจอง...' : 'ยืนยันจอง'}
-              </Button>
-            </>
-          )}
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -906,8 +777,7 @@ interface TableSheetProps {
   pricingTiles: PricingTileData[];
   onClose: () => void;
   onRefetch: () => void;
-  onOpenTable: (table: TableData, reservationId?: string, prefillGuests?: Record<string, number>) => void;
-  onReserveTable: (table: TableData) => void;
+  onOpenTable: (table: TableData, prefillGuests?: Record<string, number>) => void;
   onMoveTable: (sessionId: string, tableLabel: string) => void;
   onEditGuests: (sessionId: string, currentGuests: { pricingTileId: string; quantity: number }[]) => void;
 }
@@ -920,7 +790,6 @@ function TableSheet({
   onClose,
   onRefetch,
   onOpenTable,
-  onReserveTable,
   onMoveTable,
   onEditGuests,
 }: TableSheetProps) {
@@ -931,7 +800,6 @@ function TableSheet({
 
   if (!table) return null;
   const sess = table.activeSession;
-  const resv = table.activeReservation;
   const visualStatus = getVisualStatus(table);
 
   // Whether this table is part of a linked group (primary or secondary)
@@ -994,17 +862,6 @@ function TableSheet({
     else toast.error(r.error);
   };
 
-  const handleCancelReservation = () => {
-    if (!resv) return;
-    openConfirm(`ยกเลิกการจองโต๊ะ ${table.label}?`, async () => {
-      setBusy(true);
-      const r = await cancelReservation(resv.id);
-      setBusy(false);
-      if (r.ok) { toast.success('ยกเลิกการจองแล้ว'); onClose(); onRefetch(); }
-      else toast.error(r.error);
-    });
-  };
-
   return (
     <>
       {confirmDialog}
@@ -1053,17 +910,6 @@ function TableSheet({
                   <p className="text-xs text-primary-foreground/70">เริ่ม session และเลือกประเภทผู้เข้าใช้</p>
                 </div>
                 <ChevronRight className="size-5 shrink-0" />
-              </button>
-              <button
-                type="button"
-                onClick={() => { onClose(); onReserveTable(table); }}
-                className="flex w-full items-center justify-between rounded-xl border-2 border-blue-600 bg-blue-50 px-4 py-4 text-left text-blue-800 hover:bg-blue-100 transition-colors"
-              >
-                <div>
-                  <p className="font-semibold">จองโต๊ะล่วงหน้า</p>
-                  <p className="text-xs text-blue-600">บันทึกข้อมูลลูกค้าและวันเวลา</p>
-                </div>
-                <CalendarClock className="size-5 shrink-0" />
               </button>
             </>
           )}
@@ -1237,85 +1083,33 @@ function TableSheet({
 
           {/* ── RESERVED ── */}
           {visualStatus === 'reserved' && (
-            <>
-              {resv ? (
-                <div className="space-y-3">
-                  <div className="rounded-xl bg-blue-50 p-3 space-y-2 text-sm border border-blue-100">
-                    <div className="flex items-center gap-2">
-                      <BadgeCheck className="size-4 text-blue-600 shrink-0" />
-                      <span className="font-semibold text-blue-900">{resv.customerName}</span>
-                      {resv.customerPhone && (
-                        <span className="text-xs text-blue-600">{resv.customerPhone}</span>
-                      )}
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">วันเวลา</span>
-                      <span className="font-medium text-foreground">
-                        {format(new Date(resv.reservedAt), 'd MMM HH:mm', { locale: th })}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">จำนวน</span>
-                      <span className="font-medium">{resv.partySize} คน</span>
-                    </div>
-                    {resv.notes && <p className="text-xs text-muted-foreground italic">{resv.notes}</p>}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onOpenTable(table, resv.id);
-                    }}
-                    className="flex w-full items-center justify-between rounded-xl border-2 border-primary bg-primary px-4 py-4 text-left text-primary-foreground hover:bg-primary/90 transition-colors"
-                  >
-                    <div>
-                      <p className="font-semibold">ลูกค้ามาแล้ว — เปิดโต๊ะ</p>
-                      <p className="text-xs text-primary-foreground/70">เริ่ม session จากการจองนี้</p>
-                    </div>
-                    <ChevronRight className="size-5 shrink-0" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleCancelReservation}
-                    disabled={busy}
-                    className="w-full rounded-xl border border-red-200 px-4 py-4 text-base font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
-                  >
-                    ยกเลิกการจอง
-                  </button>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">โต๊ะนี้ถูกจองไว้</p>
+              <button
+                type="button"
+                onClick={() => { onClose(); onOpenTable(table); }}
+                className="flex w-full items-center justify-between rounded-xl border-2 border-primary bg-primary px-4 py-4 text-left text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                <div>
+                  <p className="font-semibold">เปิดโต๊ะ</p>
                 </div>
-              ) : (
-                // Reserved via old setTableReserved (no reservation record)
-                <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground">โต๊ะนี้ถูกจองไว้ (ไม่มีข้อมูลการจอง)</p>
-                  <button
-                    type="button"
-                    onClick={() => { onClose(); onOpenTable(table); }}
-                    className="flex w-full items-center justify-between rounded-xl border-2 border-primary bg-primary px-4 py-4 text-left text-primary-foreground hover:bg-primary/90 transition-colors"
-                  >
-                    <div>
-                      <p className="font-semibold">เปิดโต๊ะ</p>
-                    </div>
-                    <ChevronRight className="size-5 shrink-0" />
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => openConfirm(`ยกเลิกการจองโต๊ะ ${table.label}?`, async () => {
-                      setBusy(true);
-                      const r = await setTableAvailable({ tableId: table.id });
-                      setBusy(false);
-                      if (r.ok) { toast.success('ยกเลิกการจองแล้ว'); onClose(); onRefetch(); }
-                      else toast.error(r.error);
-                    })}
-                    className="w-full rounded-xl border border-red-200 px-4 py-4 text-base font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
-                  >
-                    ยกเลิกจอง
-                  </button>
-                </div>
-              )}
-            </>
+                <ChevronRight className="size-5 shrink-0" />
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => openConfirm(`ยกเลิกการจองโต๊ะ ${table.label}?`, async () => {
+                  setBusy(true);
+                  const r = await setTableAvailable({ tableId: table.id });
+                  setBusy(false);
+                  if (r.ok) { toast.success('ยกเลิกการจองแล้ว'); onClose(); onRefetch(); }
+                  else toast.error(r.error);
+                })}
+                className="w-full rounded-xl border border-red-200 px-4 py-4 text-base font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
+              >
+                ยกเลิกจอง
+              </button>
+            </div>
           )}
 
           {/* ── PAID (no session — table stuck in paid state) ── */}
@@ -1788,13 +1582,8 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
 
   // OpenTable flow
   const [openFlowTable, setOpenFlowTable] = useState<TableData | null>(null);
-  const [openFlowReservationId, setOpenFlowReservationId] = useState<string | undefined>();
   const [openFlowPrefill, setOpenFlowPrefill] = useState<Record<string, number> | undefined>();
   const [openFlowOpen, setOpenFlowOpen] = useState(false);
-
-  // Reservation flow
-  const [reserveFlowTable, setReserveFlowTable] = useState<TableData | null>(null);
-  const [reserveFlowOpen, setReserveFlowOpen] = useState(false);
 
   // Move table
   const [moveSessionId, setMoveSessionId] = useState<string | null>(null);
@@ -2089,15 +1878,10 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
         pricingTiles={pricingTiles}
         onClose={() => { setSheetOpen(false); }}
         onRefetch={refetch}
-        onOpenTable={(t, resId, prefill) => {
+        onOpenTable={(t, prefill) => {
           setOpenFlowTable(t);
-          setOpenFlowReservationId(resId);
           setOpenFlowPrefill(prefill);
           setOpenFlowOpen(true);
-        }}
-        onReserveTable={(t) => {
-          setReserveFlowTable(t);
-          setReserveFlowOpen(true);
         }}
         onMoveTable={(sessionId, label) => {
           setMoveSessionId(sessionId);
@@ -2125,23 +1909,12 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
         table={openFlowTable}
         allTables={tables}
         pricingTiles={pricingTiles}
-        reservationId={openFlowReservationId}
         prefillGuests={openFlowPrefill}
         onClose={() => { setOpenFlowOpen(false); setOpenFlowTable(null); }}
         onSuccess={(data) => {
           setQrData(data);
           refetch();
         }}
-      />
-
-      {/* Reservation Flow */}
-      <ReservationFlow
-        open={reserveFlowOpen}
-        table={reserveFlowTable}
-        allTables={tables}
-        pricingTiles={pricingTiles}
-        onClose={() => { setReserveFlowOpen(false); setReserveFlowTable(null); }}
-        onSuccess={refetch}
       />
 
       {/* QR Dialog */}

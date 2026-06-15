@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import { SidebarLayout } from '@/components/shared/SidebarLayout';
 import { getInventoryAlertCount } from '@/lib/actions/inventory';
+import { getMenuLabels } from '@/lib/actions/store';
 import type { Role } from '@/lib/auth/permissions';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -13,7 +14,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const role = session.user.role as Role;
   const name = session.user.name ?? 'Owner';
 
-  const { lowStockCount, pendingApprovalCount } = await getInventoryAlertCount();
+  const [{ lowStockCount, pendingApprovalCount }, menuLabels] = await Promise.all([
+    getInventoryAlertCount(),
+    getMenuLabels(),
+  ]);
 
   const badgeCounts: Record<string, number> = {};
   if (lowStockCount > 0) badgeCounts['/inventory'] = lowStockCount;
@@ -27,6 +31,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       uiLayout={session.user.uiLayout ?? null}
       allowedModules={session.user.allowedModules ?? []}
       navLayout={session.user.navLayout ?? null}
+      menuLabels={menuLabels}
     >
       {children}
     </SidebarLayout>

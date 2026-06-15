@@ -6,7 +6,7 @@ import { nanoid } from 'nanoid';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
-import { sessions, tables, sessionGuests, pricingTiles, reservations } from '@/lib/db/schema';
+import { sessions, tables, sessionGuests, pricingTiles } from '@/lib/db/schema';
 import { z } from 'zod';
 import { writeAuditLog } from '@/lib/actions/audit';
 
@@ -24,8 +24,6 @@ const openSessionSchema = z.object({
   linkedTableIds: z.array(z.string().uuid()).default([]),
   guests: z.array(guestRowSchema).default([]),
   notes: z.string().max(500).optional(),
-  /** If the table was reserved, supply the reservationId to mark it as arrived */
-  reservationId: z.string().uuid().optional(),
   /** Link a CRM customer to this session for loyalty tracking */
   customerId: z.string().uuid().optional().nullable(),
 });
@@ -40,7 +38,7 @@ export async function openSession(input: unknown) {
   if (!parsed.success)
     return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' };
 
-  const { tableId, linkedTableIds, guests, notes, reservationId, customerId } = parsed.data;
+  const { tableId, linkedTableIds, guests, notes, customerId } = parsed.data;
   const allTableIds = [tableId, ...linkedTableIds];
 
   // Filter out zero-quantity tiles
@@ -115,14 +113,10 @@ export async function openSession(input: unknown) {
       await db.insert(sessions).values(linkedSessionRows);
     }
 
-    // Update table statuses (and optional reservation) in parallel
     await Promise.all([
       db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, tableId)),
       linkedTableIds.length > 0
         ? db.update(tables).set({ status: 'linked' }).where(inArray(tables.id, linkedTableIds))
-        : Promise.resolve(),
-      reservationId
-        ? db.update(reservations).set({ status: 'arrived' }).where(eq(reservations.id, reservationId))
         : Promise.resolve(),
     ]);
 
@@ -281,11 +275,7 @@ export async function setTableAvailable(input: { tableId: string }) {
 
 const updateGuestsSchema = z.object({
   sessionId: z.string().uuid(),
-  guests: z
-    .array(guestRowSchema)
-    .refine((arr) => arr.some((g) => g.quantity > 0), {
-      message: 'ต้องมีผู้เข้าใช้บริการอย่างน้อย 1 คน',
-    }),
+  guests: z.array(guestRowSchema),
 });
 
 export async function updateSessionGuests(input: unknown) {

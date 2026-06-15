@@ -92,16 +92,6 @@ export const discountTypeEnum = pgEnum('discount_type', [
   'percentage',
 ]);
 
-/** Reservation lifecycle */
-export const reservationStatusEnum = pgEnum('reservation_status', [
-  'pending',
-  'confirmed',
-  'arrived',
-  'seated',
-  'cancelled',
-  'no_show',
-]);
-
 export const stockCountStatusEnum = pgEnum('stock_count_status', [
   'draft',
   'submitted',
@@ -156,7 +146,7 @@ export const users = pgTable('users', {
   branchId: uuid('branch_id').references(() => branches.id),
   uiLayout: uiLayoutEnum('ui_layout'),
   allowedModules: text('allowed_modules').array(),
-  navLayout: jsonb('nav_layout').$type<{ sections: { heading: string; modules: string[] }[]; labels: Record<string, string> } | null>(),
+  navLayout: jsonb('nav_layout').$type<{ sections: { heading: string; modules: string[] }[] } | null>(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
@@ -468,68 +458,6 @@ export const auditLogs = pgTable(
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
   (t) => [index('audit_logs_created_at_idx').on(t.createdAt)],
-);
-
-/**
- * Table reservations.
- * Primary reservation (parentReservationId = null) is linked to the "main" table.
- * Child reservations (parentReservationId set) are linked tables in a multi-table booking.
- */
-export const reservations = pgTable(
-  'reservations',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    /** Format: R{DDMM}{4-digit seq}, e.g. R06010001 */
-    reservationNo: varchar('reservation_no', { length: 20 }),
-    tableId: uuid('table_id')
-      .notNull()
-      .references(() => tables.id),
-    customerId: uuid('customer_id').references(() => customers.id),
-    reservedAt: timestamp('reserved_at').notNull(),
-    /** YYYY-MM-DD */
-    reservationDate: date('reservation_date'),
-    /** HH:mm (stored as text) */
-    reservationTime: varchar('reservation_time', { length: 5 }),
-    customerName: varchar('customer_name', { length: 255 }).notNull(),
-    customerPhone: varchar('customer_phone', { length: 20 }),
-    partySize: integer('party_size').notNull(),
-    depositAmount: numeric('deposit_amount', { precision: 10, scale: 2 }).notNull().default('0'),
-    notes: text('notes'),
-    status: reservationStatusEnum('status').notNull().default('pending'),
-    /** Points to the primary reservation for linked-table bookings */
-    parentReservationId: uuid('parent_reservation_id'),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
-    createdBy: uuid('created_by')
-      .notNull()
-      .references(() => users.id),
-  },
-  (t) => [
-    index('reservations_table_id_idx').on(t.tableId),
-    index('reservations_reserved_at_idx').on(t.reservedAt),
-    index('reservations_status_idx').on(t.status),
-    index('reservations_parent_id_idx').on(t.parentReservationId),
-    index('reservations_customer_id_idx').on(t.customerId),
-    index('reservations_date_idx').on(t.reservationDate),
-  ],
-);
-
-/**
- * Guest breakdown pre-registered for a reservation.
- * References pricingTiles (category='guest').
- */
-export const reservationGuests = pgTable(
-  'reservation_guests',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    reservationId: uuid('reservation_id')
-      .notNull()
-      .references(() => reservations.id),
-    pricingTileId: uuid('pricing_tile_id')
-      .notNull()
-      .references(() => pricingTiles.id),
-    quantity: integer('quantity').notNull(),
-  },
-  (t) => [index('reservation_guests_reservation_id_idx').on(t.reservationId)],
 );
 
 // ─── Inventory Tables ─────────────────────────────────────────────────────────
@@ -966,7 +894,6 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   branch: one(branches, { fields: [users.branchId], references: [branches.id] }),
   payments: many(payments),
   auditLogs: many(auditLogs),
-  reservations: many(reservations),
   stockCounts: many(stockCounts),
   purchaseOrders: many(purchaseOrders),
   employees: many(employees),
@@ -976,7 +903,6 @@ export const usersRelations = relations(users, ({ one, many }) => ({
 
 export const customersRelations = relations(customers, ({ many }) => ({
   sessions: many(sessions),
-  reservations: many(reservations),
   visits: many(customerVisits),
 }));
 
@@ -988,12 +914,10 @@ export const customerVisitsRelations = relations(customerVisits, ({ one }) => ({
 export const tablesRelations = relations(tables, ({ one, many }) => ({
   branch: one(branches, { fields: [tables.branchId], references: [branches.id] }),
   sessions: many(sessions),
-  reservations: many(reservations),
 }));
 
 export const pricingTilesRelations = relations(pricingTiles, ({ many }) => ({
   sessionGuests: many(sessionGuests),
-  reservationGuests: many(reservationGuests),
   paymentLineItems: many(paymentLineItems),
 }));
 
@@ -1084,30 +1008,6 @@ export const paymentLineItemsRelations = relations(paymentLineItems, ({ one }) =
 
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
   user: one(users, { fields: [auditLogs.userId], references: [users.id] }),
-}));
-
-export const reservationsRelations = relations(reservations, ({ one, many }) => ({
-  table: one(tables, { fields: [reservations.tableId], references: [tables.id] }),
-  customer: one(customers, { fields: [reservations.customerId], references: [customers.id] }),
-  createdByUser: one(users, { fields: [reservations.createdBy], references: [users.id] }),
-  parentReservation: one(reservations, {
-    fields: [reservations.parentReservationId],
-    references: [reservations.id],
-    relationName: 'linkedReservations',
-  }),
-  linkedReservations: many(reservations, { relationName: 'linkedReservations' }),
-  guests: many(reservationGuests),
-}));
-
-export const reservationGuestsRelations = relations(reservationGuests, ({ one }) => ({
-  reservation: one(reservations, {
-    fields: [reservationGuests.reservationId],
-    references: [reservations.id],
-  }),
-  pricingTile: one(pricingTiles, {
-    fields: [reservationGuests.pricingTileId],
-    references: [pricingTiles.id],
-  }),
 }));
 
 export const ingredientCategoriesRelations = relations(ingredientCategories, ({ many }) => ({
@@ -1337,6 +1237,8 @@ export const storeSettings = pgTable('store_settings', {
   billMainConfig:        jsonb('bill_main_config').$type<BillConfig>(),
   billSecondaryConfig:   jsonb('bill_secondary_config').$type<BillConfig>(),
   billTaxInvoiceConfig:  jsonb('bill_tax_invoice_config').$type<BillConfig>(),
+  /** Global menu label overrides — same for all users */
+  menuLabels:            jsonb('menu_labels').$type<Record<string, string>>(),
 });
 
 // ─── Monthly Expenses (P&L manual entries) ───────────────────────────────────
@@ -1400,10 +1302,6 @@ export type PaymentLineItem = typeof paymentLineItems.$inferSelect;
 export type NewPaymentLineItem = typeof paymentLineItems.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type NewAuditLog = typeof auditLogs.$inferInsert;
-export type Reservation = typeof reservations.$inferSelect;
-export type NewReservation = typeof reservations.$inferInsert;
-export type ReservationGuest = typeof reservationGuests.$inferSelect;
-export type NewReservationGuest = typeof reservationGuests.$inferInsert;
 export type StoreSettings = typeof storeSettings.$inferSelect;
 export type IngredientCategory = typeof ingredientCategories.$inferSelect;
 export type NewIngredientCategory = typeof ingredientCategories.$inferInsert;

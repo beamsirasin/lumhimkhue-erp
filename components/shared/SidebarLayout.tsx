@@ -37,8 +37,6 @@ import {
   Clock,
   Wallet,
   BookOpen,
-  CalendarDays,
-
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -75,7 +73,6 @@ const MODULE_HREFS: Record<string, string[]> = {
   queue:           ['/queue', '/queue/history'],
   tables:          ['/tables', '/tables/history'],
   dashboard:       ['/dashboard'],
-  reservations:    ['/reservations'],
   menu:            ['/menu'],
   recipes:         ['/recipes'],
   'pricing-tiles': ['/pricing-tiles'],
@@ -138,7 +135,6 @@ function buildModuleItemMap(role: Role): Map<string, NavItem | NavGroup> {
 
 type StoredNavLayout = {
   sections: { heading: string; modules: string[] }[];
-  labels: Record<string, string>;
 } | null;
 
 function buildSectionsFromNavLayout(
@@ -156,13 +152,24 @@ function buildSectionsFromNavLayout(
         .map((m) => {
           const item = modMap.get(m);
           if (!item) return null;
-          const customLabel = navLayout.labels?.[m];
-          if (!customLabel) return item;
-          return { ...item, label: customLabel };
+          return item;
         })
         .filter((item): item is NavItem | NavGroup => item != null),
     }))
     .filter((s) => s.items.length > 0);
+}
+
+function applyMenuLabels(sections: NavSection[], menuLabels: Record<string, string>): NavSection[] {
+  if (!Object.keys(menuLabels).length) return sections;
+  return sections.map((section) => ({
+    ...section,
+    items: section.items.map((item) => {
+      const modId = getModuleForNavItem(item);
+      const customLabel = modId ? menuLabels[modId] : undefined;
+      if (!customLabel) return item;
+      return { ...item, label: customLabel };
+    }),
+  }));
 }
 
 function reorderSections(sections: NavSection[], modules: string[]): NavSection[] {
@@ -271,7 +278,6 @@ const NAV: Record<Role, NavSection[]> = {
       heading: 'จัดการ',
       items: [
         { href: '/dashboard',     label: 'แดชบอร์ด',     Icon: LayoutDashboard },
-        { href: '/reservations',  label: 'จองโต๊ะ',       Icon: CalendarDays },
         { href: '/menu',          label: 'เมนูอาหาร',    Icon: UtensilsCrossed },
         { href: '/recipes',       label: 'สูตรอาหาร',    Icon: BookOpen },
         { href: '/pricing-tiles', label: 'Pricing Tiles', Icon: Tag },
@@ -362,8 +368,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/hr/time':               'บันทึกเวลา',
   '/hr/payroll':            'เงินเดือน',
   '/hr/settings':           'ตั้งค่า HR',
-  '/reservations':          'การจองโต๊ะ',
-
 };
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -815,6 +819,7 @@ function StandardSidebarLayout({
   badgeCounts,
   allowedModules,
   navLayout,
+  menuLabels,
   variant = 'default',
 }: {
   role: Role;
@@ -824,15 +829,17 @@ function StandardSidebarLayout({
   badgeCounts?: Record<string, number>;
   allowedModules: string[];
   navLayout?: StoredNavLayout;
+  menuLabels?: Record<string, string>;
   variant?: 'default' | 'tablet';
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const isTablet = variant === 'tablet';
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => isTablet ? _tabletCollapsed : false);
   const rawSections = NAV[role] ?? [];
-  const sections = navLayout?.sections?.length
+  const builtSections = navLayout?.sections?.length
     ? buildSectionsFromNavLayout(navLayout, role, allowedModules)
     : reorderSections(filterSections(rawSections, allowedModules), allowedModules);
+  const sections = menuLabels ? applyMenuLabels(builtSections, menuLabels) : builtSections;
   const pageTitle = getPageTitle(pathname);
 
   const size: 'default' | 'large' = isTablet ? 'large' : 'default';
@@ -1136,6 +1143,7 @@ interface SidebarLayoutProps {
   uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null;
   allowedModules?: string[] | null;
   navLayout?: StoredNavLayout;
+  menuLabels?: Record<string, string>;
 }
 
 export function SidebarLayout({
@@ -1146,6 +1154,7 @@ export function SidebarLayout({
   uiLayout,
   allowedModules,
   navLayout,
+  menuLabels,
 }: SidebarLayoutProps) {
   const pathname = usePathname();
   const modules = allowedModules ?? [];
@@ -1190,6 +1199,7 @@ export function SidebarLayout({
       badgeCounts={badgeCounts}
       allowedModules={modules}
       navLayout={navLayout}
+      menuLabels={menuLabels}
       variant={useTablet ? 'tablet' : 'default'}
     >
       {children}

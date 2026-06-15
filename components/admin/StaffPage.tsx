@@ -33,6 +33,7 @@ import {
   toggleStaffActive,
   deleteStaff,
 } from '@/lib/actions/staff';
+import { updateMenuLabels } from '@/lib/actions/store';
 import {
   createStaffSchema,
   updateStaffSchema,
@@ -85,7 +86,6 @@ export const MODULE_GROUPS = [
     label: 'จัดการ',
     modules: [
       { id: 'dashboard',      label: 'แดชบอร์ด' },
-      { id: 'reservations',   label: 'จองโต๊ะ' },
       { id: 'menu',           label: 'เมนูอาหาร' },
       { id: 'recipes',        label: 'สูตรอาหาร' },
       { id: 'pricing-tiles',  label: 'Pricing Tiles' },
@@ -107,6 +107,7 @@ export const MODULE_GROUPS = [
 
 interface StaffPageProps {
   initialData: StaffMember[];
+  initialMenuLabels?: Record<string, string>;
 }
 
 type Modal =
@@ -115,7 +116,7 @@ type Modal =
   | { type: 'resetPwd'; member: StaffMember }
   | { type: 'delete'; member: StaffMember };
 
-export function StaffPage({ initialData }: StaffPageProps) {
+export function StaffPage({ initialData, initialMenuLabels = {} }: StaffPageProps) {
   const [modal, setModal] = useState<Modal | null>(null);
   const queryClient = useQueryClient();
 
@@ -249,6 +250,7 @@ export function StaffPage({ initialData }: StaffPageProps) {
           <div onClick={(e) => e.stopPropagation()} className="my-auto">
             {modal.type === 'add' && (
               <StaffForm
+                initialMenuLabels={initialMenuLabels}
                 onClose={() => setModal(null)}
                 onSaved={() => { invalidate(); setModal(null); }}
               />
@@ -256,6 +258,7 @@ export function StaffPage({ initialData }: StaffPageProps) {
             {modal.type === 'edit' && (
               <StaffForm
                 initial={modal.member}
+                initialMenuLabels={initialMenuLabels}
                 onClose={() => setModal(null)}
                 onSaved={() => { invalidate(); setModal(null); }}
               />
@@ -399,34 +402,20 @@ function buildDefaultNavLayout(modules: string[]): NavLayoutSection[] {
 
 function SortableModuleRowWithMove({
   id,
-  defaultLabel,
-  customLabel,
+  displayLabel,
   sections,
   currentSection,
   onMove,
-  onLabelChange,
 }: {
   id: string;
-  defaultLabel: string;
-  customLabel?: string;
+  displayLabel: string;
   sections: string[];
   currentSection: string;
   onMove: (targetSection: string) => void;
-  onLabelChange: (newLabel: string | null) => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState('');
   const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition };
   const otherSections = sections.filter((s) => s !== currentSection);
-  const displayLabel = customLabel || defaultLabel;
-
-  const startEdit = () => { setDraft(customLabel || defaultLabel); setEditing(true); };
-  const saveLabel = () => {
-    const trimmed = draft.trim();
-    onLabelChange(!trimmed || trimmed === defaultLabel ? null : trimmed);
-    setEditing(false);
-  };
 
   return (
     <div
@@ -443,47 +432,7 @@ function SortableModuleRowWithMove({
       >
         <GripVertical className="size-4" />
       </button>
-
-      {editing ? (
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={saveLabel}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); saveLabel(); }
-            if (e.key === 'Escape') setEditing(false);
-          }}
-          autoFocus
-          className="flex-1 bg-transparent border-b border-primary text-xs text-foreground outline-none py-0 min-w-0"
-        />
-      ) : (
-        <span className="flex-1 min-w-0 text-xs text-foreground truncate">
-          {displayLabel}
-          {customLabel && <span className="ml-1 text-[9px] text-primary/50">(แก้ไข)</span>}
-        </span>
-      )}
-
-      {!editing && (
-        <button
-          type="button"
-          aria-label="แก้ไขชื่อเมนู"
-          onClick={startEdit}
-          className="shrink-0 text-muted-foreground/30 hover:text-foreground transition-colors"
-        >
-          <Pencil className="size-3" />
-        </button>
-      )}
-      {customLabel && !editing && (
-        <button
-          type="button"
-          aria-label="รีเซ็ตชื่อเมนู"
-          onClick={() => onLabelChange(null)}
-          className="shrink-0 text-muted-foreground/30 hover:text-red-400 transition-colors"
-        >
-          <X className="size-3" />
-        </button>
-      )}
-
+      <span className="flex-1 min-w-0 text-xs text-foreground truncate">{displayLabel}</span>
       {otherSections.length > 0 && (
         <select
           value=""
@@ -521,21 +470,23 @@ function SortableSectionContainer({
 
 /* ─── Module checkboxes ─────────────────────────────────────── */
 
+const ALL_MODULES_FLAT = MODULE_GROUPS.flatMap((g) => g.modules);
+
 function ModulePicker({
   value,
   onChange,
   navLayout,
   onNavLayoutChange,
-  navLabels,
-  onNavLabelsChange,
+  menuLabels,
+  onMenuLabelsChange,
   error,
 }: {
   value: string[];
   onChange: (v: string[]) => void;
   navLayout: NavLayoutSection[];
   onNavLayoutChange: (nl: NavLayoutSection[]) => void;
-  navLabels: Record<string, string>;
-  onNavLabelsChange: (l: Record<string, string>) => void;
+  menuLabels: Record<string, string>;
+  onMenuLabelsChange: (l: Record<string, string>) => void;
   error?: string;
 }) {
   const sensors = useSensors(
@@ -544,6 +495,10 @@ function ModulePicker({
   );
   const [editingSection, setEditingSection] = useState<number | null>(null);
   const [editingHeading, setEditingHeading] = useState('');
+  const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+  const [labelDraft, setLabelDraft] = useState('');
+
+  const allSelected = ALL_MODULES_FLAT.every((m) => value.includes(m.id));
 
   const toggle = (id: string) => {
     if (value.includes(id)) {
@@ -564,29 +519,33 @@ function ModulePicker({
     }
   };
 
-  const groupAllSelected = (ids: string[]) => ids.every((id) => value.includes(id));
-
-  const toggleGroup = (groupModules: { id: string }[], groupLabel: string) => {
-    const ids = groupModules.map((m) => m.id);
-    if (groupAllSelected(ids)) {
-      onChange(value.filter((m) => !ids.includes(m)));
-      onNavLayoutChange(navLayout.map((s) => ({ ...s, modules: s.modules.filter((m) => !ids.includes(m)) })));
+  const toggleAll = () => {
+    if (allSelected) {
+      onChange([]);
+      onNavLayoutChange(navLayout.map((s) => ({ ...s, modules: [] })));
     } else {
-      const toAdd = ids.filter((id) => !value.includes(id));
-      onChange([...new Set([...value, ...ids])]);
-      let updated = navLayout.map((s) => ({ ...s, modules: [...s.modules] }));
-      for (const id of toAdd) {
-        const sIdx = updated.findIndex((s) => s.heading === groupLabel);
-        if (sIdx >= 0) {
-          updated[sIdx].modules.push(id);
-        } else if (updated.length > 0) {
-          updated[0].modules.push(id);
-        } else {
-          updated = [{ heading: groupLabel, modules: [id] }];
-        }
-      }
-      onNavLayoutChange(updated);
+      const allIds = ALL_MODULES_FLAT.map((m) => m.id);
+      onChange(allIds);
+      onNavLayoutChange(buildDefaultNavLayout(allIds));
     }
+  };
+
+  const startLabelEdit = (id: string) => {
+    setLabelDraft(menuLabels[id] || ALL_MODULE_MAP.get(id)?.label || '');
+    setEditingLabelId(id);
+  };
+
+  const saveLabelEdit = (id: string) => {
+    const trimmed = labelDraft.trim();
+    const defaultLabel = ALL_MODULE_MAP.get(id)?.label || '';
+    const updated = { ...menuLabels };
+    if (!trimmed || trimmed === defaultLabel) {
+      delete updated[id];
+    } else {
+      updated[id] = trimmed;
+    }
+    onMenuLabelsChange(updated);
+    setEditingLabelId(null);
   };
 
   const handleSectionDragEnd = (event: DragEndEvent, sectionIdx: number) => {
@@ -643,40 +602,77 @@ function ModulePicker({
 
   return (
     <div className="space-y-3">
-      {MODULE_GROUPS.map((group) => {
-        const ids = group.modules.map((m) => m.id);
-        const allSelected = groupAllSelected(ids);
-        return (
-          <div key={group.label} className="rounded-lg border border-border overflow-hidden">
-            <div className="flex items-center justify-between bg-muted/50 px-3 py-2 border-b border-border">
-              <span className="text-xs font-semibold text-foreground">{group.label}</span>
-              <button
-                type="button"
-                onClick={() => toggleGroup(group.modules, group.label)}
-                className="text-[10px] text-muted-foreground hover:text-foreground underline transition-colors"
-              >
-                {allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-0 p-2">
-              {group.modules.map(({ id, label }) => (
-                <label
-                  key={id}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50 select-none transition-colors"
-                >
+      {/* Flat module list with inline label editing */}
+      <div className="rounded-lg border border-border overflow-hidden">
+        <div className="flex items-center justify-between bg-muted/50 px-3 py-2 border-b border-border">
+          <span className="text-xs font-semibold text-foreground">เลือกเมนู</span>
+          <button
+            type="button"
+            onClick={toggleAll}
+            className="text-[10px] text-muted-foreground hover:text-foreground underline transition-colors"
+          >
+            {allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}
+          </button>
+        </div>
+        <div className="divide-y divide-border">
+          {ALL_MODULES_FLAT.map(({ id, label: defaultLabel }) => {
+            const displayLabel = menuLabels[id] || defaultLabel;
+            const hasCustom = !!menuLabels[id];
+            const isEditing = editingLabelId === id;
+            return (
+              <div key={id} className="flex items-center gap-2 px-3 py-2 hover:bg-muted/30">
+                <input
+                  type="checkbox"
+                  id={`mod-${id}`}
+                  checked={value.includes(id)}
+                  onChange={() => toggle(id)}
+                  className="size-3.5 shrink-0 rounded accent-primary cursor-pointer"
+                />
+                {isEditing ? (
                   <input
-                    type="checkbox"
-                    checked={value.includes(id)}
-                    onChange={() => toggle(id)}
-                    className="size-3.5 rounded accent-primary"
+                    value={labelDraft}
+                    onChange={(e) => setLabelDraft(e.target.value)}
+                    onBlur={() => saveLabelEdit(id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); saveLabelEdit(id); }
+                      if (e.key === 'Escape') setEditingLabelId(null);
+                    }}
+                    autoFocus
+                    className="flex-1 min-w-0 bg-transparent border-b border-primary text-xs text-foreground outline-none py-0"
                   />
-                  <span className="text-xs text-foreground">{label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        );
-      })}
+                ) : (
+                  <label
+                    htmlFor={`mod-${id}`}
+                    className="flex-1 min-w-0 text-xs text-foreground cursor-pointer select-none truncate"
+                  >
+                    {displayLabel}
+                  </label>
+                )}
+                {!isEditing && (
+                  <button
+                    type="button"
+                    aria-label={`แก้ไขชื่อเมนู ${displayLabel}`}
+                    onClick={() => startLabelEdit(id)}
+                    className="shrink-0 text-muted-foreground/50 hover:text-foreground transition-colors"
+                  >
+                    <Pencil className="size-3" />
+                  </button>
+                )}
+                {hasCustom && !isEditing && (
+                  <button
+                    type="button"
+                    aria-label="รีเซ็ตชื่อ"
+                    onClick={() => { const u = { ...menuLabels }; delete u[id]; onMenuLabelsChange(u); }}
+                    className="shrink-0 text-muted-foreground/50 hover:text-red-400 transition-colors"
+                  >
+                    <X className="size-3" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Nav layout editor */}
       {value.length >= 2 && (
@@ -785,16 +781,10 @@ function ModulePicker({
                                 <SortableModuleRowWithMove
                                   key={id}
                                   id={id}
-                                  defaultLabel={info.label}
-                                  customLabel={navLabels[id]}
+                                  displayLabel={menuLabels[id] || info.label}
                                   sections={sectionNames}
                                   currentSection={section.heading}
                                   onMove={(targetHeading) => moveModule(id, sectionIdx, targetHeading)}
-                                  onLabelChange={(newLabel) => {
-                                    const updated = { ...navLabels };
-                                    if (newLabel == null) { delete updated[id]; } else { updated[id] = newLabel; }
-                                    onNavLabelsChange(updated);
-                                  }}
                                 />
                               );
                             })}
@@ -836,24 +826,23 @@ function ModulePicker({
 
 function StaffForm({
   initial,
+  initialMenuLabels = {},
   onClose,
   onSaved,
 }: {
   initial?: StaffMember;
+  initialMenuLabels?: Record<string, string>;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const schema = initial ? updateStaffSchema : createStaffSchema;
 
   const defaultModules = initial?.allowedModules ?? [];
-  const defaultUiLayout = initial?.uiLayout ?? ('' as '');
 
   const [navLayout, setNavLayout] = useState<NavLayoutSection[]>(() =>
     initial?.navLayout?.sections ?? buildDefaultNavLayout(defaultModules),
   );
-  const [navLabels, setNavLabels] = useState<Record<string, string>>(
-    () => initial?.navLayout?.labels ?? {},
-  );
+  const [menuLabels, setMenuLabels] = useState<Record<string, string>>(() => initialMenuLabels);
 
   const {
     register,
@@ -881,11 +870,12 @@ function StaffForm({
     const cleanSections = navLayout.filter((s) => s.modules.length > 0);
     const payload = {
       ...data,
-      navLayout: cleanSections.length > 0
-        ? { sections: cleanSections, labels: navLabels }
-        : null,
+      navLayout: cleanSections.length > 0 ? { sections: cleanSections } : null,
     };
-    const result = initial ? await updateStaff(payload) : await createStaff(payload);
+    const [result] = await Promise.all([
+      initial ? updateStaff(payload) : createStaff(payload),
+      updateMenuLabels(menuLabels),
+    ]);
     if (!result.ok) { toast.error(result.error); return; }
     toast.success(initial ? 'แก้ไขข้อมูลแล้ว' : 'เพิ่ม User แล้ว');
     if ('selfUpdated' in result && result.selfUpdated) {
@@ -969,8 +959,8 @@ function StaffForm({
                   onChange={field.onChange}
                   navLayout={navLayout}
                   onNavLayoutChange={setNavLayout}
-                  navLabels={navLabels}
-                  onNavLabelsChange={setNavLabels}
+                  menuLabels={menuLabels}
+                  onMenuLabelsChange={setMenuLabels}
                   error={errors.allowedModules?.message ?? (errors.allowedModules as { root?: { message?: string } })?.root?.message}
                 />
               )}

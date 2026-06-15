@@ -4,7 +4,6 @@ const roleEnum = z.enum(['owner', 'manager', 'cashier', 'kitchen']);
 const uiLayoutEnum = z.enum(['touchscreen', 'desktop', 'tablet']);
 const navLayoutSchema = z.object({
   sections: z.array(z.object({ heading: z.string(), modules: z.array(z.string()) })),
-  labels: z.record(z.string(), z.string()),
 });
 
 export const createStaffSchema = z.object({

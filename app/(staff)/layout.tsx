@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import { SidebarLayout } from '@/components/shared/SidebarLayout';
+import { getMenuLabels } from '@/lib/actions/store';
 import type { Role } from '@/lib/auth/permissions';
 
 export default async function StaffLayout({ children }: { children: React.ReactNode }) {
@@ -9,6 +10,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
 
   const role = session.user.role as Role;
   const name = session.user.name ?? 'Staff';
+  const menuLabels = await getMenuLabels();
 
   return (
     <SidebarLayout
@@ -17,6 +19,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
       uiLayout={session.user.uiLayout ?? null}
       allowedModules={session.user.allowedModules ?? []}
       navLayout={session.user.navLayout ?? null}
+      menuLabels={menuLabels}
     >
       {children}
     </SidebarLayout>

@@ -7,16 +7,14 @@ import { z } from 'zod';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
-import { tables, pricingTiles, sessions, sessionGuests, reservations } from '@/lib/db/schema';
+import { tables, pricingTiles, sessions, sessionGuests } from '@/lib/db/schema';
 
 /* โ”€โ”€โ”€ Queries โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€ */
 
 const _fetchTablesWithSessions = async () => {
-  // Round 1 (parallel): tables + active sessions + pending reservations
-  const [tableRows, sessionRows, reservationRows] = await Promise.all([
+  const [tableRows, sessionRows] = await Promise.all([
     db.select().from(tables).where(isNull(tables.deletedAt)).orderBy(asc(tables.label)),
     db.select().from(sessions).where(inArray(sessions.status, ['active', 'closing', 'paid'])),
-    db.select().from(reservations).where(eq(reservations.status, 'pending')),
   ]);
 
   // Round 2 (parallel): session guests + pricing tile names/prices
@@ -59,18 +57,8 @@ const _fetchTablesWithSessions = async () => {
     }
   }
 
-  // Earliest pending reservation per table
-  const reservationByTableId = new Map<string, (typeof reservationRows)[number]>();
-  for (const r of reservationRows) {
-    const existing = reservationByTableId.get(r.tableId);
-    if (!existing || r.reservedAt < existing.reservedAt) {
-      reservationByTableId.set(r.tableId, r);
-    }
-  }
-
   return tableRows.map((row) => {
     const s = sessionByTableId.get(row.id);
-    const r = reservationByTableId.get(row.id);
 
     let activeSession = null;
     if (s) {
@@ -116,17 +104,6 @@ const _fetchTablesWithSessions = async () => {
       height: row.height,
       shape: row.shape,
       activeSession,
-      activeReservation: r
-        ? {
-            id: r.id,
-            customerName: r.customerName,
-            customerPhone: r.customerPhone,
-            reservedAt: r.reservedAt,
-            partySize: r.partySize,
-            notes: r.notes,
-            status: r.status,
-          }
-        : null,
     };
   });
 };

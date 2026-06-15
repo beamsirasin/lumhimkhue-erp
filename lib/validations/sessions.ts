@@ -7,11 +7,7 @@ export const guestRowSchema = z.object({
 
 export const openSessionSchema = z.object({
   tableId: z.string().uuid(),
-  guests: z
-    .array(guestRowSchema)
-    .refine((arr) => arr.some((g) => g.quantity > 0), {
-      message: 'ต้องมีผู้เข้าใช้บริการอย่างน้อย 1 คน',
-    }),
+  guests: z.array(guestRowSchema),
   notes: z.string().max(500).optional(),
 });
 

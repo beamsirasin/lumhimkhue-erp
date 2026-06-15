@@ -132,3 +132,30 @@ export async function incrementReceiptCounter(): Promise<{ ok: true; receiptNo: 
 export type StoreSettingsData = NonNullable<
   Extract<Awaited<ReturnType<typeof getStoreSettings>>, { ok: true }>['data']
 >;
+
+export async function getMenuLabels(): Promise<Record<string, string>> {
+  try {
+    const [row] = await db
+      .select({ menuLabels: storeSettings.menuLabels })
+      .from(storeSettings)
+      .where(eq(storeSettings.id, 1))
+      .limit(1);
+    return row?.menuLabels ?? {};
+  } catch {
+    return {};
+  }
+}
+
+export async function updateMenuLabels(labels: Record<string, string>): Promise<{ ok: boolean; error?: string }> {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'manage_settings')) return { ok: false, error: 'ไม่มีสิทธิ์' };
+  try {
+    await db.update(storeSettings).set({ menuLabels: labels }).where(eq(storeSettings.id, 1));
+    revalidatePath('/', 'layout');
+    return { ok: true };
+  } catch (e) {
+    console.error('[updateMenuLabels]', e);
+    return { ok: false, error: 'เกิดข้อผิดพลาด' };
+  }
+}

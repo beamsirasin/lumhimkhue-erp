@@ -2,7 +2,6 @@ import type { DefaultSession } from 'next-auth';
 
 type StoredNavLayout = {
   sections: { heading: string; modules: string[] }[];
-  labels: Record<string, string>;
 } | null;
 
 declare module 'next-auth' {
