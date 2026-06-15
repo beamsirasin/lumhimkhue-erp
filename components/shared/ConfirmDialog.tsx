@@ -26,22 +26,22 @@ export function ConfirmDialog({
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-sm rounded-xl bg-card p-5 shadow-xl"
+        className="w-full max-w-md rounded-xl bg-card p-7 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="text-sm text-foreground mb-5 leading-relaxed">{message}</p>
+        <p className="text-base text-foreground mb-7 leading-relaxed">{message}</p>
         <div className="flex justify-end gap-3">
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border border-border px-4 py-2 text-sm text-foreground hover:bg-muted/30"
+            className="rounded-xl border border-border px-6 py-3.5 text-base text-foreground hover:bg-muted/30"
           >
             ยกเลิก
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${
+            className={`rounded-xl px-6 py-3.5 text-base font-medium text-white ${
               variant === 'danger'
                 ? 'bg-red-600 hover:bg-red-700'
                 : 'bg-primary hover:bg-primary/90'

@@ -348,20 +348,20 @@ function QrViewModal({ url, label, onClose }: { url: string | null; label: strin
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xs rounded-2xl bg-card border border-border p-6 shadow-2xl text-center"
+        className="w-full max-w-sm rounded-2xl bg-card border border-border p-6 shadow-2xl text-center"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-base font-semibold text-foreground">QR โต๊ะ {label}</p>
-          <button type="button" onClick={onClose} aria-label="ปิด" className="text-muted-foreground hover:text-foreground transition-colors">
-            <X className="size-5" />
+        <div className="flex items-center justify-between mb-5">
+          <p className="text-lg font-semibold text-foreground">QR โต๊ะ {label}</p>
+          <button type="button" onClick={onClose} aria-label="ปิด" className="text-muted-foreground hover:text-foreground transition-colors p-1">
+            <X className="size-6" />
           </button>
         </div>
         {qrSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={qrSrc} alt={`QR โต๊ะ ${label}`} className="mx-auto rounded-xl" width={240} height={240} />
+          <img src={qrSrc} alt={`QR โต๊ะ ${label}`} className="mx-auto rounded-xl" width={280} height={280} />
         ) : (
-          <div className="flex h-60 w-60 mx-auto items-center justify-center">
+          <div className="flex h-72 w-72 mx-auto items-center justify-center">
             <Loader2 className="size-8 animate-spin text-muted-foreground" />
           </div>
         )}
@@ -393,7 +393,7 @@ function SessionQrDialog({ open, data, onClose }: QrDialogProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               โต๊ะ {allEntries.map((e) => e.tableLabel).join(', ')} พร้อมแล้ว
@@ -406,48 +406,45 @@ function SessionQrDialog({ open, data, onClose }: QrDialogProps) {
               return (
                 <div
                   key={entry.sessionToken}
-                  className="flex items-center gap-2 rounded-xl border border-border bg-muted/30 px-4 py-3"
+                  className="flex items-center gap-2 rounded-xl border border-border bg-muted/30 px-4 py-4"
                 >
-                  <span className="flex-1 text-sm font-semibold text-foreground">โต๊ะ {entry.tableLabel}</span>
+                  <span className="flex-1 text-base font-semibold text-foreground">โต๊ะ {entry.tableLabel}</span>
                   <Button
                     variant="outline"
-                    size="sm"
                     onClick={async () => {
                       await navigator.clipboard.writeText(url).catch(() => {});
                       toast.success('คัดลอก URL แล้ว');
                     }}
                   >
-                    <Link2 className="mr-1.5 size-3.5" />Link
+                    <Link2 className="mr-1.5 size-4" />Link
                   </Button>
                   <Button
                     variant="outline"
-                    size="sm"
                     onClick={() => setQrView({ url, label: entry.tableLabel })}
                     aria-label="ดู QR"
                   >
-                    <Eye className="size-3.5" />
+                    <Eye className="size-4" />
                   </Button>
                   <Button
                     variant="outline"
-                    size="sm"
                     onClick={() => {
                       const qrPrint: TableQrData = { tableNumber: entry.tableLabel, url, startedAt: data.startedAt };
                       void printTableQr({ type: 'table_qr', table: qrPrint });
                     }}
                   >
-                    <Printer className="mr-1.5 size-3.5" />พิมพ์ QR
+                    <Printer className="mr-1.5 size-4" />พิมพ์ QR
                   </Button>
                 </div>
               );
             })}
           </div>
 
-          <DialogFooter className="flex-row gap-2 sm:justify-between">
+          <DialogFooter className="flex-row gap-3 sm:justify-between">
             <Button
               variant="outline"
               onClick={() => { onClose(); router.push(`/pos?session=${data.sessionId}`); }}
             >
-              <Receipt className="mr-1.5 size-3.5" />บิล
+              <Receipt className="mr-1.5 size-4" />บิล
             </Button>
             <Button onClick={onClose}>ปิด</Button>
           </DialogFooter>
@@ -593,24 +590,24 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
         <DialogFooter>
           {step === 'tiles' ? (
             <>
-              <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
+              <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
               <button
                 type="button"
                 onClick={() => setStep('link')}
-                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
+                className="flex items-center gap-1.5 rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
               >
-                <Link2 className="size-3.5" />เชื่อมโต๊ะ
+                <Link2 className="size-4" />เชื่อมโต๊ะ
               </button>
               <Button onClick={handleSubmit} disabled={submitting}>
-                {submitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
+                {submitting && <Loader2 className="mr-1.5 size-4 animate-spin" />}
                 {submitting ? 'กำลังเปิด...' : 'เปิดโต๊ะ'}
               </Button>
             </>
           ) : (
             <>
-              <button type="button" onClick={() => setStep('tiles')} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted/50 transition-colors">ย้อนกลับ</button>
+              <button type="button" onClick={() => setStep('tiles')} className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ย้อนกลับ</button>
               <Button onClick={handleSubmit} disabled={submitting}>
-                {submitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
+                {submitting && <Loader2 className="mr-1.5 size-4 animate-spin" />}
                 {submitting ? 'กำลังเปิด...' : 'เปิดโต๊ะ'}
               </Button>
             </>
@@ -693,7 +690,7 @@ function ReservationFlow({ open, table, allTables, pricingTiles, onClose, onSucc
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader><DialogTitle>จองโต๊ะ {table.label}</DialogTitle></DialogHeader>
 
         <div className="flex items-center gap-2 text-xs">
@@ -760,19 +757,19 @@ function ReservationFlow({ open, table, allTables, pricingTiles, onClose, onSucc
         <DialogFooter>
           {step === 'customer' && (
             <>
-              <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
+              <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
               <Button onClick={() => setStep('tiles')} disabled={!name.trim()}>ถัดไป <ChevronRight className="ml-1 size-4" /></Button>
             </>
           )}
           {step === 'tiles' && (
             <>
-              <button type="button" onClick={() => setStep('customer')} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted/50 transition-colors">ย้อนกลับ</button>
+              <button type="button" onClick={() => setStep('customer')} className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ย้อนกลับ</button>
               <Button onClick={() => setStep('link')}>ถัดไป <ChevronRight className="ml-1 size-4" /></Button>
             </>
           )}
           {step === 'link' && (
             <>
-              <button type="button" onClick={() => setStep('tiles')} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted/50 transition-colors">ย้อนกลับ</button>
+              <button type="button" onClick={() => setStep('tiles')} className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ย้อนกลับ</button>
               <Button onClick={handleSubmit} disabled={submitting}>
                 {submitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
                 {submitting ? 'กำลังจอง...' : 'ยืนยันจอง'}
@@ -879,7 +876,7 @@ function EditGuestsDialog({ open, sessionId, currentGuests, pricingTiles, onClos
           />
         </div>
         <DialogFooter>
-          <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
+          <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
           <Button onClick={handleSubmit} disabled={submitting || totalGuests === 0}>
             {submitting && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
             {submitting ? 'กำลังบันทึก...' : 'บันทึก'}
@@ -1002,8 +999,8 @@ function TableSheet({
     <>
       {confirmDialog}
       <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-sm p-0 flex flex-col max-h-[85vh]">
-        <DialogHeader className="shrink-0 border-b border-border px-5 py-4 pr-12">
+      <DialogContent className="sm:max-w-md p-0 flex flex-col max-h-[90dvh]">
+        <DialogHeader className="shrink-0 border-b border-border px-6 py-5 pr-14">
           <div className="flex items-center gap-2">
             <span className={`h-2.5 w-2.5 rounded-full ${STATUS_CONFIG[visualStatus].dot}`} />
             <DialogTitle className="text-base">
@@ -1032,7 +1029,7 @@ function TableSheet({
           </div>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto space-y-4 px-5 py-4">
+        <div className="flex-1 overflow-y-auto space-y-4 px-6 py-5">
           {/* ── AVAILABLE ── */}
           {visualStatus === 'available' && (
             <>
@@ -1184,9 +1181,9 @@ function TableSheet({
                     router.push(`/pos?session=${posSessionId}`);
                   }}
                   disabled={busy}
-                  className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
+                  className="w-full rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
                 >
-                  <span className="flex items-center justify-center gap-2"><Receipt className="size-4" />บิล</span>
+                  <span className="flex items-center justify-center gap-2"><Receipt className="size-5" />บิล</span>
                 </button>
                 <button
                   type="button"
@@ -1195,33 +1192,33 @@ function TableSheet({
                     onEditGuests(sess.id, sess.guests.map((g) => ({ pricingTileId: g.pricingTile.id, quantity: g.quantity })));
                   }}
                   disabled={busy}
-                  className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
+                  className="w-full rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
                 >
-                  <span className="flex items-center justify-center gap-2"><Pencil className="size-4" />แก้ไข</span>
+                  <span className="flex items-center justify-center gap-2"><Pencil className="size-5" />แก้ไข</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => { onClose(); onMoveTable(sess.id, table.label); }}
                   disabled={busy}
-                  className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
+                  className="w-full rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
                 >
-                  <span className="flex items-center justify-center gap-2"><MoveRight className="size-4" />ย้ายโต๊ะ</span>
+                  <span className="flex items-center justify-center gap-2"><MoveRight className="size-5" />ย้ายโต๊ะ</span>
                 </button>
 
                 {isInLinkedGroup ? (
                   <div className="grid grid-cols-2 gap-2">
                     <button type="button" onClick={handleCloseSingle} disabled={busy}
-                      className="rounded-xl border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
+                      className="rounded-xl border border-red-200 px-4 py-4 text-base font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
                       ปิดโต๊ะนี้
                     </button>
                     <button type="button" onClick={handleCloseAll} disabled={busy}
-                      className="rounded-xl border border-red-400 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors">
+                      className="rounded-xl border border-red-400 bg-red-50 px-4 py-4 text-base font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors">
                       ปิดทั้งหมด
                     </button>
                   </div>
                 ) : (
                   <button type="button" onClick={handleForceClose} disabled={busy}
-                    className="w-full rounded-xl border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
+                    className="w-full rounded-xl border border-red-200 px-4 py-4 text-base font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
                     บังคับปิดโต๊ะ
                   </button>
                 )}
@@ -1274,7 +1271,7 @@ function TableSheet({
                     type="button"
                     onClick={handleCancelReservation}
                     disabled={busy}
-                    className="w-full rounded-xl border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                    className="w-full rounded-xl border border-red-200 px-4 py-4 text-base font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
                   >
                     ยกเลิกการจอง
                   </button>
@@ -1303,7 +1300,7 @@ function TableSheet({
                       if (r.ok) { toast.success('ยกเลิกการจองแล้ว'); onClose(); onRefetch(); }
                       else toast.error(r.error);
                     })}
-                    className="w-full rounded-xl border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                    className="w-full rounded-xl border border-red-200 px-4 py-4 text-base font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
                   >
                     ยกเลิกจอง
                   </button>
@@ -1328,7 +1325,7 @@ function TableSheet({
                   if (r.ok) { toast.success(`เคลียร์โต๊ะ ${table.label} แล้ว`); onClose(); onRefetch(); }
                   else toast.error(r.error);
                 }}
-                className="w-full rounded-xl border-2 border-primary bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                className="w-full rounded-xl border-2 border-primary bg-primary px-4 py-4 text-base font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
               >
                 {busy ? 'กำลังเคลียร์…' : 'เคลียร์โต๊ะ'}
               </button>
@@ -1405,7 +1402,7 @@ function TableSheet({
                       type="button"
                       onClick={handleForceSingle}
                       disabled={busy}
-                      className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-50 transition-colors"
+                      className="rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-50 transition-colors"
                     >
                       ปิดโต๊ะนี้
                     </button>
@@ -1413,7 +1410,7 @@ function TableSheet({
                       type="button"
                       onClick={handleForceClose}
                       disabled={busy}
-                      className="rounded-xl border-2 border-primary bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                      className="rounded-xl border-2 border-primary bg-primary px-4 py-4 text-base font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                     >
                       ปิดทั้งหมด
                     </button>
@@ -1423,7 +1420,7 @@ function TableSheet({
                     type="button"
                     onClick={handleForceClose}
                     disabled={busy}
-                    className="w-full rounded-xl border-2 border-primary bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                    className="w-full rounded-xl border-2 border-primary bg-primary px-4 py-4 text-base font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                   >
                     ปิดโต๊ะ / เคลียร์โต๊ะ
                   </button>
@@ -1503,36 +1500,36 @@ function TableSheet({
                 <button type="button"
                   onClick={() => { onClose(); router.push(`/pos?session=${sess.parentSessionId ?? sess.id}`); }}
                   disabled={busy}
-                  className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
-                  <span className="flex items-center justify-center gap-2"><Receipt className="size-4" />บิล</span>
+                  className="w-full rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
+                  <span className="flex items-center justify-center gap-2"><Receipt className="size-5" />บิล</span>
                 </button>
                 <button type="button"
                   onClick={() => { onClose(); onEditGuests(sess.id, sess.guests.map((g) => ({ pricingTileId: g.pricingTile.id, quantity: g.quantity }))); }}
                   disabled={busy}
-                  className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
-                  <span className="flex items-center justify-center gap-2"><Pencil className="size-4" />แก้ไข</span>
+                  className="w-full rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
+                  <span className="flex items-center justify-center gap-2"><Pencil className="size-5" />แก้ไข</span>
                 </button>
                 <button type="button"
                   onClick={() => { onClose(); onMoveTable(sess.id, table.label); }}
                   disabled={busy}
-                  className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
-                  <span className="flex items-center justify-center gap-2"><MoveRight className="size-4" />ย้ายโต๊ะ</span>
+                  className="w-full rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
+                  <span className="flex items-center justify-center gap-2"><MoveRight className="size-5" />ย้ายโต๊ะ</span>
                 </button>
 
                 {sess.parentSessionId ? (
                   <div className="grid grid-cols-2 gap-2">
                     <button type="button" onClick={handleCloseSingle} disabled={busy}
-                      className="rounded-xl border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
+                      className="rounded-xl border border-red-200 px-4 py-4 text-base font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
                       ปิดโต๊ะนี้
                     </button>
                     <button type="button" onClick={handleCloseAll} disabled={busy}
-                      className="rounded-xl border border-red-400 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors">
+                      className="rounded-xl border border-red-400 bg-red-50 px-4 py-4 text-base font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors">
                       ปิดทั้งหมด
                     </button>
                   </div>
                 ) : (
                   <button type="button" onClick={handleForceClose} disabled={busy}
-                    className="w-full rounded-xl border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
+                    className="w-full rounded-xl border border-red-200 px-4 py-4 text-base font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
                     บังคับปิดโต๊ะ
                   </button>
                 )}
@@ -1759,7 +1756,7 @@ function AddTableDialog({ open, onClose, onCreated }: AddTableDialogProps) {
           </div>
         </div>
         <DialogFooter>
-          <button type="button" onClick={onClose} className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
+          <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
           <Button onClick={handleCreate} disabled={submitting}>{submitting ? 'กำลังเพิ่ม...' : 'เพิ่มโต๊ะ'}</Button>
         </DialogFooter>
       </DialogContent>

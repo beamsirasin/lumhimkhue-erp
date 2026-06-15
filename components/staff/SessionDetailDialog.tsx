@@ -72,7 +72,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
 
   return (
     <Dialog open={!!sessionId} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>รายละเอียด Session</DialogTitle>
         </DialogHeader>
@@ -212,20 +212,20 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
 
                 {/* Action buttons / confirmations */}
                 {!delConfirm && !editConfirm && (
-                  <div className="mt-2 flex gap-2">
+                  <div className="mt-3 flex gap-2">
                     <button
                       type="button"
                       onClick={() => setEditConfirm(true)}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs font-medium text-foreground hover:bg-muted/30 transition-colors"
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-3 text-sm font-medium text-foreground hover:bg-muted/30 transition-colors"
                     >
-                      <Pencil className="size-3" />แก้ไขการชำระเงิน
+                      <Pencil className="size-4" />แก้ไขการชำระเงิน
                     </button>
                     <button
                       type="button"
                       onClick={() => setDelConfirm(true)}
-                      className="flex items-center justify-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+                      className="flex items-center justify-center gap-1.5 rounded-lg border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
                     >
-                      <Trash2 className="size-3" />ลบ
+                      <Trash2 className="size-4" />ลบ
                     </button>
                   </div>
                 )}
@@ -242,7 +242,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                         type="button"
                         onClick={() => setEditConfirm(false)}
                         disabled={submitting}
-                        className="flex-1 rounded-lg border border-border py-1.5 text-xs font-medium text-muted-foreground hover:bg-card disabled:opacity-50"
+                        className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-card disabled:opacity-50"
                       >
                         ยกเลิก
                       </button>
@@ -250,7 +250,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                         type="button"
                         onClick={handleReopen}
                         disabled={submitting}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
                       >
                         {submitting && <Loader2 className="size-3 animate-spin" />}
                         ยืนยัน → ไปหน้า POS
@@ -271,7 +271,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                         type="button"
                         onClick={() => setDelConfirm(false)}
                         disabled={submitting}
-                        className="flex-1 rounded-lg border border-border py-1.5 text-xs font-medium text-muted-foreground hover:bg-card disabled:opacity-50"
+                        className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-card disabled:opacity-50"
                       >
                         ยกเลิก
                       </button>
@@ -279,7 +279,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                         type="button"
                         onClick={handleDelete}
                         disabled={submitting}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-600 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-600 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
                       >
                         {submitting && <Loader2 className="size-3 animate-spin" />}
                         ยืนยันลบ

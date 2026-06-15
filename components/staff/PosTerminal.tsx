@@ -201,10 +201,10 @@ export function PosTerminal({ initialSessions, cashierName, initialSelectedId = 
             onClick={() => setGroupPickerId(null)}
           >
             <div
-              className="w-full max-w-sm rounded-2xl bg-card border border-border p-5 shadow-2xl space-y-3"
+              className="w-full max-w-md rounded-2xl bg-card border border-border p-6 shadow-2xl space-y-3"
               onClick={(e) => e.stopPropagation()}
             >
-              <p className="text-sm font-semibold text-foreground">เลือกบิลที่ต้องการเปิด</p>
+              <p className="text-base font-semibold text-foreground">เลือกบิลที่ต้องการเปิด</p>
               <div className="space-y-2">
                 {sortedGroup.map((s) => {
                   const total = s.guests.reduce((sum, g) => sum + Number(g.pricingTile.price) * g.quantity, 0);
@@ -216,7 +216,7 @@ export function PosTerminal({ initialSessions, cashierName, initialSelectedId = 
                       key={s.id}
                       type="button"
                       onClick={() => { setSelectedId(s.id); setGroupPickerId(null); }}
-                      className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors ${
+                      className={`w-full flex items-center justify-between rounded-xl border px-4 py-4 text-left transition-colors ${
                         isPaid
                           ? 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50'
                           : isClosing
@@ -255,7 +255,7 @@ export function PosTerminal({ initialSessions, cashierName, initialSelectedId = 
               <button
                 type="button"
                 onClick={() => setGroupPickerId(null)}
-                className="w-full rounded-lg border border-border py-2 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
+                className="w-full rounded-xl border border-border py-3.5 text-sm font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
               >
                 ยกเลิก
               </button>
@@ -278,7 +278,7 @@ export function PosTerminal({ initialSessions, cashierName, initialSelectedId = 
               type="button"
               aria-label="ปิด"
               onClick={() => setSelectedId(null)}
-              className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-card/80 backdrop-blur-sm text-muted-foreground hover:text-foreground hover:bg-card shadow transition-colors"
+              className="absolute right-4 top-4 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-card/80 backdrop-blur-sm text-muted-foreground hover:text-foreground hover:bg-card shadow transition-colors"
             >
               <X className="size-4" />
             </button>
@@ -842,35 +842,35 @@ function PaymentPanel({
   /* ── Tax invoice popup ── */
   const TaxInvoicePopup = taxInvoiceOpen ? (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-card border border-border p-5 shadow-2xl space-y-3">
+      <div className="w-full max-w-md rounded-2xl bg-card border border-border p-6 shadow-2xl space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-foreground">ข้อมูลใบกำกับภาษี</h3>
-          <button type="button" aria-label="ปิด" onClick={() => setTaxInvoiceOpen(false)} className="text-muted-foreground hover:text-foreground transition-colors"><X className="size-4" /></button>
+          <h3 className="text-base font-semibold text-foreground">ข้อมูลใบกำกับภาษี</h3>
+          <button type="button" aria-label="ปิด" onClick={() => setTaxInvoiceOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"><X className="size-5" /></button>
         </div>
         {(['companyName', 'phone', 'taxId', 'address'] as const).map((field) => {
           const labels = { companyName: 'ชื่อบริษัท / นิติบุคคล', phone: 'เบอร์โทรศัพท์', taxId: 'เลขประจำตัวผู้เสียภาษี', address: 'ที่อยู่' };
           return (
             <div key={field}>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">{labels[field]}</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">{labels[field]}</label>
               {field === 'address' ? (
                 <textarea rows={2} value={taxForm[field]} onChange={(e) => setTaxForm((p) => ({ ...p, [field]: e.target.value }))}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring/50 resize-none transition-colors" />
+                  className="w-full rounded-lg border border-border bg-background px-4 py-3 text-base text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring/50 resize-none transition-colors" />
               ) : (
                 <input type="text" value={taxForm[field]} onChange={(e) => setTaxForm((p) => ({ ...p, [field]: e.target.value }))}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring/50 transition-colors" />
+                  className="w-full rounded-lg border border-border bg-background px-4 py-3 text-base text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring/50 transition-colors" />
               )}
             </div>
           );
         })}
-        <div className="flex gap-2 pt-1">
+        <div className="flex gap-3 pt-1">
           <button type="button" onClick={() => { setTaxInvoice(null); setTaxInvoiceOpen(false); }}
-            className="flex-1 rounded-lg border border-border py-2 text-sm text-foreground hover:bg-muted/50 transition-colors">ไม่ออกใบกำกับ</button>
+            className="flex-1 rounded-xl border border-border py-3.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ไม่ออกใบกำกับ</button>
           <button type="button"
             onClick={() => {
               if (taxForm.companyName && taxForm.taxId) { setTaxInvoice({ ...taxForm }); }
               setTaxInvoiceOpen(false);
             }}
-            className="flex-1 rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">บันทึก</button>
+            className="flex-1 rounded-xl bg-primary py-3.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">บันทึก</button>
         </div>
       </div>
     </div>
@@ -1786,7 +1786,7 @@ function PaymentPanel({
               {editingPosTile && (
                 <>
                   <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm" onClick={() => setEditingSummaryId(null)} />
-                  <div className="fixed left-1/2 top-1/2 z-[101] w-72 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-card border border-border p-6 shadow-2xl">
+                  <div className="fixed left-1/2 top-1/2 z-[101] w-80 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-card border border-border p-6 shadow-2xl">
                     <p className="text-center text-base font-semibold text-foreground">{editingPosTile.name}</p>
                     <p className="mt-0.5 text-center text-sm text-muted-foreground">
                       {editingPosIsAddon ? `+฿${Number(editingPosTile.price).toLocaleString('th-TH')}` : `฿${Number(editingPosTile.price).toLocaleString('th-TH')} / คน`}

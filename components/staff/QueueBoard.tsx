@@ -226,38 +226,38 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
           onClick={() => setShowForm(false)}
         >
           <div
-            className="w-full max-w-sm rounded-xl bg-card p-6 shadow-xl"
+            className="w-full max-w-md rounded-xl bg-card p-8 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-foreground">เพิ่มคิวใหม่</h2>
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-foreground">เพิ่มคิวใหม่</h2>
               <button
                 type="button"
                 aria-label="ปิด"
                 onClick={() => setShowForm(false)}
-                className="text-muted-foreground hover:text-muted-foreground text-xl leading-none"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-xl leading-none"
               >
                 ×
               </button>
             </div>
-            <form onSubmit={handleSubmit(onAddSubmit)} className="space-y-4">
+            <form onSubmit={handleSubmit(onAddSubmit)} className="space-y-5">
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1">
+                <label className="block text-sm font-medium text-foreground mb-1.5">
                   ชื่อลูกค้า <span className="text-red-500">*</span>
                 </label>
                 <input
                   {...register('customerName')}
                   placeholder="เช่น สมชาย"
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
+                  className="w-full rounded-lg border border-border px-4 py-3 text-base outline-none focus:border-primary"
                 />
                 {errors.customerName && (
-                  <p className="mt-1 text-xs text-red-600">{errors.customerName.message}</p>
+                  <p className="mt-1.5 text-sm text-red-600">{errors.customerName.message}</p>
                 )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
                     จำนวนคน <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -265,39 +265,39 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
                     type="number"
                     min={1}
                     max={99}
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
+                    className="w-full rounded-lg border border-border px-4 py-3 text-base outline-none focus:border-primary"
                   />
                   {errors.partySize && (
-                    <p className="mt-1 text-xs text-red-600">{errors.partySize.message}</p>
+                    <p className="mt-1.5 text-sm text-red-600">{errors.partySize.message}</p>
                   )}
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-foreground mb-1">
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
                     เบอร์โทร
                   </label>
                   <input
                     {...register('phone')}
                     placeholder="08x-xxx-xxxx"
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
+                    className="w-full rounded-lg border border-border px-4 py-3 text-base outline-none focus:border-primary"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1">โซน</label>
+                <label className="block text-sm font-medium text-foreground mb-1.5">โซน</label>
                 <input
                   {...register('preferredZone')}
                   placeholder="เช่น ในร่ม, ริมหน้าต่าง"
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
+                  className="w-full rounded-lg border border-border px-4 py-3 text-base outline-none focus:border-primary"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-primary py-4 text-base font-semibold text-white hover:bg-primary/90 disabled:opacity-50"
               >
-                {isSubmitting && <Loader2 className="size-3.5 animate-spin" />}
+                {isSubmitting && <Loader2 className="size-4 animate-spin" />}
                 {isSubmitting ? 'กำลังเพิ่ม…' : 'เพิ่มคิว'}
               </button>
             </form>
@@ -321,39 +321,39 @@ interface QueueCardProps {
 
 function QueueCard({ entry, position, onCall, onSeat, onRemove, isCallPending, isSeatPending, isRemovePending }: QueueCardProps) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
+    <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           {position !== undefined && (
-            <span className="text-xs tabular-nums text-muted-foreground">#{position}</span>
+            <span className="text-sm tabular-nums text-muted-foreground">#{position}</span>
           )}
-          <span className="text-xl font-bold tabular-nums text-foreground">
+          <span className="text-2xl font-bold tabular-nums text-foreground">
             {entry.queueNumber}
           </span>
         </div>
-        <span className="text-xs tabular-nums text-muted-foreground">
+        <span className="text-sm tabular-nums text-muted-foreground">
           {formatDistanceToNowStrict(new Date(entry.createdAt), { locale: th, addSuffix: true })}
         </span>
       </div>
 
       <div className="mt-2">
-        <p className="text-sm font-medium text-foreground">{entry.customerName}</p>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-base font-medium text-foreground">{entry.customerName}</p>
+        <p className="text-sm text-muted-foreground">
           {entry.partySize} คน
           {entry.preferredZone && ` · ${entry.preferredZone}`}
           {entry.phone && ` · ${entry.phone}`}
         </p>
       </div>
 
-      <div className="mt-3 flex gap-2">
+      <div className="mt-4 flex gap-2">
         {onCall && (
           <button
             type="button"
             onClick={onCall}
             disabled={isCallPending}
-            className="flex flex-1 items-center justify-center gap-1 rounded-md bg-blue-600 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
           >
-            {isCallPending && <Loader2 className="size-3 animate-spin" />}
+            {isCallPending && <Loader2 className="size-4 animate-spin" />}
             เรียก
           </button>
         )}
@@ -362,9 +362,9 @@ function QueueCard({ entry, position, onCall, onSeat, onRemove, isCallPending, i
             type="button"
             onClick={onSeat}
             disabled={isSeatPending}
-            className="flex flex-1 items-center justify-center gap-1 rounded-md bg-green-600 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-green-600 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
           >
-            {isSeatPending && <Loader2 className="size-3 animate-spin" />}
+            {isSeatPending && <Loader2 className="size-4 animate-spin" />}
             เข้าที่นั่ง
           </button>
         )}
@@ -373,9 +373,9 @@ function QueueCard({ entry, position, onCall, onSeat, onRemove, isCallPending, i
           aria-label="นำออกจากคิว"
           onClick={onRemove}
           disabled={isRemovePending}
-          className="flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/30 disabled:opacity-60"
+          className="flex items-center gap-1.5 rounded-lg border border-border px-4 py-3 text-sm text-muted-foreground hover:bg-muted/30 disabled:opacity-60"
         >
-          {isRemovePending && <Loader2 className="size-3 animate-spin" />}
+          {isRemovePending && <Loader2 className="size-4 animate-spin" />}
           นำออก
         </button>
       </div>
