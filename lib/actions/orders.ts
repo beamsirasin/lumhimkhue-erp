@@ -82,136 +82,129 @@ export async function placeOrder(input: unknown) {
   const { sessionToken, items } = parsed.data;
 
   try {
-    // Wrap the unserved-items check + insert in a single serializable transaction
-    // to prevent two concurrent requests from both passing the check and creating duplicate orders.
-    const result = await db.transaction(async (tx) => {
-      const [session] = await tx
-        .select({ id: sessions.id, status: sessions.status })
-        .from(sessions)
-        .where(eq(sessions.sessionToken, sessionToken))
-        .limit(1);
+    // neon-http does not support db.transaction() — queries run sequentially
+    const [session] = await db
+      .select({ id: sessions.id, status: sessions.status })
+      .from(sessions)
+      .where(eq(sessions.sessionToken, sessionToken))
+      .limit(1);
 
-      if (!session || (session.status !== 'active' && session.status !== 'paid'))
-        return { ok: false as const, error: 'session ไม่ถูกต้องหรือหมดเวลาแล้ว' };
+    if (!session || (session.status !== 'active' && session.status !== 'paid'))
+      return { ok: false as const, error: 'session ไม่ถูกต้องหรือหมดเวลาแล้ว' };
 
-      // Block new order if any items from previous orders are not yet served
-      const [unserved] = await tx
-        .select({ id: orderItems.id })
+    // Block new order if any items from previous orders are not yet served
+    const [unserved] = await db
+      .select({ id: orderItems.id })
+      .from(orderItems)
+      .innerJoin(orders, eq(orderItems.orderId, orders.id))
+      .where(
+        and(
+          eq(orders.sessionId, session.id),
+          inArray(orderItems.status, ['pending', 'preparing', 'ready']),
+        ),
+      )
+      .limit(1);
+    if (unserved)
+      return { ok: false as const, error: 'กรุณารอรับวงเดิมก่อนสั่งรอบใหม่' };
+
+    const menuItemIds = [...new Set(items.map((i) => i.menuItemId))];
+    const menuItemRows = await db
+      .select({
+        id: menuItems.id,
+        name: menuItems.name,
+        isAvailable: menuItems.isAvailable,
+        cooldownSeconds: menuItems.cooldownSeconds,
+        maxPerOrder: menuItems.maxPerOrder,
+        station: categories.station,
+        categoryId: menuItems.categoryId,
+        maxPerSession: categories.maxPerSession,
+      })
+      .from(menuItems)
+      .innerJoin(categories, eq(menuItems.categoryId, categories.id))
+      .where(inArray(menuItems.id, menuItemIds));
+
+    const menuItemMap = new Map(menuItemRows.map((m) => [m.id, m]));
+
+    // Batch cooldown check
+    const cooldownMenuItemIds = [
+      ...new Set(
+        items
+          .filter((i) => (menuItemMap.get(i.menuItemId)?.cooldownSeconds ?? 0) > 0)
+          .map((i) => i.menuItemId),
+      ),
+    ];
+    const recentOrderedAt = new Map<string, Date>();
+    if (cooldownMenuItemIds.length > 0) {
+      const maxCooldown = Math.max(
+        ...cooldownMenuItemIds.map((id) => menuItemMap.get(id)!.cooldownSeconds),
+      );
+      const earliestSince = new Date(Date.now() - maxCooldown * 1000);
+      const recentRows = await db
+        .select({ menuItemId: orderItems.menuItemId, orderedAt: orders.createdAt })
         .from(orderItems)
         .innerJoin(orders, eq(orderItems.orderId, orders.id))
         .where(
           and(
             eq(orders.sessionId, session.id),
-            inArray(orderItems.status, ['pending', 'preparing', 'ready']),
+            inArray(orderItems.menuItemId, cooldownMenuItemIds),
+            gte(orders.createdAt, earliestSince),
           ),
-        )
-        .limit(1);
-      if (unserved)
-        return { ok: false as const, error: 'กรุณารอรับวงเดิมก่อนสั่งรอบใหม่' };
-
-      const menuItemIds = [...new Set(items.map((i) => i.menuItemId))];
-      const menuItemRows = await tx
-        .select({
-          id: menuItems.id,
-          name: menuItems.name,
-          isAvailable: menuItems.isAvailable,
-          cooldownSeconds: menuItems.cooldownSeconds,
-          maxPerOrder: menuItems.maxPerOrder,
-          station: categories.station,
-          categoryId: menuItems.categoryId,
-          maxPerSession: categories.maxPerSession,
-        })
-        .from(menuItems)
-        .innerJoin(categories, eq(menuItems.categoryId, categories.id))
-        .where(inArray(menuItems.id, menuItemIds));
-
-      const menuItemMap = new Map(menuItemRows.map((m) => [m.id, m]));
-
-      // Batch cooldown check — 1 query instead of N queries (one per item with cooldown)
-      const cooldownMenuItemIds = [
-        ...new Set(
-          items
-            .filter((i) => (menuItemMap.get(i.menuItemId)?.cooldownSeconds ?? 0) > 0)
-            .map((i) => i.menuItemId),
-        ),
-      ];
-      const recentOrderedAt = new Map<string, Date>();
-      if (cooldownMenuItemIds.length > 0) {
-        const maxCooldown = Math.max(
-          ...cooldownMenuItemIds.map((id) => menuItemMap.get(id)!.cooldownSeconds),
         );
-        const earliestSince = new Date(Date.now() - maxCooldown * 1000);
-        const recentRows = await tx
-          .select({ menuItemId: orderItems.menuItemId, orderedAt: orders.createdAt })
-          .from(orderItems)
-          .innerJoin(orders, eq(orderItems.orderId, orders.id))
-          .where(
-            and(
-              eq(orders.sessionId, session.id),
-              inArray(orderItems.menuItemId, cooldownMenuItemIds),
-              gte(orders.createdAt, earliestSince),
-            ),
-          );
-        for (const r of recentRows) {
-          if (!r.menuItemId) continue;
-          const existing = recentOrderedAt.get(r.menuItemId);
-          if (!existing || r.orderedAt > existing) recentOrderedAt.set(r.menuItemId, r.orderedAt);
-        }
+      for (const r of recentRows) {
+        if (!r.menuItemId) continue;
+        const existing = recentOrderedAt.get(r.menuItemId);
+        if (!existing || r.orderedAt > existing) recentOrderedAt.set(r.menuItemId, r.orderedAt);
+      }
+    }
+
+    for (const item of items) {
+      const mi = menuItemMap.get(item.menuItemId);
+      if (!mi) return { ok: false as const, error: 'ไม่พบเมนู' };
+      if (!mi.isAvailable)
+        return { ok: false as const, error: `${mi.name} ไม่มีให้บริการในขณะนี้` };
+
+      if (mi.cooldownSeconds > 0) {
+        const lastOrdered = recentOrderedAt.get(item.menuItemId);
+        const cooldownSince = new Date(Date.now() - mi.cooldownSeconds * 1000);
+        if (lastOrdered && lastOrdered >= cooldownSince)
+          return { ok: false as const, error: `${mi.name} ยังไม่พร้อมสั่งอีกครั้ง` };
       }
 
-      for (const item of items) {
-        const mi = menuItemMap.get(item.menuItemId);
-        if (!mi) return { ok: false as const, error: 'ไม่พบเมนู' };
-        if (!mi.isAvailable)
-          return { ok: false as const, error: `${mi.name} ไม่มีให้บริการในขณะนี้` };
+      if (mi.maxPerOrder !== null && item.quantity > mi.maxPerOrder)
+        return { ok: false as const, error: `${mi.name} เกินจำนวนที่สั่งได้ต่อรอบ (สูงสุด ${mi.maxPerOrder} ชิ้น)` };
+    }
 
-        if (mi.cooldownSeconds > 0) {
-          const lastOrdered = recentOrderedAt.get(item.menuItemId);
-          const cooldownSince = new Date(Date.now() - mi.cooldownSeconds * 1000);
-          if (lastOrdered && lastOrdered >= cooldownSince)
-            return { ok: false as const, error: `${mi.name} ยังไม่พร้อมสั่งอีกครั้ง` };
-        }
+    // Category-level limit enforcement (per order round)
+    const incomingByCat = new Map<string, { limit: number; incoming: number }>();
+    for (const item of items) {
+      const mi = menuItemMap.get(item.menuItemId)!;
+      if (mi.maxPerSession === null) continue;
+      const entry = incomingByCat.get(mi.categoryId) ?? { limit: mi.maxPerSession, incoming: 0 };
+      entry.incoming += item.quantity;
+      incomingByCat.set(mi.categoryId, entry);
+    }
+    for (const [, { limit, incoming }] of incomingByCat) {
+      if (incoming > limit)
+        return { ok: false as const, error: `เกินจำนวนสูงสุดต่อรอบของหมวด (สูงสุด ${limit} ชิ้น)` };
+    }
 
-        if (mi.maxPerOrder !== null && item.quantity > mi.maxPerOrder)
-          return { ok: false as const, error: `${mi.name} เกินจำนวนที่สั่งได้ต่อรอบ (สูงสุด ${mi.maxPerOrder} ชิ้น)` };
-      }
+    const [newOrder] = await db
+      .insert(orders)
+      .values({ sessionId: session.id, status: 'pending' })
+      .returning({ id: orders.id });
 
-      // Category-level limit enforcement (per order round, not per session)
-      const incomingByCat = new Map<string, { limit: number; incoming: number }>();
-      for (const item of items) {
-        const mi = menuItemMap.get(item.menuItemId)!;
-        if (mi.maxPerSession === null) continue;
-        const entry = incomingByCat.get(mi.categoryId) ?? { limit: mi.maxPerSession, incoming: 0 };
-        entry.incoming += item.quantity;
-        incomingByCat.set(mi.categoryId, entry);
-      }
-      for (const [, { limit, incoming }] of incomingByCat) {
-        if (incoming > limit) {
-          return { ok: false as const, error: `เกินจำนวนสูงสุดต่อรอบของหมวด (สูงสุด ${limit} ชิ้น)` };
-        }
-      }
+    await db.insert(orderItems).values(
+      items.map((item) => ({
+        orderId: newOrder.id,
+        menuItemId: item.menuItemId,
+        itemName: menuItemMap.get(item.menuItemId)!.name,
+        quantity: item.quantity,
+        notes: item.notes ?? null,
+        station: menuItemMap.get(item.menuItemId)!.station,
+        status: 'pending' as const,
+      })),
+    );
 
-      const [newOrder] = await tx
-        .insert(orders)
-        .values({ sessionId: session.id, status: 'pending' })
-        .returning({ id: orders.id });
-
-      await tx.insert(orderItems).values(
-        items.map((item) => ({
-          orderId: newOrder.id,
-          menuItemId: item.menuItemId,
-          itemName: menuItemMap.get(item.menuItemId)!.name,
-          quantity: item.quantity,
-          notes: item.notes,
-          station: menuItemMap.get(item.menuItemId)!.station,
-          status: 'pending' as const,
-        })),
-      );
-
-      return { ok: true as const };
-    });
-
-    if (!result.ok) return result;
     revalidatePath('/kds', 'layout');
     return { ok: true as const };
   } catch (e) {
