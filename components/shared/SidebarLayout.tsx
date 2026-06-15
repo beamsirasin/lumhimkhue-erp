@@ -136,19 +136,30 @@ function buildModuleItemMap(role: Role): Map<string, NavItem | NavGroup> {
   return map;
 }
 
+type StoredNavLayout = {
+  sections: { heading: string; modules: string[] }[];
+  labels: Record<string, string>;
+} | null;
+
 function buildSectionsFromNavLayout(
-  navLayout: { heading: string; modules: string[] }[],
+  navLayout: NonNullable<StoredNavLayout>,
   role: Role,
   allowedModules: string[],
 ): NavSection[] {
   const modMap = buildModuleItemMap(role);
   const enabledSet = new Set(allowedModules);
-  return navLayout
+  return navLayout.sections
     .map(({ heading, modules }) => ({
       heading: heading || undefined,
       items: modules
         .filter((m) => !enabledSet.size || enabledSet.has(m))
-        .map((m) => modMap.get(m))
+        .map((m) => {
+          const item = modMap.get(m);
+          if (!item) return null;
+          const customLabel = navLayout.labels?.[m];
+          if (!customLabel) return item;
+          return { ...item, label: customLabel };
+        })
         .filter((item): item is NavItem | NavGroup => item != null),
     }))
     .filter((s) => s.items.length > 0);
@@ -812,14 +823,14 @@ function StandardSidebarLayout({
   pathname: string;
   badgeCounts?: Record<string, number>;
   allowedModules: string[];
-  navLayout?: { heading: string; modules: string[] }[] | null;
+  navLayout?: StoredNavLayout;
   variant?: 'default' | 'tablet';
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const isTablet = variant === 'tablet';
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => isTablet ? _tabletCollapsed : false);
   const rawSections = NAV[role] ?? [];
-  const sections = navLayout?.length
+  const sections = navLayout?.sections?.length
     ? buildSectionsFromNavLayout(navLayout, role, allowedModules)
     : reorderSections(filterSections(rawSections, allowedModules), allowedModules);
   const pageTitle = getPageTitle(pathname);
@@ -1124,7 +1135,7 @@ interface SidebarLayoutProps {
   badgeCounts?: Record<string, number>;
   uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null;
   allowedModules?: string[] | null;
-  navLayout?: { heading: string; modules: string[] }[] | null;
+  navLayout?: StoredNavLayout;
 }
 
 export function SidebarLayout({

@@ -399,43 +399,97 @@ function buildDefaultNavLayout(modules: string[]): NavLayoutSection[] {
 
 function SortableModuleRowWithMove({
   id,
-  label,
+  defaultLabel,
+  customLabel,
   sections,
   currentSection,
   onMove,
+  onLabelChange,
 }: {
   id: string;
-  label: string;
+  defaultLabel: string;
+  customLabel?: string;
   sections: string[];
   currentSection: string;
   onMove: (targetSection: string) => void;
+  onLabelChange: (newLabel: string | null) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
   const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition };
   const otherSections = sections.filter((s) => s !== currentSection);
+  const displayLabel = customLabel || defaultLabel;
+
+  const startEdit = () => { setDraft(customLabel || defaultLabel); setEditing(true); };
+  const saveLabel = () => {
+    const trimmed = draft.trim();
+    onLabelChange(!trimmed || trimmed === defaultLabel ? null : trimmed);
+    setEditing(false);
+  };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 border-b border-border last:border-0 bg-card px-3 py-2 ${isDragging ? 'opacity-60 shadow-sm z-10' : ''}`}
+      className={`flex items-center gap-1.5 border-b border-border last:border-0 bg-card px-3 py-2 ${isDragging ? 'opacity-60 shadow-sm z-10' : ''}`}
     >
       <button
         type="button"
         aria-label="ลากย้าย"
         {...attributes}
         {...listeners}
-        className="text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none transition-colors"
+        className="shrink-0 text-muted-foreground/40 hover:text-muted-foreground cursor-grab active:cursor-grabbing touch-none transition-colors"
       >
         <GripVertical className="size-4" />
       </button>
-      <span className="flex-1 text-xs text-foreground">{label}</span>
+
+      {editing ? (
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={saveLabel}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); saveLabel(); }
+            if (e.key === 'Escape') setEditing(false);
+          }}
+          autoFocus
+          className="flex-1 bg-transparent border-b border-primary text-xs text-foreground outline-none py-0 min-w-0"
+        />
+      ) : (
+        <span className="flex-1 min-w-0 text-xs text-foreground truncate">
+          {displayLabel}
+          {customLabel && <span className="ml-1 text-[9px] text-primary/50">(แก้ไข)</span>}
+        </span>
+      )}
+
+      {!editing && (
+        <button
+          type="button"
+          aria-label="แก้ไขชื่อเมนู"
+          onClick={startEdit}
+          className="shrink-0 text-muted-foreground/30 hover:text-foreground transition-colors"
+        >
+          <Pencil className="size-3" />
+        </button>
+      )}
+      {customLabel && !editing && (
+        <button
+          type="button"
+          aria-label="รีเซ็ตชื่อเมนู"
+          onClick={() => onLabelChange(null)}
+          className="shrink-0 text-muted-foreground/30 hover:text-red-400 transition-colors"
+        >
+          <X className="size-3" />
+        </button>
+      )}
+
       {otherSections.length > 0 && (
         <select
           value=""
           onChange={(e) => { if (e.target.value) onMove(e.target.value); }}
           onClick={(e) => e.stopPropagation()}
-          className="text-[10px] text-muted-foreground bg-card border border-border rounded px-1 py-0.5 cursor-pointer hover:bg-muted/50"
+          className="shrink-0 text-[10px] text-muted-foreground bg-card border border-border rounded px-1 py-0.5 cursor-pointer hover:bg-muted/50"
         >
           <option value="">ย้าย…</option>
           {otherSections.map((s) => (
@@ -472,12 +526,16 @@ function ModulePicker({
   onChange,
   navLayout,
   onNavLayoutChange,
+  navLabels,
+  onNavLabelsChange,
   error,
 }: {
   value: string[];
   onChange: (v: string[]) => void;
   navLayout: NavLayoutSection[];
   onNavLayoutChange: (nl: NavLayoutSection[]) => void;
+  navLabels: Record<string, string>;
+  onNavLabelsChange: (l: Record<string, string>) => void;
   error?: string;
 }) {
   const sensors = useSensors(
@@ -727,10 +785,16 @@ function ModulePicker({
                                 <SortableModuleRowWithMove
                                   key={id}
                                   id={id}
-                                  label={info.label}
+                                  defaultLabel={info.label}
+                                  customLabel={navLabels[id]}
                                   sections={sectionNames}
                                   currentSection={section.heading}
                                   onMove={(targetHeading) => moveModule(id, sectionIdx, targetHeading)}
+                                  onLabelChange={(newLabel) => {
+                                    const updated = { ...navLabels };
+                                    if (newLabel == null) { delete updated[id]; } else { updated[id] = newLabel; }
+                                    onNavLabelsChange(updated);
+                                  }}
                                 />
                               );
                             })}
@@ -785,7 +849,10 @@ function StaffForm({
   const defaultUiLayout = initial?.uiLayout ?? ('' as '');
 
   const [navLayout, setNavLayout] = useState<NavLayoutSection[]>(() =>
-    initial?.navLayout ?? buildDefaultNavLayout(defaultModules),
+    initial?.navLayout?.sections ?? buildDefaultNavLayout(defaultModules),
+  );
+  const [navLabels, setNavLabels] = useState<Record<string, string>>(
+    () => initial?.navLayout?.labels ?? {},
   );
 
   const {
@@ -811,8 +878,13 @@ function StaffForm({
   });
 
   async function onSubmit(data: CreateStaffInput | UpdateStaffInput) {
-    const cleanLayout = navLayout.filter((s) => s.modules.length > 0);
-    const payload = { ...data, navLayout: cleanLayout.length > 0 ? cleanLayout : null };
+    const cleanSections = navLayout.filter((s) => s.modules.length > 0);
+    const payload = {
+      ...data,
+      navLayout: cleanSections.length > 0
+        ? { sections: cleanSections, labels: navLabels }
+        : null,
+    };
     const result = initial ? await updateStaff(payload) : await createStaff(payload);
     if (!result.ok) { toast.error(result.error); return; }
     toast.success(initial ? 'แก้ไขข้อมูลแล้ว' : 'เพิ่ม User แล้ว');
@@ -897,6 +969,8 @@ function StaffForm({
                   onChange={field.onChange}
                   navLayout={navLayout}
                   onNavLayoutChange={setNavLayout}
+                  navLabels={navLabels}
+                  onNavLabelsChange={setNavLabels}
                   error={errors.allowedModules?.message ?? (errors.allowedModules as { root?: { message?: string } })?.root?.message}
                 />
               )}

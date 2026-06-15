@@ -1,5 +1,10 @@
 import type { DefaultSession } from 'next-auth';
 
+type StoredNavLayout = {
+  sections: { heading: string; modules: string[] }[];
+  labels: Record<string, string>;
+} | null;
+
 declare module 'next-auth' {
   interface Session {
     user: {
@@ -9,7 +14,7 @@ declare module 'next-auth' {
       activeBranchId?: string | null;
       uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null;
       allowedModules?: string[] | null;
-      navLayout?: { heading: string; modules: string[] }[] | null;
+      navLayout?: StoredNavLayout;
     } & DefaultSession['user'];
   }
 
@@ -18,7 +23,7 @@ declare module 'next-auth' {
     branchId?: string | null;
     uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null;
     allowedModules?: string[] | null;
-    navLayout?: { heading: string; modules: string[] }[] | null;
+    navLayout?: StoredNavLayout;
   }
 }
 
@@ -30,6 +35,6 @@ declare module 'next-auth/jwt' {
     activeBranchId?: string | null;
     uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null;
     allowedModules?: string[] | null;
-    navLayout?: { heading: string; modules: string[] }[] | null;
+    navLayout?: StoredNavLayout;
   }
 }

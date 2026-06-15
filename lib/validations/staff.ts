@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 const roleEnum = z.enum(['owner', 'manager', 'cashier', 'kitchen']);
 const uiLayoutEnum = z.enum(['touchscreen', 'desktop', 'tablet']);
-const navSectionSchema = z.object({
-  heading: z.string(),
-  modules: z.array(z.string()),
+const navLayoutSchema = z.object({
+  sections: z.array(z.object({ heading: z.string(), modules: z.array(z.string()) })),
+  labels: z.record(z.string(), z.string()),
 });
 
 export const createStaffSchema = z.object({
@@ -14,7 +14,7 @@ export const createStaffSchema = z.object({
   password: z.string().min(8, 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร'),
   uiLayout: uiLayoutEnum,
   allowedModules: z.array(z.string()).min(1, 'กรุณาเลือกอย่างน้อย 1 เมนู'),
-  navLayout: z.array(navSectionSchema).optional().nullable(),
+  navLayout: navLayoutSchema.optional().nullable(),
 });
 
 export const updateStaffSchema = z.object({
@@ -24,7 +24,7 @@ export const updateStaffSchema = z.object({
   role: roleEnum,
   uiLayout: uiLayoutEnum,
   allowedModules: z.array(z.string()).min(1, 'กรุณาเลือกอย่างน้อย 1 เมนู'),
-  navLayout: z.array(navSectionSchema).optional().nullable(),
+  navLayout: navLayoutSchema.optional().nullable(),
 });
 
 export const resetPasswordSchema = z.object({

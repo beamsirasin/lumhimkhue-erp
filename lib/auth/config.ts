@@ -62,13 +62,13 @@ export const authConfig: NextAuthConfig = {
         token.activeBranchId = (user as { branchId?: string | null }).branchId ?? null;
         token.uiLayout = (user as { uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null }).uiLayout ?? null;
         token.allowedModules = (user as { allowedModules?: string[] | null }).allowedModules ?? [];
-        token.navLayout = (user as { navLayout?: { heading: string; modules: string[] }[] | null }).navLayout ?? null;
+        token.navLayout = (user as { navLayout?: { sections: { heading: string; modules: string[] }[]; labels: Record<string, string> } | null }).navLayout ?? null;
       }
       if (trigger === 'update' && updateData && typeof updateData === 'object') {
         const u = (updateData as { user?: Record<string, unknown> }).user ?? (updateData as Record<string, unknown>);
         if ('allowedModules' in u) token.allowedModules = u.allowedModules as string[] | null;
         if ('uiLayout' in u) token.uiLayout = u.uiLayout as 'touchscreen' | 'desktop' | 'tablet' | null;
-        if ('navLayout' in u) token.navLayout = u.navLayout as { heading: string; modules: string[] }[] | null;
+        if ('navLayout' in u) token.navLayout = u.navLayout as { sections: { heading: string; modules: string[] }[]; labels: Record<string, string> } | null;
         if ('name' in u) token.name = u.name as string;
       }
       return token;
@@ -80,7 +80,7 @@ export const authConfig: NextAuthConfig = {
       session.user.activeBranchId = token.activeBranchId as string | null | undefined;
       session.user.uiLayout = token.uiLayout as 'touchscreen' | 'desktop' | 'tablet' | null | undefined;
       session.user.allowedModules = token.allowedModules as string[] | null | undefined;
-      session.user.navLayout = token.navLayout as { heading: string; modules: string[] }[] | null | undefined;
+      session.user.navLayout = token.navLayout as { sections: { heading: string; modules: string[] }[]; labels: Record<string, string> } | null | undefined;
       return session;
     },
   },
