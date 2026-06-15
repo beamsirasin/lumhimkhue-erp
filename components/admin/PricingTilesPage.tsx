@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useId } from 'react';
 import { useConfirm } from '@/components/shared/ConfirmDialog';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -503,6 +503,7 @@ interface TabPanelProps {
 }
 
 function TabPanel({ category, tiles, onRefetch }: TabPanelProps) {
+  const dndId = useId();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<PricingTileRow | null>(null);
   const [localTiles, setLocalTiles] = useState<PricingTileRow[]>(tiles);
@@ -591,7 +592,7 @@ function TabPanel({ category, tiles, onRefetch }: TabPanelProps) {
           ยังไม่มีข้อมูล — กด &ldquo;เพิ่ม&rdquo; เพื่อสร้าง
         </div>
       ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext id={dndId} sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={localTiles.map((t) => t.id)} strategy={rectSortingStrategy}>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {localTiles.map((tile) => (

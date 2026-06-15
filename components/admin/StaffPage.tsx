@@ -60,11 +60,13 @@ const ROLE_COLOR: Record<string, string> = {
 const UI_LAYOUT_LABEL: Record<string, string> = {
   touchscreen: 'Touchscreen',
   desktop:     'Desktop',
+  tablet:      'Tablet',
 };
 
 const UI_LAYOUT_COLOR: Record<string, string> = {
   touchscreen: 'bg-cyan-100 text-cyan-700',
   desktop:     'bg-muted/50 text-muted-foreground',
+  tablet:      'bg-violet-100 text-violet-700',
 };
 
 /* ─── Module groups (for the checkbox UI) ───────────────────── */
@@ -311,22 +313,20 @@ function UiLayoutPicker({
   value,
   onChange,
 }: {
-  value: 'touchscreen' | 'desktop' | '';
-  onChange: (v: 'touchscreen' | 'desktop') => void;
+  value: 'touchscreen' | 'desktop' | 'tablet' | '';
+  onChange: (v: 'touchscreen' | 'desktop' | 'tablet') => void;
 }) {
-  return (
-    <div className="grid grid-cols-2 gap-3">
-      {/* Touchscreen card */}
-      <button
-        type="button"
-        onClick={() => onChange('touchscreen')}
-        className={`flex flex-col gap-2 rounded-xl border-2 p-3 text-left transition-all duration-150 ${
-          value === 'touchscreen'
-            ? 'border-primary bg-primary/5'
-            : 'border-border hover:border-primary/40'
-        }`}
-      >
-        {/* Mini bottom-tab preview */}
+  const options: {
+    key: 'touchscreen' | 'desktop' | 'tablet';
+    label: string;
+    desc: string;
+    preview: React.ReactNode;
+  }[] = [
+    {
+      key: 'touchscreen',
+      label: 'Touchscreen',
+      desc: 'Bottom tab bar\nเหมาะ POS / จอครัว',
+      preview: (
         <div className="rounded-lg bg-muted border border-border overflow-hidden h-[60px] flex flex-col">
           <div className="flex-1 bg-muted/60" />
           <div className="h-[18px] border-t border-border flex items-center justify-around px-1">
@@ -335,26 +335,28 @@ function UiLayoutPicker({
             ))}
           </div>
         </div>
-        <div>
-          <p className="text-xs font-semibold text-foreground">Touchscreen</p>
-          <p className="text-[10px] text-muted-foreground leading-snug">Bottom tab bar<br/>เหมาะ POS / tablet ครัว</p>
+      ),
+    },
+    {
+      key: 'tablet',
+      label: 'Tablet Sidebar',
+      desc: 'Sidebar + tap target ใหญ่\nเหมาะ owner บน tablet',
+      preview: (
+        <div className="rounded-lg bg-muted border border-border overflow-hidden h-[60px] flex flex-row">
+          <div className="w-[22px] border-r border-border bg-violet-700/80 flex flex-col gap-1.5 py-1.5 px-1">
+            {[1,2,3].map((i) => (
+              <div key={i} className="h-1.5 rounded-sm bg-white/30" />
+            ))}
+          </div>
+          <div className="flex-1 bg-muted/60" />
         </div>
-        {value === 'touchscreen' && (
-          <span className="self-start rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground">เลือก</span>
-        )}
-      </button>
-
-      {/* Desktop card */}
-      <button
-        type="button"
-        onClick={() => onChange('desktop')}
-        className={`flex flex-col gap-2 rounded-xl border-2 p-3 text-left transition-all duration-150 ${
-          value === 'desktop'
-            ? 'border-primary bg-primary/5'
-            : 'border-border hover:border-primary/40'
-        }`}
-      >
-        {/* Mini sidebar preview */}
+      ),
+    },
+    {
+      key: 'desktop',
+      label: 'Desktop / Sidebar',
+      desc: 'Left sidebar nav\nเหมาะ คอมพิวเตอร์',
+      preview: (
         <div className="rounded-lg bg-muted border border-border overflow-hidden h-[60px] flex flex-row">
           <div className="w-[18px] border-r border-border bg-primary/80 flex flex-col gap-1 py-1 px-0.5">
             {[1,2,3].map((i) => (
@@ -363,14 +365,31 @@ function UiLayoutPicker({
           </div>
           <div className="flex-1 bg-muted/60" />
         </div>
-        <div>
-          <p className="text-xs font-semibold text-foreground">Desktop / Sidebar</p>
-          <p className="text-[10px] text-muted-foreground leading-snug">Left sidebar nav<br/>เหมาะ tablet / คอม</p>
-        </div>
-        {value === 'desktop' && (
-          <span className="self-start rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground">เลือก</span>
-        )}
-      </button>
+      ),
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      {options.map(({ key, label, desc, preview }) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => onChange(key)}
+          className={`flex flex-col gap-2 rounded-xl border-2 p-3 text-left transition-all duration-150 ${
+            value === key ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+          }`}
+        >
+          {preview}
+          <div>
+            <p className="text-xs font-semibold text-foreground">{label}</p>
+            <p className="text-[10px] text-muted-foreground leading-snug whitespace-pre-line">{desc}</p>
+          </div>
+          {value === key && (
+            <span className="self-start rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground">เลือก</span>
+          )}
+        </button>
+      ))}
     </div>
   );
 }
@@ -623,7 +642,7 @@ function StaffForm({
               name="uiLayout"
               render={({ field }) => (
                 <UiLayoutPicker
-                  value={(field.value ?? '') as 'touchscreen' | 'desktop' | ''}
+                  value={(field.value ?? '') as 'touchscreen' | 'desktop' | 'tablet' | ''}
                   onChange={field.onChange}
                 />
               )}

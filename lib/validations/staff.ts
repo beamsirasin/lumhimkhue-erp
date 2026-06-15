@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 const roleEnum = z.enum(['owner', 'manager', 'cashier', 'kitchen']);
-const uiLayoutEnum = z.enum(['touchscreen', 'desktop']);
+const uiLayoutEnum = z.enum(['touchscreen', 'desktop', 'tablet']);
 
 export const createStaffSchema = z.object({
   email: z.string().email('อีเมลไม่ถูกต้อง'),

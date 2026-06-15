@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect, createContext, useContext, type ReactNode } from 'react';
+import { useState, useEffect, useRef, createContext, useContext, type ReactNode } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -22,6 +22,7 @@ import {
   Printer,
   History,
   ChevronDown,
+  ChevronLeft,
   Maximize2,
   Minimize2,
   MoreHorizontal,
@@ -71,7 +72,7 @@ function isNavGroup(item: NavItem | NavGroup): item is NavGroup {
 const MODULE_HREFS: Record<string, string[]> = {
   pos:             ['/pos', '/pos/history'],
   kds:             ['/kds', '/kds/history'],
-  queue:           ['/queue'],
+  queue:           ['/queue', '/queue/history'],
   tables:          ['/tables', '/tables/history'],
   dashboard:       ['/dashboard'],
   reservations:    ['/reservations'],
@@ -205,6 +206,16 @@ const tableGroup: NavGroup = {
   ],
 };
 
+const queueGroup: NavGroup = {
+  label: 'คิว',
+  Icon: UsersRound,
+  matchPrefix: '/queue',
+  children: [
+    { href: '/queue',         label: 'จัดการคิว',  Icon: UsersRound },
+    { href: '/queue/history', label: 'ประวัติคิว', Icon: History },
+  ],
+};
+
 const NAV: Record<Role, NavSection[]> = {
   owner: [
     {
@@ -212,7 +223,7 @@ const NAV: Record<Role, NavSection[]> = {
       items: [
         posGroup,
         kdsGroup,
-        { href: '/queue', label: 'คิว',   Icon: UsersRound },
+        queueGroup,
         tableGroup,
       ],
     },
@@ -245,7 +256,7 @@ const NAV: Record<Role, NavSection[]> = {
       items: [
         { href: '/pos',   label: 'POS',  Icon: ShoppingCart },
         kdsGroup,
-        { href: '/queue', label: 'คิว',   Icon: UsersRound },
+        queueGroup,
         tableGroup,
       ],
     },
@@ -263,7 +274,7 @@ const NAV: Record<Role, NavSection[]> = {
         { href: '/pos',      label: 'POS',          Icon: ShoppingCart },
         { href: '/kds',      label: 'ครัว',          Icon: ChefHat },
         tableGroup,
-        { href: '/queue',    label: 'คิว',            Icon: UsersRound },
+        queueGroup,
         { href: '/printers', label: 'เครื่องพิมพ์',   Icon: Printer },
       ],
     },
@@ -273,7 +284,7 @@ const NAV: Record<Role, NavSection[]> = {
       items: [
         { href: '/kds',      label: 'ครัว',          Icon: ChefHat },
         tableGroup,
-        { href: '/queue',    label: 'คิว',            Icon: UsersRound },
+        queueGroup,
         { href: '/printers', label: 'เครื่องพิมพ์',   Icon: Printer },
       ],
     },
@@ -289,6 +300,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/kds':                   'ครัว (KDS)',
   '/kds/history':           'ประวัติครัว',
   '/queue':                 'จัดการคิว',
+  '/queue/history':         'ประวัติคิว',
   '/tables':                'จัดการโต๊ะ',
   '/tables/history':        'ประวัติโต๊ะ',
   '/menu':                  'เมนูอาหาร',
@@ -340,6 +352,38 @@ function NavBadge({ count }: { count: number }) {
   );
 }
 
+/* ─── Tooltip for collapsed sidebar ─────────────────────────── */
+
+function SidebarTooltip({ label, children }: { label: string; children: React.ReactNode }) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div
+      ref={wrapperRef}
+      className="w-full"
+      onMouseEnter={() => {
+        if (!wrapperRef.current || !tipRef.current) return;
+        const rect = wrapperRef.current.getBoundingClientRect();
+        tipRef.current.style.top = `${rect.top + rect.height / 2}px`;
+        tipRef.current.style.display = 'block';
+      }}
+      onMouseLeave={() => {
+        if (tipRef.current) tipRef.current.style.display = 'none';
+      }}
+    >
+      {children}
+      <div
+        ref={tipRef}
+        style={{ position: 'fixed', left: 'calc(4rem + 10px)', display: 'none', transform: 'translateY(-50%)' }}
+        className="pointer-events-none z-50 whitespace-nowrap rounded-lg border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg"
+      >
+        {label}
+      </div>
+    </div>
+  );
+}
+
 /* ─── NavGroup component (collapsible) ──────────────────────── */
 
 function NavGroupItem({
@@ -347,27 +391,103 @@ function NavGroupItem({
   pathname,
   onNavigate,
   badgeCounts,
+  size = 'default',
+  collapsed = false,
+  onExpand,
 }: {
   group: NavGroup;
   pathname: string;
   onNavigate?: () => void;
   badgeCounts?: Record<string, number>;
+  size?: 'default' | 'large';
+  collapsed?: boolean;
+  onExpand?: () => void;
 }) {
   const isGroupActive = pathname === group.matchPrefix
     || pathname.startsWith(group.matchPrefix + '/')
     || group.children.some(c => pathname === c.href || (c.href.length > 1 && pathname.startsWith(c.href + '/')));
   const [open, setOpen] = useState(isGroupActive);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const flyoutRef = useRef<HTMLDivElement>(null);
   const { Icon } = group;
   const totalGroupBadge = group.children.reduce((s, c) => s + (badgeCounts?.[c.href] ?? 0), 0);
 
+  if (collapsed) {
+    return (
+      <div
+        ref={wrapperRef}
+        className="w-full"
+        onMouseEnter={() => {
+          if (!wrapperRef.current || !flyoutRef.current) return;
+          const rect = wrapperRef.current.getBoundingClientRect();
+          flyoutRef.current.style.top = `${rect.top}px`;
+          flyoutRef.current.style.display = 'block';
+        }}
+        onMouseLeave={() => {
+          if (flyoutRef.current) flyoutRef.current.style.display = 'none';
+        }}
+      >
+        <button
+          type="button"
+          className={`relative flex w-full items-center justify-center rounded-xl p-3 transition-all duration-150 ${
+            isGroupActive ? 'bg-card/12 text-white' : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
+          }`}
+        >
+          <Icon className="size-5 shrink-0" />
+          {totalGroupBadge > 0 && (
+            <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-red-400 shadow-sm" />
+          )}
+        </button>
+
+        <div
+          ref={flyoutRef}
+          style={{ position: 'fixed', left: 'calc(4rem + 8px)', top: 0, display: 'none', background: 'oklch(0.18 0.025 248)' }}
+          className="z-50 min-w-[180px] overflow-hidden rounded-xl border border-white/10 shadow-xl"
+        >
+          <p className="border-b border-white/8 px-3.5 py-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+            {group.label}
+          </p>
+          <div className="p-1.5 space-y-0.5">
+            {group.children.map(({ href, label, Icon: ChildIcon }) => {
+              const isActive = href === '/tables'
+                ? pathname === '/tables'
+                : pathname === href || pathname.startsWith(href + '/');
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  prefetch={false}
+                  onClick={onNavigate}
+                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 ${
+                    isActive ? 'bg-card/15 text-white' : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
+                  }`}
+                >
+                  <ChildIcon className="size-4 shrink-0" />
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const triggerCls = size === 'large'
+    ? `flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-150`
+    : `flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150`;
+  const iconCls   = size === 'large' ? 'size-5 shrink-0' : 'size-4 shrink-0';
+  const childCls  = size === 'large'
+    ? `flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150`
+    : `flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm font-medium transition-all duration-150`;
+  const childIconCls = size === 'large' ? 'size-4 shrink-0' : 'size-3.5 shrink-0';
+
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 ${
-        isGroupActive
-          ? 'bg-card/12 text-white'
-          : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
+      <CollapsibleTrigger className={`${triggerCls} ${
+        isGroupActive ? 'bg-card/12 text-white' : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
       }`}>
-        <Icon className="size-4 shrink-0" />
+        <Icon className={iconCls} />
         <span className="flex-1 text-left">{group.label}</span>
         {!open && totalGroupBadge > 0 && (
           <span className="size-2 rounded-full bg-red-400 shadow-sm" />
@@ -387,13 +507,11 @@ function NavGroupItem({
                 href={href}
                 prefetch={false}
                 onClick={onNavigate}
-                className={`flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm font-medium transition-all duration-150 ${
-                  isActive
-                    ? 'bg-card/15 text-white'
-                    : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
+                className={`${childCls} ${
+                  isActive ? 'bg-card/15 text-white' : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
                 }`}
               >
-                <ChildIcon className="size-3.5 shrink-0" />
+                <ChildIcon className={childIconCls} />
                 {label}
                 <NavBadge count={badge} />
               </Link>
@@ -412,12 +530,68 @@ function NavItems({
   pathname,
   onNavigate,
   badgeCounts,
+  size = 'default',
+  collapsed = false,
+  onExpand,
 }: {
   sections: NavSection[];
   pathname: string;
   onNavigate?: () => void;
   badgeCounts?: Record<string, number>;
+  size?: 'default' | 'large';
+  collapsed?: boolean;
+  onExpand?: () => void;
 }) {
+  const itemCls = size === 'large'
+    ? 'flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-150'
+    : 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150';
+  const iconCls = size === 'large' ? 'size-5 shrink-0' : 'size-4 shrink-0';
+
+  if (collapsed) {
+    const allItems = sections.flatMap((s) => s.items);
+    return (
+      <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1">
+        {allItems.map((item) => {
+          if (isNavGroup(item)) {
+            return (
+              <NavGroupItem
+                key={item.matchPrefix}
+                group={item}
+                pathname={pathname}
+                onNavigate={onNavigate}
+                badgeCounts={badgeCounts}
+                size="large"
+                collapsed={true}
+                onExpand={onExpand}
+              />
+            );
+          }
+
+          const { href, label, Icon } = item;
+          const isActive = pathname === href || (href.length > 1 && pathname.startsWith(href + '/'));
+          const badge = badgeCounts?.[href] ?? 0;
+          return (
+            <SidebarTooltip key={href} label={label}>
+              <Link
+                href={href}
+                prefetch={false}
+                onClick={onNavigate}
+                className={`relative flex items-center justify-center rounded-xl p-3 transition-all duration-150 ${
+                  isActive ? 'bg-card/15 text-white shadow-sm' : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
+                }`}
+              >
+                <Icon className={`size-5 shrink-0 transition-colors ${isActive ? 'text-blue-300' : ''}`} />
+                {badge > 0 && (
+                  <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-red-400 shadow-sm" />
+                )}
+              </Link>
+            </SidebarTooltip>
+          );
+        })}
+      </nav>
+    );
+  }
+
   return (
     <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
       {sections.map((section, i) => (
@@ -437,6 +611,7 @@ function NavItems({
                     pathname={pathname}
                     onNavigate={onNavigate}
                     badgeCounts={badgeCounts}
+                    size={size}
                   />
                 );
               }
@@ -450,13 +625,11 @@ function NavItems({
                   href={href}
                   prefetch={false}
                   onClick={onNavigate}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 ${
-                    isActive
-                      ? 'bg-card/15 text-white shadow-sm'
-                      : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
+                  className={`${itemCls} ${
+                    isActive ? 'bg-card/15 text-white shadow-sm' : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
                   }`}
                 >
-                  <Icon className={`size-4 shrink-0 transition-colors ${isActive ? 'text-blue-300' : ''}`} />
+                  <Icon className={`${iconCls} transition-colors ${isActive ? 'text-blue-300' : ''}`} />
                   {label}
                   <NavBadge count={badge} />
                 </Link>
@@ -476,6 +649,9 @@ function SidebarInner({
   pathname,
   onNavigate,
   badgeCounts,
+  size = 'default',
+  collapsed = false,
+  onToggleCollapse,
 }: {
   role: Role;
   userName: string;
@@ -483,50 +659,103 @@ function SidebarInner({
   pathname: string;
   onNavigate?: () => void;
   badgeCounts?: Record<string, number>;
+  size?: 'default' | 'large';
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }) {
   return (
     <div className="flex h-full flex-col" style={{ background: 'oklch(0.14 0.025 248)' }}>
-      {/* Logo */}
-      <div className="flex h-14 shrink-0 items-center gap-3 border-b border-white/8 px-4">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-600/20 ring-1 ring-blue-400/30">
-          <Image
-            src="/images/logo.png"
-            alt="ร้านชาบู ERP"
-            width={20}
-            height={20}
-            className="rounded object-contain"
-          />
+      {/* Logo / Header */}
+      {collapsed ? (
+        <div className="flex h-14 shrink-0 items-center justify-center border-b border-white/8">
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            aria-label="ขยาย sidebar"
+            className="flex size-9 items-center justify-center rounded-lg bg-blue-600/20 ring-1 ring-blue-400/30 hover:bg-blue-600/30 transition-colors"
+          >
+            <ChevronLeft className="size-4 text-blue-300 rotate-180" />
+          </button>
         </div>
-        <div className="min-w-0">
-          <span className="block text-sm font-semibold text-white leading-tight">ร้านชาบู ERP</span>
-          <span className="block text-[10px] text-muted-foreground leading-tight">Restaurant Management</span>
-        </div>
-      </div>
-
-      {/* Navigation */}
-      <NavItems sections={sections} pathname={pathname} onNavigate={onNavigate} badgeCounts={badgeCounts} />
-
-      {/* User info + logout */}
-      <div className="shrink-0 border-t border-white/8 p-3">
-        <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-blue-600/30 text-xs font-semibold text-blue-200 ring-1 ring-blue-400/30">
-            {userName.charAt(0).toUpperCase()}
+      ) : (
+        <div className="flex h-14 shrink-0 items-center gap-3 border-b border-white/8 px-4">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-600/20 ring-1 ring-blue-400/30">
+            <Image
+              src="/images/logo.png"
+              alt="ร้านชาบู ERP"
+              width={20}
+              height={20}
+              className="rounded object-contain"
+            />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-white">{userName}</p>
-            <p className="truncate text-[11px] text-muted-foreground">{ROLE_LABEL[role]}</p>
+            <span className="block text-sm font-semibold text-white leading-tight">ร้านชาบู ERP</span>
+            <span className="block text-[10px] text-muted-foreground leading-tight">Restaurant Management</span>
           </div>
+          {onToggleCollapse && (
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              aria-label="ยุบ sidebar"
+              className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-white/10 hover:text-white transition-colors"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+          )}
         </div>
-        <form action={logoutAction} className="mt-1">
-          <button
-            type="submit"
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-all duration-150 hover:bg-red-500/10 hover:text-red-300"
-          >
-            <LogOut className="size-4 shrink-0" />
-            ออกจากระบบ
-          </button>
-        </form>
-      </div>
+      )}
+
+      {/* Navigation */}
+      <NavItems
+        sections={sections}
+        pathname={pathname}
+        onNavigate={onNavigate}
+        badgeCounts={badgeCounts}
+        size={size}
+        collapsed={collapsed}
+        onExpand={onToggleCollapse}
+      />
+
+      {/* User info + logout */}
+      {collapsed ? (
+        <div className="shrink-0 border-t border-white/8 p-2 flex flex-col items-center gap-1">
+          <div className="flex size-8 items-center justify-center rounded-full bg-blue-600/30 text-xs font-semibold text-blue-200 ring-1 ring-blue-400/30">
+            {userName.charAt(0).toUpperCase()}
+          </div>
+          <SidebarTooltip label="ออกจากระบบ">
+            <form action={logoutAction}>
+              <button
+                type="submit"
+                aria-label="ออกจากระบบ"
+                className="flex w-full items-center justify-center rounded-lg p-2 text-muted-foreground hover:bg-red-500/10 hover:text-red-300 transition-all duration-150"
+              >
+                <LogOut className="size-4 shrink-0" />
+              </button>
+            </form>
+          </SidebarTooltip>
+        </div>
+      ) : (
+        <div className="shrink-0 border-t border-white/8 p-3">
+          <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-blue-600/30 text-xs font-semibold text-blue-200 ring-1 ring-blue-400/30">
+              {userName.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-white">{userName}</p>
+              <p className="truncate text-[11px] text-muted-foreground">{ROLE_LABEL[role]}</p>
+            </div>
+          </div>
+          <form action={logoutAction} className="mt-1">
+            <button
+              type="submit"
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-all duration-150 hover:bg-red-500/10 hover:text-red-300"
+            >
+              <LogOut className="size-4 shrink-0" />
+              ออกจากระบบ
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
@@ -540,6 +769,7 @@ function StandardSidebarLayout({
   pathname,
   badgeCounts,
   allowedModules,
+  variant = 'default',
 }: {
   role: Role;
   userName: string;
@@ -547,34 +777,63 @@ function StandardSidebarLayout({
   pathname: string;
   badgeCounts?: Record<string, number>;
   allowedModules: string[];
+  variant?: 'default' | 'tablet';
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const rawSections = NAV[role] ?? [];
   const sections = reorderSections(filterSections(rawSections, allowedModules), allowedModules);
   const pageTitle = getPageTitle(pathname);
-  const innerProps = { role, userName, sections, pathname, badgeCounts };
+
+  const isTablet = variant === 'tablet';
+  const size: 'default' | 'large' = isTablet ? 'large' : 'default';
+
+  const toggleCollapse = () => setSidebarCollapsed((c) => !c);
+
+  const innerProps = {
+    role, userName, sections, pathname, badgeCounts, size,
+    ...(isTablet ? { collapsed: sidebarCollapsed, onToggleCollapse: toggleCollapse } : {}),
+  };
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
-      {/* Desktop sidebar */}
-      <aside className="hidden lg:block fixed inset-y-0 left-0 z-20 w-64">
+      {/* Sidebar */}
+      <aside className={isTablet
+        ? sidebarCollapsed
+          ? 'transition-all duration-300 hidden md:block fixed inset-y-0 left-0 z-20 w-16'
+          : 'transition-all duration-300 hidden md:block fixed inset-y-0 left-0 z-20 w-72'
+        : 'hidden lg:block fixed inset-y-0 left-0 z-20 w-64'
+      }>
         <SidebarInner {...innerProps} />
       </aside>
 
       {/* Right content area */}
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden lg:pl-64">
+      <div className={isTablet
+        ? sidebarCollapsed
+          ? 'flex flex-col flex-1 min-w-0 overflow-hidden transition-all duration-300 md:pl-16'
+          : 'flex flex-col flex-1 min-w-0 overflow-hidden transition-all duration-300 md:pl-72'
+        : 'flex flex-col flex-1 min-w-0 overflow-hidden lg:pl-64'
+      }>
         {/* Top bar */}
         <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border bg-card px-5 shadow-none">
           <Sheet open={mobileOpen} onOpenChange={(open) => setMobileOpen(open)}>
             <SheetTrigger
               aria-label="เปิดเมนู"
-              className="flex lg:hidden items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className={isTablet
+                ? 'flex md:hidden items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
+                : 'flex lg:hidden items-center justify-center rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground'
+              }
             >
               <Menu className="size-5" />
             </SheetTrigger>
-            <SheetContent side="left" className="w-64 p-0" showCloseButton={false}>
+            <SheetContent
+              side="left"
+              className={isTablet ? 'w-72 p-0' : 'w-64 p-0'}
+              showCloseButton={false}
+            >
               <SidebarInner
                 {...innerProps}
+                collapsed={false}
                 onNavigate={() => setMobileOpen(false)}
               />
             </SheetContent>
@@ -608,6 +867,7 @@ const ALL_TOUCHSCREEN_TABS: TabItem[] = [
 const ALL_TOUCHSCREEN_MORE: MoreItem[] = [
   { href: '/kds/history',    label: 'ประวัติครัว',     Icon: ChefHat },
   { href: '/tables/history', label: 'ประวัติโต๊ะ',    Icon: History },
+  { href: '/queue/history',  label: 'ประวัติคิว',      Icon: UsersRound },
   { href: '/pos/history',    label: 'ประวัติชำระเงิน', Icon: CreditCard },
   { href: '/printers',       label: 'เครื่องพิมพ์',    Icon: Printer },
 ];
@@ -630,12 +890,14 @@ const ROLE_TOUCHSCREEN_MORE: Record<'cashier' | 'kitchen', MoreItem[]> = {
   cashier: [
     { href: '/kds/history',    label: 'ประวัติครัว',     Icon: ChefHat },
     { href: '/tables/history', label: 'ประวัติโต๊ะ',    Icon: History },
+    { href: '/queue/history',  label: 'ประวัติคิว',      Icon: UsersRound },
     { href: '/pos/history',    label: 'ประวัติชำระเงิน', Icon: CreditCard },
     { href: '/printers',       label: 'เครื่องพิมพ์',    Icon: Printer },
   ],
   kitchen: [
     { href: '/kds/history',    label: 'ประวัติครัว',   Icon: ChefHat },
     { href: '/tables/history', label: 'ประวัติโต๊ะ',  Icon: History },
+    { href: '/queue/history',  label: 'ประวัติคิว',    Icon: UsersRound },
     { href: '/printers',       label: 'เครื่องพิมพ์', Icon: Printer },
   ],
 };
@@ -816,7 +1078,7 @@ interface SidebarLayoutProps {
   userName: string;
   children: React.ReactNode;
   badgeCounts?: Record<string, number>;
-  uiLayout?: 'touchscreen' | 'desktop' | null;
+  uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null;
   allowedModules?: string[] | null;
 }
 
@@ -835,6 +1097,7 @@ export function SidebarLayout({
   const useTouchscreen =
     uiLayout === 'touchscreen' ||
     (uiLayout == null && (role === 'cashier' || role === 'kitchen'));
+  const useTablet = uiLayout === 'tablet';
 
   if (useTouchscreen) {
     // Compute bottom tabs: use allowedModules if set, else fall back to role defaults
@@ -869,6 +1132,7 @@ export function SidebarLayout({
       pathname={pathname}
       badgeCounts={badgeCounts}
       allowedModules={modules}
+      variant={useTablet ? 'tablet' : 'default'}
     >
       {children}
     </StandardSidebarLayout>

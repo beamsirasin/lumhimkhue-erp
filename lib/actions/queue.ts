@@ -1,8 +1,8 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { eq, and, inArray, lt, asc, gte, sql } from 'drizzle-orm';
-import { startOfDay } from 'date-fns';
+import { eq, and, inArray, lt, lte, asc, gte, sql } from 'drizzle-orm';
+import { startOfDay, endOfDay } from 'date-fns';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { nanoid } from 'nanoid';
 import { auth } from '@/auth';
@@ -176,3 +176,31 @@ export async function getQueueStatus(token: string) {
 export type QueueStatusData = NonNullable<
   Extract<Awaited<ReturnType<typeof getQueueStatus>>, { ok: true }>['data']
 >;
+
+export async function getQueueHistory(date: string) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'manage_queue'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  try {
+    const zonedDay = toZonedTime(new Date(date), TZ);
+    const dayStart = fromZonedTime(startOfDay(zonedDay), TZ);
+    const dayEnd = fromZonedTime(endOfDay(zonedDay), TZ);
+
+    const entries = await db
+      .select()
+      .from(queueEntries)
+      .where(and(gte(queueEntries.createdAt, dayStart), lte(queueEntries.createdAt, dayEnd)))
+      .orderBy(asc(queueEntries.createdAt));
+
+    return { ok: true as const, data: entries };
+  } catch (e) {
+    console.error('[getQueueHistory]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+export type QueueHistoryEntry = NonNullable<
+  Extract<Awaited<ReturnType<typeof getQueueHistory>>, { ok: true }>['data']
+>[number];

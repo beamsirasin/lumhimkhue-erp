@@ -1,11 +1,11 @@
-﻿'use client';
+'use client';
 
 import { useState } from 'react';
-import { format, getDaysInMonth } from 'date-fns';
+import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { getKdsHistory } from '@/lib/actions/kds';
+import { HistoryCalendar } from '@/components/staff/HistoryCalendar';
 import type { KdsHistoryRow } from '@/lib/actions/kds';
 
 const STATION_LABEL: Record<string, string> = {
@@ -23,83 +23,6 @@ const STATION_COLOR: Record<string, string> = {
   sauce:     'bg-orange-100 text-orange-700',
 };
 
-function toDateStr(d: Date) {
-  return format(d, 'yyyy-MM-dd');
-}
-
-/* ─── Mini calendar ──────────────────────────────────────────────────────── */
-
-function Calendar({
-  selected,
-  onSelect,
-}: {
-  selected: string;
-  onSelect: (d: string) => void;
-}) {
-  const today = new Date();
-  const [view, setView] = useState({ year: today.getFullYear(), month: today.getMonth() });
-
-  const firstDay = new Date(view.year, view.month, 1).getDay();
-  const daysInMonth = getDaysInMonth(new Date(view.year, view.month));
-  const cells: (number | null)[] = [
-    ...Array(firstDay).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ];
-
-  const prev = () =>
-    setView((v) => v.month === 0 ? { year: v.year - 1, month: 11 } : { ...v, month: v.month - 1 });
-  const next = () =>
-    setView((v) => v.month === 11 ? { year: v.year + 1, month: 0 } : { ...v, month: v.month + 1 });
-
-  return (
-    <div className="rounded-xl border border-border bg-card p-4 select-none">
-      {/* Month nav */}
-      <div className="flex items-center justify-between mb-3">
-        <button type="button" onClick={prev} className="rounded p-1 hover:bg-muted/50">
-          <ChevronLeft className="size-4 text-muted-foreground" />
-        </button>
-        <p className="text-sm font-semibold text-foreground">
-          {format(new Date(view.year, view.month), 'LLLL yyyy', { locale: th })}
-        </p>
-        <button type="button" onClick={next} className="rounded p-1 hover:bg-muted/50">
-          <ChevronRight className="size-4 text-muted-foreground" />
-        </button>
-      </div>
-      {/* Day headers */}
-      <div className="grid grid-cols-7 mb-1">
-        {['อา','จ','อ','พ','พฤ','ศ','ส'].map((d) => (
-          <div key={d} className="text-center text-[10px] font-medium text-muted-foreground">{d}</div>
-        ))}
-      </div>
-      {/* Cells */}
-      <div className="grid grid-cols-7 gap-y-0.5">
-        {cells.map((day, i) => {
-          if (!day) return <div key={i} />;
-          const dateStr = `${view.year}-${String(view.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-          const isSelected = dateStr === selected;
-          const isToday = dateStr === toDateStr(today);
-          return (
-            <button
-              key={i}
-              type="button"
-              onClick={() => onSelect(dateStr)}
-              className={`mx-auto flex size-7 items-center justify-center rounded-full text-xs transition-colors ${
-                isSelected
-                  ? 'bg-primary text-white font-semibold'
-                  : isToday
-                    ? 'border border-border text-foreground font-semibold hover:bg-muted/50'
-                    : 'text-foreground hover:bg-muted/50'
-              }`}
-            >
-              {day}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 /* ─── Summary table ──────────────────────────────────────────────────────── */
 
 function HistoryTable({ rows, date }: { rows: KdsHistoryRow[]; date: string }) {
@@ -107,7 +30,6 @@ function HistoryTable({ rows, date }: { rows: KdsHistoryRow[]; date: string }) {
   const totalServed    = rows.reduce((s, r) => s + r.servedQty,    0);
   const totalCancelled = rows.reduce((s, r) => s + r.cancelledQty, 0);
 
-  // Group by station
   const stations = [...new Set(rows.map((r) => r.station))];
 
   if (rows.length === 0) {
@@ -148,11 +70,9 @@ function HistoryTable({ rows, date }: { rows: KdsHistoryRow[]; date: string }) {
         return (
           <div key={station} className="rounded-xl border border-border bg-card overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <div className="flex items-center gap-2">
-                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATION_COLOR[station] ?? 'bg-muted/50 text-muted-foreground'}`}>
-                  {STATION_LABEL[station] ?? station}
-                </span>
-              </div>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATION_COLOR[station] ?? 'bg-muted/50 text-muted-foreground'}`}>
+                {STATION_LABEL[station] ?? station}
+              </span>
               <span className="text-xs text-muted-foreground">รวม {stTotal} รายการ</span>
             </div>
             <table className="w-full text-sm">
@@ -187,7 +107,7 @@ function HistoryTable({ rows, date }: { rows: KdsHistoryRow[]; date: string }) {
 /* ─── Main page ──────────────────────────────────────────────────────────── */
 
 export function KdsHistoryPage() {
-  const today = toDateStr(new Date());
+  const today = format(new Date(), 'yyyy-MM-dd');
   const [selectedDate, setSelectedDate] = useState(today);
 
   const { data, isLoading, error } = useQuery({
@@ -201,14 +121,11 @@ export function KdsHistoryPage() {
   });
 
   return (
-    <div className="flex h-full gap-6 p-6 overflow-hidden">
-      {/* Sidebar: calendar */}
-      <aside className="w-72 shrink-0">
-        <Calendar selected={selectedDate} onSelect={setSelectedDate} />
-      </aside>
-
-      {/* Main: history table */}
-      <div className="flex-1 overflow-y-auto space-y-4">
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="shrink-0 px-6 pt-6 pb-0">
+        <HistoryCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+      </div>
+      <div className="flex-1 min-w-0 overflow-y-auto p-6 pt-4 space-y-4">
         <div>
           <h2 className="text-base font-semibold text-foreground">ประวัติครัว</h2>
           <p className="text-xs text-muted-foreground">

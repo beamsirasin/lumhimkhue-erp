@@ -598,18 +598,28 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, reservationId, pr
               >
                 <Link2 className="size-4" />เชื่อมโต๊ะ
               </button>
-              <Button onClick={handleSubmit} disabled={submitting}>
-                {submitting && <Loader2 className="mr-1.5 size-4 animate-spin" />}
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                {submitting && <Loader2 className="size-4 animate-spin" />}
                 {submitting ? 'กำลังเปิด...' : 'เปิดโต๊ะ'}
-              </Button>
+              </button>
             </>
           ) : (
             <>
               <button type="button" onClick={() => setStep('tiles')} className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ย้อนกลับ</button>
-              <Button onClick={handleSubmit} disabled={submitting}>
-                {submitting && <Loader2 className="mr-1.5 size-4 animate-spin" />}
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                {submitting && <Loader2 className="size-4 animate-spin" />}
                 {submitting ? 'กำลังเปิด...' : 'เปิดโต๊ะ'}
-              </Button>
+              </button>
             </>
           )}
         </DialogFooter>
@@ -1005,7 +1015,6 @@ function TableSheet({
             <span className={`h-2.5 w-2.5 rounded-full ${STATUS_CONFIG[visualStatus].dot}`} />
             <DialogTitle className="text-base">
               โต๊ะ {table.label}
-              {table.zone !== 'ทั่วไป' && <span className="ml-1.5 text-sm font-normal text-muted-foreground">({table.zone})</span>}
             </DialogTitle>
             {/* เปลี่ยนโต๊ะหลัก — shown only on truly linked secondary tables, not partial-payment continuations */}
             {visualStatus === 'linked' ? (
@@ -1665,7 +1674,6 @@ interface TableEditPanelProps {
 function TableEditPanel({ table, onClose, onSaved, onDeleted }: TableEditPanelProps) {
   const [label, setLabel] = useState(table.label);
   const [capacity, setCapacity] = useState(String(table.capacity));
-  const [zone, setZone] = useState(table.zone);
   const [shape, setShape] = useState<'square' | 'rectangle'>(table.shape);
   const [width, setWidth] = useState(String(table.width));
   const [height, setHeight] = useState(String(table.height));
@@ -1675,7 +1683,7 @@ function TableEditPanel({ table, onClose, onSaved, onDeleted }: TableEditPanelPr
 
   const handleSave = async () => {
     setSaving(true);
-    const r = await updateTableMeta({ tableId: table.id, label, capacity: Number(capacity) || 4, zone, shape, width: Number(width) || 80, height: Number(height) || 80 });
+    const r = await updateTableMeta({ tableId: table.id, label, capacity: Number(capacity) || 4, zone: table.zone, shape, width: Number(width) || 80, height: Number(height) || 80 });
     setSaving(false);
     if (r.ok) { toast.success('บันทึกแล้ว'); onSaved(); }
     else toast.error(r.error);
@@ -1701,7 +1709,6 @@ function TableEditPanel({ table, onClose, onSaved, onDeleted }: TableEditPanelPr
       </div>
       <div className="space-y-1.5"><Label htmlFor="el">ชื่อโต๊ะ</Label><Input id="el" value={label} onChange={(e) => setLabel(e.target.value)} /></div>
       <div className="space-y-1.5"><Label htmlFor="ec">จำนวนที่นั่ง</Label><Input id="ec" type="number" min={1} value={capacity} onChange={(e) => setCapacity(e.target.value)} /></div>
-      <div className="space-y-1.5"><Label htmlFor="ez">โซน</Label><Input id="ez" value={zone} onChange={(e) => setZone(e.target.value)} /></div>
       <div className="space-y-1.5">
         <Label>รูปร่าง</Label>
         <Select value={shape} onValueChange={(v) => setShape(v as 'square' | 'rectangle')}>
@@ -1732,13 +1739,12 @@ interface AddTableDialogProps { open: boolean; onClose: () => void; onCreated: (
 function AddTableDialog({ open, onClose, onCreated }: AddTableDialogProps) {
   const [label, setLabel] = useState('');
   const [capacity, setCapacity] = useState('4');
-  const [zone, setZone] = useState('ทั่วไป');
   const [submitting, setSubmitting] = useState(false);
 
   const handleCreate = async () => {
     if (!label.trim()) { toast.error('กรุณาระบุชื่อโต๊ะ'); return; }
     setSubmitting(true);
-    const r = await createTable({ label: label.trim(), capacity: Number(capacity) || 4, zone: zone || 'ทั่วไป', positionX: 20, positionY: 20 });
+    const r = await createTable({ label: label.trim(), capacity: Number(capacity) || 4, zone: 'ทั่วไป', positionX: 20, positionY: 20 });
     setSubmitting(false);
     if (r.ok) { toast.success(`เพิ่มโต๊ะ ${label} แล้ว`); onCreated(); onClose(); setLabel(''); }
     else toast.error(r.error);
@@ -1750,10 +1756,7 @@ function AddTableDialog({ open, onClose, onCreated }: AddTableDialogProps) {
         <DialogHeader><DialogTitle>เพิ่มโต๊ะใหม่</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5"><Label htmlFor="nl">ชื่อโต๊ะ *</Label><Input id="nl" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="เช่น 1, A, VIP-1" /></div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1.5"><Label htmlFor="nc">จำนวนที่นั่ง</Label><Input id="nc" type="number" min={1} value={capacity} onChange={(e) => setCapacity(e.target.value)} /></div>
-            <div className="space-y-1.5"><Label htmlFor="nz">โซน</Label><Input id="nz" value={zone} onChange={(e) => setZone(e.target.value)} /></div>
-          </div>
+          <div className="space-y-1.5"><Label htmlFor="nc">จำนวนที่นั่ง</Label><Input id="nc" type="number" min={1} value={capacity} onChange={(e) => setCapacity(e.target.value)} /></div>
         </div>
         <DialogFooter>
           <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>

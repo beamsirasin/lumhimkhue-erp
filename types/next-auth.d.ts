@@ -7,7 +7,7 @@ declare module 'next-auth' {
       role: 'owner' | 'manager' | 'cashier' | 'kitchen';
       branchId?: string | null;
       activeBranchId?: string | null;
-      uiLayout?: 'touchscreen' | 'desktop' | null;
+      uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null;
       allowedModules?: string[] | null;
     } & DefaultSession['user'];
   }
@@ -15,7 +15,7 @@ declare module 'next-auth' {
   interface User {
     role: 'owner' | 'manager' | 'cashier' | 'kitchen';
     branchId?: string | null;
-    uiLayout?: 'touchscreen' | 'desktop' | null;
+    uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null;
     allowedModules?: string[] | null;
   }
 }
@@ -26,7 +26,7 @@ declare module 'next-auth/jwt' {
     role: 'owner' | 'manager' | 'cashier' | 'kitchen';
     branchId?: string | null;
     activeBranchId?: string | null;
-    uiLayout?: 'touchscreen' | 'desktop' | null;
+    uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null;
     allowedModules?: string[] | null;
   }
 }

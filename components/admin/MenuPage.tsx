@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useId } from 'react';
 import { useConfirm } from '@/components/shared/ConfirmDialog';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
@@ -77,6 +77,8 @@ type Modal =
   | { type: 'editItem'; item: Item; categoryId: string };
 
 export function MenuPage({ initialData }: MenuPageProps) {
+  const dndCatId = useId();
+  const dndItemId = useId();
   const [selectedCatId, setSelectedCatId] = useState<string | null>(
     initialData[0]?.id ?? null,
   );
@@ -181,7 +183,7 @@ export function MenuPage({ initialData }: MenuPageProps) {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
         {/* Category list */}
         <div className="lg:col-span-1 space-y-1">
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCatDragEnd}>
+          <DndContext id={dndCatId} sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCatDragEnd}>
             <SortableContext items={categories.map((c) => c.id)} strategy={verticalListSortingStrategy}>
               {categories.map((cat) => (
                 <SortableCategoryItem
@@ -249,18 +251,18 @@ export function MenuPage({ initialData }: MenuPageProps) {
               {selectedCat.menuItems.length === 0 ? (
                 <p className="py-12 text-center text-sm text-muted-foreground">ยังไม่มีเมนูในหมวดนี้</p>
               ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/30 text-left">
-                      <th className="w-8 px-2 py-2.5" />
-                      <th className="px-4 py-2.5 text-xs font-semibold text-muted-foreground">ชื่อเมนู</th>
-                      <th className="px-4 py-2.5 text-xs font-semibold text-muted-foreground">ประเภท</th>
-                      <th className="px-4 py-2.5 text-xs font-semibold text-muted-foreground text-right">ราคาเพิ่ม</th>
-                      <th className="px-4 py-2.5 text-xs font-semibold text-muted-foreground text-center">สถานะ</th>
-                      <th className="px-4 py-2.5 text-xs font-semibold text-muted-foreground"></th>
-                    </tr>
-                  </thead>
-                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleItemDragEnd}>
+                <DndContext id={dndItemId} sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleItemDragEnd}>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/30 text-left">
+                        <th className="w-8 px-2 py-2.5" />
+                        <th className="px-4 py-2.5 text-xs font-semibold text-muted-foreground">ชื่อเมนู</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-muted-foreground">ประเภท</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-muted-foreground text-right">ราคาเพิ่ม</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-muted-foreground text-center">สถานะ</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-muted-foreground"></th>
+                      </tr>
+                    </thead>
                     <SortableContext items={selectedCat.menuItems.map((i) => i.id)} strategy={verticalListSortingStrategy}>
                       <tbody className="divide-y divide-border">
                         {selectedCat.menuItems.map((item) => (
@@ -278,8 +280,8 @@ export function MenuPage({ initialData }: MenuPageProps) {
                         ))}
                       </tbody>
                     </SortableContext>
-                  </DndContext>
-                </table>
+                  </table>
+                </DndContext>
               )}
             </div>
           ) : (

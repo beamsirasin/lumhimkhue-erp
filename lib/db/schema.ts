@@ -18,7 +18,7 @@ import { relations } from 'drizzle-orm';
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
 export const roleEnum = pgEnum('role', ['owner', 'manager', 'cashier', 'kitchen']);
-export const uiLayoutEnum = pgEnum('ui_layout', ['touchscreen', 'desktop']);
+export const uiLayoutEnum = pgEnum('ui_layout', ['touchscreen', 'desktop', 'tablet']);
 
 export const tableStatusEnum = pgEnum('table_status', [
   'available',
