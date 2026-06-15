@@ -1068,7 +1068,7 @@ function TableSheet({
               {/* Partial payment notice banner */}
               {visualStatus === 'partial' && (
                 <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
-                  <p className="text-xs font-semibold text-amber-700">ชำระบางส่วนแล้ว — ต่อบิล</p>
+                  <p className="text-xs font-semibold text-amber-700">ชำระบางส่วนแล้ว</p>
                   <p className="text-xs text-amber-600 mt-0.5">
                     ยังค้างชำระ {sess.totalGuests} คน · ฿{sess.baseAmount.toLocaleString('th-TH')} — กดบิลเพื่อชำระส่วนที่เหลือ
                   </p>
@@ -1624,7 +1624,7 @@ function TableNode({ table, editMode, moveMode, colorOverride, linkedTableLabels
       ) : vs === 'partial' ? (
         <>
           <span className="mt-0.5 rounded-sm bg-amber-200 px-1 py-0.5 text-[8px] font-bold leading-none text-amber-800">
-            ต่อบิล
+            ชำระบางส่วน
           </span>
           <ElapsedBadge startedAt={table.activeSession!.startedAt} />
         </>
@@ -1912,7 +1912,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
             <LegendDot color="bg-violet-500" label={`เชื่อมโยง (${counts.linked})`} />
           )}
           {(counts.partial ?? 0) > 0 && (
-            <LegendDot color="bg-amber-500" label={`ต่อบิล (${counts.partial})`} />
+            <LegendDot color="bg-amber-500" label={`ชำระบางส่วน (${counts.partial})`} />
           )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -1978,7 +1978,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
               <LegendDot color="bg-red-500" label={`มีลูกค้า (${counts.occupied ?? 0})`} />
               <LegendDot color="bg-blue-500" label={`จอง (${counts.reserved ?? 0})`} />
               {(counts.linked ?? 0) > 0 && <LegendDot color="bg-violet-500" label={`เชื่อมโยง (${counts.linked})`} />}
-              {(counts.partial ?? 0) > 0 && <LegendDot color="bg-amber-500" label={`ต่อบิล (${counts.partial})`} />}
+              {(counts.partial ?? 0) > 0 && <LegendDot color="bg-amber-500" label={`ชำระบางส่วน (${counts.partial})`} />}
             </div>
           </div>
           <div className="flex items-center gap-2">

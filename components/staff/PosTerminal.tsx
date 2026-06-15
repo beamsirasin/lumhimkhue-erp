@@ -328,7 +328,7 @@ const SessionCard = memo(function SessionCard({ session, selected, onSelect, lin
           )}
           {isContinuation && (
             <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-amber-400/80 text-white' : 'bg-amber-100 text-amber-700'}`}>
-              ต่อบิล
+              ชำระบางส่วน
             </span>
           )}
           {isClosing && (
