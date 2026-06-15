@@ -70,16 +70,17 @@ import { CashierHeaderSlotContext } from '@/components/shared/SidebarLayout';
 
 /* ─── Status config ────────────────────────────────────────────────── */
 
-type VisualStatus = 'available' | 'occupied' | 'reserved' | 'linked' | 'paid';
+type VisualStatus = 'available' | 'occupied' | 'reserved' | 'linked' | 'paid' | 'partial';
 
 const STATUS_CONFIG: Record<VisualStatus, {
   bg: string; border: string; text: string; label: string; dot: string;
 }> = {
-  available: { bg: 'bg-green-100',  border: 'border-green-400',  text: 'text-green-800',  label: 'ว่าง',      dot: 'bg-green-500' },
-  occupied:  { bg: 'bg-red-100',    border: 'border-red-400',    text: 'text-red-800',    label: 'มีลูกค้า',  dot: 'bg-red-500' },
-  reserved:  { bg: 'bg-blue-100',   border: 'border-blue-400',   text: 'text-blue-800',   label: 'จอง',       dot: 'bg-blue-500' },
-  linked:    { bg: 'bg-violet-100', border: 'border-violet-400', text: 'text-violet-800', label: 'เชื่อมโยง', dot: 'bg-violet-500' },
-  paid:      { bg: 'bg-red-100',    border: 'border-red-400',    text: 'text-red-800',    label: 'จ่ายแล้ว',  dot: 'bg-red-500' },
+  available: { bg: 'bg-green-100',  border: 'border-green-400',  text: 'text-green-800',  label: 'ว่าง',           dot: 'bg-green-500' },
+  occupied:  { bg: 'bg-red-100',    border: 'border-red-400',    text: 'text-red-800',    label: 'มีลูกค้า',       dot: 'bg-red-500' },
+  reserved:  { bg: 'bg-blue-100',   border: 'border-blue-400',   text: 'text-blue-800',   label: 'จอง',            dot: 'bg-blue-500' },
+  linked:    { bg: 'bg-violet-100', border: 'border-violet-400', text: 'text-violet-800', label: 'เชื่อมโยง',      dot: 'bg-violet-500' },
+  paid:      { bg: 'bg-red-100',    border: 'border-red-400',    text: 'text-red-800',    label: 'จ่ายแล้ว',       dot: 'bg-red-500' },
+  partial:   { bg: 'bg-amber-100',  border: 'border-amber-400',  text: 'text-amber-800',  label: 'ชำระบางส่วน',   dot: 'bg-amber-500' },
 };
 
 /* Color palette for linked-table groups — each group gets a unique color */
@@ -97,6 +98,8 @@ type LinkColor = typeof LINK_PALETTE[number];
 function getVisualStatus(table: TableData): VisualStatus {
   if (table.status === 'linked') return 'linked';
   if (table.status === 'paid') return 'paid';
+  // Continuation session from partial split payment: same table, session has parentSessionId
+  if (table.status === 'occupied' && table.activeSession?.parentSessionId) return 'partial';
   if (table.activeSession) return 'occupied';
   return table.status as VisualStatus;
 }
@@ -1007,18 +1010,17 @@ function TableSheet({
               โต๊ะ {table.label}
               {table.zone !== 'ทั่วไป' && <span className="ml-1.5 text-sm font-normal text-muted-foreground">({table.zone})</span>}
             </DialogTitle>
-            {/* เปลี่ยนโต๊ะหลัก — shown only on secondary tables */}
-            {sess?.parentSessionId && (
+            {/* เปลี่ยนโต๊ะหลัก — shown only on truly linked secondary tables, not partial-payment continuations */}
+            {visualStatus === 'linked' ? (
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => handleTransferPrimary(sess.id)}
+                onClick={() => handleTransferPrimary(sess!.id)}
                 className="ml-auto rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-700 hover:bg-violet-200 disabled:opacity-50 transition-colors"
               >
                 ตั้งเป็นหลัก
               </button>
-            )}
-            {!sess?.parentSessionId && (
+            ) : (
               <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${
                 visualStatus === 'paid'
                   ? 'bg-emerald-100 text-emerald-700'
@@ -1060,9 +1062,18 @@ function TableSheet({
             </>
           )}
 
-          {/* ── OCCUPIED ── */}
-          {visualStatus === 'occupied' && sess && (
+          {/* ── OCCUPIED / PARTIAL ── */}
+          {(visualStatus === 'occupied' || visualStatus === 'partial') && sess && (
             <>
+              {/* Partial payment notice banner */}
+              {visualStatus === 'partial' && (
+                <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+                  <p className="text-xs font-semibold text-amber-700">ชำระบางส่วนแล้ว — ต่อบิล</p>
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    ยังค้างชำระ {sess.totalGuests} คน · ฿{sess.baseAmount.toLocaleString('th-TH')} — กดบิลเพื่อชำระส่วนที่เหลือ
+                  </p>
+                </div>
+              )}
               {(() => {
                 // If this is a secondary (linked) table, resolve the primary for display.
                 // Actions (move, edit, close) still use the clicked table's own session.
@@ -1165,7 +1176,13 @@ function TableSheet({
               <div className="space-y-2">
                 <button
                   type="button"
-                  onClick={() => { onClose(); router.push(`/pos?session=${sess.parentSessionId ?? sess.id}`); }}
+                  onClick={() => {
+                    onClose();
+                    // For partial-payment continuation, link directly to the continuation session.
+                    // For linked-group secondaries, link to the primary session.
+                    const posSessionId = visualStatus === 'partial' ? sess.id : (sess.parentSessionId ?? sess.id);
+                    router.push(`/pos?session=${posSessionId}`);
+                  }}
                   disabled={busy}
                   className="w-full rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
                 >
@@ -1604,6 +1621,13 @@ function TableNode({ table, editMode, moveMode, colorOverride, linkedTableLabels
         <span className="mt-0.5 rounded-sm bg-red-200 px-1 py-0.5 text-[8px] font-bold leading-none text-red-700">
           จ่ายแล้ว
         </span>
+      ) : vs === 'partial' ? (
+        <>
+          <span className="mt-0.5 rounded-sm bg-amber-200 px-1 py-0.5 text-[8px] font-bold leading-none text-amber-800">
+            ต่อบิล
+          </span>
+          <ElapsedBadge startedAt={table.activeSession!.startedAt} />
+        </>
       ) : (
         table.activeSession && !table.activeSession.parentSessionId && (
           <ElapsedBadge startedAt={table.activeSession.startedAt} />
@@ -1869,7 +1893,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
   };
 
   const counts = tables.reduce<Record<string, number>>((acc, t) => {
-    const key = t.activeSession ? 'occupied' : t.status;
+    const key = getVisualStatus(t);
     acc[key] = (acc[key] ?? 0) + 1;
     return acc;
   }, {});
@@ -1886,6 +1910,9 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
           <LegendDot color="bg-blue-500" label={`จอง (${counts.reserved ?? 0})`} />
           {(counts.linked ?? 0) > 0 && (
             <LegendDot color="bg-violet-500" label={`เชื่อมโยง (${counts.linked})`} />
+          )}
+          {(counts.partial ?? 0) > 0 && (
+            <LegendDot color="bg-amber-500" label={`ต่อบิล (${counts.partial})`} />
           )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -1951,6 +1978,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
               <LegendDot color="bg-red-500" label={`มีลูกค้า (${counts.occupied ?? 0})`} />
               <LegendDot color="bg-blue-500" label={`จอง (${counts.reserved ?? 0})`} />
               {(counts.linked ?? 0) > 0 && <LegendDot color="bg-violet-500" label={`เชื่อมโยง (${counts.linked})`} />}
+              {(counts.partial ?? 0) > 0 && <LegendDot color="bg-amber-500" label={`ต่อบิล (${counts.partial})`} />}
             </div>
           </div>
           <div className="flex items-center gap-2">
