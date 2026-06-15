@@ -209,7 +209,7 @@ export async function placeOrder(input: unknown) {
       );
 
       return { ok: true as const };
-    }, { isolationLevel: 'serializable' });
+    });
 
     if (!result.ok) return result;
     revalidatePath('/kds', 'layout');
@@ -311,6 +311,39 @@ export async function getSessionOrders(sessionToken: string) {
 export type SessionOrdersData = NonNullable<
   Extract<Awaited<ReturnType<typeof getSessionOrders>>, { ok: true }>['data']
 >;
+
+export async function getActiveSessionByTable(tableToken: string) {
+  try {
+    const [table] = await db
+      .select({ id: tables.id, label: tables.label, qrToken: tables.qrToken })
+      .from(tables)
+      .where(eq(tables.qrToken, tableToken))
+      .limit(1);
+    if (!table) return { ok: false as const, error: 'ไม่พบโต๊ะ' };
+
+    const [session] = await db
+      .select({ id: sessions.id, sessionToken: sessions.sessionToken, status: sessions.status })
+      .from(sessions)
+      .where(
+        and(
+          eq(sessions.tableId, table.id),
+          inArray(sessions.status, ['active', 'closing']),
+        ),
+      )
+      .orderBy(desc(sessions.startedAt))
+      .limit(1);
+
+    if (!session) return { ok: false as const, error: 'ยังไม่มีการเปิดโต๊ะ' };
+
+    return {
+      ok: true as const,
+      data: { table, session },
+    };
+  } catch (e) {
+    console.error('[getActiveSessionByTable]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
 
 export async function callStaff(sessionToken: string) {
   try {
