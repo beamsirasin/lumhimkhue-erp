@@ -1,10 +1,9 @@
-﻿'use client';
+'use client';
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import {
   ChartContainer,
   ChartTooltip,
@@ -14,8 +13,15 @@ import {
   PieChart, Pie, Cell, Legend,
 } from '@/components/ui/chart';
 import { getDashboardData, getDashboardKpisForPeriod } from '@/lib/actions/dashboard';
-import type { DashboardData, KpiMetric, PeriodKpis } from '@/lib/actions/dashboard';
+import type { DashboardData, KpiMetric } from '@/lib/actions/dashboard';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { StatCard, StatCardGrid } from '@/components/ui/stat-card';
+import { PageHeader } from '@/components/ui/page-header';
+import { SectionCard } from '@/components/ui/section-card';
+import { StatusBadge } from '@/components/ui/status-badge';
+import type { BadgeVariant } from '@/components/ui/status-badge';
+import { Banknote, Table2, Users, TrendingUp, Percent, Clock, BarChart2 } from 'lucide-react';
+import { CHART_COLORS } from '@/lib/tokens';
 
 type Period = 'today' | 'week' | 'month';
 
@@ -38,14 +44,16 @@ const METHOD_LABEL: Record<string, string> = {
   card: 'บัตรเครดิต',
 };
 
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  available: { label: 'ว่าง', color: 'bg-emerald-400' },
-  occupied: { label: 'มีลูกค้า', color: 'bg-rose-400' },
-  cleaning: { label: 'ทำความสะอาด', color: 'bg-amber-400' },
-  reserved: { label: 'จอง', color: 'bg-blue-400' },
+type TableStatus = 'available' | 'occupied' | 'cleaning' | 'reserved';
+
+const STATUS_CONFIG: Record<TableStatus, { label: string; variant: BadgeVariant }> = {
+  available: { label: 'ว่าง',           variant: 'success' },
+  occupied:  { label: 'มีลูกค้า',       variant: 'danger' },
+  cleaning:  { label: 'ทำความสะอาด',   variant: 'warning' },
+  reserved:  { label: 'จอง',            variant: 'info' },
 };
 
-const PIE_COLORS = ['#0f172a', '#3b82f6', '#10b981', '#f59e0b'];
+const PIE_COLORS: readonly string[] = CHART_COLORS;
 
 interface DashboardPageProps {
   initialData: DashboardData;
@@ -58,7 +66,6 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
     queryKey: ['dashboard'],
     queryFn: () => getDashboardData().then((r) => (r.ok ? r.data : null)),
     initialData,
-    initialDataUpdatedAt: Date.now(),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
@@ -80,109 +87,152 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
   const vsLabel = PERIOD_VS[period];
 
   return (
-    <div className="p-6 space-y-6 max-w-[1400px]">
+    <div className="page-shell">
       {/* Header row */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">แดชบอร์ด</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {format(new Date(), 'EEEE d MMMM yyyy', { locale: th })}
-          </p>
-        </div>
-        <div className="flex gap-1 rounded-xl bg-muted p-1">
-          {(['today', 'week', 'month'] as Period[]).map((p) => (
-            <button key={p} type="button" onClick={() => setPeriod(p)}
-              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-all duration-150 ${
-                period === p
-                  ? 'bg-card text-foreground shadow-sm ring-1 ring-border'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}>
-              {PERIOD_LABELS[p]}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PageHeader
+        title="แดชบอร์ด"
+        subtitle={format(new Date(), 'EEEE d MMMM yyyy', { locale: th })}
+        actions={
+          <div className="flex gap-px rounded-lg bg-muted p-1">
+            {(['today', 'week', 'month'] as Period[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPeriod(p)}
+                className={`rounded-md px-3.5 py-1.5 text-sm font-medium transition-all duration-150 ${
+                  period === p
+                    ? 'bg-card text-foreground shadow-sm ring-1 ring-border'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {PERIOD_LABELS[p]}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
       <ErrorBoundary>
         {/* Row 1: core revenue KPIs */}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <KpiCard
+        <StatCardGrid cols={4}>
+          <StatCard
             loading={kpisLoading}
             label="รายได้"
             value={kpis ? `฿${kpis.revenue.value.toLocaleString('th-TH', { minimumFractionDigits: 0 })}` : '—'}
-            kpi={kpis?.revenue}
-            vsLabel={vsLabel}
+            trend={kpis?.revenue ? {
+              pct: kpis.revenue.changePct ?? 0,
+              dir: kpis.revenue.changeDir ?? 'flat',
+              label: vsLabel,
+            } : undefined}
+            icon={<Banknote className="size-4" />}
+            accent="info"
           />
-          <KpiCard
+          <StatCard
             loading={kpisLoading}
             label="โต๊ะที่ปิดบิล"
             value={kpis ? kpis.sessions.value.toString() : '—'}
             unit="โต๊ะ"
-            kpi={kpis?.sessions}
-            vsLabel={vsLabel}
+            trend={kpis?.sessions ? {
+              pct: kpis.sessions.changePct ?? 0,
+              dir: kpis.sessions.changeDir ?? 'flat',
+              label: vsLabel,
+            } : undefined}
+            icon={<Table2 className="size-4" />}
+            accent="default"
           />
-          <KpiCard
+          <StatCard
             loading={kpisLoading}
             label="จำนวนลูกค้า"
             value={kpis ? kpis.guests.value.toString() : '—'}
             unit="คน"
-            kpi={kpis?.guests}
-            vsLabel={vsLabel}
+            trend={kpis?.guests ? {
+              pct: kpis.guests.changePct ?? 0,
+              dir: kpis.guests.changeDir ?? 'flat',
+              label: vsLabel,
+            } : undefined}
+            icon={<Users className="size-4" />}
+            accent="success"
           />
-          <KpiCard
+          <StatCard
             loading={kpisLoading}
             label="เฉลี่ยต่อโต๊ะ"
             value={kpis ? `฿${kpis.avgPerSession.value.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '—'}
-            kpi={kpis?.avgPerSession}
-            vsLabel={vsLabel}
+            trend={kpis?.avgPerSession ? {
+              pct: kpis.avgPerSession.changePct ?? 0,
+              dir: kpis.avgPerSession.changeDir ?? 'flat',
+              label: vsLabel,
+            } : undefined}
+            icon={<TrendingUp className="size-4" />}
+            accent="warning"
           />
-        </div>
+        </StatCardGrid>
 
-        {/* Row 2: cost + efficiency KPIs */}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <KpiCard
+        {/* Row 2: efficiency KPIs */}
+        <StatCardGrid cols={4}>
+          <StatCard
             loading={kpisLoading}
             label="Food Cost %"
             value={kpis?.foodCostPct.available ? `${kpis.foodCostPct.value.toFixed(1)}%` : 'N/A'}
-            subLabel={kpis?.foodCostPct.available ? (kpis.foodCostPct.value > 35 ? 'เกินเป้า (≤35%)' : 'อยู่ในเป้า') : 'ยังไม่มีสูตรอาหาร'}
-            kpi={kpis?.foodCostPct.available ? kpis.foodCostPct : undefined}
-            vsLabel={vsLabel}
-            invertColor
-            valueColor={kpis?.foodCostPct.available
-              ? kpis.foodCostPct.value > 35 ? 'text-red-600' : 'text-green-600'
-              : undefined}
+            subLabel={
+              !kpis?.foodCostPct.available
+                ? 'ยังไม่มีสูตรอาหาร'
+                : kpis.foodCostPct.value > 35
+                  ? 'เกินเป้า (≤35%)'
+                  : 'อยู่ในเป้า'
+            }
+            valueClassName={
+              kpis?.foodCostPct.available
+                ? kpis.foodCostPct.value > 35
+                  ? 'text-red-600 dark:text-red-400'
+                  : 'text-emerald-600 dark:text-emerald-400'
+                : undefined
+            }
+            icon={<Percent className="size-4" />}
+            accent={
+              kpis?.foodCostPct.available
+                ? kpis.foodCostPct.value > 35 ? 'danger' : 'success'
+                : 'default'
+            }
           />
-          <KpiCard
+          <StatCard
             loading={kpisLoading}
             label="Labor Cost %"
             value={kpis?.laborCostPct.available ? `${kpis.laborCostPct.value.toFixed(1)}%` : 'N/A'}
             subLabel={kpis?.laborCostPct.available ? undefined : 'ยังไม่มีข้อมูลเงินเดือน'}
-            kpi={kpis?.laborCostPct.available ? kpis.laborCostPct : undefined}
-            vsLabel={vsLabel}
-            invertColor
+            icon={<Users className="size-4" />}
+            accent="default"
           />
-          <KpiCard
+          <StatCard
             loading={kpisLoading}
             label="เฉลี่ยรอบโต๊ะ/วัน"
             value={kpis ? kpis.avgTableTurns.value.toFixed(1) : '—'}
             unit="รอบ"
-            kpi={kpis?.avgTableTurns}
-            vsLabel={vsLabel}
+            trend={kpis?.avgTableTurns ? {
+              pct: kpis.avgTableTurns.changePct ?? 0,
+              dir: kpis.avgTableTurns.changeDir ?? 'flat',
+              label: vsLabel,
+            } : undefined}
+            icon={<Clock className="size-4" />}
+            accent="info"
           />
-          <KpiCard
+          <StatCard
             loading={kpisLoading}
             label="รายได้/ที่นั่ง/วัน"
             value={kpis ? `฿${kpis.revpash.value.toFixed(0)}` : '—'}
-            kpi={kpis?.revpash}
-            vsLabel={vsLabel}
+            trend={kpis?.revpash ? {
+              pct: kpis.revpash.changePct ?? 0,
+              dir: kpis.revpash.changeDir ?? 'flat',
+              label: vsLabel,
+            } : undefined}
+            icon={<BarChart2 className="size-4" />}
+            accent="default"
           />
-        </div>
+        </StatCardGrid>
       </ErrorBoundary>
 
       {/* Charts row */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <div className="lg:col-span-2 rounded-xl bg-card border border-border p-5">
-          <h2 className="mb-4 text-sm font-semibold text-foreground">รายได้ 7 วันที่ผ่านมา</h2>
+        <SectionCard title="รายได้ 7 วันที่ผ่านมา" className="lg:col-span-2">
           <ChartContainer height={200}>
             <BarChart data={revenueByDay} barSize={28}>
               <ChartXAxis
@@ -197,10 +247,9 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
               <Bar dataKey="revenue" fill="oklch(0.30 0.11 248)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ChartContainer>
-        </div>
+        </SectionCard>
 
-        <div className="rounded-xl bg-card border border-border p-5">
-          <h2 className="mb-4 text-sm font-semibold text-foreground">วิธีชำระเงินวันนี้</h2>
+        <SectionCard title="วิธีชำระเงินวันนี้">
           {paymentMethods.length === 0 ? (
             <div className="flex h-[200px] items-center justify-center">
               <p className="text-sm text-muted-foreground">ยังไม่มีข้อมูล</p>
@@ -208,7 +257,15 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
           ) : (
             <ChartContainer height={200}>
               <PieChart>
-                <Pie data={paymentMethods} dataKey="total" nameKey="method" cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={2}>
+                <Pie
+                  data={paymentMethods}
+                  dataKey="total"
+                  nameKey="method"
+                  cx="50%" cy="50%"
+                  innerRadius={50}
+                  outerRadius={75}
+                  paddingAngle={2}
+                >
                   {paymentMethods.map((_, i) => (
                     <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                   ))}
@@ -216,17 +273,21 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
                 <ChartTooltip
                   formatter={(v, name) => [`฿${Number(v).toLocaleString('th-TH')}`, METHOD_LABEL[String(name)] ?? name]}
                 />
-                <Legend formatter={(v) => METHOD_LABEL[v] ?? v} iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                <Legend
+                  formatter={(v) => METHOD_LABEL[v] ?? v}
+                  iconType="circle"
+                  iconSize={8}
+                  wrapperStyle={{ fontSize: 11 }}
+                />
               </PieChart>
             </ChartContainer>
           )}
-        </div>
+        </SectionCard>
       </div>
 
       {/* Bottom row */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <div className="rounded-xl bg-card border border-border p-5">
-          <h2 className="mb-4 text-sm font-semibold text-foreground">เมนูยอดนิยมวันนี้ (Top 10)</h2>
+        <SectionCard title="เมนูยอดนิยมวันนี้ (Top 10)">
           {topMenuItems.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">ยังไม่มีออเดอร์วันนี้</p>
           ) : (
@@ -235,14 +296,19 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
                 const max = topMenuItems[0].quantity;
                 return (
                   <li key={item.name} className="flex items-center gap-3">
-                    <span className="w-5 text-xs tabular-nums text-muted-foreground/50 font-semibold text-right shrink-0">{i + 1}</span>
+                    <span className="w-5 shrink-0 text-right text-xs tabular-nums font-semibold text-muted-foreground/40">
+                      {i + 1}
+                    </span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-sm font-medium text-foreground truncate">{item.name}</span>
-                        <span className="ml-2 text-xs tabular-nums text-muted-foreground shrink-0">{item.quantity} จาน</span>
+                        <span className="ml-2 shrink-0 text-xs tabular-nums text-muted-foreground">{item.quantity} จาน</span>
                       </div>
-                      <div className="h-1.5 rounded-full bg-muted">
-                        <div className="h-1.5 rounded-full bg-primary/70 transition-all" style={{ width: `${(item.quantity / max) * 100}%` }} />
+                      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-primary/60 transition-all"
+                          style={{ width: `${(item.quantity / max) * 100}%` }}
+                        />
                       </div>
                     </div>
                   </li>
@@ -250,89 +316,22 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
               })}
             </ol>
           )}
-        </div>
+        </SectionCard>
 
-        <div className="rounded-xl bg-card border border-border p-5">
-          <h2 className="mb-4 text-sm font-semibold text-foreground">สถานะโต๊ะปัจจุบัน</h2>
+        <SectionCard title="สถานะโต๊ะปัจจุบัน">
           <div className="grid grid-cols-2 gap-3">
             {tableSummary.map((t) => {
-              const cfg = STATUS_CONFIG[t.status] ?? { label: t.status, color: 'bg-muted' };
+              const cfg = STATUS_CONFIG[t.status as TableStatus] ?? { label: t.status, variant: 'neutral' as BadgeVariant };
               return (
-                <div key={t.status} className="flex items-center gap-3 rounded-xl bg-muted/50 border border-border p-4">
-                  <span className={`h-3 w-3 rounded-full shrink-0 ${cfg.color}`} />
-                  <div>
-                    <p className="text-xs text-muted-foreground">{cfg.label}</p>
-                    <p className="text-2xl font-bold tabular-nums text-foreground leading-tight">{t.count}</p>
-                  </div>
+                <div key={t.status} className="flex items-center gap-3 rounded-xl bg-muted/40 border border-border p-4">
+                  <StatusBadge label={cfg.label} variant={cfg.variant} dot />
+                  <p className="text-2xl font-bold tabular-nums text-foreground leading-none">{t.count}</p>
                 </div>
               );
             })}
           </div>
-        </div>
+        </SectionCard>
       </div>
-    </div>
-  );
-}
-
-// ── KPI Card ──────────────────────────────────────────────────────────────────
-
-function KpiCard({
-  loading, label, value, unit, subLabel, kpi, vsLabel, invertColor, valueColor,
-}: {
-  loading: boolean;
-  label: string;
-  value: string;
-  unit?: string;
-  subLabel?: string;
-  kpi?: KpiMetric;
-  vsLabel: string;
-  invertColor?: boolean;
-  valueColor?: string;
-}) {
-  return (
-    <div className="rounded-xl bg-card border border-border p-4 transition-shadow hover:shadow-sm">
-      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">{label}</p>
-      {loading ? (
-        <div className="mt-3 h-8 rounded-lg bg-muted animate-pulse w-28" />
-      ) : (
-        <p className={`mt-2.5 text-2xl font-bold tabular-nums leading-none ${valueColor ?? 'text-foreground'}`}>
-          {value}
-          {unit && <span className="ml-1 text-sm font-normal text-muted-foreground">{unit}</span>}
-        </p>
-      )}
-      {kpi && !loading && kpi.changePct !== null ? (
-        <ChangeChip changePct={kpi.changePct} changeDir={kpi.changeDir} vsLabel={vsLabel} invert={invertColor} />
-      ) : subLabel && !loading ? (
-        <p className="mt-1.5 text-xs text-muted-foreground">{subLabel}</p>
-      ) : null}
-    </div>
-  );
-}
-
-function ChangeChip({
-  changePct, changeDir, vsLabel, invert,
-}: {
-  changePct: number;
-  changeDir: 'up' | 'down' | 'flat';
-  vsLabel: string;
-  invert?: boolean;
-}) {
-  const isGood = invert ? changeDir === 'down' : changeDir === 'up';
-  const isBad = invert ? changeDir === 'up' : changeDir === 'down';
-
-  const colorClass = changeDir === 'flat'
-    ? 'text-muted-foreground'
-    : isGood ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400';
-
-  const Icon = changeDir === 'up' ? TrendingUp : changeDir === 'down' ? TrendingDown : Minus;
-
-  return (
-    <div className={`mt-2 flex items-center gap-1 text-xs ${colorClass}`}>
-      <Icon className="size-3 shrink-0" />
-      <span className="font-semibold tabular-nums">
-        {changePct > 0 ? '+' : ''}{changePct.toFixed(1)}%
-      </span>
-      <span className="text-muted-foreground">{vsLabel}</span>
     </div>
   );
 }

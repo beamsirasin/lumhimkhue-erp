@@ -390,7 +390,7 @@ function getPageTitle(pathname: string): string {
 function NavBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow-sm">
+    <span className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
       {count > 99 ? '99+' : count}
     </span>
   );
@@ -474,7 +474,7 @@ function NavGroupItem({
         <button
           type="button"
           className={`relative flex w-full items-center justify-center rounded-xl p-3 transition-all duration-150 ${
-            isGroupActive ? 'bg-card/12 text-white' : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
+            isGroupActive ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
           }`}
         >
           <Icon className="size-5 shrink-0" />
@@ -485,10 +485,10 @@ function NavGroupItem({
 
         <div
           ref={flyoutRef}
-          style={{ position: 'fixed', left: 'calc(4rem + 8px)', top: 0, display: 'none', background: 'oklch(0.18 0.025 248)' }}
+          style={{ position: 'fixed', left: 'calc(4rem + 8px)', top: 0, display: 'none', background: 'var(--sidebar-accent)' }}
           className="z-50 min-w-[180px] overflow-hidden rounded-xl border border-white/10 shadow-xl"
         >
-          <p className="border-b border-white/8 px-3.5 py-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+          <p className="border-b border-white/8 px-3.5 py-2 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
             {group.label}
           </p>
           <div className="p-1.5 space-y-0.5">
@@ -503,7 +503,7 @@ function NavGroupItem({
                   prefetch={false}
                   onClick={onNavigate}
                   className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 ${
-                    isActive ? 'bg-card/15 text-white' : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
+                    isActive ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                   }`}
                 >
                   <ChildIcon className="size-4 shrink-0" />
@@ -518,28 +518,30 @@ function NavGroupItem({
   }
 
   const triggerCls = size === 'large'
-    ? `flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-150`
-    : `flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150`;
+    ? `flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors duration-150`
+    : `flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150`;
   const iconCls   = size === 'large' ? 'size-5 shrink-0' : 'size-4 shrink-0';
   const childCls  = size === 'large'
-    ? `flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150`
-    : `flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm font-medium transition-all duration-150`;
+    ? `flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150`
+    : `flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors duration-150`;
   const childIconCls = size === 'large' ? 'size-4 shrink-0' : 'size-3.5 shrink-0';
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className={`${triggerCls} ${
-        isGroupActive ? 'bg-card/12 text-white' : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
+        isGroupActive
+          ? 'bg-sidebar-accent text-sidebar-accent-foreground font-semibold border-l-[3px] border-l-sidebar-primary'
+          : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
       }`}>
-        <Icon className={iconCls} />
+        <Icon className={`${iconCls} ${isGroupActive ? 'text-sidebar-primary' : ''}`} />
         <span className="flex-1 text-left">{group.label}</span>
         {!open && totalGroupBadge > 0 && (
-          <span className="size-2 rounded-full bg-red-400 shadow-sm" />
+          <span className="size-1.5 rounded-full bg-red-400" />
         )}
-        <ChevronDown className={`size-3.5 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`size-3.5 shrink-0 transition-transform duration-200 text-sidebar-foreground/40 ${open ? 'rotate-180' : ''}`} />
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="mt-0.5 ml-4 border-l border-white/10 pl-3 space-y-0.5">
+        <div className="mt-0.5 ml-4 border-l border-sidebar-border pl-3 space-y-px">
           {group.children.map(({ href, label, Icon: ChildIcon }) => {
             const isActive = href === '/tables'
               ? pathname === '/tables'
@@ -552,10 +554,12 @@ function NavGroupItem({
                 prefetch={false}
                 onClick={onNavigate}
                 className={`${childCls} ${
-                  isActive ? 'bg-card/15 text-white' : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
+                  isActive
+                    ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium border-l-[3px] border-l-sidebar-primary'
+                    : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                 }`}
               >
-                <ChildIcon className={childIconCls} />
+                <ChildIcon className={`${childIconCls} ${isActive ? 'text-sidebar-primary' : ''}`} />
                 {label}
                 <NavBadge count={badge} />
               </Link>
@@ -587,8 +591,8 @@ function NavItems({
   onExpand?: () => void;
 }) {
   const itemCls = size === 'large'
-    ? 'flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-150'
-    : 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150';
+    ? 'flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors duration-150'
+    : 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150';
   const iconCls = size === 'large' ? 'size-5 shrink-0' : 'size-4 shrink-0';
 
   if (collapsed) {
@@ -621,10 +625,10 @@ function NavItems({
                 prefetch={false}
                 onClick={onNavigate}
                 className={`relative flex items-center justify-center rounded-xl p-3 transition-all duration-150 ${
-                  isActive ? 'bg-card/15 text-white shadow-sm' : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
+                  isActive ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm' : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                 }`}
               >
-                <Icon className={`size-5 shrink-0 transition-colors ${isActive ? 'text-blue-300' : ''}`} />
+                <Icon className={`size-5 shrink-0 transition-colors ${isActive ? 'text-sidebar-primary' : ''}`} />
                 {badge > 0 && (
                   <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-red-400 shadow-sm" />
                 )}
@@ -641,11 +645,11 @@ function NavItems({
       {sections.map((section, i) => (
         <div key={i}>
           {section.heading && (
-            <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+            <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40">
               {section.heading}
             </p>
           )}
-          <div className="space-y-0.5">
+          <div className="space-y-px">
             {section.items.map((item) => {
               if (isNavGroup(item)) {
                 return (
@@ -670,10 +674,12 @@ function NavItems({
                   prefetch={false}
                   onClick={onNavigate}
                   className={`${itemCls} ${
-                    isActive ? 'bg-card/15 text-white shadow-sm' : 'text-muted-foreground hover:bg-card/8 hover:text-white/90'
+                    isActive
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-semibold border-l-[3px] border-l-sidebar-primary'
+                      : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                   }`}
                 >
-                  <Icon className={`${iconCls} transition-colors ${isActive ? 'text-blue-300' : ''}`} />
+                  <Icon className={`${iconCls} ${isActive ? 'text-sidebar-primary' : ''}`} />
                   {label}
                   <NavBadge count={badge} />
                 </Link>
@@ -708,22 +714,22 @@ function SidebarInner({
   onToggleCollapse?: () => void;
 }) {
   return (
-    <div className="flex h-full flex-col" style={{ background: 'oklch(0.14 0.025 248)' }}>
+    <div className="flex h-full flex-col bg-sidebar">
       {/* Logo / Header */}
       {collapsed ? (
-        <div className="flex h-14 shrink-0 items-center justify-center border-b border-white/8">
+        <div className="flex h-14 shrink-0 items-center justify-center border-b border-white/8 bg-[var(--sidebar-header)]">
           <button
             type="button"
             onClick={onToggleCollapse}
             aria-label="ขยาย sidebar"
-            className="flex size-9 items-center justify-center rounded-lg bg-blue-600/20 ring-1 ring-blue-400/30 hover:bg-blue-600/30 transition-colors"
+            className="flex size-9 items-center justify-center rounded-lg bg-sidebar-primary/20 ring-1 ring-sidebar-primary/40 hover:bg-sidebar-primary/30 transition-colors"
           >
-            <ChevronLeft className="size-4 text-blue-300 rotate-180" />
+            <ChevronLeft className="size-4 text-sidebar-primary rotate-180" />
           </button>
         </div>
       ) : (
-        <div className="flex h-14 shrink-0 items-center gap-3 border-b border-white/8 px-4">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-600/20 ring-1 ring-blue-400/30">
+        <div className="flex h-14 shrink-0 items-center gap-3 border-b border-white/8 px-4 bg-[var(--sidebar-header)]">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary/20 ring-1 ring-sidebar-primary/40">
             <Image
               src="/images/logo.png"
               alt="ร้านชาบู ERP"
@@ -734,7 +740,7 @@ function SidebarInner({
           </div>
           <div className="min-w-0 flex-1">
             <span className="block text-sm font-semibold text-white leading-tight">ร้านชาบู ERP</span>
-            <span className="block text-[10px] text-muted-foreground leading-tight">Restaurant Management</span>
+            <span className="block text-[10px] text-sidebar-foreground/60 leading-tight">Restaurant Management</span>
           </div>
           {onToggleCollapse && (
             <button
@@ -762,8 +768,8 @@ function SidebarInner({
 
       {/* User info + logout */}
       {collapsed ? (
-        <div className="shrink-0 border-t border-white/8 p-2 flex flex-col items-center gap-1">
-          <div className="flex size-8 items-center justify-center rounded-full bg-blue-600/30 text-xs font-semibold text-blue-200 ring-1 ring-blue-400/30">
+        <div className="shrink-0 border-t border-white/8 p-2 flex flex-col items-center gap-1.5">
+          <div className="flex size-8 items-center justify-center rounded-full bg-sidebar-primary/20 text-xs font-bold text-sidebar-primary ring-1 ring-sidebar-primary/30">
             {userName.charAt(0).toUpperCase()}
           </div>
           <SidebarTooltip label="ออกจากระบบ">
@@ -771,7 +777,7 @@ function SidebarInner({
               <button
                 type="submit"
                 aria-label="ออกจากระบบ"
-                className="flex w-full items-center justify-center rounded-lg p-2 text-muted-foreground hover:bg-red-500/10 hover:text-red-300 transition-all duration-150"
+                className="flex w-full items-center justify-center rounded-lg p-2 text-sidebar-foreground/40 hover:bg-red-500/12 hover:text-red-300 transition-colors duration-150"
               >
                 <LogOut className="size-4 shrink-0" />
               </button>
@@ -779,20 +785,20 @@ function SidebarInner({
           </SidebarTooltip>
         </div>
       ) : (
-        <div className="shrink-0 border-t border-white/8 p-3">
+        <div className="shrink-0 border-t border-white/8 p-3 space-y-1">
           <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-blue-600/30 text-xs font-semibold text-blue-200 ring-1 ring-blue-400/30">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-sidebar-primary/20 text-xs font-bold text-sidebar-primary ring-1 ring-sidebar-primary/30">
               {userName.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-white">{userName}</p>
-              <p className="truncate text-[11px] text-muted-foreground">{ROLE_LABEL[role]}</p>
+              <p className="truncate text-[13px] font-semibold text-white leading-tight">{userName}</p>
+              <p className="truncate text-[11px] text-sidebar-foreground/60 leading-tight mt-0.5">{ROLE_LABEL[role]}</p>
             </div>
           </div>
-          <form action={logoutAction} className="mt-1">
+          <form action={logoutAction}>
             <button
               type="submit"
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-all duration-150 hover:bg-red-500/10 hover:text-red-300"
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/50 transition-colors duration-150 hover:bg-red-500/12 hover:text-red-300"
             >
               <LogOut className="size-4 shrink-0" />
               ออกจากระบบ
@@ -877,7 +883,7 @@ function StandardSidebarLayout({
         : 'flex flex-col flex-1 min-w-0 overflow-hidden lg:pl-64'
       }>
         {/* Top bar */}
-        <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border bg-card px-5 shadow-none">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card/80 backdrop-blur-sm px-5">
           <Sheet open={mobileOpen} onOpenChange={(open) => setMobileOpen(open)}>
             <SheetTrigger
               aria-label="เปิดเมนู"
@@ -902,7 +908,7 @@ function StandardSidebarLayout({
           </Sheet>
 
           {pageTitle && (
-            <h1 className="text-[15px] font-semibold text-foreground">{pageTitle}</h1>
+            <h1 className="text-[15px] font-semibold text-foreground tracking-tight">{pageTitle}</h1>
           )}
         </header>
 

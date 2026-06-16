@@ -46,6 +46,26 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Surface elevation layers */
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-raised: var(--surface-raised);
+
+  /* Primary tinted surfaces */
+  --color-surface-primary-subtle: var(--surface-primary-subtle);
+  --color-surface-primary-muted: var(--surface-primary-muted);
+
+  /* Shadow utilities */
+  --shadow-card: var(--shadow-card);
+  --shadow-raised: var(--shadow-raised);
+  --shadow-dialog: var(--shadow-dialog);
+
+  /* Ink sidebar extras */
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-foreground: var(--sidebar-active-foreground);
+  --color-sidebar-header: var(--sidebar-header);
 }
 
 /* ── Light mode ── */
@@ -54,44 +74,99 @@
   --primary: oklch(0.30 0.11 248);
   --primary-foreground: oklch(0.98 0 0);
 
-  --background: oklch(0.975 0.003 248);
-  --foreground: oklch(0.155 0.01 248);
+  /* Primary tinted surfaces — for active states, tinted panels */
+  --surface-primary-subtle: oklch(0.95 0.03 248);
+  --surface-primary-muted:  oklch(0.90 0.06 248);
+
+  --background: oklch(0.962 0.005 248);
+  --foreground: oklch(0.145 0.012 248);
+
+  /* ── Surface elevation stops ── */
+  --surface-0: oklch(0.960 0.005 248);   /* page background */
+  --surface-1: oklch(1 0 0);             /* card / panel — pure white lifts off page */
+  --surface-2: oklch(0.950 0.006 248);   /* inset well, table header, input bg */
+  --surface-raised: oklch(1 0 0);        /* popover / dialog */
+
+  /* ── Elevation shadows ── */
+  --shadow-card:   0 1px 3px oklch(0 0 0 / 8%), 0 1px 2px oklch(0 0 0 / 5%);
+  --shadow-raised: 0 6px 16px oklch(0 0 0 / 12%), 0 2px 6px oklch(0 0 0 / 7%);
+  --shadow-dialog: 0 20px 60px oklch(0 0 0 / 18%), 0 8px 20px oklch(0 0 0 / 10%);
+
+  /* ── Semantic status tokens ── */
+  --status-success-bg:     oklch(0.95 0.06 145);
+  --status-success-fg:     oklch(0.35 0.12 145);
+  --status-success-border: oklch(0.82 0.10 145);
+
+  --status-danger-bg:      oklch(0.96 0.05 22);
+  --status-danger-fg:      oklch(0.40 0.18 22);
+  --status-danger-border:  oklch(0.84 0.14 22);
+
+  --status-warning-bg:     oklch(0.96 0.07 65);
+  --status-warning-fg:     oklch(0.42 0.14 65);
+  --status-warning-border: oklch(0.83 0.12 65);
+
+  --status-info-bg:        oklch(0.95 0.05 248);
+  --status-info-fg:        oklch(0.35 0.10 248);
+  --status-info-border:    oklch(0.82 0.08 248);
+
+  --status-neutral-bg:     oklch(0.94 0.005 248);
+  --status-neutral-fg:     oklch(0.45 0.01 248);
+  --status-neutral-border: oklch(0.86 0.005 248);
+
+  --status-purple-bg:      oklch(0.95 0.06 300);
+  --status-purple-fg:      oklch(0.38 0.15 300);
+  --status-purple-border:  oklch(0.82 0.10 300);
+
+  --status-orange-bg:      oklch(0.96 0.07 50);
+  --status-orange-fg:      oklch(0.42 0.16 50);
+  --status-orange-border:  oklch(0.83 0.12 50);
+
+  --status-cyan-bg:        oklch(0.95 0.06 200);
+  --status-cyan-fg:        oklch(0.36 0.12 200);
+  --status-cyan-border:    oklch(0.80 0.09 200);
 
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.155 0.01 248);
+  --card-foreground: oklch(0.145 0.012 248);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.155 0.01 248);
+  --popover-foreground: oklch(0.145 0.012 248);
 
-  --secondary: oklch(0.94 0.005 248);
+  --secondary: oklch(0.950 0.006 248);
   --secondary-foreground: oklch(0.25 0.02 248);
 
-  --muted: oklch(0.94 0.005 248);
-  --muted-foreground: oklch(0.52 0.01 248);
+  --muted: oklch(0.950 0.006 248);
+  --muted-foreground: oklch(0.50 0.012 248);
 
-  --accent: oklch(0.94 0.008 248);
+  --accent: oklch(0.950 0.008 248);
   --accent-foreground: oklch(0.25 0.02 248);
 
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.90 0.006 248);
-  --input: oklch(0.90 0.006 248);
+  --border: oklch(0.88 0.007 248);
+  --input: oklch(0.88 0.007 248);
   --ring: oklch(0.30 0.11 248);
 
+  /* Chart palette — registered as CSS vars and exported as CHART_COLORS in lib/tokens.ts */
   --chart-1: oklch(0.30 0.11 248);
-  --chart-2: oklch(0.55 0.12 200);
-  --chart-3: oklch(0.65 0.13 145);
-  --chart-4: oklch(0.70 0.14 65);
-  --chart-5: oklch(0.60 0.18 30);
+  --chart-2: oklch(0.55 0.13 200);
+  --chart-3: oklch(0.60 0.14 145);
+  --chart-4: oklch(0.65 0.15 65);
+  --chart-5: oklch(0.55 0.18 22);
 
   --radius: 0.5rem;
 
-  --sidebar: oklch(0.155 0.03 248);
-  --sidebar-foreground: oklch(0.92 0.005 248);
+  /* ── Ink sidebar (Option A: dark navy) ── */
+  --sidebar: oklch(0.155 0.04 248);
+  --sidebar-foreground: oklch(0.75 0.02 248);
   --sidebar-primary: oklch(0.62 0.15 248);
   --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.22 0.04 248);
+  --sidebar-accent: oklch(0.22 0.05 248);
   --sidebar-accent-foreground: oklch(0.95 0.005 248);
-  --sidebar-border: oklch(0.24 0.03 248);
+  --sidebar-border: oklch(0.24 0.04 248);
   --sidebar-ring: oklch(0.62 0.15 248);
+  /* Active nav item bg on ink sidebar */
+  --sidebar-active: oklch(0.22 0.06 248);
+  --sidebar-active-foreground: oklch(0.98 0 0);
+  /* Logo strip — slightly darker than sidebar */
+  --sidebar-header: oklch(0.12 0.05 248);
 }
 
 /* ── Dark mode ── */
@@ -99,8 +174,55 @@
   --primary: oklch(0.62 0.15 248);
   --primary-foreground: oklch(0.98 0 0);
 
-  --background: oklch(0.125 0.01 248);
+  --surface-primary-subtle: oklch(0.22 0.06 248);
+  --surface-primary-muted:  oklch(0.28 0.09 248);
+
+  --background: oklch(0.120 0.012 248);
   --foreground: oklch(0.92 0.005 248);
+
+  /* ── Surface elevation stops ── */
+  --surface-0: oklch(0.120 0.012 248);
+  --surface-1: oklch(0.175 0.015 248);
+  --surface-2: oklch(0.205 0.018 248);
+  --surface-raised: oklch(0.190 0.015 248);
+
+  /* ── Elevation shadows ── */
+  --shadow-card:   0 1px 3px oklch(0 0 0 / 30%), 0 1px 2px oklch(0 0 0 / 20%);
+  --shadow-raised: 0 6px 16px oklch(0 0 0 / 45%), 0 2px 6px oklch(0 0 0 / 30%);
+  --shadow-dialog: 0 20px 60px oklch(0 0 0 / 60%), 0 8px 20px oklch(0 0 0 / 40%);
+
+  /* ── Semantic status tokens ── */
+  --status-success-bg:     oklch(0.22 0.07 145);
+  --status-success-fg:     oklch(0.76 0.16 145);
+  --status-success-border: oklch(0.32 0.09 145);
+
+  --status-danger-bg:      oklch(0.22 0.06 22);
+  --status-danger-fg:      oklch(0.76 0.18 22);
+  --status-danger-border:  oklch(0.32 0.10 22);
+
+  --status-warning-bg:     oklch(0.22 0.07 65);
+  --status-warning-fg:     oklch(0.80 0.16 65);
+  --status-warning-border: oklch(0.32 0.10 65);
+
+  --status-info-bg:        oklch(0.22 0.05 248);
+  --status-info-fg:        oklch(0.72 0.14 248);
+  --status-info-border:    oklch(0.32 0.08 248);
+
+  --status-neutral-bg:     oklch(0.22 0.02 248);
+  --status-neutral-fg:     oklch(0.65 0.01 248);
+  --status-neutral-border: oklch(0.30 0.02 248);
+
+  --status-purple-bg:      oklch(0.22 0.06 300);
+  --status-purple-fg:      oklch(0.76 0.16 300);
+  --status-purple-border:  oklch(0.32 0.10 300);
+
+  --status-orange-bg:      oklch(0.22 0.07 50);
+  --status-orange-fg:      oklch(0.80 0.16 50);
+  --status-orange-border:  oklch(0.32 0.11 50);
+
+  --status-cyan-bg:        oklch(0.22 0.06 200);
+  --status-cyan-fg:        oklch(0.72 0.14 200);
+  --status-cyan-border:    oklch(0.30 0.09 200);
 
   --card: oklch(0.175 0.015 248);
   --card-foreground: oklch(0.92 0.005 248);
@@ -127,14 +249,17 @@
   --chart-4: oklch(0.70 0.16 65);
   --chart-5: oklch(0.65 0.20 30);
 
-  --sidebar: oklch(0.115 0.015 248);
-  --sidebar-foreground: oklch(0.88 0.006 248);
+  --sidebar: oklch(0.100 0.018 248);
+  --sidebar-foreground: oklch(0.75 0.02 248);
   --sidebar-primary: oklch(0.62 0.15 248);
   --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.20 0.025 248);
+  --sidebar-accent: oklch(0.18 0.030 248);
   --sidebar-accent-foreground: oklch(0.92 0.005 248);
   --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.62 0.15 248);
+  --sidebar-active: oklch(0.22 0.07 248);
+  --sidebar-active-foreground: oklch(0.98 0 0);
+  --sidebar-header: oklch(0.08 0.02 248);
 }
 
 @layer base {
@@ -175,6 +300,97 @@
   .card-hover:hover {
     box-shadow: 0 4px 16px oklch(0 0 0 / 8%);
     transform: translateY(-1px);
+  }
+}
+
+/* ── Design system component layer ── */
+@layer components {
+  /* Page shell — enforced via AppShell component; kept for legacy pages */
+  .page-shell {
+    @apply mx-auto w-full px-6 py-5 space-y-6 max-w-[1400px];
+  }
+
+  /* Data card (formerly section-card) */
+  .section-card {
+    @apply rounded-xl bg-[var(--surface-1)] border border-border shadow-[var(--shadow-card)];
+  }
+
+  /* Table base — now always wrapped in a rounded border container by DataTable component */
+  .ds-table {
+    @apply w-full text-sm;
+  }
+  .ds-table thead tr {
+    @apply border-b border-border bg-[var(--surface-2)];
+  }
+  .ds-table th {
+    @apply px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground;
+  }
+  .ds-table tbody {
+    @apply divide-y divide-border;
+  }
+  .ds-table td {
+    @apply px-4 py-3 text-[13px] text-foreground;
+  }
+  .ds-table tbody tr {
+    @apply transition-colors duration-100 hover:bg-[var(--surface-2)]/60;
+  }
+
+  /* Inline badge */
+  .badge-base {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold leading-none;
+  }
+
+  /* Form field */
+  .form-field {
+    @apply space-y-1.5;
+  }
+  .form-label {
+    @apply block text-xs font-semibold text-foreground;
+  }
+  .form-input {
+    @apply w-full rounded-lg border border-border bg-[var(--surface-1)] px-3 py-2 text-sm text-foreground outline-none
+           placeholder:text-muted-foreground
+           focus:border-ring focus:ring-2 focus:ring-ring/20
+           transition-colors;
+  }
+  .form-hint {
+    @apply text-[11px] text-muted-foreground;
+  }
+  .form-error {
+    @apply text-[11px] text-destructive;
+  }
+
+  /* Action button row */
+  .action-row {
+    @apply flex flex-wrap items-center gap-2;
+  }
+}
+
+/* ── Typography helpers ── */
+@layer utilities {
+  .text-page-title {
+    @apply text-2xl font-bold tracking-tight text-foreground leading-none;
+  }
+  .text-section-title {
+    @apply text-[13px] font-semibold text-foreground;
+  }
+  .text-label {
+    @apply text-[10px] font-semibold uppercase tracking-widest text-muted-foreground;
+  }
+  .text-value-2xl {
+    @apply text-[28px] font-bold tabular-nums leading-none text-foreground;
+  }
+  .text-value-xl {
+    @apply text-2xl font-bold tabular-nums leading-none text-foreground;
+  }
+  .text-value-lg {
+    @apply text-xl font-bold tabular-nums leading-none text-foreground;
+  }
+  .text-hint {
+    @apply text-[11px] text-muted-foreground;
+  }
+  .text-error {
+    @apply text-[11px] text-destructive;
   }
 }
 

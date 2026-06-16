@@ -5,9 +5,9 @@ import { QueryProvider } from '@/components/shared/QueryProvider';
 import './globals.css';
 
 const ibmPlexSansThai = IBM_Plex_Sans_Thai({
-  weight: ['400', '500'],
+  weight: ['400', '500', '600', '700'],
   subsets: ['thai', 'latin'],
-  variable: '--font-ibm-plex-sans-thai',
+  variable: '--font-sans',
   display: 'swap',
 });
 
@@ -21,7 +21,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="th" className={`${ibmPlexSansThai.variable} h-full`}>
-      <body className="min-h-full font-[family-name:var(--font-ibm-plex-sans-thai)] antialiased">
+      <body className="min-h-full font-sans antialiased">
         <QueryProvider>{children}</QueryProvider>
         <Toaster richColors position="top-center" />
       </body>

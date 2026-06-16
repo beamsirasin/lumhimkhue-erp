@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useRef, memo, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatDistanceToNowStrict } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { differenceInSeconds } from 'date-fns';
 import { toast } from 'sonner';
 import {
   getPosSessionsForPos,
@@ -19,7 +18,7 @@ import { resolveBillConfig } from '@/lib/utils/billConfig';
 import type { BillTypeKey } from '@/lib/utils/billConfig';
 import { incrementReceiptCounter } from '@/lib/actions/store';
 import type { PosSession, PosSessionDetail } from '@/lib/actions/pos';
-import { Printer, CheckCircle2, Tag, Package, X, Loader2, Receipt } from 'lucide-react';
+import { Printer, CheckCircle2, Tag, Package, X, Loader2, Receipt, Save } from 'lucide-react';
 import { PricingTile as PricingTileCard } from '@/components/staff/PricingTile';
 import { print as printReceipt } from '@/lib/printer/service';
 import type { ReceiptData } from '@/lib/printer/types';
@@ -32,6 +31,13 @@ const METHOD_LABEL: Record<string, string> = {
   transfer:     'โอนเงิน',
   card:         'บัตรเครดิต',
 };
+
+function formatElapsed(startedAt: Date | string): string {
+  const secs = Math.max(0, differenceInSeconds(new Date(), new Date(startedAt)));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  return `${h}:${String(m).padStart(2, '0')}`;
+}
 
 /* ─── Numpad ────────────────────────────────────────────────────────── */
 
@@ -53,10 +59,10 @@ function Numpad({ value, onChange }: { value: string; onChange: (v: string) => v
           key={k}
           type="button"
           onClick={() => press(k)}
-          className={`rounded-xl py-3.5 text-base font-semibold transition-colors active:scale-95 ${
-            k === 'C'  ? 'bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 dark:bg-red-950/30 dark:border-red-900 dark:text-red-400' :
-            k === '⌫' ? 'bg-muted border border-border text-foreground hover:bg-muted/70' :
-                         'bg-card border border-border text-foreground hover:bg-muted/50'
+          className={`rounded-xl py-3.5 text-base font-semibold transition-all duration-100 active:scale-[0.94] ${
+            k === 'C'  ? 'bg-[var(--status-danger-bg)] border border-[var(--status-danger-border)] text-[var(--status-danger-fg)] hover:opacity-80' :
+            k === '⌫' ? 'bg-[var(--surface-2)] border border-border text-foreground hover:bg-muted/70' :
+                         'bg-[var(--surface-1)] border border-border text-foreground hover:bg-[var(--surface-2)]'
           }`}
         >
           {k}
@@ -81,13 +87,14 @@ export function PosTerminal({ initialSessions, cashierName, initialSelectedId = 
     queryKey: ['pos-sessions'],
     queryFn: () => getPosSessionsForPos().then((r) => (r.ok ? r.data : [])),
     initialData: initialSessions,
-    initialDataUpdatedAt: Date.now(),
     refetchInterval: 5_000,
     staleTime: 2_000,
   });
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (selectedId && !sessions.find((s) => s.id === selectedId)) setSelectedId(null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (groupPickerId && !sessions.find((s) => s.id === groupPickerId)) setGroupPickerId(null);
   }, [sessions, selectedId, groupPickerId]);
 
@@ -278,9 +285,9 @@ export function PosTerminal({ initialSessions, cashierName, initialSelectedId = 
               type="button"
               aria-label="ปิด"
               onClick={() => setSelectedId(null)}
-              className="absolute right-4 top-4 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-card/80 backdrop-blur-sm text-muted-foreground hover:text-foreground hover:bg-card shadow transition-colors"
+              className="absolute right-4 top-4 z-10 flex items-center justify-center rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
             >
-              <X className="size-4" />
+              <X className="size-5" />
             </button>
             <DetailPanel sessionId={selectedId} cashierName={cashierName} onPaid={handlePaid} />
           </div>
@@ -352,8 +359,8 @@ const SessionCard = memo(function SessionCard({ session, selected, onSelect, lin
           เชื่อม {linkedCount + 1} โต๊ะ
         </p>
       )}
-      <p suppressHydrationWarning className={`mt-0.5 text-[11px] ${selected ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
-        {formatDistanceToNowStrict(new Date(session.startedAt), { locale: th, addSuffix: true })}
+      <p suppressHydrationWarning className={`mt-0.5 text-[11px] tabular-nums ${selected ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
+        {formatElapsed(session.startedAt)}
       </p>
     </button>
   );
@@ -545,6 +552,7 @@ function PaymentPanel({
       const sub = [...guestTiles, ...addonTiles].reduce(
         (s, t) => s + (roundSelection[t.id] ?? 0) * Number(t.price), 0,
       );
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRoundNumpad(String(sub));
     }
   }, [roundSelection, roundMethod]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1279,6 +1287,7 @@ function PaymentPanel({
             }));
 
       const splitCounter = await incrementReceiptCounter();
+      // eslint-disable-next-line react-hooks/purity
       const splitReceiptNo = splitCounter.ok ? splitCounter.receiptNo : Date.now().toString().slice(-8);
 
       const result = await processPayment({
@@ -1818,17 +1827,23 @@ function PaymentPanel({
         {/* Action buttons */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-center gap-1.5 h-5">
-            {autoSaving && (
+            {(autoSaving || saving) && (
               <>
                 <Loader2 className="size-3 animate-spin text-muted-foreground" />
                 <span className="text-[11px] text-muted-foreground">กำลังบันทึก…</span>
               </>
             )}
           </div>
-          <button type="button" onClick={handlePrint}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">
-            <Printer className="size-3.5" />ปริ้นบิล
-          </button>
+          <div className="flex gap-2">
+            <button type="button" onClick={handleSave} disabled={saving || autoSaving}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-50 transition-colors">
+              <Save className="size-3.5" />บันทึก
+            </button>
+            <button type="button" onClick={handlePrint}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">
+              <Printer className="size-3.5" />ปริ้นบิล
+            </button>
+          </div>
           <button type="button" onClick={() => setView('payment')}
             className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
             ชำระเงิน →

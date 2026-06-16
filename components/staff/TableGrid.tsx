@@ -72,22 +72,58 @@ type VisualStatus = 'available' | 'occupied' | 'reserved' | 'linked' | 'paid' | 
 const STATUS_CONFIG: Record<VisualStatus, {
   bg: string; border: string; text: string; label: string; dot: string;
 }> = {
-  available: { bg: 'bg-green-100',  border: 'border-green-400',  text: 'text-green-800',  label: 'ว่าง',           dot: 'bg-green-500' },
-  occupied:  { bg: 'bg-red-100',    border: 'border-red-400',    text: 'text-red-800',    label: 'มีลูกค้า',       dot: 'bg-red-500' },
-  reserved:  { bg: 'bg-blue-100',   border: 'border-blue-400',   text: 'text-blue-800',   label: 'จอง',            dot: 'bg-blue-500' },
-  linked:    { bg: 'bg-violet-100', border: 'border-violet-400', text: 'text-violet-800', label: 'เชื่อมโยง',      dot: 'bg-violet-500' },
-  paid:      { bg: 'bg-red-100',    border: 'border-red-400',    text: 'text-red-800',    label: 'จ่ายแล้ว',       dot: 'bg-red-500' },
-  partial:   { bg: 'bg-amber-100',  border: 'border-amber-400',  text: 'text-amber-800',  label: 'ชำระบางส่วน',   dot: 'bg-amber-500' },
+  available: {
+    bg:     'bg-[var(--status-success-bg)]',
+    border: 'border-[var(--status-success-border)]',
+    text:   'text-[var(--status-success-fg)]',
+    label:  'ว่าง',
+    dot:    'bg-[var(--status-success-fg)]',
+  },
+  occupied: {
+    bg:     'bg-[var(--status-danger-bg)]',
+    border: 'border-[var(--status-danger-border)]',
+    text:   'text-[var(--status-danger-fg)]',
+    label:  'มีลูกค้า',
+    dot:    'bg-[var(--status-danger-fg)]',
+  },
+  reserved: {
+    bg:     'bg-[var(--status-info-bg)]',
+    border: 'border-[var(--status-info-border)]',
+    text:   'text-[var(--status-info-fg)]',
+    label:  'จอง',
+    dot:    'bg-[var(--status-info-fg)]',
+  },
+  linked: {
+    bg:     'bg-[var(--status-purple-bg)]',
+    border: 'border-[var(--status-purple-border)]',
+    text:   'text-[var(--status-purple-fg)]',
+    label:  'เชื่อมโยง',
+    dot:    'bg-[var(--status-purple-fg)]',
+  },
+  paid: {
+    bg:     'bg-[var(--status-danger-bg)]',
+    border: 'border-[var(--status-danger-border)]',
+    text:   'text-[var(--status-danger-fg)]',
+    label:  'จ่ายแล้ว',
+    dot:    'bg-[var(--status-danger-fg)]',
+  },
+  partial: {
+    bg:     'bg-[var(--status-warning-bg)]',
+    border: 'border-[var(--status-warning-border)]',
+    text:   'text-[var(--status-warning-fg)]',
+    label:  'ชำระบางส่วน',
+    dot:    'bg-[var(--status-warning-fg)]',
+  },
 };
 
 /* Color palette for linked-table groups — each group gets a unique color */
 const LINK_PALETTE = [
-  { bg: 'bg-violet-100', border: 'border-violet-500', text: 'text-violet-900', dot: 'bg-violet-500', hex: '#8b5cf6' },
-  { bg: 'bg-orange-100', border: 'border-orange-500', text: 'text-orange-900', dot: 'bg-orange-500', hex: '#f97316' },
-  { bg: 'bg-teal-100',   border: 'border-teal-500',   text: 'text-teal-900',   dot: 'bg-teal-500',   hex: '#14b8a6' },
-  { bg: 'bg-pink-100',   border: 'border-pink-500',   text: 'text-pink-900',   dot: 'bg-pink-500',   hex: '#ec4899' },
-  { bg: 'bg-amber-100',  border: 'border-amber-500',  text: 'text-amber-900',  dot: 'bg-amber-500',  hex: '#d97706' },
-  { bg: 'bg-cyan-100',   border: 'border-cyan-500',   text: 'text-cyan-900',   dot: 'bg-cyan-500',   hex: '#06b6d4' },
+  { bg: 'bg-[var(--status-purple-bg)]', border: 'border-[var(--status-purple-border)]', text: 'text-[var(--status-purple-fg)]', dot: 'bg-[var(--status-purple-fg)]', hex: 'oklch(0.55 0.18 300)' },
+  { bg: 'bg-[var(--status-orange-bg)]', border: 'border-[var(--status-orange-border)]', text: 'text-[var(--status-orange-fg)]', dot: 'bg-[var(--status-orange-fg)]', hex: 'oklch(0.60 0.18 50)' },
+  { bg: 'bg-[var(--status-cyan-bg)]',   border: 'border-[var(--status-cyan-border)]',   text: 'text-[var(--status-cyan-fg)]',   dot: 'bg-[var(--status-cyan-fg)]',   hex: 'oklch(0.55 0.16 200)' },
+  { bg: 'bg-[var(--status-warning-bg)]',border: 'border-[var(--status-warning-border)]',text: 'text-[var(--status-warning-fg)]',dot: 'bg-[var(--status-warning-fg)]', hex: 'oklch(0.60 0.16 65)' },
+  { bg: 'bg-[var(--status-info-bg)]',   border: 'border-[var(--status-info-border)]',   text: 'text-[var(--status-info-fg)]',   dot: 'bg-[var(--status-info-fg)]',   hex: 'oklch(0.45 0.14 248)' },
+  { bg: 'bg-[var(--status-success-bg)]',border: 'border-[var(--status-success-border)]',text: 'text-[var(--status-success-fg)]',dot: 'bg-[var(--status-success-fg)]', hex: 'oklch(0.50 0.14 145)' },
 ] as const;
 
 type LinkColor = typeof LINK_PALETTE[number];
@@ -110,7 +146,7 @@ function ElapsedBadge({ startedAt }: { startedAt: Date }) {
       const secs = differenceInSeconds(new Date(), new Date(startedAt));
       const h = Math.floor(secs / 3600);
       const m = Math.floor((secs % 3600) / 60);
-      setElapsed(h > 0 ? `${h}ชม.${m}น.` : `${m}น.`);
+      setElapsed(`${h}:${String(m).padStart(2, '0')}`);
     }
     update();
     const id = setInterval(update, 60_000);
@@ -317,13 +353,13 @@ function LinkedTablePicker({ tables, primaryTableId, selected, onToggle }: Linke
             const isSelected = selected.includes(t.id);
             const isPickable = availableIds.has(t.id);
 
-            let cls = 'border-slate-200 bg-white/60 text-slate-300 cursor-not-allowed';
+            let cls = 'border-border bg-[var(--surface-2)]/60 text-muted-foreground/40 cursor-not-allowed';
             if (isPrimary)
-              cls = 'border-primary bg-primary text-primary-foreground cursor-default shadow-md';
+              cls = 'border-primary bg-primary text-primary-foreground cursor-default shadow-[var(--shadow-raised)]';
             else if (isSelected)
-              cls = 'border-primary bg-primary/10 text-primary cursor-pointer ring-2 ring-primary/40 shadow-sm';
+              cls = 'border-primary bg-[var(--surface-primary-subtle)] text-primary cursor-pointer ring-2 ring-primary/40 shadow-sm';
             else if (isPickable)
-              cls = 'border-emerald-400 bg-emerald-50 text-emerald-800 cursor-pointer hover:bg-emerald-100 hover:border-emerald-500 hover:shadow-md active:scale-95';
+              cls = 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-fg)] cursor-pointer hover:shadow-[var(--shadow-raised)] active:scale-[0.97] transition-all duration-150';
 
             return (
               <button
@@ -346,50 +382,21 @@ function LinkedTablePicker({ tables, primaryTableId, selected, onToggle }: Linke
   );
 }
 
-/* ─── QR View Modal (show on screen) ──────────────────────────────── */
+/* ─── Types for session-open result ───────────────────────────────── */
 
-function QrViewModal({ url, label, onClose }: { url: string | null; label: string; onClose: () => void }) {
-  const [qrSrc, setQrSrc] = useState('');
-
-  useEffect(() => {
-    if (!url) return;
-    QRCode.toDataURL(url, { width: 280, margin: 2, color: { dark: '#1e293b', light: '#ffffff' } })
-      .then(setQrSrc)
-      .catch(() => {});
-  }, [url]);
-
-  if (!url) return null;
-
-  return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-sm rounded-2xl bg-card border border-border p-6 shadow-2xl text-center"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-5">
-          <p className="text-lg font-semibold text-foreground">QR โต๊ะ {label}</p>
-          <button type="button" onClick={onClose} aria-label="ปิด" className="text-muted-foreground hover:text-foreground transition-colors p-1">
-            <X className="size-6" />
-          </button>
-        </div>
-        {qrSrc ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={qrSrc} alt={`QR โต๊ะ ${label}`} className="mx-auto rounded-xl" width={280} height={280} />
-        ) : (
-          <div className="flex h-72 w-72 mx-auto items-center justify-center">
-            <Loader2 className="size-8 animate-spin text-muted-foreground" />
-          </div>
-        )}
-        <p className="mt-3 text-xs text-muted-foreground break-all line-clamp-2">{url}</p>
-      </div>
-    </div>
-  );
+interface TableQrEntry {
+  sessionToken: string;
+  tableQrToken: string;
+  tableLabel: string;
 }
 
-/* ─── QR Dialog ────────────────────────────────────────────────────── */
+interface SessionOpenResult extends TableQrEntry {
+  sessionId: string;
+  startedAt: string;
+  linkedTables: TableQrEntry[];
+}
+
+/* ─── Post-open QR dialog ──────────────────────────────────────────── */
 
 interface QrDialogProps {
   open: boolean;
@@ -478,21 +485,52 @@ function SessionQrDialog({ open, data, onClose }: QrDialogProps) {
   );
 }
 
+/* ─── QR View Modal (show on screen) ──────────────────────────────── */
+
+function QrViewModal({ url, label, onClose }: { url: string | null; label: string; onClose: () => void }) {
+  const [qrSrc, setQrSrc] = useState('');
+
+  useEffect(() => {
+    if (!url) return;
+    QRCode.toDataURL(url, { width: 280, margin: 2, color: { dark: '#1e293b', light: '#ffffff' } })
+      .then(setQrSrc)
+      .catch(() => {});
+  }, [url]);
+
+  if (!url) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-card border border-border p-6 shadow-2xl text-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-5">
+          <p className="text-lg font-semibold text-foreground">QR โต๊ะ {label}</p>
+          <button type="button" onClick={onClose} aria-label="ปิด" className="text-muted-foreground hover:text-foreground transition-colors p-1">
+            <X className="size-6" />
+          </button>
+        </div>
+        {qrSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={qrSrc} alt={`QR โต๊ะ ${label}`} className="mx-auto rounded-xl" width={280} height={280} />
+        ) : (
+          <div className="flex h-72 w-72 mx-auto items-center justify-center">
+            <Loader2 className="size-8 animate-spin text-muted-foreground" />
+          </div>
+        )}
+        <p className="mt-3 text-xs text-muted-foreground break-all line-clamp-2">{url}</p>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Open Table Flow ──────────────────────────────────────────────── */
 
 type OpenStep = 'tiles' | 'link';
-
-interface TableQrEntry {
-  sessionToken: string;
-  tableQrToken: string;
-  tableLabel: string;
-}
-
-interface SessionOpenResult extends TableQrEntry {
-  sessionId: string;
-  startedAt: string;
-  linkedTables: TableQrEntry[];
-}
 
 interface OpenTableFlowProps {
   open: boolean;
@@ -513,9 +551,13 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStep('tiles');
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setQuantities(prefillGuests ?? {});
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLinkedIds([]);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setNotes('');
     }
   }, [open, prefillGuests]);
@@ -557,16 +599,18 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
         {step === 'link' ? (
           <>
             {/* Link step header */}
-            <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
+            <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0 bg-[var(--surface-1)]">
               <div className="flex items-center gap-3">
-                <Link2 className="size-5 text-primary shrink-0" />
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-primary-subtle)] text-primary">
+                  <Link2 className="size-4" />
+                </div>
                 <div>
-                  <p className="text-base font-semibold text-foreground">เชื่อมโต๊ะกับโต๊ะ {table.label}</p>
-                  <p className="text-xs text-muted-foreground">คลิกโต๊ะสีเขียวเพื่อเลือก — คลิกซ้ำเพื่อยกเลิก (ไม่บังคับ)</p>
+                  <p className="text-base font-bold text-foreground leading-tight">เชื่อมโต๊ะกับโต๊ะ {table.label}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">คลิกโต๊ะสีเขียวเพื่อเลือก — คลิกซ้ำเพื่อยกเลิก (ไม่บังคับ)</p>
                 </div>
               </div>
               {linkedIds.length > 0 && (
-                <span className="rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+                <span className="rounded-full bg-[var(--surface-primary-subtle)] px-3 py-1 text-sm font-semibold text-primary">
                   เลือก {linkedIds.length} โต๊ะ
                 </span>
               )}
@@ -583,16 +627,16 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
             </div>
 
             {/* Link step footer */}
-            <div className="flex items-center justify-between border-t border-border px-6 py-4 shrink-0">
+            <div className="flex items-center justify-between border-t border-border bg-[var(--surface-2)] px-6 py-4 shrink-0">
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
                   <span className="inline-block size-3.5 rounded-md border-2 border-primary bg-primary" />โต๊ะที่เปิด
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="inline-block size-3.5 rounded-md border-2 border-emerald-400 bg-emerald-50" />ว่าง (เลือกได้)
+                  <span className="inline-block size-3.5 rounded-md border-2 border-[var(--status-success-border)] bg-[var(--status-success-bg)]" />ว่าง (เลือกได้)
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="inline-block size-3.5 rounded-md border-2 border-slate-200 bg-white/50 opacity-50" />ไม่ว่าง
+                  <span className="inline-block size-3.5 rounded-md border-2 border-border bg-[var(--surface-2)] opacity-50" />ไม่ว่าง
                 </span>
               </div>
               <div className="flex gap-2.5">
@@ -603,7 +647,7 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
                   type="button"
                   onClick={handleSubmit}
                   disabled={submitting}
-                  className="flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                 >
                   {submitting && <Loader2 className="size-4 animate-spin" />}
                   {submitting ? 'กำลังเปิด...' : 'เปิดโต๊ะ'}
@@ -613,8 +657,13 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
           </>
         ) : (
           <>
-            <DialogHeader>
-              <DialogTitle>เปิดโต๊ะ {table.label}</DialogTitle>
+            <DialogHeader className="border-b border-border px-6 pt-6 pb-5">
+              <DialogTitle className="text-xl font-bold leading-tight">
+                เปิดโต๊ะ {table.label}
+              </DialogTitle>
+              {table.capacity > 0 && (
+                <p className="mt-1 text-sm text-muted-foreground">{table.capacity} ที่นั่ง — เลือกประเภทผู้เข้าใช้</p>
+              )}
             </DialogHeader>
 
             <div className="flex flex-col md:flex-row gap-4 md:gap-5 md:h-[75dvh]">
@@ -637,24 +686,37 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
               />
             </div>
 
-            <DialogFooter>
-              <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
-              <button
-                type="button"
-                onClick={() => setStep('link')}
-                className="flex items-center gap-1.5 rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
-              >
-                <Link2 className="size-4" />เชื่อมโต๊ะ
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={submitting}
-                className="flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-              >
-                {submitting && <Loader2 className="size-4 animate-spin" />}
-                {submitting ? 'กำลังเปิด...' : 'เปิดโต๊ะ'}
-              </button>
+            <DialogFooter className="flex-row items-center gap-3 border-t border-border bg-[var(--surface-2)] px-6 py-4 sm:justify-between">
+              <div className="flex items-center gap-2 text-sm">
+                {totalGuests > 0 ? (
+                  <>
+                    <span className="text-muted-foreground">{totalGuests} คน</span>
+                    <span className="text-muted-foreground">·</span>
+                    <span className="font-bold tabular-nums text-foreground">฿{totalAmount.toLocaleString('th-TH')}</span>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground text-xs">เลือกประเภทผู้เข้าใช้</span>
+                )}
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
+                <button
+                  type="button"
+                  onClick={() => setStep('link')}
+                  className="flex items-center gap-1.5 rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
+                >
+                  <Link2 className="size-4" />เชื่อมโต๊ะ
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={submitting || totalGuests === 0}
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                >
+                  {submitting && <Loader2 className="size-4 animate-spin" />}
+                  {submitting ? 'กำลังเปิด...' : 'เปิดโต๊ะ'}
+                </button>
+              </div>
             </DialogFooter>
           </>
         )}
@@ -711,6 +773,7 @@ function EditGuestsDialog({ open, sessionId, currentGuests, pricingTiles, onClos
     if (open) {
       const init: Record<string, number> = {};
       for (const g of currentGuests) init[g.pricingTileId] = g.quantity;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setQuantities(init);
     }
   }, [open, currentGuests]);
@@ -1408,11 +1471,11 @@ function TableNode({ table, editMode, moveMode, colorOverride, linkedTableLabels
       style={style}
       {...(editMode ? { ...attributes, ...listeners } : {})}
       onClick={!editMode ? handleClick : undefined}
-      className={`flex flex-col items-center justify-center border-2 shadow-sm select-none
+      className={`flex flex-col items-center justify-center border-2 select-none shadow-[var(--shadow-card)]
         ${cfg.bg} ${cfg.border} ${shape}
         ${editMode ? 'ring-2 ring-offset-1 ring-primary/50' : ''}
-        ${isMoveTarget && moveMode ? 'ring-2 ring-green-500 animate-pulse' : ''}
-        ${moveMode && !isMoveTarget ? 'opacity-40' : 'hover:shadow-md transition-shadow'}
+        ${isMoveTarget && moveMode ? 'ring-2 ring-[var(--status-success-border)] animate-pulse' : ''}
+        ${moveMode && !isMoveTarget ? 'opacity-40' : 'hover:shadow-[var(--shadow-raised)] active:scale-[0.97] transition-all duration-150'}
       `}
     >
       <span className={`text-lg font-bold tabular-nums ${cfg.text}`}>{table.label}</span>
@@ -1593,7 +1656,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
   const [editGuestsSessionId, setEditGuestsSessionId] = useState<string | null>(null);
   const [editGuestsCurrentGuests, setEditGuestsCurrentGuests] = useState<{ pricingTileId: string; quantity: number }[]>([]);
 
-  // QR dialog
+  // QR dialog — shown immediately after successfully opening a table
   const [qrData, setQrData] = useState<SessionOpenResult | null>(null);
 
   const { data: tables = initialTables } = useQuery({
@@ -1604,7 +1667,6 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
       return res.data;
     },
     initialData: initialTables,
-    initialDataUpdatedAt: Date.now(),
     refetchInterval: editMode ? 0 : 5_000,
     staleTime: 2_000,
     refetchOnWindowFocus: !editMode,
@@ -1761,7 +1823,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
       {!setCashierHeaderSlot && (
         <div className="flex shrink-0 items-center justify-between border-b border-border bg-card px-6 py-3 gap-4">
           <div className="flex items-center gap-4">
-            <h1 className="text-base font-semibold text-foreground">ผังโต๊ะ</h1>
+            <h1 className="text-base font-bold tracking-tight text-foreground">ผังโต๊ะ</h1>
             <div className="hidden sm:flex items-center gap-3 text-xs text-muted-foreground">
               <LegendDot color="bg-green-500" label={`ว่าง (${counts.available ?? 0})`} />
               <LegendDot color="bg-red-500" label={`มีลูกค้า (${counts.occupied ?? 0})`} />
@@ -1917,18 +1979,18 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
         }}
       />
 
-      {/* QR Dialog */}
-      <SessionQrDialog
-        open={!!qrData}
-        data={qrData}
-        onClose={() => setQrData(null)}
-      />
-
       {/* Add Table Dialog */}
       <AddTableDialog
         open={addDialogOpen}
         onClose={() => setAddDialogOpen(false)}
         onCreated={refetch}
+      />
+
+      {/* QR Dialog — shown immediately after opening a table */}
+      <SessionQrDialog
+        open={!!qrData}
+        data={qrData}
+        onClose={() => setQrData(null)}
       />
     </div>
   );
