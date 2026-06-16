@@ -14,6 +14,7 @@ declare module 'next-auth' {
       uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null;
       allowedModules?: string[] | null;
       navLayout?: StoredNavLayout;
+      isActive?: boolean;
     } & DefaultSession['user'];
   }
 
@@ -23,6 +24,7 @@ declare module 'next-auth' {
     uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null;
     allowedModules?: string[] | null;
     navLayout?: StoredNavLayout;
+    isActive?: boolean;
   }
 }
 
@@ -35,5 +37,6 @@ declare module 'next-auth/jwt' {
     uiLayout?: 'touchscreen' | 'desktop' | 'tablet' | null;
     allowedModules?: string[] | null;
     navLayout?: StoredNavLayout;
+    isActive?: boolean;
   }
 }

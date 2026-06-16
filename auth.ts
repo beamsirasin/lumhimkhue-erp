@@ -44,6 +44,8 @@ export const { auth, handlers, signIn, signOut, unstable_update } = NextAuth({
           branchId: user.branchId ?? null,
           uiLayout: user.uiLayout ?? null,
           allowedModules: user.allowedModules ?? [],
+          navLayout: user.navLayout ?? null,
+          isActive: user.isActive,
         };
       },
     }),

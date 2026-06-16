@@ -1,18 +1,13 @@
 import { redirect } from 'next/navigation';
-import { auth } from '@/auth';
+import { requireActiveSessionUser } from '@/lib/auth/require-active';
 import { SidebarLayout } from '@/components/shared/SidebarLayout';
 import { getInventoryAlertCount } from '@/lib/actions/inventory';
 import { getMenuLabels } from '@/lib/actions/store';
 import type { Role } from '@/lib/auth/permissions';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
-  // proxy.ts already blocks non-owners from admin routes; double-check here
-  if (session.user.role !== 'owner') redirect('/');
-
-  const role = session.user.role as Role;
-  const name = session.user.name ?? 'Owner';
+  const { freshUser } = await requireActiveSessionUser();
+  if (freshUser.role !== 'owner') redirect('/');
 
   const [{ lowStockCount, pendingApprovalCount }, menuLabels] = await Promise.all([
     getInventoryAlertCount(),
@@ -25,12 +20,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <SidebarLayout
-      role={role}
-      userName={name}
+      role={freshUser.role as Role}
+      userName={freshUser.name}
       badgeCounts={badgeCounts}
-      uiLayout={session.user.uiLayout ?? null}
-      allowedModules={session.user.allowedModules ?? []}
-      navLayout={session.user.navLayout ?? null}
+      uiLayout={freshUser.uiLayout ?? null}
+      allowedModules={freshUser.allowedModules ?? []}
+      navLayout={freshUser.navLayout ?? null}
       menuLabels={menuLabels}
     >
       {children}

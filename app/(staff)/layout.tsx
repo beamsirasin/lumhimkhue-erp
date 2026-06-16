@@ -1,24 +1,19 @@
-import { redirect } from 'next/navigation';
-import { auth } from '@/auth';
+import { requireActiveSessionUser } from '@/lib/auth/require-active';
 import { SidebarLayout } from '@/components/shared/SidebarLayout';
 import { getMenuLabels } from '@/lib/actions/store';
 import type { Role } from '@/lib/auth/permissions';
 
 export default async function StaffLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
-  if (!session?.user) redirect('/login');
-
-  const role = session.user.role as Role;
-  const name = session.user.name ?? 'Staff';
+  const { freshUser } = await requireActiveSessionUser();
   const menuLabels = await getMenuLabels();
 
   return (
     <SidebarLayout
-      role={role}
-      userName={name}
-      uiLayout={session.user.uiLayout ?? null}
-      allowedModules={session.user.allowedModules ?? []}
-      navLayout={session.user.navLayout ?? null}
+      role={freshUser.role as Role}
+      userName={freshUser.name}
+      uiLayout={freshUser.uiLayout ?? null}
+      allowedModules={freshUser.allowedModules ?? []}
+      navLayout={freshUser.navLayout ?? null}
       menuLabels={menuLabels}
     >
       {children}

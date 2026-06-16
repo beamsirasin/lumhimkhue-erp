@@ -330,10 +330,10 @@ function UiLayoutPicker({
   onChange,
 }: {
   value: 'touchscreen' | 'desktop' | 'tablet' | '';
-  onChange: (v: 'touchscreen' | 'tablet') => void;
+  onChange: (v: 'touchscreen' | 'desktop' | 'tablet') => void;
 }) {
   const options: {
-    key: 'touchscreen' | 'tablet';
+    key: 'touchscreen' | 'desktop' | 'tablet';
     label: string;
     desc: string;
     preview: React.ReactNode;
@@ -354,9 +354,24 @@ function UiLayoutPicker({
       ),
     },
     {
+      key: 'desktop',
+      label: 'Desktop',
+      desc: 'Sidebar เต็ม\nเหมาะ PC / owner',
+      preview: (
+        <div className="rounded-lg bg-muted border border-border overflow-hidden h-[60px] flex flex-row">
+          <div className="w-[32px] border-r border-border bg-slate-700/80 flex flex-col gap-1.5 py-1.5 px-1.5">
+            {[1,2,3,4].map((i) => (
+              <div key={i} className="h-1.5 rounded-sm bg-white/30" />
+            ))}
+          </div>
+          <div className="flex-1 bg-muted/60" />
+        </div>
+      ),
+    },
+    {
       key: 'tablet',
-      label: 'Tablet Sidebar',
-      desc: 'Sidebar + tap target ใหญ่\nเหมาะ owner บน tablet',
+      label: 'Tablet',
+      desc: 'Sidebar + tap ใหญ่\nเหมาะ tablet',
       preview: (
         <div className="rounded-lg bg-muted border border-border overflow-hidden h-[60px] flex flex-row">
           <div className="w-[22px] border-r border-border bg-violet-700/80 flex flex-col gap-1.5 py-1.5 px-1">
@@ -371,7 +386,7 @@ function UiLayoutPicker({
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-3 gap-3">
       {options.map(({ key, label, desc, preview }) => (
         <button
           key={key}
@@ -959,7 +974,7 @@ function StaffForm({
               render={({ field }) => (
                 <UiLayoutPicker
                   value={(field.value ?? '') as 'touchscreen' | 'desktop' | 'tablet' | ''}
-                  onChange={(v: 'touchscreen' | 'tablet') => field.onChange(v)}
+                  onChange={(v) => field.onChange(v)}
                 />
               )}
             />
