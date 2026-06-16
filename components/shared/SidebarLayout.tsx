@@ -453,6 +453,7 @@ function NavGroupItem({
   const [open, setOpen] = useState(isGroupActive);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const flyoutRef = useRef<HTMLDivElement>(null);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { Icon } = group;
   const totalGroupBadge = group.children.reduce((s, c) => s + (badgeCounts?.[c.href] ?? 0), 0);
 
@@ -462,13 +463,16 @@ function NavGroupItem({
         ref={wrapperRef}
         className="w-full"
         onMouseEnter={() => {
+          if (leaveTimer.current) clearTimeout(leaveTimer.current);
           if (!wrapperRef.current || !flyoutRef.current) return;
           const rect = wrapperRef.current.getBoundingClientRect();
           flyoutRef.current.style.top = `${rect.top}px`;
           flyoutRef.current.style.display = 'block';
         }}
         onMouseLeave={() => {
-          if (flyoutRef.current) flyoutRef.current.style.display = 'none';
+          leaveTimer.current = setTimeout(() => {
+            if (flyoutRef.current) flyoutRef.current.style.display = 'none';
+          }, 150);
         }}
       >
         <button
@@ -487,6 +491,14 @@ function NavGroupItem({
           ref={flyoutRef}
           style={{ position: 'fixed', left: 'calc(4rem + 8px)', top: 0, display: 'none', background: 'var(--sidebar-accent)' }}
           className="z-50 min-w-[180px] overflow-hidden rounded-xl border border-white/10 shadow-xl"
+          onMouseEnter={() => {
+            if (leaveTimer.current) clearTimeout(leaveTimer.current);
+          }}
+          onMouseLeave={() => {
+            leaveTimer.current = setTimeout(() => {
+              if (flyoutRef.current) flyoutRef.current.style.display = 'none';
+            }, 150);
+          }}
         >
           <p className="border-b border-white/8 px-3.5 py-2 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
             {group.label}
