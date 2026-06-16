@@ -427,7 +427,7 @@ export function RecipesPage({ initialMatrix, allIngredients }: Props) {
         {/* Header */}
         <div className="border-b border-border px-5 py-4">
           <div className="flex items-center justify-between mb-3">
-            <h1 className="text-lg font-semibold text-foreground">สูตรอาหาร</h1>
+            <h1 className="text-[15px] font-bold tracking-tight text-foreground">สูตรอาหาร</h1>
             <span className="text-xs text-muted-foreground">{totalWithRecipe}/{matrix.length} มีสูตร</span>
           </div>
           <div className="relative mb-2">

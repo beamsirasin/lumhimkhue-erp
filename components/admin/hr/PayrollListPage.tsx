@@ -63,23 +63,23 @@ export function PayrollListPage({ initialCycles }: Props) {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold text-foreground">เงินเดือน / รอบจ่าย</h2>
+    <div className="page-shell">
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <h1 className="text-xl font-bold tracking-tight text-foreground">เงินเดือน / รอบจ่าย</h1>
         <Button size="sm" onClick={() => setOpen(true)}>
           <Plus className="size-4 mr-1.5" />
           สร้างรอบจ่ายใหม่
         </Button>
       </div>
 
-      <div className="rounded-lg border border-border overflow-hidden">
+      <div className="section-card overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-muted/30 text-muted-foreground">
+          <thead className="bg-muted/40">
             <tr>
-              <th className="px-4 py-3 text-left font-medium">ชื่องวด</th>
-              <th className="px-4 py-3 text-left font-medium">ช่วงงาน</th>
-              <th className="px-4 py-3 text-left font-medium">วันจ่าย</th>
-              <th className="px-4 py-3 text-center font-medium">สถานะ</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">ชื่องวด</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">ช่วงงาน</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">วันจ่าย</th>
+              <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">สถานะ</th>
               <th className="px-4 py-3 text-right font-medium tabular-nums">ยอดสุทธิรวม</th>
               <th className="px-4 py-3 text-center font-medium">จ่ายแล้ว</th>
               <th className="px-4 py-3 w-10" />

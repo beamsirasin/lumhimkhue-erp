@@ -179,15 +179,15 @@ export function PrintersPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="page-shell">
       {confirmDialog}
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-foreground">เครื่องพิมพ์</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-xl font-bold tracking-tight text-foreground">เครื่องพิมพ์</h1>
         <button
           type="button"
           onClick={openAdd}
-          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
         >
           <Plus className="size-4" />
           เพิ่มเครื่องพิมพ์
@@ -199,12 +199,12 @@ export function PrintersPage() {
         <div className="text-sm text-muted-foreground py-12 text-center">กำลังโหลด…</div>
       ) : printers.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 gap-3">
-          <Printer className="size-10 text-muted-foreground/60" />
+          <Printer className="size-10 text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">ยังไม่มีเครื่องพิมพ์</p>
           <button
             type="button"
             onClick={openAdd}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
           >
             เพิ่มเครื่องพิมพ์ตัวแรก
           </button>
@@ -467,7 +467,7 @@ function StepUsb({
           ✓ {usbLabel}
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">กด "เลือกอุปกรณ์ USB" แล้วเลือก printer ในรายการที่ปรากฏ</p>
+        <p className="text-sm text-muted-foreground">กด &ldquo;เลือกอุปกรณ์ USB&rdquo; แล้วเลือก printer ในรายการที่ปรากฏ</p>
       )}
       {error && <p className="text-xs text-red-600">{error}</p>}
       <button

@@ -91,14 +91,13 @@ type Modal =
 
 interface Props {
   initialData: POListData;
-  initialDataUpdatedAt: number;
   initialSupplierFilter?: string;
   userRole?: string;
 }
 
 // ── Main list ─────────────────────────────────────────────────────────────────
 
-export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialSupplierFilter, userRole }: Props) {
+export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRole }: Props) {
   const [modal, setModal] = useState<Modal | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [supplierFilter, setSupplierFilter] = useState(initialSupplierFilter ?? '');
@@ -113,7 +112,6 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
       return r.data;
     },
     initialData,
-    initialDataUpdatedAt,
     staleTime: 30_000,
   });
 
@@ -155,17 +153,17 @@ export function PurchaseOrdersPage({ initialData, initialDataUpdatedAt, initialS
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="page-shell">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">ใบสั่งซื้อ (PO)</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{data.orders.length} รายการทั้งหมด</p>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">ใบสั่งซื้อ (PO)</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">{data.orders.length} รายการทั้งหมด</p>
         </div>
         <button
           type="button"
           onClick={() => setModal({ type: 'new' })}
-          className="flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           <Plus className="size-4" />
           สร้างใบสั่งซื้อ
@@ -1009,10 +1007,10 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
             <span className="text-sm text-foreground font-medium">รับของบางส่วน (ยังไม่ครบ)</span>
           </label>
           {isPartialChecked && (
-            <p className="text-xs text-orange-600 pl-6">PO จะเปลี่ยนเป็นสถานะ "รับบางส่วน" — สามารถรับเพิ่มได้ในภายหลัง</p>
+            <p className="text-xs text-orange-600 pl-6">PO จะเปลี่ยนเป็นสถานะ &ldquo;รับบางส่วน&rdquo; — สามารถรับเพิ่มได้ในภายหลัง</p>
           )}
           {!isPartialChecked && (
-            <p className="text-xs text-muted-foreground pl-6">PO จะเปลี่ยนเป็นสถานะ "รับของแล้ว" และอัปเดตราคาวัตถุดิบ</p>
+            <p className="text-xs text-muted-foreground pl-6">PO จะเปลี่ยนเป็นสถานะ &ldquo;รับของแล้ว&rdquo; และอัปเดตราคาวัตถุดิบ</p>
           )}
         </div>
 
@@ -1064,6 +1062,9 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
     },
     staleTime: 30_000,
   });
+
+  // Must be above the early return to satisfy Rules of Hooks
+  const [showReceipts, setShowReceipts] = useState(false);
 
   if (isLoading || !data) {
     return (
@@ -1149,7 +1150,6 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
     });
   }
 
-  const [showReceipts, setShowReceipts] = useState(false);
   const receipts = po.goodsReceipts ?? [];
 
   return (

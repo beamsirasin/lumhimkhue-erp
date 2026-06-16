@@ -18,7 +18,6 @@ export default async function InventoryCountPage({
   return (
     <StockCountPage
       initialData={result.data}
-      initialDataUpdatedAt={Date.now()}
       today={dateStr}
       defaultTab={(params.tab === 'history' ? 'history' : 'daily') as 'daily' | 'history'}
     />

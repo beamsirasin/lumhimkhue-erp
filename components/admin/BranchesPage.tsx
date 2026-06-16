@@ -31,7 +31,6 @@ export function BranchesPage({ initialBranches }: { initialBranches: Branch[] })
       return r.data;
     },
     initialData: initialBranches,
-    initialDataUpdatedAt: Date.now(),
   });
 
   const saveMut = useMutation({
@@ -70,11 +69,11 @@ export function BranchesPage({ initialBranches }: { initialBranches: Branch[] })
   }
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="page-shell">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">จัดการสาขา</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">{branches.length} สาขา</p>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">จัดการสาขา</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">{branches.length} สาขา</p>
         </div>
         <Button onClick={openCreate}>
           <Plus className="size-4 mr-1.5" />

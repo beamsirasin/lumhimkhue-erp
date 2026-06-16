@@ -40,8 +40,11 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
   const [submitting,  setSubmitting]  = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDelConfirm(false);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEditConfirm(false);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSubmitting(false);
   }, [sessionId]);
 

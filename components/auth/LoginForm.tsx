@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { loginSchema, type LoginInput } from '@/lib/validations/auth';
 import { loginAction } from '@/lib/actions/auth';
+import { AlertCircle } from 'lucide-react';
 
 export function LoginForm() {
   const [serverError, setServerError] = useState('');
@@ -27,46 +28,55 @@ export function LoginForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
       <div className="space-y-1.5">
-        <Label htmlFor="email" className="text-sm font-medium text-foreground">อีเมล</Label>
+        <Label htmlFor="email" className="text-xs font-semibold text-foreground">
+          อีเมล / Username
+        </Label>
         <Input
           id="email"
           type="email"
           placeholder="owner@shabu.local"
           autoComplete="email"
           aria-invalid={!!errors.email}
-          className="h-10 transition-colors"
+          className="h-10"
           {...register('email')}
         />
         {errors.email && (
-          <p className="text-xs text-destructive mt-1">{errors.email.message}</p>
+          <p className="text-[11px] text-destructive">{errors.email.message}</p>
         )}
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="password" className="text-sm font-medium text-foreground">รหัสผ่าน</Label>
+        <Label htmlFor="password" className="text-xs font-semibold text-foreground">
+          รหัสผ่าน
+        </Label>
         <Input
           id="password"
           type="password"
           autoComplete="current-password"
           aria-invalid={!!errors.password}
-          className="h-10 transition-colors"
+          className="h-10"
           {...register('password')}
         />
         {errors.password && (
-          <p className="text-xs text-destructive mt-1">{errors.password.message}</p>
+          <p className="text-[11px] text-destructive">{errors.password.message}</p>
         )}
       </div>
 
       {serverError && (
-        <div role="alert" className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5">
+        <div role="alert" className="flex items-start gap-2.5 rounded-lg bg-destructive/8 border border-destructive/20 px-3 py-2.5">
+          <AlertCircle className="size-4 shrink-0 text-destructive mt-px" />
           <p className="text-sm text-destructive">{serverError}</p>
         </div>
       )}
 
-      <Button type="submit" className="w-full h-10 font-medium transition-all" disabled={isSubmitting}>
-        {isSubmitting ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
+      <Button
+        type="submit"
+        className="w-full h-10 font-semibold mt-2"
+        disabled={isSubmitting}
+      >
+        {isSubmitting ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}
       </Button>
     </form>
   );

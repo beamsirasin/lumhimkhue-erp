@@ -94,6 +94,7 @@ export function SchedulePage({ initialCycles, settings, initialEmployees }: Prop
 
   // Auto-load first cycle on mount
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (selectedCycleId) loadGrid(selectedCycleId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -195,10 +196,10 @@ export function SchedulePage({ initialCycles, settings, initialEmployees }: Prop
     : [];
 
   return (
-    <div className="p-6">
+    <div className="page-shell">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4 print:hidden">
-        <h2 className="text-lg font-semibold text-foreground">ตารางงาน</h2>
+      <div className="flex items-center justify-between gap-3 mb-2 print:hidden">
+        <h1 className="text-xl font-bold tracking-tight text-foreground">ตารางงาน</h1>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handlePrint}>
             <Printer className="size-4 mr-1.5" />

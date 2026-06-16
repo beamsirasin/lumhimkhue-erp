@@ -133,7 +133,7 @@ export function PricingTile({
 
       {/* Quantity badge (select/tap mode, qty > 0) */}
       {(mode === 'select' || (isTap && isLg)) && quantity > 0 && (
-        <span className={`absolute -right-1.5 -top-1.5 flex min-w-[20px] items-center justify-center rounded-full bg-primary px-1 font-bold text-white ${isLg ? 'h-6 text-xs' : 'h-5 text-[10px]'}`}>
+        <span className={`absolute right-2 top-2 flex min-w-[20px] items-center justify-center rounded-full bg-primary px-1 font-bold text-white ${isLg ? 'h-6 text-xs' : 'h-5 text-[10px]'}`}>
           {quantity}
         </span>
       )}

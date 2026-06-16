@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Temp/agent worktree files
+    ".claude/**",
+    "verify_bill_temp.mjs",
+    "verify_render_temp.ts",
+    "C\\357\\200\\272UsersUserAppDataLocalTempverify_tables.mjs",
   ]),
 ]);
 

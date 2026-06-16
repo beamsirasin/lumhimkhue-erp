@@ -33,10 +33,9 @@ type Modal =
 
 interface Props {
   initialData: IngredientPageData;
-  initialDataUpdatedAt: number;
 }
 
-export function IngredientsPage({ initialData, initialDataUpdatedAt }: Props) {
+export function IngredientsPage({ initialData }: Props) {
   const [modal, setModal] = useState<Modal | null>(null);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState<string | null>(null);
@@ -50,7 +49,6 @@ export function IngredientsPage({ initialData, initialDataUpdatedAt }: Props) {
       return r.data;
     },
     initialData,
-    initialDataUpdatedAt,
     staleTime: 30_000,
   });
 
@@ -83,17 +81,17 @@ export function IngredientsPage({ initialData, initialDataUpdatedAt }: Props) {
     Number(n).toLocaleString('th-TH', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="page-shell">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">วัตถุดิบ</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{data.ingredients.length} รายการ</p>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">วัตถุดิบ</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">{data.ingredients.length} รายการ</p>
         </div>
         <button
           type="button"
           onClick={() => setModal({ type: 'add' })}
-          className="flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           <Plus className="size-4" />
           เพิ่มวัตถุดิบ

@@ -10,7 +10,6 @@ export default async function InventoryPage() {
   return (
     <InventoryDashboard
       initialData={result.data}
-      initialDataUpdatedAt={Date.now()}
     />
   );
 }

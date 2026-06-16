@@ -67,7 +67,7 @@ function QueueHistoryTable({ rows, date }: { rows: QueueHistoryEntry[]; date: st
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-border bg-muted/30">
+            <tr className="border-b border-border bg-muted/40">
               <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">เลขคิว</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">ชื่อ</th>
               <th className="px-4 py-2.5 text-center text-xs font-semibold text-muted-foreground">คน</th>
@@ -124,7 +124,7 @@ export function QueueHistoryPage() {
       </div>
       <div className="flex-1 min-w-0 overflow-y-auto p-6 pt-4 space-y-4">
         <div>
-          <h2 className="text-base font-semibold text-foreground">ประวัติคิว</h2>
+          <h2 className="text-base font-bold tracking-tight text-foreground">ประวัติคิว</h2>
           <p className="text-xs text-muted-foreground">
             {format(new Date(selectedDate), 'EEEE d MMMM yyyy', { locale: th })}
           </p>

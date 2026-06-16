@@ -201,10 +201,10 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
   const isOwner = userRole === 'owner';
 
   return (
-    <div className="p-6">
+    <div className="page-shell">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold text-foreground">ข้อมูลพนักงาน</h2>
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <h1 className="text-xl font-bold tracking-tight text-foreground">ข้อมูลพนักงาน</h1>
         <Button onClick={openCreate} size="sm">
           <Plus className="size-4 mr-1.5" />
           เพิ่มพนักงาน

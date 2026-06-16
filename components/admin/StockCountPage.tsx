@@ -39,7 +39,6 @@ type ItemMap = Record<string, ItemState>;
 
 interface Props {
   initialData: StockCountPageData;
-  initialDataUpdatedAt: number;
   today: string;
   defaultTab?: 'daily' | 'history';
 }
@@ -236,9 +235,9 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
   const guestCount = initialData.todayGuestCount;
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-5 md:p-6 space-y-5 md:space-y-6">
       {/* Tab navigation */}
-      <div className="border-b border-border -mx-6 px-6">
+      <div className="border-b border-border -mx-5 md:-mx-6 px-5 md:px-6">
         <div className="flex gap-1">
           <button
             type="button"

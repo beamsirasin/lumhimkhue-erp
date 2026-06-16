@@ -127,7 +127,7 @@ export function KdsHistoryPage() {
       </div>
       <div className="flex-1 min-w-0 overflow-y-auto p-6 pt-4 space-y-4">
         <div>
-          <h2 className="text-base font-semibold text-foreground">ประวัติครัว</h2>
+          <h2 className="text-base font-bold tracking-tight text-foreground">ประวัติครัว</h2>
           <p className="text-xs text-muted-foreground">
             {format(new Date(selectedDate), 'EEEE d MMMM yyyy', { locale: th })}
           </p>

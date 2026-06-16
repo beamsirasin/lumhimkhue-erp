@@ -144,59 +144,63 @@ export function StaffPage({ initialData, initialMenuLabels = {} }: StaffPageProp
   });
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-foreground">จัดการ User</h1>
+    <div className="page-shell">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">บัญชีผู้ใช้</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">{staff.length} บัญชี</p>
+        </div>
         <button
           type="button"
           onClick={() => setModal({ type: 'add' })}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
         >
-          + เพิ่ม User
+          <span className="text-base leading-none">+</span> เพิ่ม User
         </button>
       </div>
 
-      <div className="rounded-xl bg-card border border-border overflow-hidden">
+      <div className="section-card overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-border bg-muted/50">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">ชื่อ</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Username (Email)</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">Role</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">UI</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">เมนู</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">สมัครเมื่อ</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">สถานะ</th>
-              <th className="px-4 py-3" />
+            <tr className="border-b border-border bg-muted/40">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">ชื่อ</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Email</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Role</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">UI</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">เมนู</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">สมัครเมื่อ</th>
+              <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">สถานะ</th>
+              <th className="px-4 py-3 w-8" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {staff.map((member) => (
-              <tr key={member.id} className={`hover:bg-muted/30 transition-colors ${!member.isActive ? 'opacity-60' : ''}`}>
-                <td className="px-4 py-3 font-medium text-foreground">{member.name}</td>
-                <td className="px-4 py-3 text-muted-foreground">{member.email}</td>
+              <tr key={member.id} className={`hover:bg-muted/30 transition-colors ${!member.isActive ? 'opacity-50' : ''}`}>
+                <td className="px-4 py-3 font-semibold text-foreground">{member.name}</td>
+                <td className="px-4 py-3 text-muted-foreground text-[13px]">{member.email}</td>
                 <td className="px-4 py-3">
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${ROLE_COLOR[member.role] ?? 'bg-muted text-muted-foreground'}`}>
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${ROLE_COLOR[member.role] ?? 'bg-muted text-muted-foreground ring-border'}`}>
                     {ROLE_LABEL[member.role] ?? member.role}
                   </span>
                 </td>
                 <td className="px-4 py-3">
                   {member.uiLayout ? (
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${UI_LAYOUT_COLOR[member.uiLayout]}`}>
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${UI_LAYOUT_COLOR[member.uiLayout]}`}>
                       {UI_LAYOUT_LABEL[member.uiLayout]}
                     </span>
                   ) : (
-                    <span className="text-xs text-muted-foreground">ค่าเดิม</span>
+                    <span className="text-xs text-muted-foreground/60">ค่าเดิม</span>
                   )}
                 </td>
                 <td className="px-4 py-3">
                   {member.allowedModules?.length ? (
-                    <span className="text-xs text-foreground">{member.allowedModules.length} เมนู</span>
+                    <span className="text-[13px] text-foreground font-medium">{member.allowedModules.length} เมนู</span>
                   ) : (
-                    <span className="text-xs text-muted-foreground">ค่าเดิม</span>
+                    <span className="text-xs text-muted-foreground/60">ค่าเดิม</span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">
+                <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                   {format(new Date(member.createdAt), 'd MMM yy', { locale: th })}
                 </td>
                 <td className="px-4 py-3 text-center">
@@ -204,33 +208,35 @@ export function StaffPage({ initialData, initialMenuLabels = {} }: StaffPageProp
                     type="button"
                     disabled={isTogglingActive && toggleActiveVar === member.id}
                     onClick={() => toggleActive(member.id)}
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium disabled:opacity-50 transition-colors ${
-                      member.isActive ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset disabled:opacity-50 transition-colors ${
+                      member.isActive
+                        ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:ring-emerald-900'
+                        : 'bg-muted text-muted-foreground ring-border hover:bg-muted/80'
                     }`}
                   >
-                    {isTogglingActive && toggleActiveVar === member.id ? '...' : member.isActive ? 'เปิด' : 'ปิด'}
+                    {isTogglingActive && toggleActiveVar === member.id ? '…' : member.isActive ? 'เปิด' : 'ปิด'}
                   </button>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-2">
+                  <div className="flex items-center justify-end gap-3">
                     <button
                       type="button"
                       onClick={() => setModal({ type: 'edit', member })}
-                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
                     >
                       แก้ไข
                     </button>
                     <button
                       type="button"
                       onClick={() => setModal({ type: 'resetPwd', member })}
-                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
                     >
                       รีเซ็ตรหัสผ่าน
                     </button>
                     <button
                       type="button"
                       onClick={() => setModal({ type: 'delete', member })}
-                      className="text-xs text-red-400 hover:text-red-600 transition-colors"
+                      className="text-xs font-medium text-red-400 hover:text-red-600 transition-colors"
                     >
                       ลบ
                     </button>
@@ -240,11 +246,12 @@ export function StaffPage({ initialData, initialMenuLabels = {} }: StaffPageProp
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {modal && (
         <div
-          className="fixed inset-0 z-40 flex items-start justify-center bg-black/50 backdrop-blur-sm px-4 py-6 overflow-y-auto"
+          className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 backdrop-blur-[2px] px-4 py-8 overflow-y-auto"
           onClick={() => setModal(null)}
         >
           <div onClick={(e) => e.stopPropagation()} className="my-auto">
@@ -272,8 +279,15 @@ export function StaffPage({ initialData, initialMenuLabels = {} }: StaffPageProp
             {modal.type === 'delete' && (
               <div className="w-80 rounded-xl bg-card border border-border p-6 shadow-2xl">
                 <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-foreground">ยืนยันการลบ</h2>
-                  <button type="button" aria-label="ปิด" onClick={() => setModal(null)} className="text-muted-foreground hover:text-foreground transition-colors text-lg leading-none">×</button>
+                  <h2 className="text-[13px] font-semibold text-foreground">ยืนยันการลบ</h2>
+                  <button
+                    type="button"
+                    aria-label="ปิด"
+                    onClick={() => setModal(null)}
+                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-sm"
+                  >
+                    ✕
+                  </button>
                 </div>
                 <p className="mb-1 text-sm text-foreground">
                   ลบ <span className="font-semibold">{modal.member.name}</span> ออกจากระบบ?
@@ -291,7 +305,7 @@ export function StaffPage({ initialData, initialMenuLabels = {} }: StaffPageProp
                     type="button"
                     disabled={isDeleting}
                     onClick={() => deleteMember(modal.member.id)}
-                    className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+                    className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
                   >
                     {isDeleting ? 'กำลังลบ…' : 'ลบ'}
                   </button>
@@ -306,8 +320,8 @@ export function StaffPage({ initialData, initialMenuLabels = {} }: StaffPageProp
 }
 
 const ROLES = Object.entries(ROLE_LABEL) as [string, string][];
-const INPUT = 'w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring/50 transition-colors';
-const BTN   = 'w-full rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors';
+const INPUT = 'w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground transition-colors';
+const BTN   = 'w-full rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors';
 
 /* ─── UI Layout picker ──────────────────────────────────────── */
 
@@ -793,7 +807,7 @@ function ModulePicker({
 
                         {modulesInSection.length === 0 && (
                           <p className="px-3 py-2 text-[10px] text-muted-foreground/50 italic">
-                            ว่าง — ใช้ปุ่ม "ย้าย…" บนแต่ละเมนูเพื่อย้ายมาที่นี่
+                            ว่าง — ใช้ปุ่ม &ldquo;ย้าย…&rdquo; บนแต่ละเมนูเพื่อย้ายมาที่นี่
                           </p>
                         )}
                       </div>
@@ -889,8 +903,15 @@ function StaffForm({
     <div className="w-[560px] max-w-[calc(100vw-2rem)] rounded-xl bg-card border border-border shadow-2xl">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-5 py-4">
-        <h2 className="text-sm font-semibold text-foreground">{initial ? 'แก้ไข User' : 'เพิ่ม User'}</h2>
-        <button type="button" aria-label="ปิด" onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl leading-none transition-colors">×</button>
+        <h2 className="text-[13px] font-semibold text-foreground">{initial ? 'แก้ไข User' : 'เพิ่ม User'}</h2>
+        <button
+          type="button"
+          aria-label="ปิด"
+          onClick={onClose}
+          className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-sm"
+        >
+          ✕
+        </button>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)}>

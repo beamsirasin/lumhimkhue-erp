@@ -23,7 +23,6 @@ import { checkReorderNeeded, createDraftPOFromReorder, type ReorderItem } from '
 
 interface Props {
   initialData: InventoryDashboardData;
-  initialDataUpdatedAt: number;
 }
 
 type DashTab = 'overview' | 'variance' | 'reorder';
@@ -380,7 +379,7 @@ function ReorderTab() {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function InventoryDashboard({ initialData, initialDataUpdatedAt }: Props) {
+export function InventoryDashboard({ initialData }: Props) {
   const [tab, setTab] = useState<DashTab>('overview');
 
   const { data = initialData } = useQuery({
@@ -391,7 +390,6 @@ export function InventoryDashboard({ initialData, initialDataUpdatedAt }: Props)
       return r.data;
     },
     initialData,
-    initialDataUpdatedAt,
     staleTime: 60_000,
     refetchInterval: 60_000,
   });
@@ -403,19 +401,21 @@ export function InventoryDashboard({ initialData, initialDataUpdatedAt }: Props)
   ];
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-foreground">ภาพรวมสต็อก</h1>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 rounded-xl bg-muted/50 p-1 w-fit">
-        {TABS.map(({ key, label }) => (
-          <button key={key} type="button" onClick={() => setTab(key)}
-            className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${tab === key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
-            {label}
-          </button>
-        ))}
+    <div className="page-shell">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-bold tracking-tight text-foreground">ภาพรวมสต็อก</h1>
+        <div className="flex gap-px rounded-lg bg-muted p-1">
+          {TABS.map(({ key, label }) => (
+            <button key={key} type="button" onClick={() => setTab(key)}
+              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+                tab === key
+                  ? 'bg-card text-foreground shadow-sm ring-1 ring-border'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {tab === 'overview' && <OverviewTab data={data} />}

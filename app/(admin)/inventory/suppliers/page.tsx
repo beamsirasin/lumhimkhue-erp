@@ -10,7 +10,6 @@ export default async function InventorySuppliersPage() {
   return (
     <SuppliersPage
       initialData={result.data}
-      initialDataUpdatedAt={Date.now()}
     />
   );
 }

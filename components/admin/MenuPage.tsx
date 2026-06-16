@@ -167,16 +167,16 @@ export function MenuPage({ initialData }: MenuPageProps) {
   const selectedCat = categories.find((c) => c.id === selectedCatId);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="page-shell">
       {confirmDialog}
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-foreground">จัดการเมนู</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-xl font-bold tracking-tight text-foreground">จัดการเมนู</h1>
         <button
           type="button"
           onClick={() => setModal({ type: 'addCat' })}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
         >
-          + เพิ่มหมวด
+          <span className="text-base leading-none">+</span> เพิ่มหมวด
         </button>
       </div>
 

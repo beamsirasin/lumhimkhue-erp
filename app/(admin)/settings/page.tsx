@@ -14,8 +14,8 @@ export default async function Settings() {
   const settings = result.ok ? result.data : null;
 
   return (
-    <div className="p-6">
-      <h1 className="text-xl font-semibold text-foreground mb-6">ตั้งค่าบิล</h1>
+    <div className="page-shell max-w-3xl">
+      <h1 className="text-xl font-bold tracking-tight text-foreground">ตั้งค่าบิล</h1>
       {settings && <StoreSettingsForm initialData={settings} />}
     </div>
   );

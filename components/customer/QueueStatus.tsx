@@ -39,7 +39,6 @@ export function QueueStatus({ token, initialData }: QueueStatusProps) {
     queryKey: ['queue-status', token],
     queryFn: () => getQueueStatus(token).then((r) => (r.ok ? r.data : null)),
     initialData,
-    initialDataUpdatedAt: Date.now(),
     refetchInterval: 10_000,
     staleTime: 5_000,
   });

@@ -125,10 +125,10 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
   }
 
   return (
-    <div className="p-6 max-w-3xl">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="page-shell max-w-3xl">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-medium text-foreground">ราคาตามประเภทคน</h1>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">ราคาตามประเภทคน</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">กำหนดราคาบุฟเฟ่ต์แยกตามประเภทผู้เข้าใช้บริการ</p>
         </div>
         <Button onClick={openCreate}>
@@ -137,7 +137,7 @@ export function PricingPage({ initialTiers }: PricingPageProps) {
         </Button>
       </div>
 
-      <div className="rounded-xl bg-card overflow-hidden shadow-sm ring-1 ring-border/40">
+      <div className="section-card overflow-hidden">
         {tiers.length === 0 ? (
           <div className="py-12 text-center text-sm text-muted-foreground">ยังไม่มีข้อมูล</div>
         ) : (

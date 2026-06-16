@@ -382,11 +382,14 @@ export async function closeSingleSession(input: { sessionId: string }) {
     const isPrimary = !sess.parentSessionId;
 
     if (isPrimary) {
-      // Find all children
+      // Find all ACTIVE children only — closed children must not be elected as new primary
       const children = await db
         .select({ id: sessions.id, tableId: sessions.tableId })
         .from(sessions)
-        .where(eq(sessions.parentSessionId, input.sessionId));
+        .where(and(
+          eq(sessions.parentSessionId, input.sessionId),
+          inArray(sessions.status, ['active', 'closing']),
+        ));
 
       if (children.length > 0) {
         // Elect first child as new primary
@@ -423,12 +426,14 @@ export async function closeSingleSession(input: { sessionId: string }) {
     if (!isPrimary && sess.parentSessionId) {
       // Secondary being closed — check if primary now has no remaining children.
       // If so, mark the primary table as 'linked' to keep the visual grouping indicator.
+      // Count only ACTIVE siblings — closed siblings must not block the 'linked' indicator
       const remainingChildren = await db
         .select({ id: sessions.id })
         .from(sessions)
         .where(and(
           eq(sessions.parentSessionId, sess.parentSessionId),
           ne(sessions.id, input.sessionId),
+          inArray(sessions.status, ['active', 'closing']),
         ));
       if (remainingChildren.length === 0) {
         const [primarySess] = await db

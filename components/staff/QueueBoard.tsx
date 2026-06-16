@@ -38,7 +38,6 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
     queryKey: ['queue-list'],
     queryFn: () => getQueueList().then((r) => (r.ok ? r.data : [])),
     initialData: initialEntries,
-    initialDataUpdatedAt: Date.now(),
     refetchInterval: 5_000,
     staleTime: 2_000,
   });
@@ -120,7 +119,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
       {/* Header */}
       <header className="border-b border-border bg-card px-6 py-4 flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">จัดการคิว</h1>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">จัดการคิว</h1>
           <p className="text-xs text-muted-foreground">
             รอ {waiting.length} กลุ่ม · เรียกแล้ว {called.length} กลุ่ม
           </p>

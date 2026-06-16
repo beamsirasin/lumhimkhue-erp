@@ -643,15 +643,15 @@ export function PricingTilesPage({ initialData }: PricingTilesPageProps) {
   const activeTabInfo = TABS.find((t) => t.key === activeTab)!;
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className="page-shell max-w-5xl">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-xl font-medium text-foreground">Pricing Tiles</h1>
+      <div>
+        <h1 className="text-xl font-bold tracking-tight text-foreground">Pricing Tiles</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">จัดการราคาและส่วนลดทุกประเภท</p>
       </div>
 
       {/* Tabs */}
-      <div className="mb-6 flex gap-1 rounded-xl border border-border bg-muted/30 p-1">
+      <div className="flex gap-px rounded-lg border border-border bg-muted/40 p-1 w-fit">
         {TABS.map((tab) => {
           const count = allTiles.filter((t) => t.category === tab.key).length;
           return (

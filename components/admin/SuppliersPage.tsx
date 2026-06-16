@@ -31,10 +31,9 @@ type Modal =
 
 interface Props {
   initialData: SupplierRow[];
-  initialDataUpdatedAt: number;
 }
 
-export function SuppliersPage({ initialData, initialDataUpdatedAt }: Props) {
+export function SuppliersPage({ initialData }: Props) {
   const [modal, setModal] = useState<Modal | null>(null);
   const qc = useQueryClient();
 
@@ -46,7 +45,6 @@ export function SuppliersPage({ initialData, initialDataUpdatedAt }: Props) {
       return r.data;
     },
     initialData,
-    initialDataUpdatedAt,
     staleTime: 30_000,
   });
 
@@ -61,17 +59,17 @@ export function SuppliersPage({ initialData, initialDataUpdatedAt }: Props) {
   });
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="page-shell">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">ผู้ขาย (Supplier)</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{suppliers.length} ราย</p>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">ผู้ขาย (Supplier)</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">{suppliers.length} ราย</p>
         </div>
         <button
           type="button"
           onClick={() => setModal({ type: 'add' })}
-          className="flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           <Plus className="size-4" />
           เพิ่ม Supplier
@@ -79,23 +77,23 @@ export function SuppliersPage({ initialData, initialDataUpdatedAt }: Props) {
       </div>
 
       {/* Table */}
-      <div className="rounded-xl bg-card overflow-hidden shadow-sm ring-1 ring-border">
+      <div className="section-card overflow-hidden">
         {suppliers.length === 0 ? (
           <div className="py-16 text-center">
-            <Truck className="mx-auto size-8 text-muted-foreground/60 mb-2" />
+            <Truck className="mx-auto size-8 text-muted-foreground/40 mb-2" />
             <p className="text-sm text-muted-foreground">ยังไม่มีผู้ขาย</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border bg-muted/30 text-left">
-                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">ชื่อ</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">ผู้ติดต่อ</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">เบอร์โทร</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">เลขผู้เสียภาษี</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground text-center">จำนวน PO</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground text-center">สถานะ</th>
+                <tr className="border-b border-border bg-muted/40 text-left">
+                  <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">ชื่อ</th>
+                  <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">ผู้ติดต่อ</th>
+                  <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">เบอร์โทร</th>
+                  <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">เลขผู้เสียภาษี</th>
+                  <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-center">จำนวน PO</th>
+                  <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-center">สถานะ</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -165,7 +163,7 @@ export function SuppliersPage({ initialData, initialDataUpdatedAt }: Props) {
 
       {/* Notes row */}
       <p className="text-xs text-muted-foreground">
-        คลิก "ดู PO" เพื่อดูประวัติการสั่งซื้อของแต่ละผู้ขาย
+        คลิก &ldquo;ดู PO&rdquo; เพื่อดูประวัติการสั่งซื้อของแต่ละผู้ขาย
       </p>
 
       {/* Modal */}

@@ -476,15 +476,18 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
   }
 
   return (
-    <div className="p-6">
+    <div className="page-shell">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <Link href="/hr/payroll" className="text-muted-foreground hover:text-foreground">
-          <ChevronLeft className="size-5" />
+      <div className="flex items-center gap-3">
+        <Link
+          href="/hr/payroll"
+          className="flex size-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+        >
+          <ChevronLeft className="size-4" />
         </Link>
-        <div className="flex-1">
-          <h2 className="text-lg font-semibold text-foreground">{detail.cycle.name}</h2>
-          <p className="text-xs text-muted-foreground">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-xl font-bold tracking-tight text-foreground">{detail.cycle.name}</h1>
+          <p className="mt-0.5 text-xs text-muted-foreground">
             ช่วงงาน {fmtDate(detail.cycle.workStartDate)} – {fmtDate(detail.cycle.workEndDate)} |
             วันจ่าย {fmtDate(detail.cycle.payDate)}
           </p>

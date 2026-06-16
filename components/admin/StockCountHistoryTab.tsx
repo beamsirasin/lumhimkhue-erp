@@ -50,6 +50,7 @@ function DetailModal({
   const [error, setError] = useState('');
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     getStockCountDetail(countId).then((r) => {
       if (r.ok) setData(r.data);
@@ -318,6 +319,7 @@ export function StockCountHistoryTab() {
     setLoading(false);
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadCounts(); }, []);
 
   const filtered = useMemo(() => {

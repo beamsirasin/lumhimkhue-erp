@@ -10,7 +10,6 @@ export default async function InventoryIngredientsPage() {
   return (
     <IngredientsPage
       initialData={result.data}
-      initialDataUpdatedAt={Date.now()}
     />
   );
 }

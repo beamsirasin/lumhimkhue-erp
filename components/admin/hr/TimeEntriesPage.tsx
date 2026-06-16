@@ -118,17 +118,17 @@ export function TimeEntriesPage({ initialEmployees }: Props) {
 
   if (employees.length === 0) {
     return (
-      <div className="p-6">
-        <h2 className="text-lg font-semibold text-foreground mb-2">บันทึกเวลา</h2>
-        <p className="text-muted-foreground">ไม่มีพนักงานพาร์ทไทม์ active ในระบบ</p>
+      <div className="page-shell">
+        <h1 className="text-xl font-bold tracking-tight text-foreground mb-2">บันทึกเวลา</h1>
+        <p className="text-sm text-muted-foreground">ไม่มีพนักงานพาร์ทไทม์ active ในระบบ</p>
       </div>
     );
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-lg font-semibold text-foreground">บันทึกเวลา (พาร์ทไทม์)</h2>
+    <div className="page-shell">
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <h1 className="text-xl font-bold tracking-tight text-foreground">บันทึกเวลา (พาร์ทไทม์)</h1>
         <Button size="sm" onClick={openCreate}>
           <Plus className="size-4 mr-1.5" />
           เพิ่มบันทึก

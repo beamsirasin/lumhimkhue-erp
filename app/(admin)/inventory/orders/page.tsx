@@ -19,7 +19,6 @@ export default async function InventoryOrdersPage({ searchParams }: Props) {
   return (
     <PurchaseOrdersPage
       initialData={result.data}
-      initialDataUpdatedAt={Date.now()}
       initialSupplierFilter={params.supplierId}
       userRole={session?.user?.role}
     />

@@ -32,7 +32,6 @@ export function OrderList({ sessionToken, initialOrders }: OrderListProps) {
     queryKey: ['session-orders', sessionToken],
     queryFn: () => getSessionOrders(sessionToken).then((r) => (r.ok ? r.data : [])),
     initialData: initialOrders,
-    initialDataUpdatedAt: Date.now(),
     refetchInterval: 10_000,
     staleTime: 5_000,
   });

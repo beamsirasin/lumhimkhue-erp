@@ -42,6 +42,7 @@ function RevenueReport() {
   useEffect(() => {
     if (fromDate > toDate) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     getReportSummary(fromDate, toDate, sessionType).then((r) => {
       if (cancelled) return;
@@ -324,6 +325,7 @@ function FoodCostReport() {
   useEffect(() => {
     if (fromDate > toDate) return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     getFoodCostReport(fromDate, toDate).then((r) => {
       if (cancelled) return;
@@ -484,20 +486,21 @@ export function ReportsPage() {
   ];
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-xl font-semibold text-foreground">รายงาน</h1>
-
-      <div className="flex gap-1 rounded-xl bg-muted p-1 w-fit">
-        {TABS.map((t) => (
-          <button key={t.key} type="button" onClick={() => setTab(t.key)}
-            className={`rounded-lg px-5 py-1.5 text-sm font-medium transition-all duration-150 ${
-              tab === t.key
-                ? 'bg-card text-foreground shadow-sm ring-1 ring-border'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}>
-            {t.label}
-          </button>
-        ))}
+    <div className="page-shell">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-bold tracking-tight text-foreground">รายงาน</h1>
+        <div className="flex gap-px rounded-lg bg-muted p-1">
+          {TABS.map((t) => (
+            <button key={t.key} type="button" onClick={() => setTab(t.key)}
+              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors duration-150 ${
+                tab === t.key
+                  ? 'bg-card text-foreground shadow-sm ring-1 ring-border'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {tab === 'revenue'  && <RevenueReport />}
