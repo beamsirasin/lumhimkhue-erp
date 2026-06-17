@@ -10,7 +10,7 @@ import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { writeAuditLog } from '@/lib/actions/audit';
 import { db } from '@/lib/db';
-import { sessions, tables, payments, paymentLineItems, orders, orderItems, menuItems } from '@/lib/db/schema';
+import { sessions, tables, payments, paymentLineItems, paymentAdjustments, orders, orderItems, menuItems } from '@/lib/db/schema';
 
 const TZ = 'Asia/Bangkok';
 
@@ -199,9 +199,8 @@ export async function getHistoryCalendarDates(year: number, month: number) {
 
 /* ─── deletePaymentRecord — ลบประวัติอย่างเดียว (ไม่เปิดโต๊ะใหม่) ──── */
 //
-// Phase 1 Step 2.5: จำกัดเป็น payment:delete (owner เท่านั้น) + audit log
-// TODO Step 3-4: เมื่อมี payments.status column ให้เปลี่ยนเป็น soft void
-//   (status='voided', voided_by, void_reason) แทน hard DELETE
+// Phase 1 Step 4 (Approach C): INSERT payment_adjustments (immutable audit trail)
+// inside same transaction before hard DELETE. If insert fails → rollback → payment kept.
 
 export async function deletePaymentRecord(input: unknown) {
   const authSession = await auth();
@@ -219,21 +218,93 @@ export async function deletePaymentRecord(input: unknown) {
   if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
 
   const { paymentId, reason } = parsed.data;
+
+  // Fetch full payment for snapshot outside tx — early return gives clean error message
+  const [payment] = await db
+    .select({
+      id: payments.id,
+      sessionId: payments.sessionId,
+      subtotal: payments.subtotal,
+      serviceCharge: payments.serviceCharge,
+      discount: payments.discount,
+      total: payments.total,
+      paymentMethod: payments.paymentMethod,
+      receivedAmount: payments.receivedAmount,
+      changeAmount: payments.changeAmount,
+      paidAt: payments.paidAt,
+      processedBy: payments.processedBy,
+      receiptNo: payments.receiptNo,
+      notes: payments.notes,
+      shiftId: payments.shiftId,
+      status: payments.status,
+    })
+    .from(payments)
+    .where(eq(payments.id, paymentId));
+  if (!payment) return { ok: false as const, error: 'ไม่พบข้อมูลการชำระเงิน' };
+
   try {
-    const [payment] = await db
-      .select({ id: payments.id, sessionId: payments.sessionId })
-      .from(payments)
-      .where(eq(payments.id, paymentId));
-    if (!payment) return { ok: false as const, error: 'ไม่พบข้อมูลการชำระเงิน' };
+    await db.transaction(async (tx) => {
+      // Fetch line items inside tx for a consistent snapshot point-in-time
+      const lineItems = await tx
+        .select({
+          id: paymentLineItems.id,
+          pricingTileId: paymentLineItems.pricingTileId,
+          quantity: paymentLineItems.quantity,
+          amount: paymentLineItems.amount,
+        })
+        .from(paymentLineItems)
+        .where(eq(paymentLineItems.paymentId, paymentId));
 
-    // TODO Step 3-4: replace with UPDATE payments SET status='voided' ...
-    await db.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
-    await db.delete(payments).where(eq(payments.id, paymentId));
-    // Mark session closed (no payment) so it stays in history but doesn't re-appear in POS
-    await db.update(sessions)
-      .set({ status: 'closed' })
-      .where(eq(sessions.id, payment.sessionId));
+      // Insert immutable audit record — must commit before any delete.
+      // paymentId has no FK (Approach C): payment_adjustments survives after hard delete.
+      await tx.insert(paymentAdjustments).values({
+        paymentId: payment.id,
+        sessionId: payment.sessionId,
+        shiftId: payment.shiftId,
+        type: 'void',
+        amount: payment.total,
+        reason: reason ?? 'ไม่ระบุ',
+        requestedBy: authSession.user.id,
+        approvedBy: authSession.user.id,
+        approvedAt: new Date(),
+        status: 'approved',
+        paymentSnapshot: {
+          payment: {
+            id: payment.id,
+            sessionId: payment.sessionId,
+            subtotal: payment.subtotal,
+            serviceCharge: payment.serviceCharge,
+            discount: payment.discount,
+            total: payment.total,
+            paymentMethod: payment.paymentMethod,
+            receivedAmount: payment.receivedAmount,
+            changeAmount: payment.changeAmount,
+            paidAt: payment.paidAt.toISOString(),
+            processedBy: payment.processedBy,
+            receiptNo: payment.receiptNo,
+            notes: payment.notes,
+            shiftId: payment.shiftId,
+            status: payment.status,
+          },
+          lineItems,
+          context: {
+            action: 'delete_payment',
+            performedBy: authSession.user.id,
+            performedAt: new Date().toISOString(),
+          },
+        },
+      });
 
+      // Hard delete — rolls back atomically if insert above failed
+      await tx.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
+      await tx.delete(payments).where(eq(payments.id, paymentId));
+      // Mark session closed: stays in history but won't re-appear in POS
+      await tx.update(sessions)
+        .set({ status: 'closed' })
+        .where(eq(sessions.id, payment.sessionId));
+    });
+
+    // Fire-and-forget secondary log (payment_adjustments is the primary audit trail)
     writeAuditLog({
       userId: authSession.user.id,
       role: authSession.user.role,
@@ -255,9 +326,8 @@ export async function deletePaymentRecord(input: unknown) {
 
 /* ─── reopenSessionForPayment — ยกเลิกการชำระ แล้วส่งกลับ POS ──────── */
 //
-// Phase 1 Step 2.5: จำกัดเป็น payment:reopen (owner + manager) + audit log
-// TODO Step 3-4: เมื่อมี payments.status column ให้ soft-void payment ก่อน revert
-//   แทนการ DELETE ตรง ๆ
+// Phase 1 Step 4 (Approach C): INSERT payment_adjustments inside same transaction
+// before hard DELETE. If insert fails → rollback → session NOT reopened.
 
 export async function reopenSessionForPayment(input: unknown) {
   const authSession = await auth();
@@ -275,39 +345,114 @@ export async function reopenSessionForPayment(input: unknown) {
   if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
 
   const { paymentId, reason } = parsed.data;
+
+  // Fetch full payment for snapshot outside tx — early return gives clean error message
+  const [payment] = await db
+    .select({
+      id: payments.id,
+      sessionId: payments.sessionId,
+      subtotal: payments.subtotal,
+      serviceCharge: payments.serviceCharge,
+      discount: payments.discount,
+      total: payments.total,
+      paymentMethod: payments.paymentMethod,
+      receivedAmount: payments.receivedAmount,
+      changeAmount: payments.changeAmount,
+      paidAt: payments.paidAt,
+      processedBy: payments.processedBy,
+      receiptNo: payments.receiptNo,
+      notes: payments.notes,
+      shiftId: payments.shiftId,
+      status: payments.status,
+    })
+    .from(payments)
+    .where(eq(payments.id, paymentId));
+  if (!payment) return { ok: false as const, error: 'ไม่พบข้อมูลการชำระเงิน' };
+
+  const [mainSession] = await db
+    .select({ id: sessions.id, tableId: sessions.tableId })
+    .from(sessions)
+    .where(eq(sessions.id, payment.sessionId));
+  if (!mainSession) return { ok: false as const, error: 'ไม่พบ session' };
+
+  // Include group-bill linked sessions (different table), not split children (same table)
+  const childSessions = await db
+    .select({ id: sessions.id, tableId: sessions.tableId })
+    .from(sessions)
+    .where(eq(sessions.parentSessionId, mainSession.id));
+  const groupLinked = childSessions.filter((s) => s.tableId !== mainSession.tableId);
+
+  const allSessionIds = [mainSession.id, ...groupLinked.map((s) => s.id)];
+  const allTableIds = [...new Set([mainSession.tableId, ...groupLinked.map((s) => s.tableId)])];
+
   try {
-    const [payment] = await db
-      .select({ id: payments.id, sessionId: payments.sessionId })
-      .from(payments)
-      .where(eq(payments.id, paymentId));
-    if (!payment) return { ok: false as const, error: 'ไม่พบข้อมูลการชำระเงิน' };
+    await db.transaction(async (tx) => {
+      // Fetch line items inside tx for a consistent snapshot point-in-time
+      const lineItems = await tx
+        .select({
+          id: paymentLineItems.id,
+          pricingTileId: paymentLineItems.pricingTileId,
+          quantity: paymentLineItems.quantity,
+          amount: paymentLineItems.amount,
+        })
+        .from(paymentLineItems)
+        .where(eq(paymentLineItems.paymentId, paymentId));
 
-    const [mainSession] = await db
-      .select({ id: sessions.id, tableId: sessions.tableId })
-      .from(sessions)
-      .where(eq(sessions.id, payment.sessionId));
-    if (!mainSession) return { ok: false as const, error: 'ไม่พบ session' };
+      // Insert immutable audit record — must commit before any delete.
+      // paymentId has no FK (Approach C): payment_adjustments survives after hard delete.
+      await tx.insert(paymentAdjustments).values({
+        paymentId: payment.id,
+        sessionId: payment.sessionId,
+        shiftId: payment.shiftId,
+        type: 'void',
+        amount: payment.total,
+        reason: reason ?? 'ไม่ระบุ',
+        requestedBy: authSession.user.id,
+        approvedBy: authSession.user.id,
+        approvedAt: new Date(),
+        status: 'approved',
+        paymentSnapshot: {
+          payment: {
+            id: payment.id,
+            sessionId: payment.sessionId,
+            subtotal: payment.subtotal,
+            serviceCharge: payment.serviceCharge,
+            discount: payment.discount,
+            total: payment.total,
+            paymentMethod: payment.paymentMethod,
+            receivedAmount: payment.receivedAmount,
+            changeAmount: payment.changeAmount,
+            paidAt: payment.paidAt.toISOString(),
+            processedBy: payment.processedBy,
+            receiptNo: payment.receiptNo,
+            notes: payment.notes,
+            shiftId: payment.shiftId,
+            status: payment.status,
+          },
+          lineItems,
+          linkedSessions: groupLinked,
+          context: {
+            action: 'reopen_session',
+            performedBy: authSession.user.id,
+            performedAt: new Date().toISOString(),
+            allSessionIds,
+            allTableIds,
+          },
+        },
+      });
 
-    // Include group-bill linked sessions (different table), not split children (same table)
-    const childSessions = await db
-      .select({ id: sessions.id, tableId: sessions.tableId })
-      .from(sessions)
-      .where(eq(sessions.parentSessionId, mainSession.id));
-    const groupLinked = childSessions.filter((s) => s.tableId !== mainSession.tableId);
+      // Hard delete — rolls back atomically if insert above failed
+      await tx.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
+      await tx.delete(payments).where(eq(payments.id, paymentId));
+      await tx.update(sessions)
+        .set({ status: 'closing', closedAt: null })
+        .where(inArray(sessions.id, allSessionIds));
+      await tx.update(tables)
+        .set({ status: 'occupied' })
+        .where(inArray(tables.id, allTableIds));
+    });
 
-    const allSessionIds = [mainSession.id, ...groupLinked.map((s) => s.id)];
-    const allTableIds = [...new Set([mainSession.tableId, ...groupLinked.map((s) => s.tableId)])];
-
-    // TODO Step 3-4: replace with UPDATE payments SET status='voided' before reverting session
-    await db.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
-    await db.delete(payments).where(eq(payments.id, paymentId));
-    await db.update(sessions)
-      .set({ status: 'closing', closedAt: null })
-      .where(inArray(sessions.id, allSessionIds));
-    await db.update(tables)
-      .set({ status: 'occupied' })
-      .where(inArray(tables.id, allTableIds));
-
+    // Fire-and-forget secondary log (payment_adjustments is the primary audit trail)
     writeAuditLog({
       userId: authSession.user.id,
       role: authSession.user.role,
