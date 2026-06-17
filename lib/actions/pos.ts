@@ -14,11 +14,17 @@ import {
   orders,
   payments,
   paymentLineItems,
+  paymentRows,
   pricingTiles,
   storeSettings,
   cashierShifts,
 } from '@/lib/db/schema';
 import { processPaymentSchema } from '@/lib/validations/pos';
+import {
+  ensurePaymentRowsForLegacyPayment,
+  getActivePaymentMethodsWithAccounts,
+  validateCheckoutPaymentRowsForTotal,
+} from '@/lib/payments/foundation';
 
 export async function getPosSessionsForPos() {
   const authSession = await auth();
@@ -154,6 +160,49 @@ export async function getActiveTilesForPos() {
   }
 }
 
+export async function getActivePaymentOptionsForPos() {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'process_payment'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  try {
+    const data = await getActivePaymentMethodsWithAccounts();
+    return {
+      ok: true as const,
+      data: data
+        .filter((method) => method.type !== 'mixed_legacy')
+        .map((method) => ({
+          id: method.id,
+          code: method.code,
+          name: method.name,
+          type: method.type,
+          requiresReference: method.requiresReference,
+          allowOverpay: method.allowOverpay,
+          sortOrder: method.sortOrder,
+          defaultAccountId: method.defaultAccount?.id ?? null,
+          accounts: method.accounts
+            .filter((entry) => entry.account.code !== 'legacy_unknown')
+            .map((entry) => ({
+              mappingId: entry.mappingId,
+              isDefault: entry.isDefault,
+              id: entry.account.id,
+              code: entry.account.code,
+              name: entry.account.name,
+              type: entry.account.type,
+              bankName: entry.account.bankName,
+              accountLabel: entry.account.accountLabel,
+              accountLast4: entry.account.accountLast4,
+            })),
+        }))
+        .filter((method) => method.accounts.length > 0),
+    };
+  } catch (e) {
+    console.error('[getActivePaymentOptionsForPos]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
 // TODO Phase 1 Step 5E: move to store_settings.require_shift_for_cash when schema field is ready.
 // Set env STRICT_SHIFT_CASH=true to block cash payments without an open shift.
 const STRICT_SHIFT_CASH = process.env.STRICT_SHIFT_CASH === 'true';
@@ -167,7 +216,7 @@ export async function processPayment(input: unknown) {
   const parsed = processPaymentSchema.safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
 
-  const { sessionId, paymentMethod, receivedAmount, discount, notes, receiptNo, lineItems } = parsed.data;
+  const { sessionId, paymentMethod, receivedAmount, discount, notes, receiptNo, lineItems, paymentRows: submittedPaymentRows } = parsed.data;
 
   try {
     // Parallel: session fetch + idempotency check + store settings + active shift lookup
@@ -203,6 +252,7 @@ export async function processPayment(input: unknown) {
 
     // Idempotency: if payment already exists (e.g. previous attempt succeeded in DB but threw before returning), return it
     if (existingPayment) {
+      await ensurePaymentRowsForLegacyPayment(existingPayment);
       return {
         ok: true as const,
         data: {
@@ -289,10 +339,34 @@ export async function processPayment(input: unknown) {
     const discountAmount = (discount ?? 0) + discountFromTiles;
     const total = Math.max(0, subtotal + serviceCharge - discountAmount);
 
-    if (paymentMethod === 'cash' && receivedAmount < total)
+    const rowValidation = submittedPaymentRows
+      ? await validateCheckoutPaymentRowsForTotal(submittedPaymentRows, total)
+      : null;
+    if (rowValidation && !rowValidation.ok) {
+      return { ok: false as const, error: rowValidation.error };
+    }
+    if (
+      STRICT_SHIFT_CASH &&
+      !activeShiftId &&
+      rowValidation?.ok &&
+      rowValidation.data.rows.some((row) => row.method.type === 'cash')
+    ) {
+      return { ok: false as const, error: 'ต้องเปิดรอบแคชเชียร์ก่อนรับเงินสด' };
+    }
+
+    const summaryPaymentMethod = rowValidation?.ok ? rowValidation.data.legacyPaymentMethod : paymentMethod;
+    const summaryReceivedAmount = rowValidation?.ok ? rowValidation.data.receivedAmount : String(receivedAmount);
+    const summaryChangeAmount = rowValidation?.ok
+      ? rowValidation.data.changeAmount
+      : String(paymentMethod === 'cash' ? receivedAmount - total : 0);
+    const summaryNotes = rowValidation?.ok
+      ? [notes, rowValidation.data.notesSummary].filter(Boolean).join('\n\n')
+      : notes;
+
+    if (!rowValidation && paymentMethod === 'cash' && receivedAmount < total)
       return { ok: false as const, error: 'จำนวนเงินที่รับไม่เพียงพอ' };
 
-    const changeAmount = paymentMethod === 'cash' ? receivedAmount - total : 0;
+    const changeAmount = Number(summaryChangeAmount);
 
     // Insert payment — shiftId linked if cashier has an open shift, null otherwise
     const [payment] = await db.insert(payments).values({
@@ -301,14 +375,53 @@ export async function processPayment(input: unknown) {
       serviceCharge: String(serviceCharge),
       discount: String(discountAmount),
       total: String(total),
-      paymentMethod,
-      receivedAmount: String(receivedAmount),
-      changeAmount: String(changeAmount),
+      paymentMethod: summaryPaymentMethod,
+      receivedAmount: summaryReceivedAmount,
+      changeAmount: summaryChangeAmount,
       processedBy: authSession.user.id,
       receiptNo: receiptNo ?? null,
-      notes,
+      notes: summaryNotes,
       shiftId: activeShiftId,
-    }).returning({ id: payments.id });
+    }).returning({
+      id: payments.id,
+      sessionId: payments.sessionId,
+      subtotal: payments.subtotal,
+      serviceCharge: payments.serviceCharge,
+      discount: payments.discount,
+      total: payments.total,
+      paymentMethod: payments.paymentMethod,
+      receivedAmount: payments.receivedAmount,
+      changeAmount: payments.changeAmount,
+      paidAt: payments.paidAt,
+      processedBy: payments.processedBy,
+      receiptNo: payments.receiptNo,
+      notes: payments.notes,
+      shiftId: payments.shiftId,
+      status: payments.status,
+    });
+
+    if (rowValidation?.ok) {
+      await db.insert(paymentRows).values(
+        rowValidation.data.rows.map((row) => ({
+          paymentId: payment.id,
+          sessionId: payment.sessionId,
+          paymentMethodId: row.paymentMethodId,
+          receivingAccountId: row.receivingAccountId,
+          amount: (row.amountCents / 100).toFixed(2),
+          amountTendered: row.tenderedCents == null ? null : (row.tenderedCents / 100).toFixed(2),
+          changeAmount: (row.changeCents / 100).toFixed(2),
+          referenceNo: row.referenceNo ?? null,
+          payerLabel: row.payerLabel ?? null,
+          note: row.note ?? null,
+          status: 'completed' as const,
+          cashierId: authSession.user.id,
+          shiftId: activeShiftId,
+          paidAt: payment.paidAt,
+        })),
+      );
+    } else {
+      await ensurePaymentRowsForLegacyPayment(payment);
+    }
 
     // Insert payment line items
     if (resolvedLineItems.length > 0) {
@@ -362,7 +475,14 @@ export async function processPayment(input: unknown) {
       action: 'process_payment',
       entity: 'payments',
       entityId: payment.id,
-      after: { sessionId, total, paymentMethod, receiptNo: receiptNo ?? null, shiftId: activeShiftId },
+      after: {
+        sessionId,
+        total,
+        paymentMethod: summaryPaymentMethod,
+        receiptNo: receiptNo ?? null,
+        shiftId: activeShiftId,
+        paymentRows: rowValidation?.ok ? rowValidation.data.rows.length : 1,
+      },
     });
     return {
       ok: true as const,

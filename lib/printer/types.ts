@@ -81,6 +81,15 @@ export type ReceiptData = {
   receivedAmount: number;
   changeAmount: number;
   paymentMethod: string;
+  /** Phase 2B-4: per-row breakdown for true draft-row payments. Optional — legacy callers omit. */
+  paymentRows?: Array<{
+    label: string;
+    accountName: string;
+    amount: number;
+    amountTendered?: number | null;
+    changeAmount?: number | null;
+    payerLabel?: string | null;
+  }>;
 };
 
 export type TableQrData = {

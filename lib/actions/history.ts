@@ -10,7 +10,7 @@ import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { writeAuditLog } from '@/lib/actions/audit';
 import { db } from '@/lib/db';
-import { sessions, tables, payments, paymentLineItems, paymentAdjustments, orders, auditLogs, cashierShifts, users } from '@/lib/db/schema';
+import { sessions, tables, payments, paymentRows, paymentLineItems, paymentAdjustments, orders, auditLogs, cashierShifts, users } from '@/lib/db/schema';
 
 const TZ = 'Asia/Bangkok';
 
@@ -138,7 +138,16 @@ export async function getSessionDetail(sessionId: string) {
       with: {
         table: true,
         guests: { with: { pricingTile: true } },
-        payment: true,
+        payment: {
+          with: {
+            rows: {
+              with: {
+                paymentMethod: true,
+                receivingAccount: true,
+              },
+            },
+          },
+        },
       },
     });
     if (!session) return { ok: false as const, error: 'ไม่พบ session' };
@@ -255,6 +264,10 @@ export async function deletePaymentRecord(input: unknown) {
       })
       .from(paymentLineItems)
       .where(eq(paymentLineItems.paymentId, paymentId));
+    const rowItems = await db
+      .select()
+      .from(paymentRows)
+      .where(eq(paymentRows.paymentId, paymentId));
 
     // Insert immutable audit record first — Approach C guarantee.
     // paymentId has no FK: payment_adjustments survives after hard delete.
@@ -288,6 +301,7 @@ export async function deletePaymentRecord(input: unknown) {
           status: payment.status,
         },
         lineItems,
+        paymentRows: rowItems,
         context: {
           action: 'delete_payment',
           performedBy: authSession.user.id,
@@ -296,6 +310,7 @@ export async function deletePaymentRecord(input: unknown) {
       },
     });
 
+    await db.delete(paymentRows).where(eq(paymentRows.paymentId, paymentId));
     await db.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
     await db.delete(payments).where(eq(payments.id, paymentId));
     // Mark session closed: stays in history but won't re-appear in POS
@@ -396,6 +411,10 @@ export async function reopenSessionForPayment(input: unknown) {
       })
       .from(paymentLineItems)
       .where(eq(paymentLineItems.paymentId, paymentId));
+    const rowItems = await db
+      .select()
+      .from(paymentRows)
+      .where(eq(paymentRows.paymentId, paymentId));
 
     // Insert immutable audit record first — Approach C guarantee.
     // paymentId has no FK: payment_adjustments survives after hard delete.
@@ -429,6 +448,7 @@ export async function reopenSessionForPayment(input: unknown) {
           status: payment.status,
         },
         lineItems,
+        paymentRows: rowItems,
         linkedSessions: groupLinked,
         context: {
           action: 'reopen_session',
@@ -440,6 +460,7 @@ export async function reopenSessionForPayment(input: unknown) {
         },
       });
 
+    await db.delete(paymentRows).where(eq(paymentRows.paymentId, paymentId));
     await db.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
     await db.delete(payments).where(eq(payments.id, paymentId));
     await db.update(sessions)

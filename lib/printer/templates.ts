@@ -98,10 +98,18 @@ ${showTaxFields && vatAmount > 0 ? row(`ภาษีมูลค่าเพิ�
 ${row('ทั้งหมด', `฿${data.total.toFixed(2)}`, true)}`;
 
   /* Payment (receipt only) */
-  const paymentBlock = isReceipt ? `
-${hr()}
-${row(data.paymentMethod, `฿${data.receivedAmount.toFixed(2)}`)}
-${data.changeAmount > 0 ? row('เงินทอน', `฿${data.changeAmount.toFixed(2)}`) : ''}` : '';
+  const paymentBlock = isReceipt ? (() => {
+    if (data.paymentRows?.length) {
+      const rowLines = data.paymentRows.map((pr) => [
+        row(`${esc(pr.label)} / ${esc(pr.accountName)}`, `฿${pr.amount.toFixed(2)}`),
+        pr.amountTendered != null ? row('รับเงินสด', `฿${pr.amountTendered.toFixed(2)}`) : '',
+        pr.changeAmount != null && pr.changeAmount > 0 ? row('เงินทอน', `฿${pr.changeAmount.toFixed(2)}`) : '',
+        pr.payerLabel ? row('ผู้ชำระ', esc(pr.payerLabel)) : '',
+      ].filter(Boolean).join('\n')).join('\n');
+      return `\n${hr()}\n${rowLines}`;
+    }
+    return `\n${hr()}\n${row(data.paymentMethod, `฿${data.receivedAmount.toFixed(2)}`)}\n${data.changeAmount > 0 ? row('เงินทอน', `฿${data.changeAmount.toFixed(2)}`) : ''}`;
+  })() : '';
 
   /* Footer */
   const footer = `<div class="center">${esc(data.footerNote ?? 'ขอบคุณและขอให้โชคดี')}</div>`;

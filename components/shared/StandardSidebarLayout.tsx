@@ -144,6 +144,7 @@ const NAV: Record<Role, NavSection[]> = {
       heading: 'ตั้งค่า / Admin',
       items: [
         { href: '/settings', label: 'ตั้งค่าบิล',   Icon: Settings },
+        { href: '/payment-settings', label: 'Payment Settings', Icon: CreditCard },
         { href: '/users',    label: 'บัญชีผู้ใช้',   Icon: Users },
         { href: '/printers', label: 'เครื่องพิมพ์',  Icon: Printer },
         { href: '/system',   label: 'ข้อมูลระบบ',    Icon: Info },
@@ -157,6 +158,7 @@ const NAV: Record<Role, NavSection[]> = {
         kdsGroup,
         queueGroup,
         tableGroup,
+        { href: '/payment-settings', label: 'Payment Settings', Icon: CreditCard },
         { href: '/printers', label: 'เครื่องพิมพ์', Icon: Printer },
       ],
     },

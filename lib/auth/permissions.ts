@@ -12,6 +12,7 @@ export type Action =
   | 'manage_queue'
   | 'pricing_tile:edit'
   | 'pricing_tile:reorder'
+  | 'payment_settings:manage'
   | 'table:layout_edit'
   | 'inventory:view'
   | 'inventory:edit'
@@ -45,6 +46,7 @@ const PERMISSIONS: Record<Role, Action[]> = {
     'manage_queue',
     'pricing_tile:edit',
     'pricing_tile:reorder',
+    'payment_settings:manage',
     'table:layout_edit',
     'inventory:view',
     'inventory:edit',
@@ -74,6 +76,7 @@ const PERMISSIONS: Record<Role, Action[]> = {
     'manage_queue',
     'pricing_tile:edit',
     'pricing_tile:reorder',
+    'payment_settings:manage',
     'table:layout_edit',
     'inventory:view',
     'inventory:edit',

@@ -775,6 +775,105 @@ function PaymentPanel({
   }
 
   async function handleSubmit() {
+    // ── Draft payment rows path ──────────────────────────────────────────
+    if (paymentRowsDraft.length > 0) {
+      if (Math.round(remainingForDraft * 100) !== 0) {
+        toast.error('รายการแยกชำระยังไม่ครบยอด กรุณาเพิ่มยอดให้ครบก่อนยืนยันบิล');
+        return;
+      }
+      setSubmitting(true);
+
+      const draftNotes = [
+        notes || '',
+        taxInvoice ? `[ใบกำกับภาษี: ${taxInvoice.companyName} ${taxInvoice.taxId}]` : '',
+      ].filter(Boolean).join(' ') || undefined;
+
+      const counterResult = await incrementReceiptCounter();
+      const receiptNo = counterResult.ok ? counterResult.receiptNo : Date.now().toString().slice(-8);
+
+      // Compute safe legacy placeholder values — backend derives the real values from paymentRows
+      const rowTypes = new Set(paymentRowsDraft.map((r) => r.paymentMethodType));
+      const legacyMethod: 'cash' | 'cash_qr' | 'qr_promptpay' | 'transfer' | 'card' =
+        rowTypes.size === 1 && rowTypes.has('cash')      ? 'cash'
+        : rowTypes.size === 1 && rowTypes.has('promptpay') ? 'qr_promptpay'
+        : rowTypes.has('cash') || rowTypes.has('promptpay') ? 'cash_qr'
+        : 'transfer';
+      const draftCashTendered = paymentRowsDraft
+        .filter((r) => r.paymentMethodType === 'cash')
+        .reduce((s, r) => s + (r.amountTendered ?? r.amount), 0);
+
+      const result = await processPayment({
+        sessionId: session.id,
+        paymentMethod: legacyMethod,
+        receivedAmount: draftCashTendered > 0 ? draftCashTendered : total,
+        discount: manualDiscountNum,
+        notes: draftNotes,
+        receiptNo,
+        lineItems: buildLineItems(),
+        paymentRows: paymentRowsDraft.map((row) => ({
+          paymentMethodId:    row.paymentMethodId,
+          receivingAccountId: row.receivingAccountId,
+          amount:             row.amount,
+          amountTendered:     row.amountTendered,
+          changeAmount:       row.changeAmount,
+          referenceNo:        null,
+          payerLabel:         row.payerLabel || null,
+          note:               null,
+        })),
+      });
+      setSubmitting(false);
+      if (!result.ok) { toast.error(result.error); return; }
+
+      const receiptItems: ReceiptData['items'] = [];
+      for (const t of guestTiles) {
+        const qty = guestQty[t.id] ?? 0;
+        if (qty > 0) receiptItems.push({ name: t.name, quantity: qty, total: Number(t.price) * qty });
+      }
+      for (const t of addonTiles) {
+        const qty = addonQty[t.id] ?? 0;
+        if (qty > 0) receiptItems.push({ name: t.name, quantity: qty, total: Number(t.price) * qty });
+      }
+      const billType: BillTypeKey = taxInvoice ? 'taxInvoice' : 'main';
+      const freshRes = await getStoreSettings();
+      const fresh = freshRes.ok ? freshRes.data : storeSettings;
+      const { cfg, ...shopInfo } = buildShopInfo(billType, fresh);
+      const hidden = new Set(cfg?.hiddenFields ?? []);
+      const finalReceiptNo = result.data.receiptNo ?? receiptNo;
+      const draftMethodLabel = [...new Set(paymentRowsDraft.map((r) => r.paymentMethodName))].join(' + ');
+      const receipt: ReceiptData = {
+        receiptType: 'receipt',
+        ...shopInfo,
+        receiptNo:    hidden.has('receiptNo') ? undefined : finalReceiptNo,
+        tableNumber:  hidden.has('tableNo')   ? '' : session.table.label,
+        cashierName:  hidden.has('cashier')   ? '' : cashierName,
+        paidAt:       hidden.has('date')      ? '' : now(),
+        items: receiptItems, subtotal: subtotalBeforeDiscount,
+        discount: manualDiscountNum + discountTileTotal, serviceCharge: 0,
+        total: result.data.total,
+        receivedAmount: draftCashTendered > 0 ? draftCashTendered : result.data.total,
+        changeAmount: result.data.changeAmount, paymentMethod: draftMethodLabel, sessionId: session.id,
+        paymentRows: paymentRowsDraft.map((row) => ({
+          label:         row.paymentMethodName,
+          accountName:   row.receivingAccountName,
+          amount:        row.amount,
+          amountTendered: row.amountTendered ?? null,
+          changeAmount:  row.changeAmount ?? null,
+          payerLabel:    row.payerLabel || null,
+        })),
+        buyerInfo: taxInvoice ? {
+          companyName: taxInvoice.companyName,
+          address:     taxInvoice.address,
+          taxId:       taxInvoice.taxId,
+        } : undefined,
+      };
+      setLastReceipt(receipt);
+      setPaid(true);
+      setPaymentRowsDraft([]);
+      await printReceipt({ type: 'receipt', payment: receipt });
+      return;
+    }
+
+    // ── Legacy path (unchanged) ──────────────────────────────────────────
     if (method === 'cash' && numpadNum < total) { toast.error('จำนวนเงินที่รับไม่เพียงพอ'); return; }
     if (method === 'cash_qr' && cashPortion > 0 && cashQrChange < 0) { toast.error('จำนวนเงินสดไม่เพียงพอ'); return; }
     setSubmitting(true);
@@ -931,8 +1030,13 @@ function PaymentPanel({
     const METHODS = ['qr_promptpay', 'cash', 'cash_qr'] as const;
     const confirmDisabled =
       submitting ||
-      (method === 'cash' && (numpadInput === '0' || change < 0)) ||
-      (method === 'cash_qr' && cashPortion > 0 && cashQrChange < 0);
+      // If draft rows started but aren't complete, block regardless of legacy state
+      (paymentRowsDraft.length > 0 && Math.round(remainingForDraft * 100) !== 0) ||
+      // Legacy path validation — only applies when no draft rows
+      (paymentRowsDraft.length === 0 && (
+        (method === 'cash' && (numpadInput === '0' || change < 0)) ||
+        (method === 'cash_qr' && cashPortion > 0 && cashQrChange < 0)
+      ));
 
     // Thai cash prediction: exact total + round up to real Thai denominations
     const predictAmounts = (t: number): number[] => {
@@ -1300,7 +1404,7 @@ function PaymentPanel({
 
                   {isDraftComplete ? (
                     <div className="rounded-lg bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800 px-3 py-2.5 text-center">
-                      <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">ร้างรายการชำระครบยอดแล้ว</p>
+                      <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">ร้างรายการชำระครบยอดแล้ว — สามารถยืนยันบิลได้</p>
                     </div>
                   ) : (
                     <div className="space-y-2">

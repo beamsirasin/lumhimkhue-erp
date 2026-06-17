@@ -8,6 +8,17 @@ export const lineItemSchema = z.object({
   amount: z.number(),
 });
 
+export const checkoutPaymentRowSchema = z.object({
+  paymentMethodId: z.string().uuid(),
+  receivingAccountId: z.string().uuid(),
+  amount: z.number().positive(),
+  amountTendered: z.number().nonnegative().optional().nullable(),
+  changeAmount: z.number().nonnegative().optional().nullable(),
+  referenceNo: z.string().max(100).optional().nullable(),
+  payerLabel: z.string().max(100).optional().nullable(),
+  note: z.string().max(500).optional().nullable(),
+});
+
 export const processPaymentSchema = z.object({
   sessionId: z.string().uuid(),
   paymentMethod: z.enum(['cash', 'cash_qr', 'qr_promptpay', 'transfer', 'card']),
@@ -17,7 +28,10 @@ export const processPaymentSchema = z.object({
   receiptNo: z.string().max(30).optional(),
   /** Addon/discount tile line items applied at checkout */
   lineItems: z.array(lineItemSchema).default([]),
+  /** Phase 2 true tender rows. Optional for legacy callers. */
+  paymentRows: z.array(checkoutPaymentRowSchema).optional(),
 });
 
 export type ProcessPaymentInput = z.infer<typeof processPaymentSchema>;
 export type LineItemInput = z.infer<typeof lineItemSchema>;
+export type CheckoutPaymentRowInput = z.infer<typeof checkoutPaymentRowSchema>;

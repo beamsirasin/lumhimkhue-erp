@@ -125,6 +125,21 @@ export const paymentStatusEnum = pgEnum('payment_status', [
   'refunded',
 ]);
 
+export const paymentMethodTypeEnum = pgEnum('payment_method_type', [
+  'promptpay',
+  'cash',
+  'welfare',
+  'mixed_legacy',
+  'other',
+]);
+
+export const receivingAccountTypeEnum = pgEnum('receiving_account_type', [
+  'bank_cash_group',
+  'welfare',
+  'cash_drawer',
+  'other',
+]);
+
 // Separate from adjustmentTypeEnum ('adjustment'|'waste') which is for stock
 export const paymentAdjustmentTypeEnum = pgEnum('payment_adjustment_type', [
   'void',
@@ -489,6 +504,112 @@ export const paymentLineItems = pgTable(
     appliedAt: timestamp('applied_at').notNull().defaultNow(),
   },
   (t) => [index('payment_line_items_payment_id_idx').on(t.paymentId)],
+);
+
+export const paymentMethods = pgTable(
+  'payment_methods',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    code: varchar('code', { length: 50 }).notNull().unique(),
+    name: varchar('name', { length: 255 }).notNull(),
+    type: paymentMethodTypeEnum('type').notNull(),
+    requiresReference: boolean('requires_reference').notNull().default(false),
+    allowOverpay: boolean('allow_overpay').notNull().default(false),
+    isActive: boolean('is_active').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('payment_methods_type_idx').on(t.type),
+    index('payment_methods_active_sort_idx').on(t.isActive, t.sortOrder),
+  ],
+);
+
+export const receivingAccounts = pgTable(
+  'receiving_accounts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    code: varchar('code', { length: 50 }).notNull().unique(),
+    name: varchar('name', { length: 255 }).notNull(),
+    type: receivingAccountTypeEnum('type').notNull(),
+    bankName: varchar('bank_name', { length: 255 }),
+    accountLabel: varchar('account_label', { length: 255 }),
+    accountLast4: varchar('account_last4', { length: 4 }),
+    isActive: boolean('is_active').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('receiving_accounts_type_idx').on(t.type),
+    index('receiving_accounts_active_sort_idx').on(t.isActive, t.sortOrder),
+  ],
+);
+
+export const paymentMethodAccounts = pgTable(
+  'payment_method_accounts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    paymentMethodId: uuid('payment_method_id')
+      .notNull()
+      .references(() => paymentMethods.id),
+    receivingAccountId: uuid('receiving_account_id')
+      .notNull()
+      .references(() => receivingAccounts.id),
+    isDefault: boolean('is_default').notNull().default(false),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('payment_method_accounts_unique_idx').on(t.paymentMethodId, t.receivingAccountId),
+    index('payment_method_accounts_method_idx').on(t.paymentMethodId),
+    index('payment_method_accounts_account_idx').on(t.receivingAccountId),
+    index('payment_method_accounts_active_idx').on(t.isActive),
+  ],
+);
+
+export const paymentRows = pgTable(
+  'payment_rows',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    paymentId: uuid('payment_id')
+      .notNull()
+      .references(() => payments.id),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => sessions.id),
+    paymentMethodId: uuid('payment_method_id')
+      .notNull()
+      .references(() => paymentMethods.id),
+    receivingAccountId: uuid('receiving_account_id')
+      .notNull()
+      .references(() => receivingAccounts.id),
+    amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+    amountTendered: numeric('amount_tendered', { precision: 10, scale: 2 }),
+    changeAmount: numeric('change_amount', { precision: 10, scale: 2 }).notNull().default('0'),
+    referenceNo: varchar('reference_no', { length: 100 }),
+    payerLabel: varchar('payer_label', { length: 100 }),
+    note: text('note'),
+    status: paymentStatusEnum('status').notNull().default('completed'),
+    cashierId: uuid('cashier_id').references(() => users.id),
+    shiftId: uuid('shift_id').references(() => cashierShifts.id),
+    paidAt: timestamp('paid_at').notNull().defaultNow(),
+    voidedAt: timestamp('voided_at'),
+    voidReason: text('void_reason'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('payment_rows_payment_id_idx').on(t.paymentId),
+    index('payment_rows_session_id_idx').on(t.sessionId),
+    index('payment_rows_method_id_idx').on(t.paymentMethodId),
+    index('payment_rows_account_id_idx').on(t.receivingAccountId),
+    index('payment_rows_shift_id_idx').on(t.shiftId),
+    index('payment_rows_status_idx').on(t.status),
+    index('payment_rows_paid_at_idx').on(t.paidAt),
+  ],
 );
 
 export const auditLogs = pgTable(
@@ -1044,6 +1165,7 @@ export const branchesRelations = relations(branches, ({ many }) => ({
 export const usersRelations = relations(users, ({ one, many }) => ({
   branch: one(branches, { fields: [users.branchId], references: [branches.id] }),
   payments: many(payments),
+  paymentRows: many(paymentRows),
   auditLogs: many(auditLogs),
   stockCounts: many(stockCounts),
   purchaseOrders: many(purchaseOrders),
@@ -1093,6 +1215,7 @@ export const sessionsRelations = relations(sessions, ({ one, many }) => ({
     fields: [sessions.id],
     references: [payments.sessionId],
   }),
+  paymentRows: many(paymentRows),
   customerVisits: many(customerVisits),
 }));
 
@@ -1149,6 +1272,7 @@ export const paymentsRelations = relations(payments, ({ one, many }) => ({
     references: [users.id],
   }),
   lineItems: many(paymentLineItems),
+  rows: many(paymentRows),
   // Phase 1: Cash Control
   shift: one(cashierShifts, {
     fields: [payments.shiftId],
@@ -1171,6 +1295,54 @@ export const paymentLineItemsRelations = relations(paymentLineItems, ({ one }) =
   pricingTile: one(pricingTiles, {
     fields: [paymentLineItems.pricingTileId],
     references: [pricingTiles.id],
+  }),
+}));
+
+export const paymentMethodsRelations = relations(paymentMethods, ({ many }) => ({
+  accounts: many(paymentMethodAccounts),
+  rows: many(paymentRows),
+}));
+
+export const receivingAccountsRelations = relations(receivingAccounts, ({ many }) => ({
+  methods: many(paymentMethodAccounts),
+  rows: many(paymentRows),
+}));
+
+export const paymentMethodAccountsRelations = relations(paymentMethodAccounts, ({ one }) => ({
+  paymentMethod: one(paymentMethods, {
+    fields: [paymentMethodAccounts.paymentMethodId],
+    references: [paymentMethods.id],
+  }),
+  receivingAccount: one(receivingAccounts, {
+    fields: [paymentMethodAccounts.receivingAccountId],
+    references: [receivingAccounts.id],
+  }),
+}));
+
+export const paymentRowsRelations = relations(paymentRows, ({ one }) => ({
+  payment: one(payments, {
+    fields: [paymentRows.paymentId],
+    references: [payments.id],
+  }),
+  session: one(sessions, {
+    fields: [paymentRows.sessionId],
+    references: [sessions.id],
+  }),
+  paymentMethod: one(paymentMethods, {
+    fields: [paymentRows.paymentMethodId],
+    references: [paymentMethods.id],
+  }),
+  receivingAccount: one(receivingAccounts, {
+    fields: [paymentRows.receivingAccountId],
+    references: [receivingAccounts.id],
+  }),
+  cashier: one(users, {
+    fields: [paymentRows.cashierId],
+    references: [users.id],
+  }),
+  shift: one(cashierShifts, {
+    fields: [paymentRows.shiftId],
+    references: [cashierShifts.id],
   }),
 }));
 
@@ -1203,6 +1375,7 @@ export const cashierShiftsRelations = relations(cashierShifts, ({ one, many }) =
     relationName: 'cashierShiftsReviewedBy',
   }),
   payments: many(payments),
+  paymentRows: many(paymentRows),
   adjustments: many(paymentAdjustments),
 }));
 
@@ -1536,6 +1709,14 @@ export type Payment = typeof payments.$inferSelect;
 export type NewPayment = typeof payments.$inferInsert;
 export type PaymentLineItem = typeof paymentLineItems.$inferSelect;
 export type NewPaymentLineItem = typeof paymentLineItems.$inferInsert;
+export type PaymentMethod = typeof paymentMethods.$inferSelect;
+export type NewPaymentMethod = typeof paymentMethods.$inferInsert;
+export type ReceivingAccount = typeof receivingAccounts.$inferSelect;
+export type NewReceivingAccount = typeof receivingAccounts.$inferInsert;
+export type PaymentMethodAccount = typeof paymentMethodAccounts.$inferSelect;
+export type NewPaymentMethodAccount = typeof paymentMethodAccounts.$inferInsert;
+export type PaymentRow = typeof paymentRows.$inferSelect;
+export type NewPaymentRow = typeof paymentRows.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type NewAuditLog = typeof auditLogs.$inferInsert;
 export type StoreSettings = typeof storeSettings.$inferSelect;
@@ -1606,6 +1787,8 @@ export type NewPaymentAdjustment = typeof paymentAdjustments.$inferInsert;
 export type DiscountApproval = typeof discountApprovals.$inferSelect;
 export type NewDiscountApproval = typeof discountApprovals.$inferInsert;
 export type PaymentStatus = typeof paymentStatusEnum.enumValues[number];
+export type PaymentMethodType = typeof paymentMethodTypeEnum.enumValues[number];
+export type ReceivingAccountType = typeof receivingAccountTypeEnum.enumValues[number];
 export type CashierShiftStatus = typeof cashierShiftStatusEnum.enumValues[number];
 export type PaymentAdjustmentType = typeof paymentAdjustmentTypeEnum.enumValues[number];
 export type PaymentAdjustmentStatus = typeof paymentAdjustmentStatusEnum.enumValues[number];

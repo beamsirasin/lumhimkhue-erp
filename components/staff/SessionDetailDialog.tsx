@@ -189,13 +189,42 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                       </span>
                     </div>
                   )}
-                  <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">วิธีชำระ</span>
-                    <span className="text-foreground">
-                      {METHOD_LABEL[data.session.payment.paymentMethod] ?? data.session.payment.paymentMethod}
-                    </span>
-                  </div>
-                  {Number(data.session.payment.changeAmount) > 0 && (
+                  {data.session.payment.rows?.length > 0 ? (
+                    <div className="space-y-2 pt-0.5">
+                      <span className="text-xs text-muted-foreground">รายการชำระ</span>
+                      {data.session.payment.rows.map((pr) => (
+                        <div key={pr.id} className="rounded border border-green-200 bg-white/60 px-2.5 py-2 space-y-1">
+                          <div className="flex justify-between text-xs font-medium text-foreground">
+                            <span>{pr.paymentMethod?.name ?? '—'} / {pr.receivingAccount?.name ?? '—'}</span>
+                            <span className="tabular-nums">฿{Number(pr.amount).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          {pr.amountTendered != null && (
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                              <span>รับ</span>
+                              <span className="tabular-nums">฿{Number(pr.amountTendered).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                            </div>
+                          )}
+                          {Number(pr.changeAmount) > 0 && (
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                              <span>ทอน</span>
+                              <span className="tabular-nums">฿{Number(pr.changeAmount).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                            </div>
+                          )}
+                          {pr.payerLabel && (
+                            <div className="text-xs text-muted-foreground">ผู้ชำระ: {pr.payerLabel}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">วิธีชำระ</span>
+                      <span className="text-foreground">
+                        {METHOD_LABEL[data.session.payment.paymentMethod] ?? data.session.payment.paymentMethod}
+                      </span>
+                    </div>
+                  )}
+                  {!(data.session.payment.rows?.length > 0) && Number(data.session.payment.changeAmount) > 0 && (
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">เงินทอน</span>
                       <span className="tabular-nums text-foreground">
