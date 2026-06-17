@@ -1,6 +1,6 @@
 'use server';
 
-import { eq, and, gte, not, desc, asc, inArray } from 'drizzle-orm';
+import { eq, and, gte, not, lte, desc, asc, inArray } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
@@ -10,7 +10,7 @@ import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { writeAuditLog } from '@/lib/actions/audit';
 import { db } from '@/lib/db';
-import { sessions, tables, payments, paymentLineItems, paymentAdjustments, orders, orderItems, menuItems } from '@/lib/db/schema';
+import { sessions, tables, payments, paymentLineItems, paymentAdjustments, orders, auditLogs, cashierShifts, users } from '@/lib/db/schema';
 
 const TZ = 'Asia/Bangkok';
 
@@ -243,66 +243,65 @@ export async function deletePaymentRecord(input: unknown) {
   if (!payment) return { ok: false as const, error: 'ไม่พบข้อมูลการชำระเงิน' };
 
   try {
-    await db.transaction(async (tx) => {
-      // Fetch line items inside tx for a consistent snapshot point-in-time
-      const lineItems = await tx
-        .select({
-          id: paymentLineItems.id,
-          pricingTileId: paymentLineItems.pricingTileId,
-          quantity: paymentLineItems.quantity,
-          amount: paymentLineItems.amount,
-        })
-        .from(paymentLineItems)
-        .where(eq(paymentLineItems.paymentId, paymentId));
+    // neon-http does not support db.transaction() — ops run sequentially.
+    // INSERT is first (Approach C): if it fails → payment untouched.
+    // If a subsequent delete fails → orphaned adjustment row (detectable) but payment preserved.
+    const lineItems = await db
+      .select({
+        id: paymentLineItems.id,
+        pricingTileId: paymentLineItems.pricingTileId,
+        quantity: paymentLineItems.quantity,
+        amount: paymentLineItems.amount,
+      })
+      .from(paymentLineItems)
+      .where(eq(paymentLineItems.paymentId, paymentId));
 
-      // Insert immutable audit record — must commit before any delete.
-      // paymentId has no FK (Approach C): payment_adjustments survives after hard delete.
-      await tx.insert(paymentAdjustments).values({
-        paymentId: payment.id,
-        sessionId: payment.sessionId,
-        shiftId: payment.shiftId,
-        type: 'void',
-        amount: payment.total,
-        reason: reason ?? 'ไม่ระบุ',
-        requestedBy: authSession.user.id,
-        approvedBy: authSession.user.id,
-        approvedAt: new Date(),
-        status: 'approved',
-        paymentSnapshot: {
-          payment: {
-            id: payment.id,
-            sessionId: payment.sessionId,
-            subtotal: payment.subtotal,
-            serviceCharge: payment.serviceCharge,
-            discount: payment.discount,
-            total: payment.total,
-            paymentMethod: payment.paymentMethod,
-            receivedAmount: payment.receivedAmount,
-            changeAmount: payment.changeAmount,
-            paidAt: payment.paidAt.toISOString(),
-            processedBy: payment.processedBy,
-            receiptNo: payment.receiptNo,
-            notes: payment.notes,
-            shiftId: payment.shiftId,
-            status: payment.status,
-          },
-          lineItems,
-          context: {
-            action: 'delete_payment',
-            performedBy: authSession.user.id,
-            performedAt: new Date().toISOString(),
-          },
+    // Insert immutable audit record first — Approach C guarantee.
+    // paymentId has no FK: payment_adjustments survives after hard delete.
+    await db.insert(paymentAdjustments).values({
+      paymentId: payment.id,
+      sessionId: payment.sessionId,
+      shiftId: payment.shiftId,
+      type: 'void',
+      amount: payment.total,
+      reason: reason ?? 'ไม่ระบุ',
+      requestedBy: authSession.user.id,
+      approvedBy: authSession.user.id,
+      approvedAt: new Date(),
+      status: 'approved',
+      paymentSnapshot: {
+        payment: {
+          id: payment.id,
+          sessionId: payment.sessionId,
+          subtotal: payment.subtotal,
+          serviceCharge: payment.serviceCharge,
+          discount: payment.discount,
+          total: payment.total,
+          paymentMethod: payment.paymentMethod,
+          receivedAmount: payment.receivedAmount,
+          changeAmount: payment.changeAmount,
+          paidAt: payment.paidAt.toISOString(),
+          processedBy: payment.processedBy,
+          receiptNo: payment.receiptNo,
+          notes: payment.notes,
+          shiftId: payment.shiftId,
+          status: payment.status,
         },
-      });
-
-      // Hard delete — rolls back atomically if insert above failed
-      await tx.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
-      await tx.delete(payments).where(eq(payments.id, paymentId));
-      // Mark session closed: stays in history but won't re-appear in POS
-      await tx.update(sessions)
-        .set({ status: 'closed' })
-        .where(eq(sessions.id, payment.sessionId));
+        lineItems,
+        context: {
+          action: 'delete_payment',
+          performedBy: authSession.user.id,
+          performedAt: new Date().toISOString(),
+        },
+      },
     });
+
+    await db.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
+    await db.delete(payments).where(eq(payments.id, paymentId));
+    // Mark session closed: stays in history but won't re-appear in POS
+    await db.update(sessions)
+      .set({ status: 'closed' })
+      .where(eq(sessions.id, payment.sessionId));
 
     // Fire-and-forget secondary log (payment_adjustments is the primary audit trail)
     writeAuditLog({
@@ -386,71 +385,69 @@ export async function reopenSessionForPayment(input: unknown) {
   const allTableIds = [...new Set([mainSession.tableId, ...groupLinked.map((s) => s.tableId)])];
 
   try {
-    await db.transaction(async (tx) => {
-      // Fetch line items inside tx for a consistent snapshot point-in-time
-      const lineItems = await tx
-        .select({
-          id: paymentLineItems.id,
-          pricingTileId: paymentLineItems.pricingTileId,
-          quantity: paymentLineItems.quantity,
-          amount: paymentLineItems.amount,
-        })
-        .from(paymentLineItems)
-        .where(eq(paymentLineItems.paymentId, paymentId));
+    // neon-http does not support db.transaction() — ops run sequentially.
+    // INSERT is first (Approach C): if it fails → payment untouched.
+    const lineItems = await db
+      .select({
+        id: paymentLineItems.id,
+        pricingTileId: paymentLineItems.pricingTileId,
+        quantity: paymentLineItems.quantity,
+        amount: paymentLineItems.amount,
+      })
+      .from(paymentLineItems)
+      .where(eq(paymentLineItems.paymentId, paymentId));
 
-      // Insert immutable audit record — must commit before any delete.
-      // paymentId has no FK (Approach C): payment_adjustments survives after hard delete.
-      await tx.insert(paymentAdjustments).values({
-        paymentId: payment.id,
-        sessionId: payment.sessionId,
-        shiftId: payment.shiftId,
-        type: 'void',
-        amount: payment.total,
-        reason: reason ?? 'ไม่ระบุ',
-        requestedBy: authSession.user.id,
-        approvedBy: authSession.user.id,
-        approvedAt: new Date(),
-        status: 'approved',
-        paymentSnapshot: {
-          payment: {
-            id: payment.id,
-            sessionId: payment.sessionId,
-            subtotal: payment.subtotal,
-            serviceCharge: payment.serviceCharge,
-            discount: payment.discount,
-            total: payment.total,
-            paymentMethod: payment.paymentMethod,
-            receivedAmount: payment.receivedAmount,
-            changeAmount: payment.changeAmount,
-            paidAt: payment.paidAt.toISOString(),
-            processedBy: payment.processedBy,
-            receiptNo: payment.receiptNo,
-            notes: payment.notes,
-            shiftId: payment.shiftId,
-            status: payment.status,
-          },
-          lineItems,
-          linkedSessions: groupLinked,
-          context: {
-            action: 'reopen_session',
-            performedBy: authSession.user.id,
-            performedAt: new Date().toISOString(),
-            allSessionIds,
-            allTableIds,
+    // Insert immutable audit record first — Approach C guarantee.
+    // paymentId has no FK: payment_adjustments survives after hard delete.
+    await db.insert(paymentAdjustments).values({
+      paymentId: payment.id,
+      sessionId: payment.sessionId,
+      shiftId: payment.shiftId,
+      type: 'void',
+      amount: payment.total,
+      reason: reason ?? 'ไม่ระบุ',
+      requestedBy: authSession.user.id,
+      approvedBy: authSession.user.id,
+      approvedAt: new Date(),
+      status: 'approved',
+      paymentSnapshot: {
+        payment: {
+          id: payment.id,
+          sessionId: payment.sessionId,
+          subtotal: payment.subtotal,
+          serviceCharge: payment.serviceCharge,
+          discount: payment.discount,
+          total: payment.total,
+          paymentMethod: payment.paymentMethod,
+          receivedAmount: payment.receivedAmount,
+          changeAmount: payment.changeAmount,
+          paidAt: payment.paidAt.toISOString(),
+          processedBy: payment.processedBy,
+          receiptNo: payment.receiptNo,
+          notes: payment.notes,
+          shiftId: payment.shiftId,
+          status: payment.status,
+        },
+        lineItems,
+        linkedSessions: groupLinked,
+        context: {
+          action: 'reopen_session',
+          performedBy: authSession.user.id,
+          performedAt: new Date().toISOString(),
+          allSessionIds,
+          allTableIds,
           },
         },
       });
 
-      // Hard delete — rolls back atomically if insert above failed
-      await tx.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
-      await tx.delete(payments).where(eq(payments.id, paymentId));
-      await tx.update(sessions)
-        .set({ status: 'closing', closedAt: null })
-        .where(inArray(sessions.id, allSessionIds));
-      await tx.update(tables)
-        .set({ status: 'occupied' })
-        .where(inArray(tables.id, allTableIds));
-    });
+    await db.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
+    await db.delete(payments).where(eq(payments.id, paymentId));
+    await db.update(sessions)
+      .set({ status: 'closing', closedAt: null })
+      .where(inArray(sessions.id, allSessionIds));
+    await db.update(tables)
+      .set({ status: 'occupied' })
+      .where(inArray(tables.id, allTableIds));
 
     // Fire-and-forget secondary log (payment_adjustments is the primary audit trail)
     writeAuditLog({
@@ -470,6 +467,187 @@ export async function reopenSessionForPayment(input: unknown) {
     return { ok: true as const, sessionId: mainSession.id };
   } catch (e) {
     console.error('[reopenSessionForPayment]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+/* ─── Phase 1 Step 7: Audit / Fraud Report ─────────────────────────────────*/
+
+const AUDIT_ACTIONS = [
+  'delete_payment', 'void_payment', 'reopen_session', 'process_payment',
+  'shift_open', 'shift_close', 'shift_review',
+  'discount_request', 'discount_approve', 'discount_reject',
+  'cancel_order',
+] as const;
+
+export type AuditAction = typeof AUDIT_ACTIONS[number];
+
+const auditReportSchema = z.object({
+  dateFrom: z.string().optional(),
+  dateTo:   z.string().optional(),
+  action:   z.enum(AUDIT_ACTIONS).optional(),
+  userId:   z.string().uuid().optional(),
+});
+
+export async function getAuditReport(input: unknown) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  const role = authSession.user.role;
+  if (role !== 'owner' && role !== 'manager')
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  const parsed = auditReportSchema.safeParse(input ?? {});
+  if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
+  const { dateFrom, dateTo, action, userId } = parsed.data;
+
+  try {
+    const rows = await db
+      .select({
+        id: auditLogs.id,
+        action: auditLogs.action,
+        entity: auditLogs.entity,
+        entityId: auditLogs.entityId,
+        metadata: auditLogs.metadata,
+        createdAt: auditLogs.createdAt,
+        userId: auditLogs.userId,
+        userName: users.name,
+      })
+      .from(auditLogs)
+      .leftJoin(users, eq(auditLogs.userId, users.id))
+      .where(
+        and(
+          inArray(auditLogs.action, [...AUDIT_ACTIONS]),
+          action   ? eq(auditLogs.action, action)              : undefined,
+          userId   ? eq(auditLogs.userId, userId)              : undefined,
+          dateFrom ? gte(auditLogs.createdAt, new Date(dateFrom)) : undefined,
+          dateTo   ? lte(auditLogs.createdAt, new Date(dateTo))   : undefined,
+        ),
+      )
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(500);
+
+    return { ok: true as const, data: rows };
+  } catch (e) {
+    console.error('[getAuditReport]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+export type AuditReportRow = NonNullable<
+  Extract<Awaited<ReturnType<typeof getAuditReport>>, { ok: true }>['data']
+>[number];
+
+const shiftReportSchema = z.object({
+  dateFrom: z.string().optional(),
+  dateTo:   z.string().optional(),
+  cashierId: z.string().uuid().optional(),
+});
+
+export async function getShiftReport(input: unknown) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  const role = authSession.user.role;
+  if (role !== 'owner' && role !== 'manager')
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  const parsed = shiftReportSchema.safeParse(input ?? {});
+  if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
+  const { dateFrom, dateTo, cashierId } = parsed.data;
+
+  try {
+    const rows = await db
+      .select({
+        id: cashierShifts.id,
+        cashierId: cashierShifts.cashierId,
+        cashierName: users.name,
+        status: cashierShifts.status,
+        openedAt: cashierShifts.openedAt,
+        closedAt: cashierShifts.closedAt,
+        openingFloat: cashierShifts.openingFloat,
+        expectedCash: cashierShifts.expectedCash,
+        actualCash: cashierShifts.actualCash,
+        cashDifference: cashierShifts.cashDifference,
+        differenceReason: cashierShifts.differenceReason,
+        reviewNotes: cashierShifts.reviewNotes,
+        reviewedAt: cashierShifts.reviewedAt,
+      })
+      .from(cashierShifts)
+      .leftJoin(users, eq(cashierShifts.cashierId, users.id))
+      .where(
+        and(
+          cashierId ? eq(cashierShifts.cashierId, cashierId)        : undefined,
+          dateFrom  ? gte(cashierShifts.openedAt, new Date(dateFrom)) : undefined,
+          dateTo    ? lte(cashierShifts.openedAt, new Date(dateTo))   : undefined,
+        ),
+      )
+      .orderBy(desc(cashierShifts.openedAt))
+      .limit(200);
+
+    return {
+      ok: true as const,
+      data: rows.map((r) => ({
+        ...r,
+        openingFloat: Number(r.openingFloat),
+        expectedCash: r.expectedCash != null ? Number(r.expectedCash) : null,
+        actualCash:   r.actualCash   != null ? Number(r.actualCash)   : null,
+        cashDifference: r.cashDifference != null ? Number(r.cashDifference) : null,
+      })),
+    };
+  } catch (e) {
+    console.error('[getShiftReport]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+export type ShiftReportRow = NonNullable<
+  Extract<Awaited<ReturnType<typeof getShiftReport>>, { ok: true }>['data']
+>[number];
+
+export async function getPaymentAdjustmentsReport(input: unknown) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  const role = authSession.user.role;
+  if (role !== 'owner' && role !== 'manager')
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  const parsed = z.object({
+    dateFrom: z.string().optional(),
+    dateTo:   z.string().optional(),
+  }).safeParse(input ?? {});
+  if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
+  const { dateFrom, dateTo } = parsed.data;
+
+  try {
+    const rows = await db
+      .select({
+        id: paymentAdjustments.id,
+        paymentId: paymentAdjustments.paymentId,
+        sessionId: paymentAdjustments.sessionId,
+        type: paymentAdjustments.type,
+        amount: paymentAdjustments.amount,
+        reason: paymentAdjustments.reason,
+        status: paymentAdjustments.status,
+        createdAt: paymentAdjustments.createdAt,
+        requestedBy: paymentAdjustments.requestedBy,
+        requesterName: users.name,
+      })
+      .from(paymentAdjustments)
+      .leftJoin(users, eq(paymentAdjustments.requestedBy, users.id))
+      .where(
+        and(
+          dateFrom ? gte(paymentAdjustments.createdAt, new Date(dateFrom)) : undefined,
+          dateTo   ? lte(paymentAdjustments.createdAt, new Date(dateTo))   : undefined,
+        ),
+      )
+      .orderBy(desc(paymentAdjustments.createdAt))
+      .limit(500);
+
+    return {
+      ok: true as const,
+      data: rows.map((r) => ({ ...r, amount: Number(r.amount) })),
+    };
+  } catch (e) {
+    console.error('[getPaymentAdjustmentsReport]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
   }
 }

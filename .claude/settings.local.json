@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "PowerShell(cd d:\\\\dev\\\\lumhimkhue-erp; npx eslint app/\\\\\\(admin\\\\\\)/inventory/count/page.tsx app/\\\\\\(admin\\\\\\)/inventory/ingredients/page.tsx app/\\\\\\(admin\\\\\\)/inventory/orders/page.tsx app/\\\\\\(admin\\\\\\)/inventory/page.tsx app/\\\\\\(admin\\\\\\)/inventory/suppliers/page.tsx components/admin/BranchesPage.tsx components/admin/DashboardPage.tsx 2>&1 | Select-String \"error\" | Select-Object -First 20)"
+    ]
+  }
+}

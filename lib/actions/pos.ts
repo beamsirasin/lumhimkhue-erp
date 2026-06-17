@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { eq, inArray, asc } from 'drizzle-orm';
+import { eq, and, inArray, asc } from 'drizzle-orm';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
@@ -16,6 +16,7 @@ import {
   paymentLineItems,
   pricingTiles,
   storeSettings,
+  cashierShifts,
 } from '@/lib/db/schema';
 import { processPaymentSchema } from '@/lib/validations/pos';
 
@@ -153,6 +154,10 @@ export async function getActiveTilesForPos() {
   }
 }
 
+// TODO Phase 1 Step 5E: move to store_settings.require_shift_for_cash when schema field is ready.
+// Set env STRICT_SHIFT_CASH=true to block cash payments without an open shift.
+const STRICT_SHIFT_CASH = process.env.STRICT_SHIFT_CASH === 'true';
+
 export async function processPayment(input: unknown) {
   const authSession = await auth();
   if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
@@ -165,8 +170,8 @@ export async function processPayment(input: unknown) {
   const { sessionId, paymentMethod, receivedAmount, discount, notes, receiptNo, lineItems } = parsed.data;
 
   try {
-    // Parallel: session fetch + idempotency check + store settings
-    const [session, existingPayment, [settings]] = await Promise.all([
+    // Parallel: session fetch + idempotency check + store settings + active shift lookup
+    const [session, existingPayment, [settings], activeShiftRows] = await Promise.all([
       db.query.sessions.findFirst({
         where: eq(sessions.id, sessionId),
         with: {
@@ -181,9 +186,20 @@ export async function processPayment(input: unknown) {
       db.select({
         loyaltyPointsRedeemRate: storeSettings.loyaltyPointsRedeemRate,
       }).from(storeSettings).limit(1),
+      // Soft-link: find open shift for current user — null if no shift open (never blocks payment)
+      db.select({ id: cashierShifts.id })
+        .from(cashierShifts)
+        .where(and(eq(cashierShifts.cashierId, authSession.user.id), eq(cashierShifts.status, 'open')))
+        .limit(1),
     ]);
+    const activeShiftId = activeShiftRows[0]?.id ?? null;
 
     if (!session) return { ok: false as const, error: 'session ไม่ถูกต้อง' };
+
+    // Strict mode: block cash payments when no shift is open (default off — set STRICT_SHIFT_CASH=true to enable)
+    if (STRICT_SHIFT_CASH && !activeShiftId && parsed.data.paymentMethod === 'cash') {
+      return { ok: false as const, error: 'ต้องเปิดรอบแคชเชียร์ก่อนรับเงินสด' };
+    }
 
     // Idempotency: if payment already exists (e.g. previous attempt succeeded in DB but threw before returning), return it
     if (existingPayment) {
@@ -278,7 +294,7 @@ export async function processPayment(input: unknown) {
 
     const changeAmount = paymentMethod === 'cash' ? receivedAmount - total : 0;
 
-    // Insert payment
+    // Insert payment — shiftId linked if cashier has an open shift, null otherwise
     const [payment] = await db.insert(payments).values({
       sessionId,
       subtotal: String(subtotal),
@@ -291,6 +307,7 @@ export async function processPayment(input: unknown) {
       processedBy: authSession.user.id,
       receiptNo: receiptNo ?? null,
       notes,
+      shiftId: activeShiftId,
     }).returning({ id: payments.id });
 
     // Insert payment line items
@@ -345,11 +362,17 @@ export async function processPayment(input: unknown) {
       action: 'process_payment',
       entity: 'payments',
       entityId: payment.id,
-      after: { sessionId, total, paymentMethod, receiptNo: receiptNo ?? null },
+      after: { sessionId, total, paymentMethod, receiptNo: receiptNo ?? null, shiftId: activeShiftId },
     });
     return {
       ok: true as const,
-      data: { total, changeAmount, receiptNo: receiptNo ?? undefined, taxInvoiceNumber },
+      data: {
+        total,
+        changeAmount,
+        receiptNo: receiptNo ?? undefined,
+        taxInvoiceNumber,
+        shiftWarning: !activeShiftId, // true = payment saved without a linked shift
+      },
     };
   } catch (e) {
     console.error('[processPayment]', e);

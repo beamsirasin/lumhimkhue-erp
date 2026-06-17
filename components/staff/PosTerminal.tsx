@@ -20,6 +20,7 @@ import { incrementReceiptCounter } from '@/lib/actions/store';
 import type { PosSession, PosSessionDetail } from '@/lib/actions/pos';
 import { Printer, CheckCircle2, Tag, Package, X, Loader2, Receipt, Save } from 'lucide-react';
 import { PricingTile as PricingTileCard } from '@/components/staff/PricingTile';
+import { ShiftWidget } from '@/components/staff/ShiftWidget';
 import { print as printReceipt } from '@/lib/printer/service';
 import type { ReceiptData } from '@/lib/printer/types';
 import type { PricingTile } from '@/lib/db/schema';
@@ -140,7 +141,7 @@ export function PosTerminal({ initialSessions, cashierName, initialSelectedId = 
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="mb-5">
+      <div className="mb-4">
         <h1 className="text-xl font-semibold text-foreground">POS / แคชเชียร์</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           {closing.length > 0 && (
@@ -149,6 +150,9 @@ export function PosTerminal({ initialSessions, cashierName, initialSelectedId = 
           {active.length} โต๊ะที่ใช้งาน
         </p>
       </div>
+
+      {/* Cashier shift banner */}
+      <ShiftWidget />
 
       {/* Session grid */}
       {primarySessions.length === 0 ? (
