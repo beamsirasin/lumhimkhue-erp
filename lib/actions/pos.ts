@@ -246,7 +246,10 @@ export async function processPayment(input: unknown) {
     if (!session) return { ok: false as const, error: 'session ไม่ถูกต้อง' };
 
     // Strict mode: block cash payments when no shift is open (default off — set STRICT_SHIFT_CASH=true to enable)
-    if (STRICT_SHIFT_CASH && !activeShiftId && parsed.data.paymentMethod === 'cash') {
+    // cash_qr contains a cash component and must also be blocked
+    const legacyHasCash =
+      parsed.data.paymentMethod === 'cash' || parsed.data.paymentMethod === 'cash_qr';
+    if (STRICT_SHIFT_CASH && !activeShiftId && legacyHasCash) {
       return { ok: false as const, error: 'ต้องเปิดรอบแคชเชียร์ก่อนรับเงินสด' };
     }
 

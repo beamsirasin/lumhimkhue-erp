@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { useQuery } from '@tanstack/react-query';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import {
   getAuditReport,
   getShiftReport,
@@ -209,7 +210,18 @@ function ShiftTable({ rows }: { rows: ShiftReportRow[] }) {
 }
 
 /* ─── Table: payment adjustments ────────────────────────────────────────────*/
+function mutationActionLabel(row: AdjRow): string {
+  switch (row.mutationAction) {
+    case 'delete_payment': return 'ลบการชำระเงิน';
+    case 'reopen_payment':
+    case 'reopen_session': return 'แก้ไข → POS';
+    default: return ADJ_TYPE_LABELS[row.type] ?? row.type;
+  }
+}
+
 function AdjustmentsTable({ rows }: { rows: AdjRow[] }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   if (!rows.length)
     return <div className="py-16 text-center text-sm text-muted-foreground">ไม่มีข้อมูล</div>;
 
@@ -218,32 +230,135 @@ function AdjustmentsTable({ rows }: { rows: AdjRow[] }) {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b text-xs text-muted-foreground">
+            <th className="py-2 pr-2 w-6" />
             <th className="py-2 pr-4 text-left font-medium">เวลา</th>
             <th className="py-2 pr-4 text-left font-medium">ผู้ขอ</th>
-            <th className="py-2 pr-4 text-left font-medium">ประเภท</th>
+            <th className="py-2 pr-4 text-left font-medium">ประเภทการกระทำ</th>
+            <th className="py-2 pr-4 text-left font-medium">สถานะรอบ</th>
+            <th className="py-2 pr-4 text-left font-medium">หลังปิดรอบ</th>
             <th className="py-2 pr-4 text-right font-medium">จำนวน</th>
             <th className="py-2 pr-4 text-left font-medium">สถานะ</th>
-            <th className="py-2 pr-4 text-left font-medium">Payment ID</th>
             <th className="py-2 text-left font-medium">เหตุผล</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.id} className="border-b last:border-0 hover:bg-muted/30">
-              <td className="py-2 pr-4 whitespace-nowrap text-muted-foreground">{fmt(r.createdAt)}</td>
-              <td className="py-2 pr-4 whitespace-nowrap">{r.requesterName ?? r.requestedBy?.slice(0, 8)}</td>
-              <td className="py-2 pr-4 whitespace-nowrap">
-                {ADJ_TYPE_LABELS[r.type] ?? r.type}
-              </td>
-              <td className="py-2 pr-4 text-right">{thb(r.amount)}</td>
-              <td className="py-2 pr-4"><StatusBadge status={r.status ?? 'approved'} /></td>
-              <td className="py-2 pr-4 text-xs text-muted-foreground font-mono">
-                {r.paymentId?.slice(0, 8)}…
-              </td>
-              <td className="py-2 max-w-[200px] truncate text-xs text-muted-foreground">
-                {r.reason ?? '—'}
-              </td>
-            </tr>
+            <Fragment key={r.id}>
+              <tr className="border-b hover:bg-muted/30">
+                <td className="py-2 pr-2">
+                  <button
+                    type="button"
+                    aria-label="ดูรายละเอียด"
+                    onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
+                    className="rounded p-0.5 hover:bg-muted text-muted-foreground"
+                  >
+                    {expandedId === r.id
+                      ? <ChevronUp className="size-3.5" />
+                      : <ChevronDown className="size-3.5" />
+                    }
+                  </button>
+                </td>
+                <td className="py-2 pr-4 whitespace-nowrap text-muted-foreground">{fmt(r.createdAt)}</td>
+                <td className="py-2 pr-4 whitespace-nowrap">{r.requesterName ?? r.requestedBy?.slice(0, 8)}</td>
+                <td className="py-2 pr-4 whitespace-nowrap">{mutationActionLabel(r)}</td>
+                <td className="py-2 pr-4">
+                  {r.shiftStatusAtMutation
+                    ? <StatusBadge status={r.shiftStatusAtMutation} />
+                    : <span className="text-muted-foreground">—</span>
+                  }
+                </td>
+                <td className="py-2 pr-4">
+                  {r.mutationAfterClose
+                    ? (
+                      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
+                        หลังปิดรอบ
+                      </span>
+                    )
+                    : <span className="text-muted-foreground">—</span>
+                  }
+                </td>
+                <td className="py-2 pr-4 text-right tabular-nums">{thb(r.amount)}</td>
+                <td className="py-2 pr-4"><StatusBadge status={r.status ?? 'approved'} /></td>
+                <td
+                  className="py-2 max-w-xs whitespace-normal text-xs text-muted-foreground"
+                  title={r.mutationReason ?? r.reason ?? undefined}
+                >
+                  {r.mutationReason ?? r.reason ?? '—'}
+                </td>
+              </tr>
+              {expandedId === r.id && (
+                <tr className="bg-muted/20 border-b">
+                  <td colSpan={9} className="px-6 py-3">
+                    <div className="space-y-3 text-xs">
+                      {/* Context */}
+                      <div className="space-y-1.5">
+                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                          บริบทการกระทำ
+                        </p>
+                        <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-0.5 text-muted-foreground">
+                          <span>ประเภท</span>
+                          <span className="text-foreground">{mutationActionLabel(r)}</span>
+                          <span>Payment ID</span>
+                          <span className="text-foreground font-mono">{r.paymentId}</span>
+                          <span>Shift ID</span>
+                          <span className="text-foreground font-mono">{r.shiftId?.slice(0, 8) ?? '—'}</span>
+                          <span>สถานะรอบขณะกระทำ</span>
+                          <span className="text-foreground">{r.shiftStatusAtMutation ?? '—'}</span>
+                          <span>ปิดรอบเมื่อ</span>
+                          <span className="text-foreground">{r.shiftClosedAt ? fmt(r.shiftClosedAt) : '—'}</span>
+                          <span>หลังปิดรอบ</span>
+                          <span className="text-foreground">{r.mutationAfterClose ? 'ใช่' : 'ไม่ใช่'}</span>
+                          <span>เหตุผลผู้แก้ไข</span>
+                          <span className="text-foreground">{r.mutationReason ?? r.reason ?? '—'}</span>
+                        </div>
+                      </div>
+                      {/* Payment rows snapshot */}
+                      <div className="space-y-1.5">
+                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                          รายการ payment rows ก่อนการกระทำ ({r.paymentRowCount} รายการ · ยอดรวมที่กระทบ {thb(r.collectionImpact)})
+                        </p>
+                        {r.paymentRowsBefore.length === 0 ? (
+                          <p className="text-muted-foreground">ไม่มีรายละเอียด payment_rows ใน snapshot นี้</p>
+                        ) : (
+                          <table className="w-full border-collapse">
+                            <thead>
+                              <tr className="border-b text-muted-foreground">
+                                <th className="py-1 pr-3 text-left font-medium">#</th>
+                                <th className="py-1 pr-3 text-right font-medium">ยอด</th>
+                                <th className="py-1 pr-3 text-right font-medium">รับมา</th>
+                                <th className="py-1 pr-3 text-right font-medium">ทอน</th>
+                                <th className="py-1 pr-3 text-left font-medium">สถานะ</th>
+                                <th className="py-1 pr-3 text-left font-medium">Method ID</th>
+                                <th className="py-1 text-left font-medium">Account ID</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {r.paymentRowsBefore.map((pr, i) => (
+                                <tr key={i} className="border-b last:border-0">
+                                  <td className="py-1 pr-3 text-muted-foreground">{i + 1}</td>
+                                  <td className="py-1 pr-3 text-right tabular-nums">{thb(pr.amount)}</td>
+                                  <td className="py-1 pr-3 text-right tabular-nums">{pr.amountTendered != null ? thb(pr.amountTendered) : '—'}</td>
+                                  <td className="py-1 pr-3 text-right tabular-nums">{pr.changeAmount != null ? thb(pr.changeAmount) : '—'}</td>
+                                  <td className="py-1 pr-3 text-muted-foreground">{pr.status}</td>
+                                  <td className="py-1 pr-3 font-mono text-muted-foreground">{pr.paymentMethodId.slice(0, 8)}</td>
+                                  <td className="py-1 font-mono text-muted-foreground">{pr.receivingAccountId?.slice(0, 8) ?? '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot>
+                              <tr className="border-t">
+                                <td colSpan={4} className="pt-1.5 font-semibold">ยอดรวมที่กระทบ</td>
+                                <td colSpan={3} className="pt-1.5 text-right font-semibold tabular-nums">{thb(r.collectionImpact)}</td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>

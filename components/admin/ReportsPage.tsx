@@ -9,10 +9,12 @@ import {
 } from 'recharts';
 import { getReportSummary } from '@/lib/actions/dashboard';
 import { getFoodCostReport } from '@/lib/actions/recipes';
+import { getPaymentCollectionReport } from '@/lib/actions/reports/collection';
 import type { ReportSummary } from '@/lib/actions/dashboard';
 import type { FoodCostRow } from '@/lib/actions/recipes';
+import type { PaymentCollectionReport } from '@/lib/actions/reports/collection';
 
-type Tab = 'revenue' | 'foodcost';
+type Tab = 'revenue' | 'foodcost' | 'collection';
 type SessionType = 'all' | 'primary' | 'secondary';
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -27,6 +29,21 @@ const SESSION_TYPE_LABELS: Record<SessionType, string> = {
   all: 'รวมทั้งหมด',
   primary: 'บัญชีหลัก',
   secondary: 'บัญชีรอง',
+};
+
+const METHOD_TYPE_LABELS: Record<string, string> = {
+  cash: 'เงินสด',
+  promptpay: 'QR PromptPay',
+  welfare: 'สวัสดิการรัฐ',
+  mixed_legacy: 'ประวัติ QR+เงินสด',
+  other: 'อื่น ๆ',
+};
+
+const ACCOUNT_TYPE_LABELS: Record<string, string> = {
+  bank_cash_group: 'บัญชีธนาคาร/เงินสด',
+  welfare: 'บัญชีสวัสดิการรัฐ',
+  cash_drawer: 'ลิ้นชักเงินสด',
+  other: 'อื่น ๆ',
 };
 
 // ─── Revenue Report ────────────────────────────────────────────────────────────
@@ -475,14 +492,232 @@ function FoodCostReport() {
   );
 }
 
+// ─── Collection Report ─────────────────────────────────────────────────────────
+
+function CollectionReport() {
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const [fromDate, setFromDate] = useState(today);
+  const [toDate, setToDate] = useState(today);
+  const [loading, setLoading] = useState(true);
+  const [report, setReport] = useState<PaymentCollectionReport | null>(null);
+
+  useEffect(() => {
+    if (fromDate > toDate) return;
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
+    getPaymentCollectionReport(fromDate, toDate).then((r) => {
+      if (cancelled) return;
+      setLoading(false);
+      if (!r.ok) { toast.error(r.error); return; }
+      setReport(r.data);
+    });
+    return () => { cancelled = true; };
+  }, [fromDate, toDate]);
+
+  return (
+    <div className="space-y-5">
+
+      {/* ── Controls ──────────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-end gap-2">
+        <div>
+          <label className="block text-xs font-medium text-muted-foreground mb-1.5">วันเริ่มต้น</label>
+          <input type="date" value={fromDate} max={today}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring/50 transition-colors" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-muted-foreground mb-1.5">วันสิ้นสุด</label>
+          <input type="date" value={toDate} max={today}
+            onChange={(e) => setToDate(e.target.value)}
+            className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring/50 transition-colors" />
+        </div>
+        {loading && <span className="pb-2 text-xs text-muted-foreground">กำลังโหลด…</span>}
+      </div>
+
+      {/* ── KPI Cards ─────────────────────────────────────────────────────── */}
+      {report && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="col-span-2 sm:col-span-1 rounded-xl bg-primary px-5 py-4 text-primary-foreground">
+              <p className="text-[11px] text-primary-foreground/60 font-semibold uppercase tracking-wider">ยอดรับจริงรวม</p>
+              <p className="mt-1.5 text-2xl font-bold tabular-nums">
+                ฿{report.totalCollected.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+              </p>
+              <p className="mt-0.5 text-xs text-primary-foreground/60">
+                {fromDate === toDate ? fromDate : `${fromDate} – ${toDate}`}
+              </p>
+            </div>
+            {([
+              { label: 'เงินสด',          value: report.cashTotal       },
+              { label: 'QR PromptPay',     value: report.promptpayTotal  },
+              { label: 'สวัสดิการรัฐ',     value: report.welfareTotal    },
+              { label: 'ประวัติ QR+เงินสด', value: report.legacyTotal    },
+            ] as const).map(({ label, value }) => (
+              <div key={label} className="rounded-xl bg-card border border-border px-5 py-4">
+                <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
+                <p className="mt-1.5 text-xl font-bold tabular-nums text-foreground">
+                  ฿{value.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                </p>
+                {report.totalCollected > 0 && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {((value / report.totalCollected) * 100).toFixed(1)}%
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            อ้างอิงจาก payment_rows ตามบัญชีรับเงินจริง — ไม่ใช่ยอดขาย VAT
+          </p>
+        </>
+      )}
+
+      {/* ── Method + Account summaries ────────────────────────────────────── */}
+      {report && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+          {/* Method summary */}
+          <div className="rounded-xl bg-card border border-border overflow-hidden">
+            <div className="px-5 py-3 border-b border-border bg-muted/30">
+              <p className="text-xs font-semibold text-foreground">สรุปตามช่องทางชำระ</p>
+            </div>
+            {report.methodSummary.length === 0 ? (
+              <p className="px-5 py-8 text-sm text-muted-foreground">ไม่มีรายการรับเงินในช่วงนี้</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <Th>ช่องทาง</Th>
+                    <Th>ประเภท</Th>
+                    <Th align="right">รายการ</Th>
+                    <Th align="right">ยอดรับ</Th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {report.methodSummary.map((m) => (
+                    <tr key={m.methodId} className="hover:bg-muted/30 transition-colors">
+                      <Td>{m.methodName}</Td>
+                      <Td><span className="text-xs text-muted-foreground">{METHOD_TYPE_LABELS[m.methodType] ?? m.methodType}</span></Td>
+                      <Td align="right">{m.rowCount}</Td>
+                      <Td align="right" className="font-semibold">
+                        ฿{m.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-muted/50 font-semibold">
+                    <Td>รวม</Td><Td>{''}</Td>
+                    <Td align="right">{report.methodSummary.reduce((s, m) => s + m.rowCount, 0)}</Td>
+                    <Td align="right">
+                      ฿{report.methodSummary.reduce((s, m) => s + m.amount, 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                    </Td>
+                  </tr>
+                </tfoot>
+              </table>
+            )}
+          </div>
+
+          {/* Account summary */}
+          <div className="rounded-xl bg-card border border-border overflow-hidden">
+            <div className="px-5 py-3 border-b border-border bg-muted/30">
+              <p className="text-xs font-semibold text-foreground">สรุปตามบัญชีรับเงิน</p>
+            </div>
+            {report.accountSummary.length === 0 ? (
+              <p className="px-5 py-8 text-sm text-muted-foreground">ไม่มีรายการรับเงินในช่วงนี้</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <Th>บัญชีรับเงิน</Th>
+                    <Th>ประเภทบัญชี</Th>
+                    <Th align="right">รายการ</Th>
+                    <Th align="right">ยอดรับ</Th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {report.accountSummary.map((a) => (
+                    <tr key={a.accountId} className="hover:bg-muted/30 transition-colors">
+                      <Td>{a.accountName}</Td>
+                      <Td><span className="text-xs text-muted-foreground">{ACCOUNT_TYPE_LABELS[a.accountType] ?? a.accountType}</span></Td>
+                      <Td align="right">{a.rowCount}</Td>
+                      <Td align="right" className="font-semibold">
+                        ฿{a.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-muted/50 font-semibold">
+                    <Td>รวม</Td><Td>{''}</Td>
+                    <Td align="right">{report.accountSummary.reduce((s, a) => s + a.rowCount, 0)}</Td>
+                    <Td align="right">
+                      ฿{report.accountSummary.reduce((s, a) => s + a.amount, 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                    </Td>
+                  </tr>
+                </tfoot>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Account × Method matrix ───────────────────────────────────────── */}
+      {report && report.matrix.length > 0 && (
+        <div className="rounded-xl bg-card border border-border overflow-hidden">
+          <div className="px-5 py-3 border-b border-border bg-muted/30">
+            <p className="text-xs font-semibold text-foreground">รายละเอียด: บัญชีรับเงิน × ช่องทางชำระ</p>
+          </div>
+          <div className="divide-y divide-border">
+            {report.matrix.map((matRow) => (
+              <div key={matRow.accountId} className="px-5 py-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <span className="text-sm font-semibold text-foreground">{matRow.accountName}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {ACCOUNT_TYPE_LABELS[matRow.accountType] ?? matRow.accountType}
+                    </span>
+                  </div>
+                  <span className="text-sm font-bold tabular-nums text-foreground">
+                    ฿{matRow.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="space-y-1 pl-3 border-l-2 border-border">
+                  {matRow.methods.map((m) => (
+                    <div key={m.methodId} className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">{m.methodName}</span>
+                      <span className="tabular-nums font-medium text-foreground">
+                        ฿{m.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Empty state ───────────────────────────────────────────────────── */}
+      {!loading && report && report.methodSummary.length === 0 && (
+        <div className="rounded-xl border border-border bg-card py-16 text-center text-sm text-muted-foreground">
+          ยังไม่มีรายการรับเงินในช่วงวันที่นี้
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Page shell ────────────────────────────────────────────────────────────────
 
 export function ReportsPage() {
   const [tab, setTab] = useState<Tab>('revenue');
 
   const TABS: { key: Tab; label: string }[] = [
-    { key: 'revenue',  label: 'รายได้' },
-    { key: 'foodcost', label: 'ต้นทุนอาหาร' },
+    { key: 'revenue',    label: 'รายได้' },
+    { key: 'foodcost',   label: 'ต้นทุนอาหาร' },
+    { key: 'collection', label: 'ยอดรับจริง' },
   ];
 
   return (
@@ -503,8 +738,9 @@ export function ReportsPage() {
         </div>
       </div>
 
-      {tab === 'revenue'  && <RevenueReport />}
-      {tab === 'foodcost' && <FoodCostReport />}
+      {tab === 'revenue'    && <RevenueReport />}
+      {tab === 'foodcost'   && <FoodCostReport />}
+      {tab === 'collection' && <CollectionReport />}
     </div>
   );
 }

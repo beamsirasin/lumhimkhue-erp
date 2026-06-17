@@ -33,6 +33,7 @@ async function main() {
     paymentRows,
     payments,
     receivingAccounts,
+    paymentAdjustments,
   } = await import('../lib/db/schema');
 
   console.log('Payment foundation verification');
@@ -186,6 +187,27 @@ async function main() {
 
   const zeroAccountMethods = activeMethods.filter((m) => Number(m.accountCount) === 0);
   assert(zeroAccountMethods.length === 0, 'active methods have active receiving accounts', zeroAccountMethods.map((m) => m.code).join(', '));
+
+  // Warning-only: post-close payment mutations (does not affect pass/fail count)
+  const [postCloseMutations] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(paymentAdjustments)
+    .where(sql`
+      ${paymentAdjustments.shiftId} is not null
+      and exists (
+        select 1 from cashier_shifts cs
+        where cs.id = ${paymentAdjustments.shiftId}
+          and cs.status in ('closed', 'reviewed')
+          and cs.closed_at is not null
+          and ${paymentAdjustments.createdAt} > cs.closed_at
+      )
+    `);
+  const postCloseCount = Number(postCloseMutations?.count ?? 0);
+  if (postCloseCount > 0) {
+    console.log(`WARN post-close payment mutations: ${postCloseCount} adjustment(s) created after shift close — review payment_adjustments table`);
+  } else {
+    console.log(`OK no post-close payment mutations detected`);
+  }
 
   console.log(`Result: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);

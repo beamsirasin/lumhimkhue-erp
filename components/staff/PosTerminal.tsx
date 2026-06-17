@@ -823,6 +823,9 @@ function PaymentPanel({
       });
       setSubmitting(false);
       if (!result.ok) { toast.error(result.error); return; }
+      if (result.data.shiftWarning) {
+        toast.warning('ไม่มีรอบแคชเชียร์เปิดอยู่ รายการนี้จะไม่ถูกรวมในการตรวจรอบ');
+      }
 
       const receiptItems: ReceiptData['items'] = [];
       for (const t of guestTiles) {
@@ -902,6 +905,9 @@ function PaymentPanel({
     });
     setSubmitting(false);
     if (!result.ok) { toast.error(result.error); return; }
+    if (result.data.shiftWarning) {
+      toast.warning('ไม่มีรอบแคชเชียร์เปิดอยู่ รายการนี้จะไม่ถูกรวมในการตรวจรอบ');
+    }
 
     const receiptItems: ReceiptData['items'] = [];
     for (const t of guestTiles) {

@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { format, differenceInMinutes } from 'date-fns';
 import { th } from 'date-fns/locale';
-import { Pencil, Trash2, Loader2 } from 'lucide-react';
+import { Pencil, Trash2, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { getSessionDetail, deletePaymentRecord, reopenSessionForPayment } from '@/lib/actions/history';
@@ -38,6 +38,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
   const [delConfirm,  setDelConfirm]  = useState(false);
   const [editConfirm, setEditConfirm] = useState(false);
   const [submitting,  setSubmitting]  = useState(false);
+  const [mutationReason, setMutationReason] = useState('');
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -46,12 +47,14 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
     setEditConfirm(false);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSubmitting(false);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMutationReason('');
   }, [sessionId]);
 
   async function handleDelete() {
     if (!data?.session.payment) return;
     setSubmitting(true);
-    const result = await deletePaymentRecord({ paymentId: data.session.payment.id });
+    const result = await deletePaymentRecord({ paymentId: data.session.payment.id, reason: mutationReason });
     setSubmitting(false);
     if (!result.ok) { toast.error(result.error); return; }
     toast.success('ลบประวัติการชำระเงินแล้ว');
@@ -63,7 +66,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
   async function handleReopen() {
     if (!data?.session.payment) return;
     setSubmitting(true);
-    const result = await reopenSessionForPayment({ paymentId: data.session.payment.id });
+    const result = await reopenSessionForPayment({ paymentId: data.session.payment.id, reason: mutationReason });
     setSubmitting(false);
     if (!result.ok) { toast.error(result.error); return; }
     toast.success('เปิดบิลใหม่แล้ว — กำลังไปหน้า POS');
@@ -247,14 +250,14 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                   <div className="mt-3 flex gap-2">
                     <button
                       type="button"
-                      onClick={() => setEditConfirm(true)}
+                      onClick={() => { setMutationReason(''); setEditConfirm(true); }}
                       className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-3 text-sm font-medium text-foreground hover:bg-muted/30 transition-colors"
                     >
                       <Pencil className="size-4" />แก้ไขการชำระเงิน
                     </button>
                     <button
                       type="button"
-                      onClick={() => setDelConfirm(true)}
+                      onClick={() => { setMutationReason(''); setDelConfirm(true); }}
                       className="flex items-center justify-center gap-1.5 rounded-lg border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
                     >
                       <Trash2 className="size-4" />ลบ
@@ -269,6 +272,31 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                     <p className="text-xs text-amber-600">
                       การชำระเงินเดิมจะถูกยกเลิก บิลจะกลับสู่หน้า POS เพื่อชำระใหม่
                     </p>
+                    {data.paymentShift?.status === 'reviewed' && (
+                      <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-700">
+                        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                        <span>รอบแคชเชียร์นี้ตรวจสอบแล้ว ไม่สามารถแก้ไขได้</span>
+                      </div>
+                    )}
+                    {data.paymentShift?.status === 'closed' && (
+                      <div className="flex items-start gap-2 rounded-md border border-orange-200 bg-orange-50 px-2.5 py-2 text-xs text-orange-700">
+                        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                        <span>รอบแคชเชียร์ปิดแล้ว — การแก้ไขจะทำให้ยอดรอบนี้ไม่ตรง ต้องระบุเหตุผล</span>
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      <label className="text-xs text-amber-700">
+                        เหตุผลในการแก้ไข
+                        {data.paymentShift?.status === 'closed' && <span className="ml-1 text-red-600">*</span>}
+                      </label>
+                      <textarea
+                        value={mutationReason}
+                        onChange={(e) => setMutationReason(e.target.value)}
+                        placeholder="เช่น ลูกค้าจ่ายผิด / เงินผิดจำนวนเงิน / ลงรายการผิดพลาด"
+                        rows={2}
+                        className="w-full rounded-lg border border-amber-200 bg-white/70 px-3 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-amber-400"
+                      />
+                    </div>
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -281,7 +309,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                       <button
                         type="button"
                         onClick={handleReopen}
-                        disabled={submitting}
+                        disabled={submitting || data.paymentShift?.status === 'reviewed' || (data.paymentShift?.status === 'closed' && !mutationReason.trim())}
                         className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
                       >
                         {submitting && <Loader2 className="size-3 animate-spin" />}
@@ -298,6 +326,31 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                     <p className="text-xs text-red-500">
                       ประวัติจะถูกลบถาวร session จะถูกปิดโดยไม่มีการชำระเงิน
                     </p>
+                    {data.paymentShift?.status === 'reviewed' && (
+                      <div className="flex items-start gap-2 rounded-md border border-red-300 bg-red-100 px-2.5 py-2 text-xs text-red-800">
+                        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                        <span>รอบแคชเชียร์นี้ตรวจสอบแล้ว ไม่สามารถลบได้</span>
+                      </div>
+                    )}
+                    {data.paymentShift?.status === 'closed' && (
+                      <div className="flex items-start gap-2 rounded-md border border-orange-200 bg-orange-50 px-2.5 py-2 text-xs text-orange-700">
+                        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                        <span>รอบแคชเชียร์ปิดแล้ว — การลบจะทำให้ยอดรอบนี้ไม่ตรง ต้องระบุเหตุผล</span>
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      <label className="text-xs text-red-700">
+                        เหตุผลในการลบ
+                        {data.paymentShift?.status === 'closed' && <span className="ml-1 text-red-600">*</span>}
+                      </label>
+                      <textarea
+                        value={mutationReason}
+                        onChange={(e) => setMutationReason(e.target.value)}
+                        placeholder="เช่น ลูกค้าจ่ายผิด / เงินผิดจำนวนเงิน / ลงรายการผิดพลาด"
+                        rows={2}
+                        className="w-full rounded-lg border border-red-200 bg-white/70 px-3 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-red-400"
+                      />
+                    </div>
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -310,7 +363,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                       <button
                         type="button"
                         onClick={handleDelete}
-                        disabled={submitting}
+                        disabled={submitting || data.paymentShift?.status === 'reviewed' || (data.paymentShift?.status === 'closed' && !mutationReason.trim())}
                         className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-600 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
                       >
                         {submitting && <Loader2 className="size-3 animate-spin" />}

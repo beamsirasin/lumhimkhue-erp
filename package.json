@@ -16,6 +16,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:migrate-v12": "tsx lib/db/migrate_v12.ts",
     "db:migrate-v13": "tsx lib/db/migrate_v13.ts",
+    "db:migrate-phase1": "tsx lib/db/migrate-phase1-cash-control.ts",
     "db:migrate-payment-foundation": "tsx lib/db/migrate-payment-foundation.ts",
     "payments:backfill": "tsx scripts/backfill-payment-rows.ts",
     "payments:verify": "tsx scripts/verify-payment-foundation.ts",

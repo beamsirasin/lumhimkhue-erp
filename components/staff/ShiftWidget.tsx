@@ -5,7 +5,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { Loader2, Clock, AlertTriangle } from 'lucide-react';
-import { getActiveShift, openShift, closeShift } from '@/lib/actions/shifts';
+import { getActiveShift, openShift, closeShift, getShiftCashPreview } from '@/lib/actions/shifts';
+import type { ShiftCashPreview } from '@/lib/actions/shifts';
 
 export function ShiftWidget() {
   const queryClient = useQueryClient();
@@ -19,6 +20,11 @@ export function ShiftWidget() {
   const [actualCash, setActualCash] = useState('');
   const [diffReason, setDiffReason] = useState('');
   const [closeLoading, setCloseLoading] = useState(false);
+
+  // Close-shift preview state
+  const [preview, setPreview] = useState<ShiftCashPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const { data: shift, isLoading } = useQuery({
     queryKey: ['active-shift'],
@@ -40,6 +46,16 @@ export function ShiftWidget() {
     setModal(null);
     setOpeningFloat('0');
     invalidate();
+  }
+
+  async function fetchPreview(id: string) {
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreview(null);
+    const r = await getShiftCashPreview(id);
+    setPreviewLoading(false);
+    if (!r.ok) { setPreviewError(r.error); return; }
+    setPreview(r.data);
   }
 
   async function handleClose() {
@@ -77,7 +93,15 @@ export function ShiftWidget() {
           </div>
           <button
             type="button"
-            onClick={() => { setActualCash(''); setDiffReason(''); setModal('close'); }}
+            onClick={() => {
+              setActualCash('');
+              setDiffReason('');
+              setPreview(null);
+              setPreviewLoading(true);
+              setPreviewError(null);
+              setModal('close');
+              fetchPreview(shift.id);
+            }}
             className="rounded-md px-3 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 dark:text-emerald-200 dark:hover:bg-emerald-900/50 transition-colors"
           >
             ปิดรอบ
@@ -164,6 +188,60 @@ export function ShiftWidget() {
                 <span>฿{Number(shift.openingFloat).toLocaleString('th-TH')}</span>
               </div>
             </div>
+            {/* ── Collection preview ───────────────────────────────── */}
+            {previewLoading && (
+              <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                กำลังโหลดสรุปยอดรับ…
+              </div>
+            )}
+            {previewError && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                โหลดสรุปยอดไม่ได้: {previewError}
+              </div>
+            )}
+            {preview && (
+              <div className="rounded-lg bg-muted/50 px-3 py-3 text-sm space-y-1.5">
+                <p className="text-xs font-semibold text-foreground">สรุปยอดรับในรอบนี้</p>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>เงินสดจากยอดขาย</span>
+                  <span className="tabular-nums font-medium text-foreground">
+                    ฿{preview.cashSales.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                {preview.promptpayTotal > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>QR PromptPay</span>
+                    <span className="tabular-nums">
+                      ฿{preview.promptpayTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                )}
+                {preview.welfareTotal > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>สวัสดิการรัฐรับ</span>
+                    <span className="tabular-nums">
+                      ฿{preview.welfareTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                )}
+                {preview.legacyTotal > 0 && (
+                  <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-700">
+                    มีรายการประวัติ QR+เงินสด ฿{preview.legacyTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })} ซึ่งไม่สามารถแยกเงินสด/QR ได้
+                  </div>
+                )}
+                <div className="flex justify-between border-t border-border pt-1.5 font-semibold text-foreground">
+                  <span>เงินสดที่ควรมีในลิ้นชัก</span>
+                  <span className="tabular-nums">
+                    ฿{preview.expectedCashInDrawer.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  ยอดเงินสดที่ควรมี = เงินตั้งต้น + เงินสดจากยอดขาย
+                </p>
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <label className="text-sm text-muted-foreground">เงินสดที่นับได้จริง (บาท)</label>
               <input

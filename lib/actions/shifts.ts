@@ -1,18 +1,22 @@
 'use server';
 
-import { eq, and, gte, lte, sum, desc } from 'drizzle-orm';
+import { eq, and, gte, lte, sql, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { writeAuditLog } from '@/lib/actions/audit';
 import { db } from '@/lib/db';
-import { cashierShifts, payments, users } from '@/lib/db/schema';
+import { cashierShifts, paymentRows, paymentMethods, receivingAccounts, users } from '@/lib/db/schema';
 import {
   openShiftSchema,
   closeShiftSchema,
   reviewShiftSchema,
   listShiftsSchema,
 } from '@/lib/validations/shifts';
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
 
 /* ─── getActiveShift ──────────────────────────────────────────────────────────
  *
@@ -148,15 +152,18 @@ export async function closeShift(input: unknown) {
     if (role === 'cashier' && shift.cashierId !== userId)
       return { ok: false as const, error: 'cashier ปิดได้เฉพาะ shift ของตัวเอง' };
 
-    // Calculate expectedCash = openingFloat + cash-method payments linked to this shift
+    // Calculate expectedCash = openingFloat + cash-type payment_rows linked to this shift.
+    // payment_rows.amount is the net bill-share (amountTendered − changeAmount for cash),
+    // so this formula correctly gives the expected drawer balance without double-counting change.
     const [cashResult] = await db
-      .select({ total: sum(payments.total) })
-      .from(payments)
+      .select({ total: sql<number>`coalesce(sum(${paymentRows.amount}::numeric), 0)` })
+      .from(paymentRows)
+      .innerJoin(paymentMethods, eq(paymentRows.paymentMethodId, paymentMethods.id))
       .where(
         and(
-          eq(payments.shiftId, shiftId),
-          eq(payments.paymentMethod, 'cash'),
-          eq(payments.status, 'completed'),
+          eq(paymentRows.shiftId, shiftId),
+          eq(paymentRows.status, 'completed'),
+          eq(paymentMethods.type, 'cash'),
         ),
       );
     const cashTotal = Number(cashResult?.total ?? 0);
@@ -251,6 +258,315 @@ export async function reviewShift(input: unknown) {
     return { ok: true as const };
   } catch (e) {
     console.error('[reviewShift]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+/* ─── getShiftCashPreview ─────────────────────────────────────────────────────
+ *
+ * Live preview of collection totals for an open shift, computed from payment_rows.
+ * Read-only — does not write anything. Used by the close modal to show the cashier
+ * what the system expects before they enter the actual cash count.
+ *
+ * cashier → own open shift only; owner/manager → any open shift.
+ */
+
+export type ShiftCashPreview = {
+  shiftId: string;
+  openingFloat: number;
+  cashSales: number;
+  expectedCashInDrawer: number;
+  promptpayTotal: number;
+  welfareTotal: number;
+  legacyTotal: number;
+  totalCollected: number;
+  rowCount: number;
+};
+
+export async function getShiftCashPreview(shiftId: string) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'cashier_shift:manage'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  const parsed = z.string().uuid().safeParse(shiftId);
+  if (!parsed.success) return { ok: false as const, error: 'shiftId ไม่ถูกต้อง' };
+
+  const role = authSession.user.role;
+  const userId = authSession.user.id;
+
+  try {
+    const [shift] = await db
+      .select()
+      .from(cashierShifts)
+      .where(eq(cashierShifts.id, shiftId))
+      .limit(1);
+    if (!shift) return { ok: false as const, error: 'ไม่พบ shift' };
+    if (shift.status !== 'open') return { ok: false as const, error: 'preview ได้เฉพาะ shift ที่เปิดอยู่' };
+
+    if (role === 'cashier' && shift.cashierId !== userId)
+      return { ok: false as const, error: 'cashier ดูได้เฉพาะ shift ของตัวเอง' };
+
+    // Single grouped query — one row per payment method type
+    const typeRows = await db
+      .select({
+        methodType: paymentMethods.type,
+        total:      sql<number>`coalesce(sum(${paymentRows.amount}::numeric), 0)`,
+        cnt:        sql<number>`count(*)::int`,
+      })
+      .from(paymentRows)
+      .innerJoin(paymentMethods, eq(paymentRows.paymentMethodId, paymentMethods.id))
+      .where(
+        and(
+          eq(paymentRows.shiftId, shiftId),
+          eq(paymentRows.status, 'completed'),
+        ),
+      )
+      .groupBy(paymentMethods.type);
+
+    let cashSales = 0, promptpayTotal = 0, welfareTotal = 0, legacyTotal = 0;
+    let totalCollected = 0, rowCount = 0;
+
+    for (const r of typeRows) {
+      const amt = roundMoney(Number(r.total));
+      const cnt = Number(r.cnt);
+      totalCollected = roundMoney(totalCollected + amt);
+      rowCount += cnt;
+      if (r.methodType === 'cash')         cashSales      = amt;
+      if (r.methodType === 'promptpay')    promptpayTotal = amt;
+      if (r.methodType === 'welfare')      welfareTotal   = amt;
+      if (r.methodType === 'mixed_legacy') legacyTotal    = amt;
+    }
+
+    const openingFloat = roundMoney(Number(shift.openingFloat));
+    const expectedCashInDrawer = roundMoney(openingFloat + cashSales);
+
+    return {
+      ok: true as const,
+      data: {
+        shiftId,
+        openingFloat,
+        cashSales,
+        expectedCashInDrawer,
+        promptpayTotal,
+        welfareTotal,
+        legacyTotal,
+        totalCollected,
+        rowCount,
+      } satisfies ShiftCashPreview,
+    };
+  } catch (e) {
+    console.error('[getShiftCashPreview]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+/* ─── getShiftCollectionBreakdown ────────────────────────────────────────────
+ *
+ * Live collection breakdown for any shift (open, closed, or reviewed).
+ * Queries completed payment_rows for the shift and returns per-method,
+ * per-account, and account×method matrix totals.
+ *
+ * cashier → own shift only; owner/manager → any shift.
+ * No status guard — unlike getShiftCashPreview, this works for all statuses.
+ */
+
+export type ShiftCollectionBreakdown = {
+  shiftId: string;
+  totalCollected: number;
+  cashTotal: number;
+  promptpayTotal: number;
+  welfareTotal: number;
+  legacyTotal: number;
+  rowCount: number;
+  methodSummary: Array<{
+    methodId: string;
+    methodCode: string;
+    methodName: string;
+    methodType: string;
+    amount: number;
+    rowCount: number;
+  }>;
+  accountSummary: Array<{
+    accountId: string;
+    accountCode: string;
+    accountName: string;
+    accountType: string;
+    amount: number;
+    rowCount: number;
+  }>;
+  matrix: Array<{
+    accountId: string;
+    accountCode: string;
+    accountName: string;
+    accountType: string;
+    methods: Array<{
+      methodId: string;
+      methodCode: string;
+      methodName: string;
+      methodType: string;
+      amount: number;
+    }>;
+    total: number;
+  }>;
+};
+
+export async function getShiftCollectionBreakdown(shiftId: string) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'cashier_shift:manage'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  const parsed = z.string().uuid().safeParse(shiftId);
+  if (!parsed.success) return { ok: false as const, error: 'shiftId ไม่ถูกต้อง' };
+
+  const role = authSession.user.role;
+  const userId = authSession.user.id;
+
+  try {
+    const [shift] = await db
+      .select({ id: cashierShifts.id, cashierId: cashierShifts.cashierId })
+      .from(cashierShifts)
+      .where(eq(cashierShifts.id, shiftId))
+      .limit(1);
+    if (!shift) return { ok: false as const, error: 'ไม่พบ shift' };
+
+    if (role === 'cashier' && shift.cashierId !== userId)
+      return { ok: false as const, error: 'cashier ดูได้เฉพาะ shift ของตัวเอง' };
+
+    const shiftFilter = and(
+      eq(paymentRows.shiftId, shiftId),
+      eq(paymentRows.status, 'completed'),
+    );
+
+    const [methodRows, accountRows, matrixRaw] = await Promise.all([
+      // Query 1: method summary
+      db
+        .select({
+          methodId:   paymentMethods.id,
+          methodCode: paymentMethods.code,
+          methodName: paymentMethods.name,
+          methodType: paymentMethods.type,
+          amount:     sql<number>`coalesce(sum(${paymentRows.amount}::numeric), 0)`,
+          rowCount:   sql<number>`count(*)::int`,
+        })
+        .from(paymentRows)
+        .innerJoin(paymentMethods, eq(paymentRows.paymentMethodId, paymentMethods.id))
+        .where(shiftFilter)
+        .groupBy(paymentMethods.id, paymentMethods.code, paymentMethods.name, paymentMethods.type)
+        .orderBy(paymentMethods.sortOrder, paymentMethods.name),
+
+      // Query 2: account summary
+      db
+        .select({
+          accountId:   receivingAccounts.id,
+          accountCode: receivingAccounts.code,
+          accountName: receivingAccounts.name,
+          accountType: receivingAccounts.type,
+          amount:      sql<number>`coalesce(sum(${paymentRows.amount}::numeric), 0)`,
+          rowCount:    sql<number>`count(*)::int`,
+        })
+        .from(paymentRows)
+        .innerJoin(receivingAccounts, eq(paymentRows.receivingAccountId, receivingAccounts.id))
+        .where(shiftFilter)
+        .groupBy(receivingAccounts.id, receivingAccounts.code, receivingAccounts.name, receivingAccounts.type)
+        .orderBy(receivingAccounts.sortOrder, receivingAccounts.name),
+
+      // Query 3: account × method matrix raw
+      db
+        .select({
+          accountId:   receivingAccounts.id,
+          accountCode: receivingAccounts.code,
+          accountName: receivingAccounts.name,
+          accountType: receivingAccounts.type,
+          methodId:    paymentMethods.id,
+          methodCode:  paymentMethods.code,
+          methodName:  paymentMethods.name,
+          methodType:  paymentMethods.type,
+          amount:      sql<number>`coalesce(sum(${paymentRows.amount}::numeric), 0)`,
+        })
+        .from(paymentRows)
+        .innerJoin(paymentMethods, eq(paymentRows.paymentMethodId, paymentMethods.id))
+        .innerJoin(receivingAccounts, eq(paymentRows.receivingAccountId, receivingAccounts.id))
+        .where(shiftFilter)
+        .groupBy(
+          receivingAccounts.id, receivingAccounts.code, receivingAccounts.name, receivingAccounts.type,
+          paymentMethods.id, paymentMethods.code, paymentMethods.name, paymentMethods.type,
+        )
+        .orderBy(
+          receivingAccounts.sortOrder, receivingAccounts.name,
+          paymentMethods.sortOrder, paymentMethods.name,
+        ),
+    ]);
+
+    // Assemble method summary
+    const methodSummary: ShiftCollectionBreakdown['methodSummary'] = methodRows.map((r) => ({
+      methodId:   r.methodId,
+      methodCode: r.methodCode,
+      methodName: r.methodName,
+      methodType: r.methodType,
+      amount:     roundMoney(Number(r.amount)),
+      rowCount:   Number(r.rowCount),
+    }));
+
+    // Assemble account summary
+    const accountSummary: ShiftCollectionBreakdown['accountSummary'] = accountRows.map((r) => ({
+      accountId:   r.accountId,
+      accountCode: r.accountCode,
+      accountName: r.accountName,
+      accountType: r.accountType,
+      amount:      roundMoney(Number(r.amount)),
+      rowCount:    Number(r.rowCount),
+    }));
+
+    // Build account × method matrix in JS
+    const matrixMap = new Map<string, ShiftCollectionBreakdown['matrix'][number]>();
+    for (const r of matrixRaw) {
+      if (!matrixMap.has(r.accountId)) {
+        matrixMap.set(r.accountId, {
+          accountId: r.accountId, accountCode: r.accountCode,
+          accountName: r.accountName, accountType: r.accountType,
+          methods: [], total: 0,
+        });
+      }
+      const entry = matrixMap.get(r.accountId)!;
+      const methodAmount = roundMoney(Number(r.amount));
+      entry.methods.push({
+        methodId:   r.methodId,
+        methodCode: r.methodCode,
+        methodName: r.methodName,
+        methodType: r.methodType,
+        amount:     methodAmount,
+      });
+      entry.total = roundMoney(entry.total + methodAmount);
+    }
+    const matrix = Array.from(matrixMap.values());
+
+    // Compute totals from method summary
+    const totalCollected = roundMoney(methodSummary.reduce((s, m) => s + m.amount, 0));
+    const cashTotal      = roundMoney(methodSummary.filter((m) => m.methodType === 'cash').reduce((s, m) => s + m.amount, 0));
+    const promptpayTotal = roundMoney(methodSummary.filter((m) => m.methodType === 'promptpay').reduce((s, m) => s + m.amount, 0));
+    const welfareTotal   = roundMoney(methodSummary.filter((m) => m.methodType === 'welfare').reduce((s, m) => s + m.amount, 0));
+    const legacyTotal    = roundMoney(methodSummary.filter((m) => m.methodType === 'mixed_legacy').reduce((s, m) => s + m.amount, 0));
+    const rowCount       = methodSummary.reduce((s, m) => s + m.rowCount, 0);
+
+    return {
+      ok: true as const,
+      data: {
+        shiftId,
+        totalCollected,
+        cashTotal,
+        promptpayTotal,
+        welfareTotal,
+        legacyTotal,
+        rowCount,
+        methodSummary,
+        accountSummary,
+        matrix,
+      } satisfies ShiftCollectionBreakdown,
+    };
+  } catch (e) {
+    console.error('[getShiftCollectionBreakdown]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
   }
 }

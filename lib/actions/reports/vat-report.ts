@@ -1,6 +1,6 @@
 'use server';
 
-import { and, gte, lt, eq, sql } from 'drizzle-orm';
+import { and, gte, lt, eq, isNotNull, sql } from 'drizzle-orm';
 import { format } from 'date-fns';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { startOfMonth, addMonths, parse } from 'date-fns';
@@ -59,7 +59,7 @@ export async function getVatReport(month: string) {
         total: payments.total,
         subtotal: payments.subtotal,
       }).from(payments)
-        .where(and(gte(payments.paidAt, mStart), lt(payments.paidAt, mEnd))),
+        .where(and(gte(payments.paidAt, mStart), lt(payments.paidAt, mEnd), eq(payments.status, 'completed'))),
 
       // Input VAT: POs with tax invoice, received in month
       db.select({
@@ -74,6 +74,7 @@ export async function getVatReport(month: string) {
       }).from(purchaseOrders)
         .where(and(
           eq(purchaseOrders.hasTaxInvoice, true),
+          isNotNull(purchaseOrders.receivedDate),
           gte(purchaseOrders.receivedDate, mStartStr),
           lt(purchaseOrders.receivedDate, mEndStr),
         )),

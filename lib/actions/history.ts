@@ -162,7 +162,14 @@ export async function getSessionDetail(sessionId: string) {
       },
     });
 
-    return { ok: true as const, data: { session, orders: sessionOrders } };
+    const paymentShiftRow = session.payment?.shiftId
+      ? await db
+          .select({ status: cashierShifts.status, closedAt: cashierShifts.closedAt })
+          .from(cashierShifts)
+          .where(eq(cashierShifts.id, session.payment.shiftId))
+          .then((rows) => rows[0] ?? null)
+      : null;
+    return { ok: true as const, data: { session, orders: sessionOrders, paymentShift: paymentShiftRow } };
   } catch (e) {
     console.error('[getSessionDetail]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
@@ -251,6 +258,24 @@ export async function deletePaymentRecord(input: unknown) {
     .where(eq(payments.id, paymentId));
   if (!payment) return { ok: false as const, error: 'ไม่พบข้อมูลการชำระเงิน' };
 
+  const normalizedReason = (reason ?? '').trim();
+
+  const shift = payment.shiftId
+    ? await db
+        .select({ status: cashierShifts.status, closedAt: cashierShifts.closedAt })
+        .from(cashierShifts)
+        .where(eq(cashierShifts.id, payment.shiftId))
+        .then((rows) => rows[0] ?? null)
+    : null;
+  const shiftStatusAtMutation: string | null = shift?.status ?? null;
+
+  if (shift?.status === 'reviewed') {
+    return { ok: false as const, error: 'ไม่สามารถแก้ไขการชำระเงินในรอบที่ตรวจสอบแล้ว' };
+  }
+  if (shift?.status === 'closed' && !normalizedReason) {
+    return { ok: false as const, error: 'ต้องระบุเหตุผลสำหรับการแก้ไขในรอบที่ปิดแล้ว' };
+  }
+
   try {
     // neon-http does not support db.transaction() — ops run sequentially.
     // INSERT is first (Approach C): if it fails → payment untouched.
@@ -277,7 +302,7 @@ export async function deletePaymentRecord(input: unknown) {
       shiftId: payment.shiftId,
       type: 'void',
       amount: payment.total,
-      reason: reason ?? 'ไม่ระบุ',
+      reason: normalizedReason || 'ไม่ระบุ',
       requestedBy: authSession.user.id,
       approvedBy: authSession.user.id,
       approvedAt: new Date(),
@@ -306,6 +331,10 @@ export async function deletePaymentRecord(input: unknown) {
           action: 'delete_payment',
           performedBy: authSession.user.id,
           performedAt: new Date().toISOString(),
+          shiftStatusAtMutation,
+          shiftClosedAt: shift?.closedAt ? new Date(shift.closedAt).toISOString() : null,
+          mutationAfterClose: shiftStatusAtMutation === 'closed' || shiftStatusAtMutation === 'reviewed',
+          reason: normalizedReason || 'ไม่ระบุ',
         },
       },
     });
@@ -325,8 +354,13 @@ export async function deletePaymentRecord(input: unknown) {
       action: 'delete_payment',
       entity: 'payments',
       entityId: paymentId,
-      before: { sessionId: payment.sessionId },
-      after: { deleted: true, reason: reason ?? 'ไม่ระบุ' },
+      before: {
+        sessionId: payment.sessionId,
+        shiftId: payment.shiftId ?? null,
+        shiftStatusAtMutation,
+        mutationAfterClose: shiftStatusAtMutation === 'closed' || shiftStatusAtMutation === 'reviewed',
+      },
+      after: { deleted: true, reason: normalizedReason || 'ไม่ระบุ' },
     });
 
     revalidatePath('/pos/history');
@@ -383,6 +417,27 @@ export async function reopenSessionForPayment(input: unknown) {
     .where(eq(payments.id, paymentId));
   if (!payment) return { ok: false as const, error: 'ไม่พบข้อมูลการชำระเงิน' };
 
+  const normalizedReason = (reason ?? '').trim();
+
+  const shift = payment.shiftId
+    ? await db
+        .select({ status: cashierShifts.status, closedAt: cashierShifts.closedAt })
+        .from(cashierShifts)
+        .where(eq(cashierShifts.id, payment.shiftId))
+        .then((rows) => rows[0] ?? null)
+    : null;
+  const shiftStatusAtMutation: string | null = shift?.status ?? null;
+
+  if (shift?.status === 'reviewed') {
+    return { ok: false as const, error: 'ไม่สามารถแก้ไขการชำระเงินในรอบที่ตรวจสอบแล้ว' };
+  }
+  if (shift?.status === 'closed' && !normalizedReason) {
+    return { ok: false as const, error: 'ต้องระบุเหตุผลสำหรับการแก้ไขในรอบที่ปิดแล้ว' };
+  }
+  if (shift?.status === 'closed' && authSession.user.role === 'manager') {
+    return { ok: false as const, error: 'เฉพาะเจ้าของร้านเท่านั้นที่แก้ไขการชำระเงินในรอบที่ปิดแล้วได้' };
+  }
+
   const [mainSession] = await db
     .select({ id: sessions.id, tableId: sessions.tableId })
     .from(sessions)
@@ -424,7 +479,7 @@ export async function reopenSessionForPayment(input: unknown) {
       shiftId: payment.shiftId,
       type: 'void',
       amount: payment.total,
-      reason: reason ?? 'ไม่ระบุ',
+      reason: normalizedReason || 'ไม่ระบุ',
       requestedBy: authSession.user.id,
       approvedBy: authSession.user.id,
       approvedAt: new Date(),
@@ -456,9 +511,13 @@ export async function reopenSessionForPayment(input: unknown) {
           performedAt: new Date().toISOString(),
           allSessionIds,
           allTableIds,
-          },
+          shiftStatusAtMutation,
+          shiftClosedAt: shift?.closedAt ? new Date(shift.closedAt).toISOString() : null,
+          mutationAfterClose: shiftStatusAtMutation === 'closed' || shiftStatusAtMutation === 'reviewed',
+          reason: normalizedReason || 'ไม่ระบุ',
         },
-      });
+      },
+    });
 
     await db.delete(paymentRows).where(eq(paymentRows.paymentId, paymentId));
     await db.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
@@ -477,8 +536,14 @@ export async function reopenSessionForPayment(input: unknown) {
       action: 'reopen_session',
       entity: 'payments',
       entityId: paymentId,
-      before: { sessionId: mainSession.id, linkedSessionIds: groupLinked.map((s) => s.id) },
-      after: { sessionStatus: 'closing', reason: reason ?? 'ไม่ระบุ' },
+      before: {
+        sessionId: mainSession.id,
+        linkedSessionIds: groupLinked.map((s) => s.id),
+        shiftId: payment.shiftId ?? null,
+        shiftStatusAtMutation,
+        mutationAfterClose: shiftStatusAtMutation === 'closed' || shiftStatusAtMutation === 'reviewed',
+      },
+      after: { sessionStatus: 'closing', reason: normalizedReason || 'ไม่ระบุ' },
     });
 
     revalidatePath('/pos');
@@ -644,6 +709,7 @@ export async function getPaymentAdjustmentsReport(input: unknown) {
         id: paymentAdjustments.id,
         paymentId: paymentAdjustments.paymentId,
         sessionId: paymentAdjustments.sessionId,
+        shiftId: paymentAdjustments.shiftId,
         type: paymentAdjustments.type,
         amount: paymentAdjustments.amount,
         reason: paymentAdjustments.reason,
@@ -651,6 +717,7 @@ export async function getPaymentAdjustmentsReport(input: unknown) {
         createdAt: paymentAdjustments.createdAt,
         requestedBy: paymentAdjustments.requestedBy,
         requesterName: users.name,
+        paymentSnapshot: paymentAdjustments.paymentSnapshot,
       })
       .from(paymentAdjustments)
       .leftJoin(users, eq(paymentAdjustments.requestedBy, users.id))
@@ -665,7 +732,64 @@ export async function getPaymentAdjustmentsReport(input: unknown) {
 
     return {
       ok: true as const,
-      data: rows.map((r) => ({ ...r, amount: Number(r.amount) })),
+      data: rows.map((r) => {
+        const snapshot = r.paymentSnapshot as Record<string, unknown> | null;
+        const context =
+          snapshot && typeof snapshot.context === 'object' && snapshot.context !== null
+            ? (snapshot.context as Record<string, unknown>)
+            : {};
+        const rawRows: Array<Record<string, unknown>> = Array.isArray(snapshot?.paymentRows)
+          ? (snapshot?.paymentRows as Array<Record<string, unknown>>)
+          : [];
+
+        const paymentRowsBefore = rawRows.map((pr) => ({
+          paymentMethodId: String(pr.paymentMethodId ?? pr.payment_method_id ?? ''),
+          receivingAccountId:
+            (pr.receivingAccountId ?? pr.receiving_account_id) != null
+              ? String(pr.receivingAccountId ?? pr.receiving_account_id)
+              : null,
+          amount: Number(pr.amount ?? 0),
+          amountTendered:
+            (pr.amountTendered ?? pr.amount_tendered) != null
+              ? Number(pr.amountTendered ?? pr.amount_tendered)
+              : null,
+          changeAmount:
+            (pr.changeAmount ?? pr.change_amount) != null
+              ? Number(pr.changeAmount ?? pr.change_amount)
+              : null,
+          status: String(pr.status ?? ''),
+        }));
+
+        const collectionImpact =
+          Math.round(paymentRowsBefore.reduce((s, row) => s + row.amount, 0) * 100) / 100;
+
+        return {
+          id: r.id,
+          paymentId: r.paymentId,
+          sessionId: r.sessionId,
+          shiftId: r.shiftId ?? null,
+          type: r.type,
+          amount: Number(r.amount),
+          reason: r.reason,
+          status: r.status,
+          createdAt: r.createdAt,
+          requestedBy: r.requestedBy,
+          requesterName: r.requesterName,
+          mutationAction: typeof context.action === 'string' ? context.action : null,
+          shiftStatusAtMutation:
+            typeof context.shiftStatusAtMutation === 'string'
+              ? context.shiftStatusAtMutation
+              : null,
+          shiftClosedAt:
+            typeof context.shiftClosedAt === 'string' ? context.shiftClosedAt : null,
+          mutationAfterClose: context.mutationAfterClose === true,
+          mutationReason:
+            typeof context.reason === 'string' ? context.reason : (r.reason ?? null),
+          paymentRowsBefore,
+          collectionImpact,
+          paymentRowCount: paymentRowsBefore.length,
+        };
+      }),
     };
   } catch (e) {
     console.error('[getPaymentAdjustmentsReport]', e);

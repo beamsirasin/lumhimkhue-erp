@@ -9,6 +9,7 @@ import { db } from '@/lib/db';
 import {
   payments, sessions, sessionGuests, orderItems, menuItems,
   orders, stockCounts, stockCountItems, ingredients, recipes,
+  paymentRows, paymentMethods,
 } from '@/lib/db/schema';
 
 const TZ = 'Asia/Bangkok';
@@ -79,16 +80,21 @@ export async function generateDailyClosingReport(dateStr: string): Promise<Daily
     .orderBy(desc(sql`sum(${orderItems.quantity})`))
     .limit(5),
 
-    // Payment breakdown
+    // Payment breakdown — uses payment_rows for accurate per-method amounts on split payments
     db.select({
-      method: payments.paymentMethod,
-      total: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
+      method: paymentMethods.name,
+      total: sql<number>`coalesce(sum(${paymentRows.amount}::numeric), 0)`,
       count: sql<number>`count(*)`,
     })
-    .from(payments)
-    .where(and(gte(payments.paidAt, dayStart), lt(payments.paidAt, dayEnd)))
-    .groupBy(payments.paymentMethod)
-    .orderBy(desc(sql`sum(${payments.total}::numeric)`)),
+    .from(paymentRows)
+    .innerJoin(paymentMethods, eq(paymentRows.paymentMethodId, paymentMethods.id))
+    .where(and(
+      eq(paymentRows.status, 'completed'),
+      gte(paymentRows.paidAt, dayStart),
+      lt(paymentRows.paidAt, dayEnd),
+    ))
+    .groupBy(paymentMethods.id, paymentMethods.name)
+    .orderBy(desc(sql`sum(${paymentRows.amount}::numeric)`)),
 
     // Served items for food cost
     db.select({
