@@ -20,6 +20,7 @@ export default function LoginPage() {
                 src="/images/logo.png"
                 alt="ลำฮิมคือ ชาบู บุฟเฟต์"
                 fill
+                sizes="64px"
                 className="object-cover"
                 priority
               />
@@ -72,6 +73,7 @@ export default function LoginPage() {
                 src="/images/logo.png"
                 alt="ลำฮิมคือ ชาบู บุฟเฟต์"
                 fill
+                sizes="56px"
                 className="object-cover"
                 priority
               />

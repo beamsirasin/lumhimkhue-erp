@@ -8,6 +8,7 @@ import { startOfDay } from 'date-fns';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
+import { writeAuditLog } from '@/lib/actions/audit';
 import { db } from '@/lib/db';
 import { sessions, tables, payments, paymentLineItems, orders, orderItems, menuItems } from '@/lib/db/schema';
 
@@ -197,17 +198,27 @@ export async function getHistoryCalendarDates(year: number, month: number) {
 }
 
 /* ─── deletePaymentRecord — ลบประวัติอย่างเดียว (ไม่เปิดโต๊ะใหม่) ──── */
+//
+// Phase 1 Step 2.5: จำกัดเป็น payment:delete (owner เท่านั้น) + audit log
+// TODO Step 3-4: เมื่อมี payments.status column ให้เปลี่ยนเป็น soft void
+//   (status='voided', voided_by, void_reason) แทน hard DELETE
 
 export async function deletePaymentRecord(input: unknown) {
   const authSession = await auth();
   if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
-  if (!can(authSession.user.role, 'process_payment'))
-    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+  // Restricted to owner via payment:delete — cashier/manager ทำไม่ได้
+  if (!can(authSession.user.role, 'payment:delete'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ — ต้องเป็น owner เท่านั้น' };
 
-  const parsed = z.object({ paymentId: z.string().uuid() }).safeParse(input);
+  const parsed = z
+    .object({
+      paymentId: z.string().uuid(),
+      reason: z.string().max(500).optional(),
+    })
+    .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
 
-  const { paymentId } = parsed.data;
+  const { paymentId, reason } = parsed.data;
   try {
     const [payment] = await db
       .select({ id: payments.id, sessionId: payments.sessionId })
@@ -215,12 +226,23 @@ export async function deletePaymentRecord(input: unknown) {
       .where(eq(payments.id, paymentId));
     if (!payment) return { ok: false as const, error: 'ไม่พบข้อมูลการชำระเงิน' };
 
+    // TODO Step 3-4: replace with UPDATE payments SET status='voided' ...
     await db.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
     await db.delete(payments).where(eq(payments.id, paymentId));
     // Mark session closed (no payment) so it stays in history but doesn't re-appear in POS
     await db.update(sessions)
       .set({ status: 'closed' })
       .where(eq(sessions.id, payment.sessionId));
+
+    writeAuditLog({
+      userId: authSession.user.id,
+      role: authSession.user.role,
+      action: 'delete_payment',
+      entity: 'payments',
+      entityId: paymentId,
+      before: { sessionId: payment.sessionId },
+      after: { deleted: true, reason: reason ?? 'ไม่ระบุ' },
+    });
 
     revalidatePath('/pos/history');
     revalidatePath('/tables/history');
@@ -232,17 +254,27 @@ export async function deletePaymentRecord(input: unknown) {
 }
 
 /* ─── reopenSessionForPayment — ยกเลิกการชำระ แล้วส่งกลับ POS ──────── */
+//
+// Phase 1 Step 2.5: จำกัดเป็น payment:reopen (owner + manager) + audit log
+// TODO Step 3-4: เมื่อมี payments.status column ให้ soft-void payment ก่อน revert
+//   แทนการ DELETE ตรง ๆ
 
 export async function reopenSessionForPayment(input: unknown) {
   const authSession = await auth();
   if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
-  if (!can(authSession.user.role, 'process_payment'))
-    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+  // Restricted to owner + manager via payment:reopen — cashier ทำไม่ได้
+  if (!can(authSession.user.role, 'payment:reopen'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ — ต้องเป็น owner หรือ manager' };
 
-  const parsed = z.object({ paymentId: z.string().uuid() }).safeParse(input);
+  const parsed = z
+    .object({
+      paymentId: z.string().uuid(),
+      reason: z.string().max(500).optional(),
+    })
+    .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
 
-  const { paymentId } = parsed.data;
+  const { paymentId, reason } = parsed.data;
   try {
     const [payment] = await db
       .select({ id: payments.id, sessionId: payments.sessionId })
@@ -266,6 +298,7 @@ export async function reopenSessionForPayment(input: unknown) {
     const allSessionIds = [mainSession.id, ...groupLinked.map((s) => s.id)];
     const allTableIds = [...new Set([mainSession.tableId, ...groupLinked.map((s) => s.tableId)])];
 
+    // TODO Step 3-4: replace with UPDATE payments SET status='voided' before reverting session
     await db.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
     await db.delete(payments).where(eq(payments.id, paymentId));
     await db.update(sessions)
@@ -274,6 +307,16 @@ export async function reopenSessionForPayment(input: unknown) {
     await db.update(tables)
       .set({ status: 'occupied' })
       .where(inArray(tables.id, allTableIds));
+
+    writeAuditLog({
+      userId: authSession.user.id,
+      role: authSession.user.role,
+      action: 'reopen_session',
+      entity: 'payments',
+      entityId: paymentId,
+      before: { sessionId: mainSession.id, linkedSessionIds: groupLinked.map((s) => s.id) },
+      after: { sessionStatus: 'closing', reason: reason ?? 'ไม่ระบุ' },
+    });
 
     revalidatePath('/pos');
     revalidatePath('/pos/history');

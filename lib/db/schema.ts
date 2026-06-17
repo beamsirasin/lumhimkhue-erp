@@ -111,6 +111,39 @@ export const countFrequencyEnum = pgEnum('count_frequency', ['daily', 'weekly'])
 export const adjustmentTypeEnum = pgEnum('adjustment_type', ['adjustment', 'waste']);
 export const discrepancyTypeEnum = pgEnum('discrepancy_type', ['none', 'short', 'wrong', 'spoiled']);
 
+// ─── Phase 1: Cash Control Enums ─────────────────────────────────────────────
+
+export const cashierShiftStatusEnum = pgEnum('cashier_shift_status', [
+  'open',
+  'closed',
+  'reviewed',
+]);
+
+export const paymentStatusEnum = pgEnum('payment_status', [
+  'completed',
+  'voided',
+  'refunded',
+]);
+
+// Separate from adjustmentTypeEnum ('adjustment'|'waste') which is for stock
+export const paymentAdjustmentTypeEnum = pgEnum('payment_adjustment_type', [
+  'void',
+  'refund',
+  'discount_correction',
+]);
+
+export const paymentAdjustmentStatusEnum = pgEnum('payment_adjustment_status', [
+  'pending',
+  'approved',
+  'rejected',
+]);
+
+export const discountApprovalStatusEnum = pgEnum('discount_approval_status', [
+  'pending',
+  'approved',
+  'rejected',
+]);
+
 // ─── HR / Payroll Enums ───────────────────────────────────────────────────────
 
 export const employeeTypeEnum = pgEnum('employee_type', ['full_time', 'part_time']);
@@ -420,8 +453,20 @@ export const payments = pgTable(
       .references(() => users.id),
     receiptNo: varchar('receipt_no', { length: 30 }),
     notes: text('notes'),
+    // ─── Phase 1: Cash Control columns ───────────────────────────────────────
+    // shiftId: nullable so existing rows (before cashier_shifts) remain valid
+    shiftId: uuid('shift_id').references(() => cashierShifts.id),
+    // status: default 'completed' so all existing payments stay valid
+    status: paymentStatusEnum('status').notNull().default('completed'),
+    voidedAt: timestamp('voided_at'),
+    voidedBy: uuid('voided_by').references(() => users.id),
+    voidReason: text('void_reason'),
   },
-  (t) => [index('payments_paid_at_idx').on(t.paidAt)],
+  (t) => [
+    index('payments_paid_at_idx').on(t.paidAt),
+    index('payments_status_idx').on(t.status),
+    index('payments_shift_id_idx').on(t.shiftId),
+  ],
 );
 
 /**
@@ -458,6 +503,112 @@ export const auditLogs = pgTable(
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
   (t) => [index('audit_logs_created_at_idx').on(t.createdAt)],
+);
+
+// ─── Phase 1: Cash Control Tables ────────────────────────────────────────────
+
+export const cashierShifts = pgTable(
+  'cashier_shifts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    branchId: uuid('branch_id').references(() => branches.id),
+    cashierId: uuid('cashier_id')
+      .notNull()
+      .references(() => users.id),
+    openedBy: uuid('opened_by')
+      .notNull()
+      .references(() => users.id),
+    closedBy: uuid('closed_by').references(() => users.id),
+    status: cashierShiftStatusEnum('status').notNull().default('open'),
+    openedAt: timestamp('opened_at').notNull().defaultNow(),
+    closedAt: timestamp('closed_at'),
+    /** เงินทอนตั้งต้นในลิ้นชัก */
+    openingFloat: numeric('opening_float', { precision: 10, scale: 2 })
+      .notNull()
+      .default('0'),
+    /** คำนวณจาก cash payments ในรอบนี้ + openingFloat */
+    expectedCash: numeric('expected_cash', { precision: 10, scale: 2 }),
+    /** จำนวนเงินสดที่นับได้จริงเมื่อปิดรอบ */
+    actualCash: numeric('actual_cash', { precision: 10, scale: 2 }),
+    /** actualCash − expectedCash (ลบ = เงินขาด, บวก = เงินเกิน) */
+    cashDifference: numeric('cash_difference', { precision: 10, scale: 2 }),
+    differenceReason: text('difference_reason'),
+    reviewedBy: uuid('reviewed_by').references(() => users.id),
+    reviewedAt: timestamp('reviewed_at'),
+    reviewNotes: text('review_notes'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('cashier_shifts_cashier_opened_at_idx').on(t.cashierId, t.openedAt),
+    index('cashier_shifts_branch_status_idx').on(t.branchId, t.status),
+  ],
+);
+
+/** Immutable ledger of payment adjustments (void / refund / discount correction).
+ *  Never delete rows — only update status to approved/rejected.
+ *
+ *  paymentId intentionally has NO FK constraint: in Approach C the payment row
+ *  is hard-deleted after this record is inserted. paymentId is kept as a
+ *  reference-only UUID for audit trail. Use paymentSnapshot to recover payment
+ *  details after the payment row is gone. sessionId (FK → sessions) provides
+ *  a stable lookup path since sessions are never deleted. */
+export const paymentAdjustments = pgTable(
+  'payment_adjustments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // No FK — payment row may be hard-deleted (Approach C); kept for audit trail only
+    paymentId: uuid('payment_id').notNull(),
+    // FK → sessions (never deleted) — enables lookup by session/table/history
+    sessionId: uuid('session_id').references(() => sessions.id),
+    shiftId: uuid('shift_id').references(() => cashierShifts.id),
+    type: paymentAdjustmentTypeEnum('type').notNull(),
+    /** บวก = คืนเงิน / ลดยอด, ลบ = เพิ่มยอด */
+    amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+    reason: text('reason').notNull(),
+    /** Snapshot of the payment at time of void — preserved after hard delete */
+    paymentSnapshot: jsonb('payment_snapshot'),
+    requestedBy: uuid('requested_by')
+      .notNull()
+      .references(() => users.id),
+    approvedBy: uuid('approved_by').references(() => users.id),
+    approvedAt: timestamp('approved_at'),
+    status: paymentAdjustmentStatusEnum('status').notNull().default('pending'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('payment_adjustments_payment_id_idx').on(t.paymentId),
+    index('payment_adjustments_session_id_idx').on(t.sessionId),
+    index('payment_adjustments_status_idx').on(t.status),
+    index('payment_adjustments_shift_id_idx').on(t.shiftId),
+  ],
+);
+
+/** Discount approval requests — cashier submits, manager/owner approves. */
+export const discountApprovals = pgTable(
+  'discount_approvals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => sessions.id),
+    requestedBy: uuid('requested_by')
+      .notNull()
+      .references(() => users.id),
+    approvedBy: uuid('approved_by').references(() => users.id),
+    /** Reuse existing discountTypeEnum ('fixed' | 'percentage') */
+    discountType: discountTypeEnum('discount_type').notNull(),
+    discountValue: numeric('discount_value', { precision: 10, scale: 2 }).notNull(),
+    reason: text('reason').notNull(),
+    status: discountApprovalStatusEnum('status').notNull().default('pending'),
+    /** auto-expire ถ้า manager ไม่อนุมัติภายในเวลาที่กำหนด */
+    expiresAt: timestamp('expires_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('discount_approvals_session_id_idx').on(t.sessionId),
+    index('discount_approvals_status_idx').on(t.status),
+    index('discount_approvals_requested_by_idx').on(t.requestedBy),
+  ],
 );
 
 // ─── Inventory Tables ─────────────────────────────────────────────────────────
@@ -899,6 +1050,11 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   employees: many(employees),
   scheduleCycles: many(scheduleCycles),
   payrollCycles: many(payrollCycles),
+  // Phase 1: Cash Control
+  cashierShiftsAsOwner: many(cashierShifts, { relationName: 'cashierShiftsCashier' }),
+  cashierShiftsOpened: many(cashierShifts, { relationName: 'cashierShiftsOpenedBy' }),
+  paymentAdjustmentsRequested: many(paymentAdjustments, { relationName: 'adjustmentRequestedBy' }),
+  discountApprovalsRequested: many(discountApprovals, { relationName: 'discountRequestedBy' }),
 }));
 
 export const customersRelations = relations(customers, ({ many }) => ({
@@ -993,6 +1149,18 @@ export const paymentsRelations = relations(payments, ({ one, many }) => ({
     references: [users.id],
   }),
   lineItems: many(paymentLineItems),
+  // Phase 1: Cash Control
+  shift: one(cashierShifts, {
+    fields: [payments.shiftId],
+    references: [cashierShifts.id],
+  }),
+  voidedByUser: one(users, {
+    fields: [payments.voidedBy],
+    references: [users.id],
+    relationName: 'paymentsVoidedBy',
+  }),
+  // Note: adjustments relation removed — paymentAdjustments.paymentId has no FK
+  // (payment rows may be hard-deleted in Approach C). Query via session instead.
 }));
 
 export const paymentLineItemsRelations = relations(paymentLineItems, ({ one }) => ({
@@ -1008,6 +1176,74 @@ export const paymentLineItemsRelations = relations(paymentLineItems, ({ one }) =
 
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
   user: one(users, { fields: [auditLogs.userId], references: [users.id] }),
+}));
+
+// ─── Phase 1: Cash Control Relations ─────────────────────────────────────────
+
+export const cashierShiftsRelations = relations(cashierShifts, ({ one, many }) => ({
+  branch: one(branches, { fields: [cashierShifts.branchId], references: [branches.id] }),
+  cashier: one(users, {
+    fields: [cashierShifts.cashierId],
+    references: [users.id],
+    relationName: 'cashierShiftsCashier',
+  }),
+  openedByUser: one(users, {
+    fields: [cashierShifts.openedBy],
+    references: [users.id],
+    relationName: 'cashierShiftsOpenedBy',
+  }),
+  closedByUser: one(users, {
+    fields: [cashierShifts.closedBy],
+    references: [users.id],
+    relationName: 'cashierShiftsClosedBy',
+  }),
+  reviewedByUser: one(users, {
+    fields: [cashierShifts.reviewedBy],
+    references: [users.id],
+    relationName: 'cashierShiftsReviewedBy',
+  }),
+  payments: many(payments),
+  adjustments: many(paymentAdjustments),
+}));
+
+export const paymentAdjustmentsRelations = relations(paymentAdjustments, ({ one }) => ({
+  // No payment relation — paymentId has no FK; payment row may be hard-deleted.
+  // Use paymentSnapshot jsonb field to recover payment details after deletion.
+  session: one(sessions, {
+    fields: [paymentAdjustments.sessionId],
+    references: [sessions.id],
+  }),
+  shift: one(cashierShifts, {
+    fields: [paymentAdjustments.shiftId],
+    references: [cashierShifts.id],
+  }),
+  requestedByUser: one(users, {
+    fields: [paymentAdjustments.requestedBy],
+    references: [users.id],
+    relationName: 'adjustmentRequestedBy',
+  }),
+  approvedByUser: one(users, {
+    fields: [paymentAdjustments.approvedBy],
+    references: [users.id],
+    relationName: 'adjustmentApprovedBy',
+  }),
+}));
+
+export const discountApprovalsRelations = relations(discountApprovals, ({ one }) => ({
+  session: one(sessions, {
+    fields: [discountApprovals.sessionId],
+    references: [sessions.id],
+  }),
+  requestedByUser: one(users, {
+    fields: [discountApprovals.requestedBy],
+    references: [users.id],
+    relationName: 'discountRequestedBy',
+  }),
+  approvedByUser: one(users, {
+    fields: [discountApprovals.approvedBy],
+    references: [users.id],
+    relationName: 'discountApprovedBy',
+  }),
 }));
 
 export const ingredientCategoriesRelations = relations(ingredientCategories, ({ many }) => ({
@@ -1360,3 +1596,17 @@ export type MonthlyExpenseCategory = typeof monthlyExpenseCategoryEnum.enumValue
 // ─── Tax Invoice Types ────────────────────────────────────────────────────────
 
 export type TaxInvoiceSequence = typeof taxInvoiceSequence.$inferSelect;
+
+// ─── Phase 1: Cash Control Types ─────────────────────────────────────────────
+
+export type CashierShift = typeof cashierShifts.$inferSelect;
+export type NewCashierShift = typeof cashierShifts.$inferInsert;
+export type PaymentAdjustment = typeof paymentAdjustments.$inferSelect;
+export type NewPaymentAdjustment = typeof paymentAdjustments.$inferInsert;
+export type DiscountApproval = typeof discountApprovals.$inferSelect;
+export type NewDiscountApproval = typeof discountApprovals.$inferInsert;
+export type PaymentStatus = typeof paymentStatusEnum.enumValues[number];
+export type CashierShiftStatus = typeof cashierShiftStatusEnum.enumValues[number];
+export type PaymentAdjustmentType = typeof paymentAdjustmentTypeEnum.enumValues[number];
+export type PaymentAdjustmentStatus = typeof paymentAdjustmentStatusEnum.enumValues[number];
+export type DiscountApprovalStatus = typeof discountApprovalStatusEnum.enumValues[number];

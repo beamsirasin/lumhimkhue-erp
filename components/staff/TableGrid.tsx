@@ -593,7 +593,7 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className={step === 'link'
         ? 'flex flex-col sm:max-w-[96vw] w-[96vw] h-[92dvh] max-h-[92dvh] p-0 gap-0 overflow-hidden'
-        : 'sm:max-w-[92vw] max-h-[95dvh] overflow-y-auto'
+        : 'sm:max-w-[92vw] max-h-[82dvh] overflow-y-auto'
       }>
 
         {step === 'link' ? (
@@ -657,7 +657,7 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
           </>
         ) : (
           <>
-            <DialogHeader className="border-b border-border px-6 pt-6 pb-5">
+            <DialogHeader className="border-b border-border px-6 pt-4 pb-4">
               <DialogTitle className="text-xl font-bold leading-tight">
                 เปิดโต๊ะ {table.label}
               </DialogTitle>
@@ -666,13 +666,12 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
               )}
             </DialogHeader>
 
-            <div className="flex flex-col md:flex-row gap-4 md:gap-5 md:h-[75dvh]">
+            <div className="flex flex-col md:flex-row gap-3 md:gap-4 md:h-[52dvh]">
               <div className="flex-1 min-w-0 min-h-0 overflow-y-auto space-y-4 pr-1">
                 <TilePicker
                   tiles={pricingTiles}
                   quantities={quantities}
                   onChange={(id, qty) => setQuantities((p) => ({ ...p, [id]: qty }))}
-                  tileSize="lg"
                 />
                 <div className="space-y-1.5">
                   <Label htmlFor="open-notes">หมายเหตุ (ไม่บังคับ)</Label>
@@ -686,7 +685,7 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
               />
             </div>
 
-            <DialogFooter className="flex-row items-center gap-3 border-t border-border bg-[var(--surface-2)] px-6 py-4 sm:justify-between">
+            <DialogFooter className="flex-row items-center gap-3 border-t border-border bg-[var(--surface-2)] px-6 py-3 sm:justify-between">
               <div className="flex items-center gap-2 text-sm">
                 {totalGuests > 0 ? (
                   <>
