@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { eq, and, inArray, asc } from 'drizzle-orm';
+import { eq, and, inArray, asc, sql } from 'drizzle-orm';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
@@ -91,6 +91,14 @@ export async function getPosSessionDetail(sessionId: string) {
       .reduce((sum, i) => sum + Number(i.menuItem?.extraPrice ?? 0) * i.quantity, 0);
 
     const subtotal = baseAmount + extraAmount;
+    const completedPayments = await db.query.payments.findMany({
+      where: and(inArray(payments.sessionId, allSessionIds), eq(payments.status, 'completed')),
+      orderBy: [asc(payments.paidAt)],
+    });
+    const paidTotal = completedPayments.reduce((sum, payment) => sum + Number(payment.total), 0);
+    const latestPayment = completedPayments.at(-1);
+    const billTotal = latestPayment ? Number(latestPayment.billTotalAtPayment) : subtotal;
+    const remaining = Math.max(0, billTotal - paidTotal);
     const isGroupBill = linkedSessionIds.length > 0;
     const linkedTableLabels = session.linkedSessions.map((s) => s.table.label);
 
@@ -100,6 +108,7 @@ export async function getPosSessionDetail(sessionId: string) {
         session,
         orders: sessionOrders,
         totals: { baseAmount, extraAmount, subtotal, total: subtotal },
+        paymentSummary: { billTotal, paidTotal, remaining },
         isGroupBill,
         linkedTableLabels,
       },
@@ -207,6 +216,14 @@ export async function getActivePaymentOptionsForPos() {
 // Set env STRICT_SHIFT_CASH=true to block cash payments without an open shift.
 const STRICT_SHIFT_CASH = process.env.STRICT_SHIFT_CASH === 'true';
 
+function toCents(value: number | string | null | undefined) {
+  return Math.round(Number(value ?? 0) * 100);
+}
+
+function fromCents(value: number) {
+  return value / 100;
+}
+
 export async function processPayment(input: unknown) {
   const authSession = await auth();
   if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
@@ -216,11 +233,11 @@ export async function processPayment(input: unknown) {
   const parsed = processPaymentSchema.safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
 
-  const { sessionId, paymentMethod, receivedAmount, discount, notes, receiptNo, lineItems, paymentRows: submittedPaymentRows } = parsed.data;
+  const { sessionId, settlementMode, paymentMethod, receivedAmount, discount, notes, receiptNo, lineItems, paymentRows: submittedPaymentRows } = parsed.data;
 
   try {
-    // Parallel: session fetch + idempotency check + store settings + active shift lookup
-    const [session, existingPayment, [settings], activeShiftRows] = await Promise.all([
+    // Parallel: session fetch + store settings + active shift lookup
+    const [session, [settings], activeShiftRows] = await Promise.all([
       db.query.sessions.findFirst({
         where: eq(sessions.id, sessionId),
         with: {
@@ -228,9 +245,6 @@ export async function processPayment(input: unknown) {
           guests: { with: { pricingTile: true } },
           linkedSessions: true,
         },
-      }),
-      db.query.payments.findFirst({
-        where: eq(payments.sessionId, sessionId),
       }),
       db.select({
         loyaltyPointsRedeemRate: storeSettings.loyaltyPointsRedeemRate,
@@ -247,23 +261,35 @@ export async function processPayment(input: unknown) {
 
     // Strict mode: block cash payments when no shift is open (default off — set STRICT_SHIFT_CASH=true to enable)
     // cash_qr contains a cash component and must also be blocked
+    const duplicateReceiptBeforeStatus = receiptNo
+      ? await db.query.payments.findFirst({
+          where: and(eq(payments.sessionId, sessionId), eq(payments.receiptNo, receiptNo), eq(payments.status, 'completed')),
+        })
+      : null;
+    if (duplicateReceiptBeforeStatus) {
+      await ensurePaymentRowsForLegacyPayment(duplicateReceiptBeforeStatus);
+      return {
+        ok: true as const,
+        data: {
+          paymentId: duplicateReceiptBeforeStatus.id,
+          total: Number(duplicateReceiptBeforeStatus.total),
+          changeAmount: Number(duplicateReceiptBeforeStatus.changeAmount),
+          receiptNo: duplicateReceiptBeforeStatus.receiptNo ?? undefined,
+          settlementType: duplicateReceiptBeforeStatus.settlementType,
+          billTotal: Number(duplicateReceiptBeforeStatus.billTotalAtPayment),
+          paidBefore: Number(duplicateReceiptBeforeStatus.paidBefore),
+          paidThisTime: Number(duplicateReceiptBeforeStatus.total),
+          paidTotal: Number(duplicateReceiptBeforeStatus.paidBefore) + Number(duplicateReceiptBeforeStatus.total),
+          remainingAfter: Number(duplicateReceiptBeforeStatus.remainingAfter),
+          shiftWarning: !duplicateReceiptBeforeStatus.shiftId,
+        },
+      };
+    }
+
     const legacyHasCash =
       parsed.data.paymentMethod === 'cash' || parsed.data.paymentMethod === 'cash_qr';
     if (STRICT_SHIFT_CASH && !activeShiftId && legacyHasCash) {
       return { ok: false as const, error: 'ต้องเปิดรอบแคชเชียร์ก่อนรับเงินสด' };
-    }
-
-    // Idempotency: if payment already exists (e.g. previous attempt succeeded in DB but threw before returning), return it
-    if (existingPayment) {
-      await ensurePaymentRowsForLegacyPayment(existingPayment);
-      return {
-        ok: true as const,
-        data: {
-          total: Number(existingPayment.total),
-          changeAmount: Number(existingPayment.changeAmount),
-          receiptNo: existingPayment.receiptNo ?? undefined,
-        },
-      };
     }
 
     if (session.status === 'closed' || session.status === 'paid')
@@ -340,10 +366,34 @@ export async function processPayment(input: unknown) {
     const subtotal = baseAmount + extraAmount + addonTotal;
     const serviceCharge = 0;
     const discountAmount = (discount ?? 0) + discountFromTiles;
-    const total = Math.max(0, subtotal + serviceCharge - discountAmount);
+    const billTotal = Math.max(0, subtotal + serviceCharge - discountAmount);
+    const billTotalCents = toCents(billTotal);
+
+    const [paidBeforeRow] = await db
+      .select({ total: sql<number>`coalesce(sum(${payments.total}::numeric), 0)` })
+      .from(payments)
+      .where(and(inArray(payments.sessionId, allSessionIds), eq(payments.status, 'completed')));
+    const paidBeforeCents = toCents(paidBeforeRow?.total ?? 0);
+
+    if (paidBeforeCents > billTotalCents) {
+      return {
+        ok: false as const,
+        error: 'ยอดบิลต่ำกว่ายอดที่ชำระไปแล้ว กรุณาตรวจสอบส่วนลดหรือรายการก่อนรับชำระเพิ่ม',
+      };
+    }
+
+    const remainingBeforeCents = billTotalCents - paidBeforeCents;
+    if (remainingBeforeCents <= 0) {
+      return { ok: false as const, error: 'บิลนี้ชำระครบแล้ว' };
+    }
 
     const rowValidation = submittedPaymentRows
-      ? await validateCheckoutPaymentRowsForTotal(submittedPaymentRows, total)
+      ? await validateCheckoutPaymentRowsForTotal(
+          submittedPaymentRows,
+          settlementMode === 'final'
+            ? fromCents(remainingBeforeCents)
+            : submittedPaymentRows.reduce((sum, row) => sum + row.amount, 0),
+        )
       : null;
     if (rowValidation && !rowValidation.ok) {
       return { ok: false as const, error: rowValidation.error };
@@ -357,16 +407,64 @@ export async function processPayment(input: unknown) {
       return { ok: false as const, error: 'ต้องเปิดรอบแคชเชียร์ก่อนรับเงินสด' };
     }
 
+    const paidThisTimeCents = rowValidation?.ok
+      ? rowValidation.data.rows.reduce((sum, row) => sum + row.amountCents, 0)
+      : remainingBeforeCents;
+    const remainingAfterCents = remainingBeforeCents - paidThisTimeCents;
+
+    if (paidThisTimeCents <= 0) {
+      return { ok: false as const, error: 'ยอดชำระต้องมากกว่า 0' };
+    }
+    if (paidThisTimeCents > remainingBeforeCents) {
+      return { ok: false as const, error: 'ยอดชำระมากกว่ายอดคงเหลือ' };
+    }
+    if (settlementMode === 'partial' && paidThisTimeCents >= remainingBeforeCents) {
+      return { ok: false as const, error: 'ยอดชำระบางส่วนต้องน้อยกว่ายอดคงเหลือ' };
+    }
+    if (settlementMode === 'final' && paidThisTimeCents !== remainingBeforeCents) {
+      return { ok: false as const, error: 'ยอดปิดบิลต้องเท่ากับยอดคงเหลือ' };
+    }
+
+    const paidThisTime = fromCents(paidThisTimeCents);
+    const paidBefore = fromCents(paidBeforeCents);
+    const remainingAfter = fromCents(remainingAfterCents);
+    const paidTotal = fromCents(paidBeforeCents + paidThisTimeCents);
+
+    const duplicateReceiptPayment = receiptNo
+      ? await db.query.payments.findFirst({
+          where: and(eq(payments.sessionId, sessionId), eq(payments.receiptNo, receiptNo), eq(payments.status, 'completed')),
+        })
+      : null;
+    if (duplicateReceiptPayment) {
+      await ensurePaymentRowsForLegacyPayment(duplicateReceiptPayment);
+      return {
+        ok: true as const,
+        data: {
+          paymentId: duplicateReceiptPayment.id,
+          total: Number(duplicateReceiptPayment.total),
+          changeAmount: Number(duplicateReceiptPayment.changeAmount),
+          receiptNo: duplicateReceiptPayment.receiptNo ?? undefined,
+          settlementType: duplicateReceiptPayment.settlementType,
+          billTotal: Number(duplicateReceiptPayment.billTotalAtPayment),
+          paidBefore: Number(duplicateReceiptPayment.paidBefore),
+          paidThisTime: Number(duplicateReceiptPayment.total),
+          paidTotal: Number(duplicateReceiptPayment.paidBefore) + Number(duplicateReceiptPayment.total),
+          remainingAfter: Number(duplicateReceiptPayment.remainingAfter),
+          shiftWarning: !duplicateReceiptPayment.shiftId,
+        },
+      };
+    }
+
     const summaryPaymentMethod = rowValidation?.ok ? rowValidation.data.legacyPaymentMethod : paymentMethod;
     const summaryReceivedAmount = rowValidation?.ok ? rowValidation.data.receivedAmount : String(receivedAmount);
     const summaryChangeAmount = rowValidation?.ok
       ? rowValidation.data.changeAmount
-      : String(paymentMethod === 'cash' ? receivedAmount - total : 0);
+      : String(paymentMethod === 'cash' ? receivedAmount - paidThisTime : 0);
     const summaryNotes = rowValidation?.ok
       ? [notes, rowValidation.data.notesSummary].filter(Boolean).join('\n\n')
       : notes;
 
-    if (!rowValidation && paymentMethod === 'cash' && receivedAmount < total)
+    if (!rowValidation && paymentMethod === 'cash' && toCents(receivedAmount) < paidThisTimeCents)
       return { ok: false as const, error: 'จำนวนเงินที่รับไม่เพียงพอ' };
 
     const changeAmount = Number(summaryChangeAmount);
@@ -377,7 +475,7 @@ export async function processPayment(input: unknown) {
       subtotal: String(subtotal),
       serviceCharge: String(serviceCharge),
       discount: String(discountAmount),
-      total: String(total),
+      total: paidThisTime.toFixed(2),
       paymentMethod: summaryPaymentMethod,
       receivedAmount: summaryReceivedAmount,
       changeAmount: summaryChangeAmount,
@@ -385,6 +483,10 @@ export async function processPayment(input: unknown) {
       receiptNo: receiptNo ?? null,
       notes: summaryNotes,
       shiftId: activeShiftId,
+      settlementType: settlementMode,
+      billTotalAtPayment: billTotal.toFixed(2),
+      paidBefore: paidBefore.toFixed(2),
+      remainingAfter: remainingAfter.toFixed(2),
     }).returning({
       id: payments.id,
       sessionId: payments.sessionId,
@@ -401,6 +503,10 @@ export async function processPayment(input: unknown) {
       notes: payments.notes,
       shiftId: payments.shiftId,
       status: payments.status,
+      settlementType: payments.settlementType,
+      billTotalAtPayment: payments.billTotalAtPayment,
+      paidBefore: payments.paidBefore,
+      remainingAfter: payments.remainingAfter,
     });
 
     if (rowValidation?.ok) {
@@ -438,33 +544,34 @@ export async function processPayment(input: unknown) {
       );
     }
 
-    // Generate tax invoice number if requested
+    // Generate tax invoice number only once the bill is fully settled.
     let taxInvoiceNumber: string | undefined;
-    if (session.taxInvoiceRequested) {
+    if (session.taxInvoiceRequested && settlementMode === 'final' && remainingAfterCents === 0) {
       taxInvoiceNumber = await generateTaxInvoiceNumber();
       await db.update(sessions)
         .set({ taxInvoiceNumber })
         .where(eq(sessions.id, sessionId));
     }
 
-    // Mark session as paid (table cleared by staff separately)
-    await db
-      .update(sessions)
-      .set({ status: 'paid', closedAt: new Date() })
-      .where(inArray(sessions.id, allSessionIds));
+    if (settlementMode === 'final' && remainingAfterCents === 0) {
+      await db
+        .update(sessions)
+        .set({ status: 'paid', closedAt: new Date() })
+        .where(inArray(sessions.id, allSessionIds));
 
-    const allTableIds = [session.tableId, ...session.linkedSessions.map((s) => s.tableId)];
-    await db
-      .update(tables)
-      .set({ status: 'paid' })
-      .where(inArray(tables.id, allTableIds));
+      const allTableIds = [session.tableId, ...session.linkedSessions.map((s) => s.tableId)];
+      await db
+        .update(tables)
+        .set({ status: 'paid' })
+        .where(inArray(tables.id, allTableIds));
+    }
 
-    // Award loyalty points if session linked to a customer
-    if (session.customerId) {
+    // Award loyalty points once for the original bill when fully settled.
+    if (session.customerId && settlementMode === 'final' && remainingAfterCents === 0) {
       await awardLoyaltyPoints({
         customerId: session.customerId,
         sessionId,
-        totalAmount: total,
+        totalAmount: billTotal,
         pointsRedeemed: loyaltyPointsRedeemed,
       });
     }
@@ -480,7 +587,12 @@ export async function processPayment(input: unknown) {
       entityId: payment.id,
       after: {
         sessionId,
-        total,
+        settlementType: settlementMode,
+        billTotal,
+        paidBefore,
+        paidThisTime,
+        paidTotal,
+        remainingAfter,
         paymentMethod: summaryPaymentMethod,
         receiptNo: receiptNo ?? null,
         shiftId: activeShiftId,
@@ -490,10 +602,17 @@ export async function processPayment(input: unknown) {
     return {
       ok: true as const,
       data: {
-        total,
+        paymentId: payment.id,
+        total: paidThisTime,
         changeAmount,
         receiptNo: receiptNo ?? undefined,
         taxInvoiceNumber,
+        settlementType: payment.settlementType,
+        billTotal,
+        paidBefore,
+        paidThisTime,
+        paidTotal,
+        remainingAfter,
         shiftWarning: !activeShiftId, // true = payment saved without a linked shift
       },
     };

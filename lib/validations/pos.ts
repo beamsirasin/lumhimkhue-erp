@@ -21,6 +21,7 @@ export const checkoutPaymentRowSchema = z.object({
 
 export const processPaymentSchema = z.object({
   sessionId: z.string().uuid(),
+  settlementMode: z.enum(['partial', 'final']).default('final'),
   paymentMethod: z.enum(['cash', 'cash_qr', 'qr_promptpay', 'transfer', 'card']),
   receivedAmount: z.number().min(0),
   discount: z.number().min(0).default(0),

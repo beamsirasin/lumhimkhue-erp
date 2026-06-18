@@ -34,6 +34,7 @@ async function main() {
     payments,
     receivingAccounts,
     paymentAdjustments,
+    sessions,
   } = await import('../lib/db/schema');
 
   console.log('Payment foundation verification');
@@ -115,6 +116,26 @@ async function main() {
   const totalDiff = Number((Number(legacyTotal?.total ?? 0) - Number(rowTotal?.total ?? 0)).toFixed(2));
   assert(Math.abs(totalDiff) < 0.01, 'legacy payment totals equal completed payment_rows totals', `diff ${totalDiff.toFixed(2)}`);
 
+  const [eventMismatch] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(sql`
+      (
+        select p.id
+        from payments p
+        left join payment_rows pr
+          on pr.payment_id = p.id
+          and pr.status = 'completed'
+        where p.status = 'completed'
+        group by p.id, p.total
+        having abs(coalesce(sum(pr.amount::numeric), 0) - p.total::numeric) > 0.01
+      ) payment_event_row_mismatches
+    `);
+  assert(
+    Number(eventMismatch?.count ?? 0) === 0,
+    'each payment event total equals its completed payment_rows sum',
+    `${eventMismatch?.count ?? 0} mismatches`,
+  );
+
   const [cashInvalid] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(paymentRows)
@@ -187,6 +208,68 @@ async function main() {
 
   const zeroAccountMethods = activeMethods.filter((m) => Number(m.accountCount) === 0);
   assert(zeroAccountMethods.length === 0, 'active methods have active receiving accounts', zeroAccountMethods.map((m) => m.code).join(', '));
+
+  const [missingSettlementMetadata] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(payments)
+    .where(sql`
+      ${payments.status} = 'completed'
+      and (
+        ${payments.settlementType} is null
+        or ${payments.billTotalAtPayment} is null
+        or ${payments.paidBefore} is null
+        or ${payments.remainingAfter} is null
+      )
+    `);
+  assert(
+    Number(missingSettlementMetadata?.count ?? 0) === 0,
+    'completed payments have settlement metadata',
+    `${missingSettlementMetadata?.count ?? 0} missing`,
+  );
+
+  const [overpaidSessions] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(sql`
+      (
+        with completed as (
+          select
+            session_id,
+            sum(total::numeric) as paid_total,
+            max(bill_total_at_payment::numeric) as bill_total
+          from payments
+          where status = 'completed'
+          group by session_id
+        )
+        select c.session_id
+        from completed c
+        where c.paid_total - c.bill_total > 0.01
+      ) overpaid_sessions
+    `);
+  assert(
+    Number(overpaidSessions?.count ?? 0) === 0,
+    'sum of completed payments per session does not exceed bill total at payment',
+    `${overpaidSessions?.count ?? 0} overpaid`,
+  );
+
+  const [paidSessionsWithRemaining] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(sessions)
+    .where(sql`
+      ${sessions.status} = 'paid'
+      and exists (
+        select 1
+        from payments p
+        where p.session_id = ${sessions.id}
+          and p.status = 'completed'
+        group by p.session_id
+        having abs(max(p.bill_total_at_payment::numeric) - sum(p.total::numeric)) > 0.01
+      )
+    `);
+  assert(
+    Number(paidSessionsWithRemaining?.count ?? 0) === 0,
+    'paid sessions have zero remaining balance',
+    `${paidSessionsWithRemaining?.count ?? 0} inconsistent`,
+  );
 
   // Warning-only: post-close payment mutations (does not affect pass/fail count)
   const [postCloseMutations] = await db

@@ -7,7 +7,7 @@ import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { startOfDay, subDays, addDays } from 'date-fns';
 import { db } from '@/lib/db';
 import {
-  payments, sessions, sessionGuests, orderItems, menuItems,
+  payments, sessions, orderItems, menuItems,
   orders, stockCounts, stockCountItems, ingredients, recipes,
   paymentRows, paymentMethods,
 } from '@/lib/db/schema';
@@ -35,15 +35,6 @@ export type DailyClosingReport = {
   paymentBreakdown: Array<{ method: string; total: number; count: number }>;
 };
 
-const guestSums = db
-  .select({
-    sessionId: sessionGuests.sessionId,
-    total: sql<number>`sum(${sessionGuests.quantity})`.as('total'),
-  })
-  .from(sessionGuests)
-  .groupBy(sessionGuests.sessionId)
-  .as('guest_sums');
-
 export async function generateDailyClosingReport(dateStr: string): Promise<DailyClosingReport> {
   const zonedDate = toZonedTime(new Date(`${dateStr}T12:00:00+07:00`), TZ);
   const dayStart = fromZonedTime(startOfDay(zonedDate), TZ);
@@ -54,12 +45,20 @@ export async function generateDailyClosingReport(dateStr: string): Promise<Daily
     // Today revenue + sessions + guests
     db.select({
       revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
-      sessionCount: sql<number>`count(*)`,
-      guests: sql<number>`coalesce(sum("guest_sums"."total"), 0)`,
+      sessionCount: sql<number>`count(distinct ${sessions.id})`,
+      guests: sql<number>`(
+        select coalesce(sum(sg.quantity), 0)
+        from session_guests sg
+        where sg.session_id in (
+          select distinct p2.session_id
+          from payments p2
+          where p2.paid_at >= ${dayStart}
+            and p2.paid_at < ${dayEnd}
+        )
+      )`,
     })
     .from(payments)
     .innerJoin(sessions, eq(payments.sessionId, sessions.id))
-    .leftJoin(guestSums, eq(guestSums.sessionId, sessions.id))
     .where(and(gte(payments.paidAt, dayStart), lt(payments.paidAt, dayEnd))),
 
     // Yesterday revenue

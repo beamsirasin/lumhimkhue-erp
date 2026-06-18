@@ -41,10 +41,44 @@ export async function getSessionHistory(dateStr: string) {
         closedAt: sessions.closedAt,
         status: sessions.status,
         notes: sessions.notes,
-        totalRevenue: sql<number>`coalesce(${payments.total}::numeric, 0)`,
-        receivedAmount: sql<number>`coalesce(${payments.receivedAmount}::numeric, 0)`,
-        paymentMethod: payments.paymentMethod,
-        receiptNo: payments.receiptNo,
+        totalRevenue: sql<number>`(
+          SELECT coalesce(sum(p.total::numeric), 0)
+          FROM payments p
+          WHERE p.session_id = ${sessions.id} AND p.status = 'completed'
+        )`,
+        receivedAmount: sql<number>`(
+          SELECT coalesce(sum(p.received_amount::numeric), 0)
+          FROM payments p
+          WHERE p.session_id = ${sessions.id} AND p.status = 'completed'
+        )`,
+        paymentMethod: sql<string | null>`(
+          SELECT p.payment_method::text
+          FROM payments p
+          WHERE p.session_id = ${sessions.id} AND p.status = 'completed'
+          ORDER BY p.paid_at DESC
+          LIMIT 1
+        )`,
+        receiptNo: sql<string | null>`(
+          SELECT p.receipt_no
+          FROM payments p
+          WHERE p.session_id = ${sessions.id} AND p.status = 'completed'
+          ORDER BY p.paid_at DESC
+          LIMIT 1
+        )`,
+        billTotal: sql<number>`(
+          SELECT coalesce(p.bill_total_at_payment::numeric, 0)
+          FROM payments p
+          WHERE p.session_id = ${sessions.id} AND p.status = 'completed'
+          ORDER BY p.paid_at DESC
+          LIMIT 1
+        )`,
+        remaining: sql<number>`(
+          SELECT coalesce(p.remaining_after::numeric, 0)
+          FROM payments p
+          WHERE p.session_id = ${sessions.id} AND p.status = 'completed'
+          ORDER BY p.paid_at DESC
+          LIMIT 1
+        )`,
         guestCount: sql<number>`(
           SELECT coalesce(sum(sg.quantity), 0)
           FROM session_guests sg
@@ -83,7 +117,6 @@ export async function getSessionHistory(dateStr: string) {
       })
       .from(sessions)
       .innerJoin(tables, eq(sessions.tableId, tables.id))
-      .leftJoin(payments, eq(payments.sessionId, sessions.id))
       .where(
         and(
           gte(sessions.startedAt, from),
@@ -91,6 +124,36 @@ export async function getSessionHistory(dateStr: string) {
         ),
       )
       .orderBy(desc(sessions.startedAt));
+
+    const sessionIds = rows.map((r) => r.sessionId);
+    const eventPayments = sessionIds.length > 0
+      ? await db.query.payments.findMany({
+          where: and(inArray(payments.sessionId, sessionIds), eq(payments.status, 'completed')),
+          orderBy: [asc(payments.paidAt)],
+        })
+      : [];
+    const paymentEventsBySession = new Map<string, Array<{
+      id: string;
+      settlementType: 'partial' | 'final';
+      total: number;
+      paidBefore: number;
+      remainingAfter: number;
+      paidAt: Date;
+      methodSummary: string;
+    }>>();
+    for (const payment of eventPayments) {
+      const list = paymentEventsBySession.get(payment.sessionId) ?? [];
+      list.push({
+        id: payment.id,
+        settlementType: payment.settlementType,
+        total: Number(payment.total),
+        paidBefore: Number(payment.paidBefore),
+        remainingAfter: Number(payment.remainingAfter),
+        paidAt: payment.paidAt,
+        methodSummary: payment.paymentMethod,
+      });
+      paymentEventsBySession.set(payment.sessionId, list);
+    }
 
     return {
       ok: true as const,
@@ -108,6 +171,10 @@ export async function getSessionHistory(dateStr: string) {
         receivedAmount: Number(r.receivedAmount),
         paymentMethod: r.paymentMethod,
         receiptNo: r.receiptNo,
+        billTotal: Number(r.billTotal),
+        paidTotal: Number(r.totalRevenue),
+        remaining: Number(r.remaining),
+        paymentEvents: paymentEventsBySession.get(r.sessionId) ?? [],
         guestCount: Number(r.guestCount),
         adultCount: Number(r.adultCount),
         childCount: Number(r.childCount),
@@ -138,16 +205,6 @@ export async function getSessionDetail(sessionId: string) {
       with: {
         table: true,
         guests: { with: { pricingTile: true } },
-        payment: {
-          with: {
-            rows: {
-              with: {
-                paymentMethod: true,
-                receivingAccount: true,
-              },
-            },
-          },
-        },
       },
     });
     if (!session) return { ok: false as const, error: 'ไม่พบ session' };
@@ -162,14 +219,64 @@ export async function getSessionDetail(sessionId: string) {
       },
     });
 
-    const paymentShiftRow = session.payment?.shiftId
+    const eventPayments = await db.query.payments.findMany({
+      where: eq(payments.sessionId, sessionId),
+      orderBy: [asc(payments.paidAt)],
+      with: {
+        rows: {
+          with: {
+            paymentMethod: true,
+            receivingAccount: true,
+          },
+        },
+      },
+    });
+    const shiftIds = [...new Set(eventPayments.map((payment) => payment.shiftId).filter((id): id is string => id !== null))];
+    const shiftRows = shiftIds.length > 0
       ? await db
-          .select({ status: cashierShifts.status, closedAt: cashierShifts.closedAt })
+          .select({ id: cashierShifts.id, status: cashierShifts.status, closedAt: cashierShifts.closedAt })
           .from(cashierShifts)
-          .where(eq(cashierShifts.id, session.payment.shiftId))
-          .then((rows) => rows[0] ?? null)
-      : null;
-    return { ok: true as const, data: { session, orders: sessionOrders, paymentShift: paymentShiftRow } };
+          .where(inArray(cashierShifts.id, shiftIds))
+      : [];
+    const shiftById = new Map(shiftRows.map((shift) => [shift.id, shift]));
+    const eventPaymentsWithShift = eventPayments.map((payment) => ({
+      ...payment,
+      shift: payment.shiftId ? (shiftById.get(payment.shiftId) ?? null) : null,
+    }));
+    const legacyPayment = eventPaymentsWithShift[eventPaymentsWithShift.length - 1] ?? null;
+    const paidTotal = eventPayments
+      .filter((payment) => payment.status === 'completed')
+      .reduce((sum, payment) => sum + Number(payment.total), 0);
+    const computedBillTotal = session.guests.reduce(
+      (sum, g) => sum + Number(g.pricingTile.price) * g.quantity,
+      0,
+    ) + sessionOrders
+      .flatMap((o) => o.items)
+      .filter((i) => i.status !== 'cancelled' && !i.menuItem?.isBuffet)
+      .reduce((sum, i) => sum + Number(i.menuItem?.extraPrice ?? 0) * i.quantity, 0);
+    const billTotal = legacyPayment ? Number(legacyPayment.billTotalAtPayment) : computedBillTotal;
+    const remaining = Math.max(0, Math.round((billTotal - paidTotal) * 100) / 100);
+
+    const paymentShiftRow = legacyPayment?.shift ?? null;
+    return {
+      ok: true as const,
+      data: {
+        session: {
+          ...session,
+          payment: legacyPayment,
+          payments: eventPaymentsWithShift,
+        },
+        orders: sessionOrders,
+        paymentShift: paymentShiftRow,
+        billTotal,
+        paidTotal,
+        remaining,
+        payments: eventPaymentsWithShift.map((payment) => ({
+          ...payment,
+          paymentRows: payment.rows,
+        })),
+      },
+    };
   } catch (e) {
     console.error('[getSessionDetail]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
@@ -253,6 +360,10 @@ export async function deletePaymentRecord(input: unknown) {
       notes: payments.notes,
       shiftId: payments.shiftId,
       status: payments.status,
+      settlementType: payments.settlementType,
+      billTotalAtPayment: payments.billTotalAtPayment,
+      paidBefore: payments.paidBefore,
+      remainingAfter: payments.remainingAfter,
     })
     .from(payments)
     .where(eq(payments.id, paymentId));
@@ -268,6 +379,12 @@ export async function deletePaymentRecord(input: unknown) {
         .then((rows) => rows[0] ?? null)
     : null;
   const shiftStatusAtMutation: string | null = shift?.status ?? null;
+
+  const [mainSessionForDelete] = await db
+    .select({ id: sessions.id, tableId: sessions.tableId })
+    .from(sessions)
+    .where(eq(sessions.id, payment.sessionId));
+  if (!mainSessionForDelete) return { ok: false as const, error: 'à¹„à¸¡à¹ˆà¸žà¸š session' };
 
   if (shift?.status === 'reviewed') {
     return { ok: false as const, error: 'ไม่สามารถแก้ไขการชำระเงินในรอบที่ตรวจสอบแล้ว' };
@@ -324,6 +441,10 @@ export async function deletePaymentRecord(input: unknown) {
           notes: payment.notes,
           shiftId: payment.shiftId,
           status: payment.status,
+          settlementType: payment.settlementType,
+          billTotalAtPayment: payment.billTotalAtPayment,
+          paidBefore: payment.paidBefore,
+          remainingAfter: payment.remainingAfter,
         },
         lineItems,
         paymentRows: rowItems,
@@ -342,10 +463,29 @@ export async function deletePaymentRecord(input: unknown) {
     await db.delete(paymentRows).where(eq(paymentRows.paymentId, paymentId));
     await db.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
     await db.delete(payments).where(eq(payments.id, paymentId));
-    // Mark session closed: stays in history but won't re-appear in POS
-    await db.update(sessions)
-      .set({ status: 'closed' })
-      .where(eq(sessions.id, payment.sessionId));
+    const [remainingPaymentState] = await db
+      .select({
+        paidTotal: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
+        billTotal: sql<number>`coalesce(max(${payments.billTotalAtPayment}::numeric), ${payment.billTotalAtPayment}::numeric)`,
+      })
+      .from(payments)
+      .where(and(eq(payments.sessionId, payment.sessionId), eq(payments.status, 'completed')));
+    const paidTotalAfterDelete = Number(remainingPaymentState?.paidTotal ?? 0);
+    const billTotalAfterDelete = Number(remainingPaymentState?.billTotal ?? payment.billTotalAtPayment);
+    const remainingAfterDelete = Math.round((billTotalAfterDelete - paidTotalAfterDelete) * 100) / 100;
+
+    if (payment.settlementType === 'partial' || remainingAfterDelete > 0) {
+      await db.update(sessions)
+        .set({ status: 'closing', closedAt: null })
+        .where(eq(sessions.id, payment.sessionId));
+      await db.update(tables)
+        .set({ status: 'occupied' })
+        .where(eq(tables.id, mainSessionForDelete.tableId));
+    } else {
+      await db.update(sessions)
+        .set({ status: 'closed' })
+        .where(eq(sessions.id, payment.sessionId));
+    }
 
     // Fire-and-forget secondary log (payment_adjustments is the primary audit trail)
     writeAuditLog({
@@ -412,6 +552,10 @@ export async function reopenSessionForPayment(input: unknown) {
       notes: payments.notes,
       shiftId: payments.shiftId,
       status: payments.status,
+      settlementType: payments.settlementType,
+      billTotalAtPayment: payments.billTotalAtPayment,
+      paidBefore: payments.paidBefore,
+      remainingAfter: payments.remainingAfter,
     })
     .from(payments)
     .where(eq(payments.id, paymentId));
@@ -501,6 +645,10 @@ export async function reopenSessionForPayment(input: unknown) {
           notes: payment.notes,
           shiftId: payment.shiftId,
           status: payment.status,
+          settlementType: payment.settlementType,
+          billTotalAtPayment: payment.billTotalAtPayment,
+          paidBefore: payment.paidBefore,
+          remainingAfter: payment.remainingAfter,
         },
         lineItems,
         paymentRows: rowItems,
@@ -738,6 +886,10 @@ export async function getPaymentAdjustmentsReport(input: unknown) {
           snapshot && typeof snapshot.context === 'object' && snapshot.context !== null
             ? (snapshot.context as Record<string, unknown>)
             : {};
+        const snapshotPayment =
+          snapshot && typeof snapshot.payment === 'object' && snapshot.payment !== null
+            ? (snapshot.payment as Record<string, unknown>)
+            : {};
         const rawRows: Array<Record<string, unknown>> = Array.isArray(snapshot?.paymentRows)
           ? (snapshot?.paymentRows as Array<Record<string, unknown>>)
           : [];
@@ -785,6 +937,18 @@ export async function getPaymentAdjustmentsReport(input: unknown) {
           mutationAfterClose: context.mutationAfterClose === true,
           mutationReason:
             typeof context.reason === 'string' ? context.reason : (r.reason ?? null),
+          settlementType:
+            snapshotPayment.settlementType === 'partial' || snapshotPayment.settlementType === 'final'
+              ? snapshotPayment.settlementType
+              : null,
+          billTotalAtPayment:
+            snapshotPayment.billTotalAtPayment != null ? Number(snapshotPayment.billTotalAtPayment) : null,
+          paidBefore:
+            snapshotPayment.paidBefore != null ? Number(snapshotPayment.paidBefore) : null,
+          remainingAfter:
+            snapshotPayment.remainingAfter != null ? Number(snapshotPayment.remainingAfter) : null,
+          paymentTotal:
+            snapshotPayment.total != null ? Number(snapshotPayment.total) : Number(r.amount),
           paymentRowsBefore,
           collectionImpact,
           paymentRowCount: paymentRowsBefore.length,

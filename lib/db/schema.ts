@@ -125,6 +125,11 @@ export const paymentStatusEnum = pgEnum('payment_status', [
   'refunded',
 ]);
 
+export const paymentSettlementTypeEnum = pgEnum('payment_settlement_type', [
+  'partial',
+  'final',
+]);
+
 export const paymentMethodTypeEnum = pgEnum('payment_method_type', [
   'promptpay',
   'cash',
@@ -444,8 +449,7 @@ export const payments = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     sessionId: uuid('session_id')
       .notNull()
-      .references(() => sessions.id)
-      .unique(),
+      .references(() => sessions.id),
     subtotal: numeric('subtotal', { precision: 10, scale: 2 }).notNull(),
     serviceCharge: numeric('service_charge', { precision: 10, scale: 2 })
       .notNull()
@@ -476,11 +480,23 @@ export const payments = pgTable(
     voidedAt: timestamp('voided_at'),
     voidedBy: uuid('voided_by').references(() => users.id),
     voidReason: text('void_reason'),
+    settlementType: paymentSettlementTypeEnum('settlement_type').notNull().default('final'),
+    billTotalAtPayment: numeric('bill_total_at_payment', { precision: 10, scale: 2 })
+      .notNull()
+      .default('0'),
+    paidBefore: numeric('paid_before', { precision: 10, scale: 2 })
+      .notNull()
+      .default('0'),
+    remainingAfter: numeric('remaining_after', { precision: 10, scale: 2 })
+      .notNull()
+      .default('0'),
   },
   (t) => [
     index('payments_paid_at_idx').on(t.paidAt),
     index('payments_status_idx').on(t.status),
     index('payments_shift_id_idx').on(t.shiftId),
+    index('payments_session_id_idx').on(t.sessionId),
+    index('payments_settlement_type_idx').on(t.settlementType),
   ],
 );
 
@@ -1211,10 +1227,7 @@ export const sessionsRelations = relations(sessions, ({ one, many }) => ({
   linkedSessions: many(sessions, { relationName: 'linkedSessions' }),
   guests: many(sessionGuests),
   orders: many(orders),
-  payment: one(payments, {
-    fields: [sessions.id],
-    references: [payments.sessionId],
-  }),
+  payments: many(payments),
   paymentRows: many(paymentRows),
   customerVisits: many(customerVisits),
 }));
@@ -1787,6 +1800,7 @@ export type NewPaymentAdjustment = typeof paymentAdjustments.$inferInsert;
 export type DiscountApproval = typeof discountApprovals.$inferSelect;
 export type NewDiscountApproval = typeof discountApprovals.$inferInsert;
 export type PaymentStatus = typeof paymentStatusEnum.enumValues[number];
+export type PaymentSettlementType = typeof paymentSettlementTypeEnum.enumValues[number];
 export type PaymentMethodType = typeof paymentMethodTypeEnum.enumValues[number];
 export type ReceivingAccountType = typeof receivingAccountTypeEnum.enumValues[number];
 export type CashierShiftStatus = typeof cashierShiftStatusEnum.enumValues[number];

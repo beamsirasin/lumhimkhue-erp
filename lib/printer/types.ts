@@ -78,6 +78,13 @@ export type ReceiptData = {
   total: number;
 
   /* ── Payment (receipt only) ── */
+  settlementType?: 'partial' | 'final';
+  billTotal?: number;
+  paidBefore?: number;
+  paidThisTime?: number;
+  paidTotal?: number;
+  remainingAfter?: number;
+
   receivedAmount: number;
   changeAmount: number;
   paymentMethod: string;

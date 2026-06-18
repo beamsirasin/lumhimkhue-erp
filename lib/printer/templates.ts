@@ -32,6 +32,10 @@ function itemRow(name: string, qty: number, total: number): string {
   return `<div class="item-row"><span class="item-name">${esc(name)}</span><span class="item-qty">${qty}</span><span class="item-total">${total.toFixed(2)}</span></div>`;
 }
 
+function money(value: number): string {
+  return `฿${value.toFixed(2)}`;
+}
+
 const STATION_LABEL: Record<string, string> = {
   meat: 'เนื้อสัตว์', seafood: 'ทะเล', vegetable: 'ผัก',
   noodle: 'เส้น', dessert: 'ของหวาน', drink: 'เครื่องดื่ม', sauce: 'ซอส',
@@ -78,6 +82,20 @@ ${hr()}
                                  <div class="center small">ราคารวมภาษีมูลค่าเพิ่มแล้ว</div>` :
                                 `<div class="center bold">ใบกำกับภาษี</div>`;
 
+  const hasSettlementSummary =
+    isReceipt &&
+    data.settlementType != null &&
+    data.billTotal != null &&
+    data.paidBefore != null &&
+    data.paidThisTime != null &&
+    data.paidTotal != null &&
+    data.remainingAfter != null;
+  const settlementDocLabel = hasSettlementSummary && data.settlementType === 'partial'
+    ? `<div class="center bold">ใบรับชำระบางส่วน</div>`
+    : hasSettlementSummary && data.settlementType === 'final'
+      ? `<div class="center bold">ใบเสร็จรับเงิน</div>`
+      : docLabel;
+
   /* Transaction details */
   const txDetails = `
 ${data.receiptNo ? row('เลขที่', data.receiptNo) : ''}
@@ -96,6 +114,14 @@ ${row('ยอดรวม', `${data.subtotal.toFixed(2)}`)}
 ${discountRow}
 ${showTaxFields && vatAmount > 0 ? row(`ภาษีมูลค่าเพิ่ม ${vat}% (รวม)`, vatAmount.toFixed(2)) : ''}
 ${row('ทั้งหมด', `฿${data.total.toFixed(2)}`, true)}`;
+
+  const settlementBlock = hasSettlementSummary ? `
+${hr()}
+${row('ยอดบิลทั้งหมด', money(data.billTotal!))}
+${row('ชำระก่อนหน้า', money(data.paidBefore!))}
+${row('ชำระครั้งนี้', money(data.paidThisTime!))}
+${row('ชำระแล้วรวม', money(data.paidTotal!))}
+${row('คงเหลือ', money(data.remainingAfter!), true)}` : '';
 
   /* Payment (receipt only) */
   const paymentBlock = isReceipt ? (() => {
@@ -118,7 +144,7 @@ ${row('ทั้งหมด', `฿${data.total.toFixed(2)}`, true)}`;
 ${header}
 ${buyerBlock}
 ${hr()}
-${docLabel}
+${settlementDocLabel}
 ${hr()}
 ${txDetails}
 ${hr()}
@@ -126,6 +152,7 @@ ${itemHeader}
 ${itemRows}
 ${hr()}
 ${totalsBlock}
+${settlementBlock}
 ${paymentBlock}
 ${hr()}
 ${footer}

@@ -15,6 +15,15 @@ const METHOD_LABEL: Record<string, string> = {
   card:         'บัตร',
 };
 
+const SETTLEMENT_LABEL: Record<string, string> = {
+  partial: 'รับบางส่วน',
+  final:   'ปิดบิล',
+};
+
+function fmtThb(value: number) {
+  return `฿${value.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 interface PaymentHistoryTableProps {
   rows: SessionHistoryRow[];
   date: string;
@@ -111,6 +120,7 @@ export function PaymentHistoryTable({ rows, date }: PaymentHistoryTableProps) {
             <tbody>
               {paid.map((row) => {
                 const split = splitInfo.get(row.sessionId);
+                const events = row.paymentEvents ?? [];
                 return (
                 <tr
                   key={row.sessionId}
@@ -163,10 +173,41 @@ export function PaymentHistoryTable({ rows, date }: PaymentHistoryTableProps) {
                     )}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums font-semibold text-foreground">
+                    <div className="text-xs font-normal text-muted-foreground">ยอดบิล {fmtThb(row.billTotal || row.totalRevenue)}</div>
+                    <div className="text-xs font-normal text-emerald-600">รับรวม {fmtThb(row.paidTotal ?? row.totalRevenue)}</div>
+                    <div className={`text-xs font-normal ${row.remaining > 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                      คงเหลือ {fmtThb(row.remaining ?? 0)}
+                    </div>
                     ฿{row.totalRevenue.toLocaleString('th-TH')}
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">
-                    {row.paymentMethod === 'cash_qr' ? (
+                    {events.length > 0 ? (
+                      <div className="space-y-1">
+                        {events.length > 1 && (
+                          <span className="inline-flex rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                            รับชำระ {events.length} ครั้ง
+                          </span>
+                        )}
+                        {events.map((event, idx) => (
+                          <div key={event.id} className="rounded-md border border-border/70 bg-background/70 px-2 py-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                                event.settlementType === 'partial'
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-emerald-100 text-emerald-700'
+                              }`}>
+                                {idx + 1}. {SETTLEMENT_LABEL[event.settlementType] ?? event.settlementType}
+                              </span>
+                              <span className="tabular-nums font-semibold text-foreground">{fmtThb(event.total)}</span>
+                            </div>
+                            <div className="mt-0.5 flex justify-between gap-2 text-[11px]">
+                              <span>{format(new Date(event.paidAt), 'HH:mm', { locale: th })} · {METHOD_LABEL[event.methodSummary] ?? event.methodSummary}</span>
+                              <span className="tabular-nums">คงเหลือ {fmtThb(event.remainingAfter)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : row.paymentMethod === 'cash_qr' ? (
                       <div className="space-y-0.5">
                         <div className="font-medium text-foreground">QR+เงินสด</div>
                         <div className="tabular-nums text-muted-foreground">

@@ -46,6 +46,11 @@ const ADJ_TYPE_LABELS: Record<string, string> = {
   discount_correction: 'แก้ไขส่วนลด',
 };
 
+const SETTLEMENT_LABELS: Record<string, string> = {
+  partial: 'รับชำระบางส่วน',
+  final:   'ปิดบิลทั้งหมด',
+};
+
 function fmt(d: Date | string | null | undefined) {
   if (!d) return '—';
   return format(new Date(d), 'd MMM yy HH:mm', { locale: th });
@@ -300,6 +305,16 @@ function AdjustmentsTable({ rows }: { rows: AdjRow[] }) {
                           <span className="text-foreground">{mutationActionLabel(r)}</span>
                           <span>Payment ID</span>
                           <span className="text-foreground font-mono">{r.paymentId}</span>
+                          <span>ประเภทการรับเงิน</span>
+                          <span className="text-foreground">{r.settlementType ? SETTLEMENT_LABELS[r.settlementType] ?? r.settlementType : '—'}</span>
+                          <span>ยอดบิลตอนรับเงิน</span>
+                          <span className="text-foreground tabular-nums">{thb(r.billTotalAtPayment)}</span>
+                          <span>ชำระก่อนหน้า</span>
+                          <span className="text-foreground tabular-nums">{thb(r.paidBefore)}</span>
+                          <span>ยอดรับครั้งนั้น</span>
+                          <span className="text-foreground tabular-nums">{thb(r.paymentTotal)}</span>
+                          <span>คงเหลือหลังรับ</span>
+                          <span className="text-foreground tabular-nums">{thb(r.remainingAfter)}</span>
                           <span>Shift ID</span>
                           <span className="text-foreground font-mono">{r.shiftId?.slice(0, 8) ?? '—'}</span>
                           <span>สถานะรอบขณะกระทำ</span>

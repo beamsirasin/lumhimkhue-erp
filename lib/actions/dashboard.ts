@@ -11,16 +11,6 @@ import { db } from '@/lib/db';
 import { payments, sessions, sessionGuests, pricingTiles, tables, orderItems, orders, menuItems, recipes, recipeIngredients, ingredients, payrollCycles, payrollItems } from '@/lib/db/schema';
 
 // Pre-aggregated guest totals per session — used as a derived table to replace
-// correlated subqueries. Joining once is O(n) vs O(n * index_lookup) per row.
-const guestSums = db
-  .select({
-    sessionId: sessionGuests.sessionId,
-    total: sql<number>`sum(${sessionGuests.quantity})`.as('total'),
-  })
-  .from(sessionGuests)
-  .groupBy(sessionGuests.sessionId)
-  .as('guest_sums');
-
 const TZ = 'Asia/Bangkok';
 
 function bangkokDayStart(offsetDays = 0): Date {
@@ -47,12 +37,19 @@ export async function getDashboardData() {
     const [todayRevRow] = await db
       .select({
         revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
-        sessionCount: sql<number>`count(*)`,
-        guests: sql<number>`coalesce(sum("guest_sums"."total"), 0)`,
+        sessionCount: sql<number>`count(distinct ${sessions.id})`,
+        guests: sql<number>`(
+          select coalesce(sum(sg.quantity), 0)
+          from session_guests sg
+          where sg.session_id in (
+            select distinct p2.session_id
+            from payments p2
+            where p2.paid_at >= ${todayStart}
+          )
+        )`,
       })
       .from(payments)
       .innerJoin(sessions, eq(payments.sessionId, sessions.id))
-      .leftJoin(guestSums, eq(guestSums.sessionId, sessions.id))
       .where(gte(payments.paidAt, todayStart));
 
     const revenueToday = Number(todayRevRow.revenue);
@@ -65,12 +62,20 @@ export async function getDashboardData() {
       .select({
         date: sql<string>`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`,
         revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
-        sessionCount: sql<number>`count(*)`,
-        guests: sql<number>`coalesce(sum("guest_sums"."total"), 0)`,
+        sessionCount: sql<number>`count(distinct ${sessions.id})`,
+        guests: sql<number>`(
+          select coalesce(sum(sg.quantity), 0)
+          from session_guests sg
+          where sg.session_id in (
+            select distinct p2.session_id
+            from payments p2
+            where (p2.paid_at AT TIME ZONE 'Asia/Bangkok')::date =
+              (${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date
+          )
+        )`,
       })
       .from(payments)
       .innerJoin(sessions, eq(payments.sessionId, sessions.id))
-      .leftJoin(guestSums, eq(guestSums.sessionId, sessions.id))
       .where(gte(payments.paidAt, sevenDaysAgo))
       .groupBy(sql`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`)
       .orderBy(sql`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`);
@@ -183,12 +188,20 @@ export async function getReportSummary(
       .select({
         date: sql<string>`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`,
         revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
-        sessionCount: sql<number>`count(*)`,
-        guests: sql<number>`coalesce(sum("guest_sums"."total"), 0)`,
+        sessionCount: sql<number>`count(distinct ${sessions.id})`,
+        guests: sql<number>`(
+          select coalesce(sum(sg.quantity), 0)
+          from session_guests sg
+          where sg.session_id in (
+            select distinct p2.session_id
+            from payments p2
+            where (p2.paid_at AT TIME ZONE 'Asia/Bangkok')::date =
+              (${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date
+          )
+        )`,
       })
       .from(payments)
       .innerJoin(sessions, eq(payments.sessionId, sessions.id))
-      .leftJoin(guestSums, eq(guestSums.sessionId, sessions.id))
       .where(baseWhere)
       .groupBy(sql`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`)
       .orderBy(sql`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`);
@@ -203,8 +216,18 @@ export async function getReportSummary(
       .from(sessionGuests)
       .innerJoin(pricingTiles, eq(sessionGuests.pricingTileId, pricingTiles.id))
       .innerJoin(sessions, eq(sessionGuests.sessionId, sessions.id))
-      .innerJoin(payments, eq(payments.sessionId, sessions.id))
-      .where(and(baseWhere, eq(pricingTiles.category, 'guest')))
+      .where(and(
+        sessionFilter,
+        eq(pricingTiles.category, 'guest'),
+        sql`exists (
+          select 1
+          from payments p
+          where p.session_id = ${sessions.id}
+            and p.status = 'completed'
+            and p.paid_at >= ${from}
+            and not (p.paid_at >= ${toEnd})
+        )`,
+      ))
       .groupBy(pricingTiles.id, pricingTiles.name, pricingTiles.sortOrder)
       .orderBy(pricingTiles.sortOrder);
 
@@ -324,12 +347,20 @@ async function queryPeriodRevenue(start: Date, end: Date) {
   const [row] = await db
     .select({
       revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
-      sessionCount: sql<number>`count(*)`,
-      guests: sql<number>`coalesce(sum("guest_sums"."total"), 0)`,
+      sessionCount: sql<number>`count(distinct ${sessions.id})`,
+      guests: sql<number>`(
+        select coalesce(sum(sg.quantity), 0)
+        from session_guests sg
+        where sg.session_id in (
+          select distinct p2.session_id
+          from payments p2
+          where p2.paid_at >= ${start}
+            and p2.paid_at < ${end}
+        )
+      )`,
     })
     .from(payments)
     .innerJoin(sessions, eq(payments.sessionId, sessions.id))
-    .leftJoin(guestSums, eq(guestSums.sessionId, sessions.id))
     .where(and(gte(payments.paidAt, start), lt(payments.paidAt, end)));
   return { revenue: Number(row.revenue), sessions: Number(row.sessionCount), guests: Number(row.guests) };
 }

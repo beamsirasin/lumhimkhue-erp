@@ -18,6 +18,15 @@ const METHOD_LABEL: Record<string, string> = {
   card:         'บัตรเครดิต',
 };
 
+const SETTLEMENT_LABEL: Record<string, string> = {
+  partial: 'รับชำระบางส่วน',
+  final:   'ปิดบิลทั้งหมด',
+};
+
+function fmtThb(value: number | string | null | undefined) {
+  return `฿${Number(value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 interface SessionDetailDialogProps {
   sessionId: string | null;
   onClose: () => void;
@@ -39,22 +48,22 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
   const [editConfirm, setEditConfirm] = useState(false);
   const [submitting,  setSubmitting]  = useState(false);
   const [mutationReason, setMutationReason] = useState('');
+  const [selectedMutationPaymentId, setSelectedMutationPaymentId] = useState<string | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDelConfirm(false);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEditConfirm(false);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSubmitting(false);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMutationReason('');
+    setSelectedMutationPaymentId(null);
   }, [sessionId]);
 
   async function handleDelete() {
-    if (!data?.session.payment) return;
+    const paymentId = selectedMutationPaymentId ?? data?.session.payment?.id;
+    if (!paymentId) return;
     setSubmitting(true);
-    const result = await deletePaymentRecord({ paymentId: data.session.payment.id, reason: mutationReason });
+    const result = await deletePaymentRecord({ paymentId, reason: mutationReason });
     setSubmitting(false);
     if (!result.ok) { toast.error(result.error); return; }
     toast.success('ลบประวัติการชำระเงินแล้ว');
@@ -64,9 +73,10 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
   }
 
   async function handleReopen() {
-    if (!data?.session.payment) return;
+    const paymentId = selectedMutationPaymentId ?? data?.session.payment?.id;
+    if (!paymentId) return;
     setSubmitting(true);
-    const result = await reopenSessionForPayment({ paymentId: data.session.payment.id, reason: mutationReason });
+    const result = await reopenSessionForPayment({ paymentId, reason: mutationReason });
     setSubmitting(false);
     if (!result.ok) { toast.error(result.error); return; }
     toast.success('เปิดบิลใหม่แล้ว — กำลังไปหน้า POS');
@@ -169,211 +179,226 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
               </div>
             )}
 
-            {/* Payment */}
-            {showPayment && data.session.payment && (
-              <div>
-                <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  การชำระเงิน
-                </p>
+            {/* Payments */}
+            {showPayment && (() => {
+              const paymentEvents = data.session.payments?.length
+                ? data.session.payments
+                : data.session.payment ? [data.session.payment] : [];
 
-                {/* Payment details */}
-                <div className="rounded-lg bg-green-50 border border-green-200 p-3 space-y-1.5 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">ยอดชำระ</span>
-                    <span className="tabular-nums font-bold text-foreground">
-                      ฿{Number(data.session.payment.total).toLocaleString('th-TH')}
-                    </span>
-                  </div>
-                  {Number(data.session.payment.discount) > 0 && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">ส่วนลด</span>
-                      <span className="tabular-nums text-green-700">
-                        −฿{Number(data.session.payment.discount).toLocaleString('th-TH')}
-                      </span>
-                    </div>
-                  )}
-                  {data.session.payment.rows?.length > 0 ? (
-                    <div className="space-y-2 pt-0.5">
-                      <span className="text-xs text-muted-foreground">รายการชำระ</span>
-                      {data.session.payment.rows.map((pr) => (
-                        <div key={pr.id} className="rounded border border-green-200 bg-white/60 px-2.5 py-2 space-y-1">
-                          <div className="flex justify-between text-xs font-medium text-foreground">
-                            <span>{pr.paymentMethod?.name ?? '—'} / {pr.receivingAccount?.name ?? '—'}</span>
-                            <span className="tabular-nums">฿{Number(pr.amount).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+              if (paymentEvents.length === 0) return null;
+
+              return (
+                <div>
+                  <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    การชำระเงิน ({paymentEvents.length} ครั้ง)
+                  </p>
+
+                  <div className="space-y-3">
+                    {paymentEvents.map((payment, idx) => {
+                      const shiftStatus = payment.shift?.status ?? null;
+                      const isSelected = selectedMutationPaymentId === payment.id;
+                      return (
+                        <div key={payment.id} className="rounded-lg bg-green-50 border border-green-200 p-3 space-y-2 text-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                payment.settlementType === 'partial'
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-emerald-100 text-emerald-700'
+                              }`}>
+                                {SETTLEMENT_LABEL[payment.settlementType] ?? payment.settlementType}
+                              </span>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                ครั้งที่ {idx + 1} · {format(new Date(payment.paidAt), 'HH:mm น. (d MMM yy)', { locale: th })}
+                              </p>
+                            </div>
+                            <span className="tabular-nums text-base font-bold text-foreground">
+                              {fmtThb(payment.total)}
+                            </span>
                           </div>
-                          {pr.amountTendered != null && (
-                            <div className="flex justify-between text-xs text-muted-foreground">
-                              <span>รับ</span>
-                              <span className="tabular-nums">฿{Number(pr.amountTendered).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                            <span className="text-muted-foreground">ยอดรับครั้งนี้</span>
+                            <span className="text-right tabular-nums text-foreground">{fmtThb(payment.total)}</span>
+                            <span className="text-muted-foreground">ชำระก่อนหน้า</span>
+                            <span className="text-right tabular-nums text-foreground">{fmtThb(payment.paidBefore)}</span>
+                            <span className="text-muted-foreground">คงเหลือหลังชำระ</span>
+                            <span className="text-right tabular-nums text-foreground">{fmtThb(payment.remainingAfter)}</span>
+                          </div>
+
+                          {payment.rows?.length > 0 ? (
+                            <div className="space-y-2 pt-0.5">
+                              <span className="text-xs text-muted-foreground">ช่องทางรับเงิน</span>
+                              {payment.rows.map((pr) => (
+                                <div key={pr.id} className="rounded border border-green-200 bg-white/60 px-2.5 py-2 space-y-1">
+                                  <div className="flex justify-between text-xs font-medium text-foreground">
+                                    <span>{pr.paymentMethod?.name ?? '—'} / {pr.receivingAccount?.name ?? '—'}</span>
+                                    <span className="tabular-nums">{fmtThb(pr.amount)}</span>
+                                  </div>
+                                  {pr.amountTendered != null && (
+                                    <div className="flex justify-between text-xs text-muted-foreground">
+                                      <span>รับ</span>
+                                      <span className="tabular-nums">{fmtThb(pr.amountTendered)}</span>
+                                    </div>
+                                  )}
+                                  {Number(pr.changeAmount) > 0 && (
+                                    <div className="flex justify-between text-xs text-muted-foreground">
+                                      <span>ทอน</span>
+                                      <span className="tabular-nums">{fmtThb(pr.changeAmount)}</span>
+                                    </div>
+                                  )}
+                                  {pr.payerLabel && (
+                                    <div className="text-xs text-muted-foreground">ผู้ชำระ: {pr.payerLabel}</div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">วิธีชำระ</span>
+                              <span className="text-foreground">
+                                {METHOD_LABEL[payment.paymentMethod] ?? payment.paymentMethod}
+                              </span>
                             </div>
                           )}
-                          {Number(pr.changeAmount) > 0 && (
-                            <div className="flex justify-between text-xs text-muted-foreground">
-                              <span>ทอน</span>
-                              <span className="tabular-nums">฿{Number(pr.changeAmount).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                          {payment.notes && (
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">หมายเหตุ</span>
+                              <span className="text-right text-foreground max-w-[60%]">{payment.notes}</span>
                             </div>
                           )}
-                          {pr.payerLabel && (
-                            <div className="text-xs text-muted-foreground">ผู้ชำระ: {pr.payerLabel}</div>
+
+                          {!isSelected && (
+                            <div className="mt-2 flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => { setSelectedMutationPaymentId(payment.id); setMutationReason(''); setEditConfirm(true); setDelConfirm(false); }}
+                                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/30 transition-colors"
+                              >
+                                <Pencil className="size-4" />แก้ไขการชำระเงิน
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setSelectedMutationPaymentId(payment.id); setMutationReason(''); setDelConfirm(true); setEditConfirm(false); }}
+                                className="flex items-center justify-center gap-1.5 rounded-lg border border-red-200 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                              >
+                                <Trash2 className="size-4" />ลบ
+                              </button>
+                            </div>
+                          )}
+
+                          {isSelected && editConfirm && (
+                            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                              <p className="text-sm font-semibold text-amber-800">ยืนยันแก้ไขการชำระเงิน?</p>
+                              <p className="text-xs text-amber-600">
+                                การชำระเงินเดิมจะถูกยกเลิก บิลจะกลับสู่หน้า POS เพื่อชำระใหม่
+                              </p>
+                              {shiftStatus === 'reviewed' && (
+                                <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-700">
+                                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                                  <span>รอบแคชเชียร์นี้ตรวจสอบแล้ว ไม่สามารถแก้ไขได้</span>
+                                </div>
+                              )}
+                              {shiftStatus === 'closed' && (
+                                <div className="flex items-start gap-2 rounded-md border border-orange-200 bg-orange-50 px-2.5 py-2 text-xs text-orange-700">
+                                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                                  <span>รอบแคชเชียร์ปิดแล้ว — การแก้ไขจะทำให้ยอดรอบนี้ไม่ตรง ต้องระบุเหตุผล</span>
+                                </div>
+                              )}
+                              <div className="space-y-1">
+                                <label className="text-xs text-amber-700">
+                                  เหตุผลในการแก้ไข
+                                  {shiftStatus === 'closed' && <span className="ml-1 text-red-600">*</span>}
+                                </label>
+                                <textarea
+                                  value={mutationReason}
+                                  onChange={(e) => setMutationReason(e.target.value)}
+                                  placeholder="เช่น ลูกค้าจ่ายผิด / เงินผิดจำนวนเงิน / ลงรายการผิดพลาด"
+                                  rows={2}
+                                  className="w-full rounded-lg border border-amber-200 bg-white/70 px-3 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                />
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => { setEditConfirm(false); setSelectedMutationPaymentId(null); }}
+                                  disabled={submitting}
+                                  className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-card disabled:opacity-50"
+                                >
+                                  ยกเลิก
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleReopen}
+                                  disabled={submitting || shiftStatus === 'reviewed' || (shiftStatus === 'closed' && !mutationReason.trim())}
+                                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                                >
+                                  {submitting && <Loader2 className="size-3 animate-spin" />}
+                                  ยืนยัน → ไปหน้า POS
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {isSelected && delConfirm && (
+                            <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 space-y-2">
+                              <p className="text-sm font-semibold text-red-700">ยืนยันลบประวัติการชำระเงิน?</p>
+                              <p className="text-xs text-red-500">
+                                ประวัติการรับเงินครั้งนี้จะถูกลบถาวร และระบบจะปรับสถานะบิลตามยอดคงเหลือ
+                              </p>
+                              {shiftStatus === 'reviewed' && (
+                                <div className="flex items-start gap-2 rounded-md border border-red-300 bg-red-100 px-2.5 py-2 text-xs text-red-800">
+                                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                                  <span>รอบแคชเชียร์นี้ตรวจสอบแล้ว ไม่สามารถลบได้</span>
+                                </div>
+                              )}
+                              {shiftStatus === 'closed' && (
+                                <div className="flex items-start gap-2 rounded-md border border-orange-200 bg-orange-50 px-2.5 py-2 text-xs text-orange-700">
+                                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                                  <span>รอบแคชเชียร์ปิดแล้ว — การลบจะทำให้ยอดรอบนี้ไม่ตรง ต้องระบุเหตุผล</span>
+                                </div>
+                              )}
+                              <div className="space-y-1">
+                                <label className="text-xs text-red-700">
+                                  เหตุผลในการลบ
+                                  {shiftStatus === 'closed' && <span className="ml-1 text-red-600">*</span>}
+                                </label>
+                                <textarea
+                                  value={mutationReason}
+                                  onChange={(e) => setMutationReason(e.target.value)}
+                                  placeholder="เช่น ลูกค้าจ่ายผิด / เงินผิดจำนวนเงิน / ลงรายการผิดพลาด"
+                                  rows={2}
+                                  className="w-full rounded-lg border border-red-200 bg-white/70 px-3 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-red-400"
+                                />
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => { setDelConfirm(false); setSelectedMutationPaymentId(null); }}
+                                  disabled={submitting}
+                                  className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-card disabled:opacity-50"
+                                >
+                                  ยกเลิก
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleDelete}
+                                  disabled={submitting || shiftStatus === 'reviewed' || (shiftStatus === 'closed' && !mutationReason.trim())}
+                                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-600 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                                >
+                                  {submitting && <Loader2 className="size-3 animate-spin" />}
+                                  ยืนยันลบ
+                                </button>
+                              </div>
+                            </div>
                           )}
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">วิธีชำระ</span>
-                      <span className="text-foreground">
-                        {METHOD_LABEL[data.session.payment.paymentMethod] ?? data.session.payment.paymentMethod}
-                      </span>
-                    </div>
-                  )}
-                  {!(data.session.payment.rows?.length > 0) && Number(data.session.payment.changeAmount) > 0 && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">เงินทอน</span>
-                      <span className="tabular-nums text-foreground">
-                        ฿{Number(data.session.payment.changeAmount).toLocaleString('th-TH')}
-                      </span>
-                    </div>
-                  )}
-                  {data.session.payment.notes && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">หมายเหตุ</span>
-                      <span className="text-right text-foreground max-w-[60%]">
-                        {data.session.payment.notes}
-                      </span>
-                    </div>
-                  )}
+                      );
+                    })}
+                  </div>
                 </div>
-
-                {/* Action buttons / confirmations */}
-                {!delConfirm && !editConfirm && (
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => { setMutationReason(''); setEditConfirm(true); }}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-3 text-sm font-medium text-foreground hover:bg-muted/30 transition-colors"
-                    >
-                      <Pencil className="size-4" />แก้ไขการชำระเงิน
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setMutationReason(''); setDelConfirm(true); }}
-                      className="flex items-center justify-center gap-1.5 rounded-lg border border-red-200 px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
-                    >
-                      <Trash2 className="size-4" />ลบ
-                    </button>
-                  </div>
-                )}
-
-                {/* Edit confirm */}
-                {editConfirm && (
-                  <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
-                    <p className="text-sm font-semibold text-amber-800">ยืนยันแก้ไขการชำระเงิน?</p>
-                    <p className="text-xs text-amber-600">
-                      การชำระเงินเดิมจะถูกยกเลิก บิลจะกลับสู่หน้า POS เพื่อชำระใหม่
-                    </p>
-                    {data.paymentShift?.status === 'reviewed' && (
-                      <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-700">
-                        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                        <span>รอบแคชเชียร์นี้ตรวจสอบแล้ว ไม่สามารถแก้ไขได้</span>
-                      </div>
-                    )}
-                    {data.paymentShift?.status === 'closed' && (
-                      <div className="flex items-start gap-2 rounded-md border border-orange-200 bg-orange-50 px-2.5 py-2 text-xs text-orange-700">
-                        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                        <span>รอบแคชเชียร์ปิดแล้ว — การแก้ไขจะทำให้ยอดรอบนี้ไม่ตรง ต้องระบุเหตุผล</span>
-                      </div>
-                    )}
-                    <div className="space-y-1">
-                      <label className="text-xs text-amber-700">
-                        เหตุผลในการแก้ไข
-                        {data.paymentShift?.status === 'closed' && <span className="ml-1 text-red-600">*</span>}
-                      </label>
-                      <textarea
-                        value={mutationReason}
-                        onChange={(e) => setMutationReason(e.target.value)}
-                        placeholder="เช่น ลูกค้าจ่ายผิด / เงินผิดจำนวนเงิน / ลงรายการผิดพลาด"
-                        rows={2}
-                        className="w-full rounded-lg border border-amber-200 bg-white/70 px-3 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-amber-400"
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setEditConfirm(false)}
-                        disabled={submitting}
-                        className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-card disabled:opacity-50"
-                      >
-                        ยกเลิก
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleReopen}
-                        disabled={submitting || data.paymentShift?.status === 'reviewed' || (data.paymentShift?.status === 'closed' && !mutationReason.trim())}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
-                      >
-                        {submitting && <Loader2 className="size-3 animate-spin" />}
-                        ยืนยัน → ไปหน้า POS
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Delete confirm */}
-                {delConfirm && (
-                  <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 space-y-2">
-                    <p className="text-sm font-semibold text-red-700">ยืนยันลบประวัติการชำระเงิน?</p>
-                    <p className="text-xs text-red-500">
-                      ประวัติจะถูกลบถาวร session จะถูกปิดโดยไม่มีการชำระเงิน
-                    </p>
-                    {data.paymentShift?.status === 'reviewed' && (
-                      <div className="flex items-start gap-2 rounded-md border border-red-300 bg-red-100 px-2.5 py-2 text-xs text-red-800">
-                        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                        <span>รอบแคชเชียร์นี้ตรวจสอบแล้ว ไม่สามารถลบได้</span>
-                      </div>
-                    )}
-                    {data.paymentShift?.status === 'closed' && (
-                      <div className="flex items-start gap-2 rounded-md border border-orange-200 bg-orange-50 px-2.5 py-2 text-xs text-orange-700">
-                        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                        <span>รอบแคชเชียร์ปิดแล้ว — การลบจะทำให้ยอดรอบนี้ไม่ตรง ต้องระบุเหตุผล</span>
-                      </div>
-                    )}
-                    <div className="space-y-1">
-                      <label className="text-xs text-red-700">
-                        เหตุผลในการลบ
-                        {data.paymentShift?.status === 'closed' && <span className="ml-1 text-red-600">*</span>}
-                      </label>
-                      <textarea
-                        value={mutationReason}
-                        onChange={(e) => setMutationReason(e.target.value)}
-                        placeholder="เช่น ลูกค้าจ่ายผิด / เงินผิดจำนวนเงิน / ลงรายการผิดพลาด"
-                        rows={2}
-                        className="w-full rounded-lg border border-red-200 bg-white/70 px-3 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-red-400"
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setDelConfirm(false)}
-                        disabled={submitting}
-                        className="flex-1 rounded-lg border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-card disabled:opacity-50"
-                      >
-                        ยกเลิก
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleDelete}
-                        disabled={submitting || data.paymentShift?.status === 'reviewed' || (data.paymentShift?.status === 'closed' && !mutationReason.trim())}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-600 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
-                      >
-                        {submitting && <Loader2 className="size-3 animate-spin" />}
-                        ยืนยันลบ
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+              );
+            })()}
 
             {/* Orders */}
             {data.orders.length > 0 && (

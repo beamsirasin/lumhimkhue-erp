@@ -292,7 +292,7 @@ function buildPaymentRowsNote(rows: ValidatedCheckoutPaymentRow[]) {
 
 export async function validateCheckoutPaymentRowsForTotal(
   drafts: CheckoutPaymentRowDraft[],
-  billTotal: number,
+  targetTotal: number,
 ) {
   await ensureDefaultPaymentFoundation();
 
@@ -300,7 +300,7 @@ export async function validateCheckoutPaymentRowsForTotal(
     return { ok: false as const, error: 'Add at least one payment row' };
   }
 
-  const totalCents = toCents(billTotal);
+  const totalCents = toCents(targetTotal);
   const rows: ValidatedCheckoutPaymentRow[] = [];
 
   for (const draft of drafts) {
@@ -347,7 +347,7 @@ export async function validateCheckoutPaymentRowsForTotal(
 
   const paidCents = rows.reduce((sum, row) => sum + row.amountCents, 0);
   if (paidCents !== totalCents) {
-    return { ok: false as const, error: 'Payment rows must equal the bill total exactly' };
+    return { ok: false as const, error: 'Payment rows must equal the amount due exactly' };
   }
 
   const cashTenderedCents = rows.reduce(
