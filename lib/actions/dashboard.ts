@@ -58,29 +58,42 @@ export async function getDashboardData() {
     const avgPerSession = sessionsToday > 0 ? revenueToday / sessionsToday : 0;
 
     // ─── Revenue by day (last 7 days) ────────────────────────────────────────
-    const dbRevByDay = await db
-      .select({
-        date: sql<string>`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`,
-        revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
-        sessionCount: sql<number>`count(distinct ${sessions.id})`,
-        guests: sql<number>`(
-          select coalesce(sum(sg.quantity), 0)
-          from session_guests sg
-          where sg.session_id in (
-            select distinct p2.session_id
-            from payments p2
-            where (p2.paid_at AT TIME ZONE 'Asia/Bangkok')::date =
-              (${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date
-          )
-        )`,
+    // Guests are fetched separately to avoid a correlated subquery inside a
+    // GROUP BY, which PostgreSQL rejects when the raw column isn't in the key.
+    const payDatesSq = db
+      .selectDistinct({
+        date: sql<string>`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`.as('date'),
+        sessionId: payments.sessionId,
       })
       .from(payments)
-      .innerJoin(sessions, eq(payments.sessionId, sessions.id))
       .where(gte(payments.paidAt, sevenDaysAgo))
-      .groupBy(sql`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`)
-      .orderBy(sql`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`);
+      .as('pay_dates');
+
+    const [dbRevByDay, dbGuestsByDay] = await Promise.all([
+      db
+        .select({
+          date: sql<string>`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`,
+          revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
+          sessionCount: sql<number>`count(distinct ${sessions.id})`,
+        })
+        .from(payments)
+        .innerJoin(sessions, eq(payments.sessionId, sessions.id))
+        .where(gte(payments.paidAt, sevenDaysAgo))
+        .groupBy(sql`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`)
+        .orderBy(sql`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`),
+
+      db
+        .select({
+          date: payDatesSq.date,
+          guests: sql<number>`coalesce(sum(${sessionGuests.quantity}), 0)`,
+        })
+        .from(payDatesSq)
+        .innerJoin(sessionGuests, eq(sessionGuests.sessionId, payDatesSq.sessionId))
+        .groupBy(payDatesSq.date),
+    ]);
 
     const revMap = new Map(dbRevByDay.map((r) => [r.date, r]));
+    const guestMap = new Map(dbGuestsByDay.map((r) => [r.date, r.guests]));
     const revenueByDay = Array.from({ length: 7 }, (_, i) => {
       const d = format(toZonedTime(subDays(new Date(), 6 - i), TZ), 'yyyy-MM-dd');
       const row = revMap.get(d);
@@ -88,7 +101,7 @@ export async function getDashboardData() {
         date: d,
         revenue: Number(row?.revenue ?? 0),
         sessions: Number(row?.sessionCount ?? 0),
-        guests: Number(row?.guests ?? 0),
+        guests: Number(guestMap.get(d) ?? 0),
       };
     });
 
@@ -184,27 +197,38 @@ export async function getReportSummary(
     const baseWhere = sessionFilter ? and(dateFilter, sessionFilter) : dateFilter;
 
     // ── Per-day rows ───────────────────────────────────────────────────────
-    const rows = await db
-      .select({
-        date: sql<string>`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`,
-        revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
-        sessionCount: sql<number>`count(distinct ${sessions.id})`,
-        guests: sql<number>`(
-          select coalesce(sum(sg.quantity), 0)
-          from session_guests sg
-          where sg.session_id in (
-            select distinct p2.session_id
-            from payments p2
-            where (p2.paid_at AT TIME ZONE 'Asia/Bangkok')::date =
-              (${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date
-          )
-        )`,
+    const reportPayDatesSq = db
+      .selectDistinct({
+        date: sql<string>`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`.as('date'),
+        sessionId: payments.sessionId,
       })
       .from(payments)
       .innerJoin(sessions, eq(payments.sessionId, sessions.id))
       .where(baseWhere)
-      .groupBy(sql`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`)
-      .orderBy(sql`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`);
+      .as('pay_dates');
+
+    const [rows, guestsByDay] = await Promise.all([
+      db
+        .select({
+          date: sql<string>`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`,
+          revenue: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
+          sessionCount: sql<number>`count(distinct ${sessions.id})`,
+        })
+        .from(payments)
+        .innerJoin(sessions, eq(payments.sessionId, sessions.id))
+        .where(baseWhere)
+        .groupBy(sql`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`)
+        .orderBy(sql`(${payments.paidAt} AT TIME ZONE 'Asia/Bangkok')::date`),
+
+      db
+        .select({
+          date: reportPayDatesSq.date,
+          guests: sql<number>`coalesce(sum(${sessionGuests.quantity}), 0)`,
+        })
+        .from(reportPayDatesSq)
+        .innerJoin(sessionGuests, eq(sessionGuests.sessionId, reportPayDatesSq.sessionId))
+        .groupBy(reportPayDatesSq.date),
+    ]);
 
     // ── Guest breakdown by pricing tile ────────────────────────────────────
     const guestBreakdown = await db
@@ -244,10 +268,11 @@ export async function getReportSummary(
       .groupBy(payments.paymentMethod)
       .orderBy(payments.paymentMethod);
 
+    const reportGuestMap = new Map(guestsByDay.map((r) => [r.date, r.guests]));
     const data = rows.map((r) => ({
       date: r.date,
       sessions: Number(r.sessionCount),
-      guests: Number(r.guests),
+      guests: Number(reportGuestMap.get(r.date) ?? 0),
       revenue: Number(r.revenue),
       avgPerSession: Number(r.sessionCount) > 0 ? Number(r.revenue) / Number(r.sessionCount) : 0,
     }));
