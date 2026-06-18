@@ -496,6 +496,7 @@ type PaymentRowDraft = {
 };
 
 type SettlementMode = 'final' | 'partial';
+type CheckoutMode = 'close_all' | 'head' | 'manual';
 
 function PaymentPanel({
   detail,
@@ -570,6 +571,8 @@ function PaymentPanel({
   const [submitting, setSubmitting] = useState(false);
   const [paid, setPaid] = useState(false);
   const [settlementMode, setSettlementMode] = useState<SettlementMode>('final');
+  const [checkoutMode, setCheckoutMode] = useState<CheckoutMode>('close_all');
+  const [selectedHeadQty, setSelectedHeadQty] = useState<Record<string, number>>({});
 
   // Split payment state — sequential rounds
   type CompletedRound = { items: { pricingTileId: string; name: string; qty: number; price: number }[]; subtotal: number; method: 'cash' | 'qr_promptpay' | 'cash_qr'; cashPortion?: number };
@@ -692,8 +695,67 @@ function PaymentPanel({
     ? Math.max(0, detail.paymentSummary?.remaining ?? billTotalForSettlement - paidBeforeSettlement)
     : total;
   const draftRowsTotal = paymentRowsDraft.reduce((s, r) => s + r.amount, 0);
-  const remainingForDraft = Math.max(0, remainingBeforePayment - draftRowsTotal);
+  const activeChargeLines = (detail.chargeLines ?? []).filter((line) => !line.voidedAt && line.remainingQuantity > 0);
+  const allChargeLines = detail.chargeLines ?? [];
+  const totalHeads = allChargeLines
+    .filter((line) => !line.voidedAt)
+    .reduce((sum, line) => sum + line.quantity, 0);
+  const paidHeads = allChargeLines
+    .filter((line) => !line.voidedAt)
+    .reduce((sum, line) => sum + line.allocatedQuantity, 0);
+  const remainingHeads = activeChargeLines.reduce((sum, line) => sum + line.remainingQuantity, 0);
+  const selectedHeadTotal = activeChargeLines.reduce(
+    (sum, line) => sum + Math.min(line.remainingQuantity, Math.max(0, selectedHeadQty[line.id] ?? 0)),
+    0,
+  );
+  const selectedHeadAmount = activeChargeLines.reduce((sum, line) => {
+    const qty = Math.min(line.remainingQuantity, Math.max(0, selectedHeadQty[line.id] ?? 0));
+    return sum + qty * line.unitPrice;
+  }, 0);
+  const selectedAllocations = activeChargeLines
+    .map((line) => {
+      const quantity = Math.min(line.remainingQuantity, Math.max(0, selectedHeadQty[line.id] ?? 0));
+      return {
+        chargeLineId: line.id,
+        quantity,
+        amount: quantity * line.unitPrice,
+      };
+    })
+    .filter((allocation) => allocation.quantity > 0);
+  const closeAllAllocations = activeChargeLines.map((line) => ({
+    chargeLineId: line.id,
+    quantity: line.remainingQuantity,
+    amount: line.remainingQuantity * line.unitPrice,
+  }));
+  const closeAllAllocationAmount = closeAllAllocations.reduce((sum, allocation) => sum + allocation.amount, 0);
+  const remainingBeforeCents = Math.round(remainingBeforePayment * 100);
+  const closeAllAllocationCents = Math.round(closeAllAllocationAmount * 100);
+  const selectedHeadAmountCents = Math.round(selectedHeadAmount * 100);
+  const allRemainingHeadsSelected =
+    activeChargeLines.length > 0 &&
+    activeChargeLines.every((line) => (selectedHeadQty[line.id] ?? 0) === line.remainingQuantity);
+  const canFinalHeadSettlement = allRemainingHeadsSelected && selectedHeadAmountCents === remainingBeforeCents;
+  const effectiveSettlementMode: SettlementMode =
+    checkoutMode === 'close_all'
+      ? 'final'
+      : checkoutMode === 'head'
+        ? canFinalHeadSettlement ? 'final' : 'partial'
+        : settlementMode;
+  const paymentTargetAmount = checkoutMode === 'head' ? selectedHeadAmount : remainingBeforePayment;
+  const paymentTargetCents = Math.round(paymentTargetAmount * 100);
+  const remainingForDraft = Math.max(0, paymentTargetAmount - draftRowsTotal);
   const remainingAfterDraft = Math.max(0, remainingBeforePayment - draftRowsTotal);
+  const canAutoAllocateCloseAll =
+    checkoutMode === 'close_all' &&
+    activeChargeLines.length > 0 &&
+    closeAllAllocationCents === remainingBeforeCents;
+
+  function setHeadQuantity(lineId: string, quantity: number) {
+    const line = activeChargeLines.find((item) => item.id === lineId);
+    if (!line) return;
+    const nextQty = Math.min(line.remainingQuantity, Math.max(0, Math.trunc(quantity)));
+    setSelectedHeadQty((prev) => ({ ...prev, [lineId]: nextQty }));
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -811,18 +873,41 @@ function PaymentPanel({
     // ── Draft payment rows path ──────────────────────────────────────────
     if (paymentRowsDraft.length > 0) {
       const draftRowsTotalCents = Math.round(draftRowsTotal * 100);
-      const remainingBeforeCents = Math.round(remainingBeforePayment * 100);
-      if (settlementMode === 'final' && draftRowsTotalCents !== remainingBeforeCents) {
-        toast.error('ยอดชำระยังไม่ครบยอดคงเหลือ กรุณาเพิ่มยอดให้ครบก่อนปิดบิล');
-        return;
-      }
-      if (settlementMode === 'partial' && draftRowsTotalCents >= remainingBeforeCents) {
-        toast.error('ถ้าต้องการชำระครบยอด กรุณาใช้โหมดปิดบิลทั้งหมด');
-        return;
-      }
-      if (settlementMode === 'partial' && draftRowsTotalCents <= 0) {
-        toast.error('กรุณาระบุยอดรับชำระบางส่วน');
-        return;
+      if (checkoutMode === 'head') {
+        if (selectedAllocations.length === 0 || selectedHeadAmountCents <= 0) {
+          toast.error('กรุณาเลือกจำนวนหัวที่ต้องการรับชำระ');
+          return;
+        }
+        if (activeChargeLines.some((line) => (selectedHeadQty[line.id] ?? 0) > line.remainingQuantity)) {
+          toast.error('จำนวนหัวที่เลือกเกินจำนวนคงเหลือ');
+          return;
+        }
+        if (draftRowsTotalCents !== selectedHeadAmountCents) {
+          toast.error('ยอดรับชำระไม่ตรงกับจำนวนหัวที่เลือก');
+          return;
+        }
+        if (selectedHeadAmountCents > remainingBeforeCents) {
+          toast.error('ยอดหัวที่เลือกมากกว่ายอดคงเหลือ');
+          return;
+        }
+      } else if (checkoutMode === 'close_all') {
+        if (draftRowsTotalCents !== remainingBeforeCents) {
+          toast.error('ยอดชำระยังไม่ครบยอดคงเหลือ กรุณาเพิ่มยอดให้ครบก่อนปิดบิล');
+          return;
+        }
+      } else {
+        if (settlementMode === 'final' && draftRowsTotalCents !== remainingBeforeCents) {
+          toast.error('ยอดชำระยังไม่ครบยอดคงเหลือ กรุณาเพิ่มยอดให้ครบก่อนปิดบิล');
+          return;
+        }
+        if (settlementMode === 'partial' && draftRowsTotalCents >= remainingBeforeCents) {
+          toast.error('ถ้าต้องการชำระครบยอด กรุณาใช้โหมดปิดบิลทั้งหมด');
+          return;
+        }
+        if (settlementMode === 'partial' && draftRowsTotalCents <= 0) {
+          toast.error('กรุณาระบุยอดรับชำระบางส่วน');
+          return;
+        }
       }
       setSubmitting(true);
 
@@ -847,7 +932,7 @@ function PaymentPanel({
 
       const result = await processPayment({
         sessionId: session.id,
-        settlementMode,
+        settlementMode: effectiveSettlementMode,
         paymentMethod: legacyMethod,
         receivedAmount: draftCashTendered > 0 ? draftCashTendered : draftRowsTotal,
         discount: manualDiscountNum,
@@ -864,6 +949,11 @@ function PaymentPanel({
           payerLabel:         row.payerLabel || null,
           note:               null,
         })),
+        ...(checkoutMode === 'head'
+          ? { allocations: selectedAllocations }
+          : canAutoAllocateCloseAll
+            ? { allocations: closeAllAllocations }
+            : {}),
       });
       setSubmitting(false);
       if (!result.ok) { toast.error(result.error); return; }
@@ -926,9 +1016,14 @@ function PaymentPanel({
         queryClient.invalidateQueries({ queryKey: ['pos-detail', session.id] }),
       ]);
       await printReceipt({ type: 'receipt', payment: receipt });
-      if (settlementMode === 'partial') {
-        toast.success(`รับชำระบางส่วนแล้ว เหลือ ฿${result.data.remainingAfter.toLocaleString('th-TH')}`);
+      if (effectiveSettlementMode === 'partial') {
+        toast.success(
+          checkoutMode === 'head'
+            ? `รับชำระตามหัวสำเร็จ เหลือ ฿${result.data.remainingAfter.toLocaleString('th-TH')}`
+            : `รับชำระบางส่วนแล้ว เหลือ ฿${result.data.remainingAfter.toLocaleString('th-TH')}`,
+        );
         setSettlementMode('final');
+        setSelectedHeadQty({});
         setView('bill');
         return;
       }
@@ -1099,18 +1194,32 @@ function PaymentPanel({
       draftAmountNum <= remainingForDraft + 0.001 &&
       (!isCashMethod || draftTenderedNum >= draftAmountNum);
     const draftRowsTotalCents = Math.round(draftRowsTotal * 100);
-    const remainingBeforeCents = Math.round(remainingBeforePayment * 100);
     const isDraftComplete =
       paymentRowsDraft.length > 0 &&
-      draftRowsTotalCents === remainingBeforeCents;
+      paymentTargetCents > 0 &&
+      draftRowsTotalCents === paymentTargetCents;
     const isPartialDraftValid =
       paymentRowsDraft.length > 0 &&
       draftRowsTotalCents > 0 &&
       draftRowsTotalCents < remainingBeforeCents;
-    const canConfirmSettlement = settlementMode === 'final' ? isDraftComplete : isPartialDraftValid;
-    const confirmLabel = settlementMode === 'final'
-      ? `ปิดบิลและชำระคงเหลือ ฿${remainingBeforePayment.toLocaleString('th-TH')}`
-      : `รับชำระบางส่วน ฿${draftRowsTotal.toLocaleString('th-TH')}`;
+    const canConfirmSettlement =
+      checkoutMode === 'head'
+        ? selectedAllocations.length > 0 && selectedHeadAmountCents <= remainingBeforeCents && isDraftComplete
+        : checkoutMode === 'close_all'
+          ? isDraftComplete
+          : settlementMode === 'final'
+            ? isDraftComplete
+            : isPartialDraftValid;
+    const confirmLabel =
+      checkoutMode === 'head'
+        ? effectiveSettlementMode === 'final'
+          ? `รับชำระตามหัวและปิดบิล ฿${paymentTargetAmount.toLocaleString('th-TH')}`
+          : `รับชำระตามหัว ฿${paymentTargetAmount.toLocaleString('th-TH')}`
+        : checkoutMode === 'close_all'
+          ? `ปิดบิลและชำระคงเหลือ ฿${remainingBeforePayment.toLocaleString('th-TH')}`
+          : settlementMode === 'final'
+            ? `ปิดบิลและชำระคงเหลือ ฿${remainingBeforePayment.toLocaleString('th-TH')}`
+            : `รับชำระบางส่วน ฿${draftRowsTotal.toLocaleString('th-TH')}`;
     const numpadSetter = isCashMethod ? setDraftTenderedInput : setDraftAmountInput;
     const numpadValue = isCashMethod ? draftTenderedInput : draftAmountInput;
     const predictAmounts = (t: number): number[] => {
@@ -1185,19 +1294,25 @@ function PaymentPanel({
             )}
           </div>
 
-          {/* Settlement mode */}
+          {/* Checkout mode */}
           <div className="shrink-0 rounded-xl border border-border bg-card p-1">
-            <div className="grid grid-cols-2 gap-1">
+            <div className="grid grid-cols-3 gap-1">
               {([
-                { value: 'final' as const, label: 'ปิดบิลทั้งหมด' },
-                { value: 'partial' as const, label: 'รับชำระบางส่วน' },
+                { value: 'close_all' as const, label: 'ปิดบิลทั้งหมด', disabled: false },
+                { value: 'head' as const, label: 'รับชำระตามหัว', disabled: activeChargeLines.length === 0 },
+                { value: 'manual' as const, label: 'รับชำระจำนวนเงินเอง', disabled: false },
               ]).map((option) => (
                 <button
                   key={option.value}
                   type="button"
-                  onClick={() => setSettlementMode(option.value)}
-                  className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
-                    settlementMode === option.value
+                  disabled={option.disabled}
+                  onClick={() => {
+                    setCheckoutMode(option.value);
+                    if (option.value === 'close_all') setSettlementMode('final');
+                    if (option.value === 'head') setSettlementMode('partial');
+                  }}
+                  className={`min-h-11 rounded-lg px-2 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                    checkoutMode === option.value
                       ? 'bg-primary text-primary-foreground shadow-sm'
                       : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                   }`}
@@ -1207,6 +1322,173 @@ function PaymentPanel({
               ))}
             </div>
           </div>
+
+          {checkoutMode !== 'close_all' && (
+            <div className="shrink-0 rounded-xl border border-border bg-card p-1">
+              <div className="grid grid-cols-2 gap-1">
+                {([
+                  { value: 'partial' as const, label: 'รับชำระบางส่วน', disabled: checkoutMode === 'head' },
+                  { value: 'final' as const, label: 'ปิดบิลทั้งหมด', disabled: checkoutMode === 'head' },
+                ]).map((option) => {
+                  const active = checkoutMode === 'head'
+                    ? effectiveSettlementMode === option.value
+                    : settlementMode === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      disabled={option.disabled}
+                      onClick={() => setSettlementMode(option.value)}
+                      className={`min-h-11 rounded-lg px-3 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                        active
+                          ? 'bg-primary text-primary-foreground shadow-sm'
+                          : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {checkoutMode === 'head' && (
+            <div className="shrink-0 rounded-xl border border-border bg-card p-3 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">รับชำระตามหัว</p>
+                  <p className="text-xs text-muted-foreground">เลือกจำนวนหัวที่รับเงินในรอบนี้</p>
+                </div>
+                <p className="shrink-0 text-right text-lg font-bold tabular-nums text-primary">
+                  ฿{selectedHeadAmount.toLocaleString('th-TH')}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-lg bg-muted/50 px-2 py-2">
+                  <p className="text-[11px] text-muted-foreground">ทั้งหมด</p>
+                  <p className="text-base font-bold tabular-nums text-foreground">{totalHeads}</p>
+                </div>
+                <div className="rounded-lg bg-muted/50 px-2 py-2">
+                  <p className="text-[11px] text-muted-foreground">จ่ายแล้ว</p>
+                  <p className="text-base font-bold tabular-nums text-emerald-600">{paidHeads}</p>
+                </div>
+                <div className="rounded-lg bg-muted/50 px-2 py-2">
+                  <p className="text-[11px] text-muted-foreground">คงเหลือ</p>
+                  <p className="text-base font-bold tabular-nums text-red-500">{remainingHeads}</p>
+                </div>
+              </div>
+
+              <div className="max-h-64 overflow-y-auto pr-1 space-y-2">
+                {allChargeLines.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
+                    ไม่พบรายการหัวสำหรับบิลนี้
+                  </p>
+                ) : (
+                  allChargeLines.map((line) => {
+                    const selectable = !line.voidedAt && line.remainingQuantity > 0;
+                    const selectedQty = Math.min(line.remainingQuantity, Math.max(0, selectedHeadQty[line.id] ?? 0));
+                    const selectedAmount = selectedQty * line.unitPrice;
+                    return (
+                      <div
+                        key={line.id}
+                        className={`rounded-lg border px-3 py-3 ${
+                          selectable ? 'border-border bg-background' : 'border-border/60 bg-muted/30 opacity-70'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-foreground">{line.label}</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              ฿{line.unitPrice.toLocaleString('th-TH')} / หัว · ทั้งหมด {line.quantity} · จ่ายแล้ว {line.allocatedQuantity} · คงเหลือ {line.remainingQuantity}
+                              {line.voidedAt ? ' · ยกเลิกแล้ว' : ''}
+                            </p>
+                            {selectedQty > 0 && (
+                              <p className="mt-1 text-xs font-semibold tabular-nums text-primary">
+                                รอบนี้ {selectedQty} หัว = ฿{selectedAmount.toLocaleString('th-TH')}
+                              </p>
+                            )}
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                aria-label={`ลด ${line.label}`}
+                                disabled={!selectable || selectedQty === 0}
+                                onClick={() => setHeadQuantity(line.id, selectedQty - 1)}
+                                className="flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-card text-lg font-bold text-foreground hover:bg-muted/50 disabled:opacity-30"
+                              >
+                                −
+                              </button>
+                              <span className="flex h-11 w-12 items-center justify-center rounded-lg bg-muted text-base font-bold tabular-nums text-foreground">
+                                {selectedQty}
+                              </span>
+                              <button
+                                type="button"
+                                aria-label={`เพิ่ม ${line.label}`}
+                                disabled={!selectable || selectedQty >= line.remainingQuantity}
+                                onClick={() => setHeadQuantity(line.id, selectedQty + 1)}
+                                className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary text-lg font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
+                              >
+                                +
+                              </button>
+                            </div>
+                            <div className="mt-1 flex gap-1">
+                              <button
+                                type="button"
+                                disabled={!selectable}
+                                onClick={() => setHeadQuantity(line.id, line.remainingQuantity)}
+                                className="min-h-9 flex-1 rounded-lg border border-border px-2 text-xs font-medium text-foreground hover:bg-muted/50 disabled:opacity-30"
+                              >
+                                ทั้งหมด
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!selectable || selectedQty === 0}
+                                onClick={() => setHeadQuantity(line.id, 0)}
+                                className="min-h-9 flex-1 rounded-lg border border-border px-2 text-xs font-medium text-muted-foreground hover:bg-muted/50 disabled:opacity-30"
+                              >
+                                ล้าง
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {selectedHeadTotal === 0 ? (
+                <p className="text-center text-xs text-amber-600 dark:text-amber-400">กรุณาเลือกจำนวนหัวที่ต้องการรับชำระ</p>
+              ) : canFinalHeadSettlement ? (
+                <p className="text-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                  เลือกครบทุกหัว สามารถปิดบิลได้
+                </p>
+              ) : allRemainingHeadsSelected ? (
+                <p className="text-center text-xs text-amber-600 dark:text-amber-400">
+                  เลือกครบทุกหัวแล้ว แต่ยังมียอดนอกหัวคงเหลือ ต้องรับชำระบางส่วนก่อน
+                </p>
+              ) : (
+                <p className="text-center text-xs text-muted-foreground">
+                  ยังเลือกหัวไม่ครบทั้งหมด ต้องรับชำระบางส่วน
+                </p>
+              )}
+            </div>
+          )}
+
+          {checkoutMode === 'manual' && (
+            <div className="shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+              โหมดนี้ไม่ได้ระบุหัวที่ชำระ รายงานตามหัวอาจไม่สมบูรณ์
+            </div>
+          )}
+
+          {checkoutMode === 'close_all' && activeChargeLines.length > 0 && !canAutoAllocateCloseAll && (
+            <div className="shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+              ยอดคงเหลือไม่ตรงกับรายการหัวทั้งหมด ระบบจะปิดบิลแบบเดิมโดยไม่ส่ง allocations
+            </div>
+          )}
 
           {/* Discount tiles */}
           {discountTiles.length > 0 && (
@@ -1303,11 +1585,23 @@ function PaymentPanel({
             <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
               ไม่สามารถโหลดช่องทางชำระได้ — กรุณาลองรีเฟรชหน้า
             </p>
+          ) : checkoutMode === 'head' && selectedHeadTotal === 0 ? (
+            <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
+              กรุณาเลือกจำนวนหัวที่ต้องการรับชำระ
+            </p>
           ) : paymentRowsDraft.length === 0 ? (
             <p className="shrink-0 text-center text-xs text-muted-foreground">
               เลือกช่องทางและเพิ่มรายการชำระก่อนยืนยัน
             </p>
-          ) : settlementMode === 'partial' && isDraftComplete ? (
+          ) : checkoutMode === 'head' && selectedHeadAmountCents > remainingBeforeCents ? (
+            <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
+              ยอดหัวที่เลือกมากกว่ายอดคงเหลือ
+            </p>
+          ) : checkoutMode === 'head' && !isDraftComplete ? (
+            <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
+              ยอดรับชำระไม่ตรงกับจำนวนหัวที่เลือก
+            </p>
+          ) : checkoutMode === 'manual' && settlementMode === 'partial' && isDraftComplete ? (
             <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
               ยอดนี้ครบคงเหลือแล้ว กรุณาใช้โหมดปิดบิลทั้งหมด
             </p>
@@ -1346,8 +1640,20 @@ function PaymentPanel({
                   <span className="text-muted-foreground">คงเหลือก่อนรับรอบนี้</span>
                   <span className="tabular-nums font-semibold text-foreground">฿{remainingBeforePayment.toLocaleString('th-TH')}</span>
                 </div>
+                {checkoutMode === 'head' && (
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">หัวที่เลือกครั้งนี้</span>
+                      <span className="tabular-nums font-semibold text-foreground">{selectedHeadTotal} หัว</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">เลือกชำระครั้งนี้</span>
+                      <span className="tabular-nums font-semibold text-primary">฿{paymentTargetAmount.toLocaleString('th-TH')}</span>
+                    </div>
+                  </>
+                )}
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">รับรอบนี้</span>
+                  <span className="text-muted-foreground">รายการรับเงิน</span>
                   <span className="tabular-nums font-semibold text-primary">฿{draftRowsTotal.toLocaleString('th-TH')}</span>
                 </div>
                 <div className="flex justify-between font-bold border-t border-border/60 pt-1.5 mt-0.5">
@@ -1356,6 +1662,11 @@ function PaymentPanel({
                     ฿{remainingAfterDraft.toLocaleString('th-TH')}
                   </span>
                 </div>
+                {checkoutMode === 'head' && paymentRowsDraft.length > 0 && draftRowsTotalCents !== paymentTargetCents && (
+                  <p className="text-center text-xs font-medium text-amber-600 dark:text-amber-400">
+                    ยอดรายการรับเงินต้องเท่ากับ ฿{paymentTargetAmount.toLocaleString('th-TH')}
+                  </p>
+                )}
                 {isCashMethod && draftChange > 0 && (
                   <div className="flex justify-between text-sm font-semibold text-emerald-600 pt-0.5">
                     <span>เงินทอน (ร้าง)</span>
