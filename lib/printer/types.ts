@@ -38,6 +38,7 @@ export type BuyerInfo = {
 export type ReceiptData = {
   /** 'bill' = preview before payment (no VAT/payment info), 'receipt' = full paid receipt */
   receiptType: 'bill' | 'receipt';
+  receiptKind?: 'payment_event' | 'full_bill';
   /** Document label: 'food' | 'receipt_short' | 'tax_full' */
   billTypeLabel?: 'food' | 'receipt_short' | 'tax_full';
 
@@ -61,6 +62,8 @@ export type ReceiptData = {
 
   /* ── Transaction ── */
   receiptNo?: string;
+  paymentId?: string;
+  paymentEventNumber?: number;
   tableNumber: string;
   cashierName: string;
   paidAt: string;
@@ -88,6 +91,40 @@ export type ReceiptData = {
   receivedAmount: number;
   changeAmount: number;
   paymentMethod: string;
+  allocations?: Array<{
+    chargeLineId?: string;
+    chargeType?: string;
+    label: string;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+  }>;
+  allocationFallbackNote?: string;
+  paymentEvents?: Array<{
+    paymentId: string;
+    paymentEventNumber: number;
+    settlementType: 'partial' | 'final' | string;
+    paidAt?: Date | string | null;
+    total: number;
+    paymentRows: Array<{
+      methodName?: string;
+      accountName?: string;
+      amount: number;
+    }>;
+    allocations?: Array<{
+      label: string;
+      quantity: number;
+      unitPrice: number;
+      total: number;
+    }>;
+  }>;
+  fullBillSummary?: {
+    billTotal: number;
+    paidTotal: number;
+    remaining: number;
+    totalHeads?: number;
+    hasUnallocatedPayments?: boolean;
+  };
   /** Phase 2B-4: per-row breakdown for true draft-row payments. Optional — legacy callers omit. */
   paymentRows?: Array<{
     label: string;

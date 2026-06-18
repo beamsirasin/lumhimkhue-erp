@@ -36,6 +36,34 @@ function money(value: number): string {
   return `฿${value.toFixed(2)}`;
 }
 
+function allocationRow(label: string, quantity: number, unitPrice: number, total: number): string {
+  return `<div class="item-row"><span class="item-name">${esc(label)} x ${quantity}</span><span class="item-qty">${unitPrice.toFixed(2)}</span><span class="item-total">${total.toFixed(2)}</span></div>`;
+}
+
+function paymentRowsBlock(rows: NonNullable<ReceiptData['paymentRows']>, title: string): string {
+  const rowLines = rows.map((pr) => [
+    row(`${pr.label} / ${pr.accountName}`, money(pr.amount)),
+    pr.amountTendered != null ? row('รับเงินสด', money(pr.amountTendered)) : '',
+    pr.changeAmount != null && pr.changeAmount > 0 ? row('เงินทอน', money(pr.changeAmount)) : '',
+    pr.payerLabel ? row('ผู้ชำระ', pr.payerLabel) : '',
+  ].filter(Boolean).join('\n')).join('\n');
+  return `\n${hr()}\n<div class="center small bold">${esc(title)}</div>\n${rowLines}`;
+}
+
+function paymentEventRowsBlock(events: NonNullable<ReceiptData['paymentEvents']>): string {
+  if (events.length === 0) return '';
+  return `\n${hr()}\n<div class="center small bold">การชำระทั้งหมด</div>\n${events.map((event) => {
+    const title = `การชำระ #${event.paymentEventNumber} - ${event.settlementType === 'partial' ? 'ใบรับชำระบางส่วน' : 'ใบปิดบิล'}`;
+    const tenderRows = event.paymentRows.length > 0
+      ? event.paymentRows.map((pr) => row(`${pr.methodName ?? 'ชำระ'}${pr.accountName ? ` / ${pr.accountName}` : ''}`, money(pr.amount))).join('\n')
+      : row('รับชำระ', money(event.total));
+    const allocRows = event.allocations?.length
+      ? `<div class="small">${event.allocations.map((a) => `${esc(a.label)} x ${a.quantity} = ${money(a.total)}`).join('<br />')}</div>`
+      : '<div class="small">รายการชำระแบบไม่ได้ระบุหัว</div>';
+    return `<div class="small bold">${esc(title)}</div>\n${allocRows}\n${tenderRows}`;
+  }).join('\n')}`;
+}
+
 const STATION_LABEL: Record<string, string> = {
   meat: 'เนื้อสัตว์', seafood: 'ทะเล', vegetable: 'ผัก',
   noodle: 'เส้น', dessert: 'ของหวาน', drink: 'เครื่องดื่ม', sauce: 'ซอส',
@@ -50,6 +78,8 @@ export async function renderReceiptHTML(data: ReceiptData): Promise<string> {
   const showTaxFields = isReceipt || isTaxFull;
   const vat = data.vatPercent ?? 7;
   const vatAmount = showTaxFields ? data.total * vat / (100 + vat) : 0;
+  const isPaymentEventReceipt = data.receiptKind === 'payment_event';
+  const isFullBillReceipt = data.receiptKind === 'full_bill';
 
   const logoStyle = data.logoHeight ? ` style="max-height:${data.logoHeight}px"` : '';
 
@@ -96,6 +126,14 @@ ${hr()}
       ? `<div class="center bold">ใบเสร็จรับเงิน</div>`
       : docLabel;
 
+  const receiptDocLabel = isFullBillReceipt
+    ? `<div class="center bold">ใบเสร็จรวม / ใบสรุปบิล</div>`
+    : isPaymentEventReceipt && data.settlementType === 'partial'
+      ? `<div class="center bold">ใบรับชำระ / ใบรับชำระบางส่วน</div>`
+      : isPaymentEventReceipt && data.settlementType === 'final'
+        ? `<div class="center bold">ใบเสร็จรับเงิน / ใบปิดบิล</div>`
+        : settlementDocLabel;
+
   /* Transaction details */
   const txDetails = `
 ${data.receiptNo ? row('เลขที่', data.receiptNo) : ''}
@@ -106,6 +144,21 @@ ${data.paidAt ? row('วันที่/เวลา', data.paidAt) : ''}`;
   /* Items */
   const itemHeader = `<div class="item-row bold"><span class="item-name">สินค้า</span><span class="item-qty">Qty</span><span class="item-total">ราคารวม</span></div>`;
   const itemRows = data.items.map((i) => itemRow(i.name, i.quantity, i.total)).join('\n');
+  const receiptItemTitle = isPaymentEventReceipt
+    ? 'รายการที่ชำระครั้งนี้'
+    : isFullBillReceipt
+      ? 'รายการทั้งหมดของบิล'
+      : 'สินค้า';
+  const receiptItemHeader = isPaymentEventReceipt || isFullBillReceipt
+    ? `<div class="item-row bold"><span class="item-name">${receiptItemTitle}</span><span class="item-qty">ราคา/หน่วย</span><span class="item-total">ราคารวม</span></div>`
+    : itemHeader;
+  const receiptItemRows = isPaymentEventReceipt
+    ? data.allocations?.length
+      ? data.allocations.map((i) => allocationRow(i.label, i.quantity, i.unitPrice, i.total)).join('\n')
+      : `<div class="small center">${esc(data.allocationFallbackNote ?? 'รายการชำระแบบไม่ได้ระบุหัว')}</div>`
+    : isFullBillReceipt
+      ? data.items.map((i) => allocationRow(i.name, i.quantity, i.quantity > 0 ? i.total / i.quantity : i.total, i.total)).join('\n')
+      : itemRows;
 
   /* Totals */
   const discountRow = data.discount > 0 ? row('ส่วนลด', `-฿${data.discount.toFixed(2)}`) : '';
@@ -115,7 +168,7 @@ ${discountRow}
 ${showTaxFields && vatAmount > 0 ? row(`ภาษีมูลค่าเพิ่ม ${vat}% (รวม)`, vatAmount.toFixed(2)) : ''}
 ${row('ทั้งหมด', `฿${data.total.toFixed(2)}`, true)}`;
 
-  const settlementBlock = hasSettlementSummary ? `
+  const settlementBlock = hasSettlementSummary && !isFullBillReceipt ? `
 ${hr()}
 ${row('ยอดบิลทั้งหมด', money(data.billTotal!))}
 ${row('ชำระก่อนหน้า', money(data.paidBefore!))}
@@ -123,8 +176,17 @@ ${row('ชำระครั้งนี้', money(data.paidThisTime!))}
 ${row('ชำระแล้วรวม', money(data.paidTotal!))}
 ${row('คงเหลือ', money(data.remainingAfter!), true)}` : '';
 
+  const fullBillSummaryBlock = isFullBillReceipt && data.fullBillSummary ? `
+${hr()}
+${row('ยอดบิลทั้งหมด', money(data.fullBillSummary.billTotal))}
+${row('ชำระแล้วรวม', money(data.fullBillSummary.paidTotal))}
+${row('คงเหลือ', money(data.fullBillSummary.remaining), true)}
+${data.fullBillSummary.totalHeads != null ? row('จำนวนหัวรวม', `${data.fullBillSummary.totalHeads}`) : ''}
+${data.fullBillSummary.hasUnallocatedPayments ? '<div class="small center">มีการชำระบางรายการที่ไม่ได้ระบุหัว</div>' : ''}` : '';
+
   /* Payment (receipt only) */
   const paymentBlock = isReceipt ? (() => {
+    if (isFullBillReceipt) return paymentEventRowsBlock(data.paymentEvents ?? []);
     if (data.paymentRows?.length) {
       const rowLines = data.paymentRows.map((pr) => [
         row(`${esc(pr.label)} / ${esc(pr.accountName)}`, `฿${pr.amount.toFixed(2)}`),
@@ -132,7 +194,9 @@ ${row('คงเหลือ', money(data.remainingAfter!), true)}` : '';
         pr.changeAmount != null && pr.changeAmount > 0 ? row('เงินทอน', `฿${pr.changeAmount.toFixed(2)}`) : '',
         pr.payerLabel ? row('ผู้ชำระ', esc(pr.payerLabel)) : '',
       ].filter(Boolean).join('\n')).join('\n');
-      return `\n${hr()}\n${rowLines}`;
+      return isPaymentEventReceipt
+        ? paymentRowsBlock(data.paymentRows, 'ชำระครั้งนี้')
+        : `\n${hr()}\n${rowLines}`;
     }
     return `\n${hr()}\n${row(data.paymentMethod, `฿${data.receivedAmount.toFixed(2)}`)}\n${data.changeAmount > 0 ? row('เงินทอน', `฿${data.changeAmount.toFixed(2)}`) : ''}`;
   })() : '';
@@ -144,16 +208,17 @@ ${row('คงเหลือ', money(data.remainingAfter!), true)}` : '';
 ${header}
 ${buyerBlock}
 ${hr()}
-${settlementDocLabel}
+${receiptDocLabel}
 ${hr()}
 ${txDetails}
 ${hr()}
-${itemHeader}
-${itemRows}
+${receiptItemHeader}
+${receiptItemRows}
 ${hr()}
 ${totalsBlock}
 ${settlementBlock}
 ${paymentBlock}
+${fullBillSummaryBlock}
 ${hr()}
 ${footer}
 `.trim();

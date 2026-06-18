@@ -12,6 +12,7 @@ import {
   markBillPrinted,
   getActivePaymentOptionsForPos,
 } from '@/lib/actions/pos';
+import { getPaymentReceiptData } from '@/lib/actions/history';
 import { updateSessionGuests, closeSession } from '@/lib/actions/sessions';
 import { getStoreSettings } from '@/lib/actions/store';
 import type { StoreSettingsData } from '@/lib/actions/store';
@@ -869,6 +870,15 @@ function PaymentPanel({
     };
   }
 
+  async function printPaymentEventReceipt(paymentId: string, fallbackReceipt: ReceiptData) {
+    const receiptResult = await getPaymentReceiptData(paymentId);
+    if (receiptResult.ok) {
+      await printReceipt({ type: 'receipt', payment: receiptResult.data });
+      return;
+    }
+    await printReceipt({ type: 'receipt', payment: fallbackReceipt });
+  }
+
   async function handleSubmit() {
     // ── Draft payment rows path ──────────────────────────────────────────
     if (paymentRowsDraft.length > 0) {
@@ -1015,7 +1025,7 @@ function PaymentPanel({
         queryClient.invalidateQueries({ queryKey: ['pos-sessions'] }),
         queryClient.invalidateQueries({ queryKey: ['pos-detail', session.id] }),
       ]);
-      await printReceipt({ type: 'receipt', payment: receipt });
+      await printPaymentEventReceipt(result.data.paymentId, receipt);
       if (effectiveSettlementMode === 'partial') {
         toast.success(
           checkoutMode === 'head'
@@ -1103,7 +1113,7 @@ function PaymentPanel({
     };
     setLastReceipt(receipt);
     setPaid(true);
-    await printReceipt({ type: 'receipt', payment: receipt });
+    await printPaymentEventReceipt(result.data.paymentId, receipt);
   }
 
   /* ── Success ── */
@@ -1988,7 +1998,7 @@ function PaymentPanel({
       setLastReceipt(receipt);
 
       setPaid(true);
-      await printReceipt({ type: 'receipt', payment: receipt });
+      await printPaymentEventReceipt(result.data.paymentId, receipt);
     }
 
     const activeTiles = [...guestTiles, ...addonTiles].filter((t) => (roundRemaining[t.id] ?? 0) > 0);

@@ -3,8 +3,13 @@
 import { useState, useMemo } from 'react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
-import { ChevronRight } from 'lucide-react';
-import type { SessionHistoryRow } from '@/lib/actions/history';
+import { ChevronRight, Loader2, Printer } from 'lucide-react';
+import { toast } from 'sonner';
+import {
+  getFullBillReceiptData,
+  type SessionHistoryRow,
+} from '@/lib/actions/history';
+import { print as printReceipt } from '@/lib/printer/service';
 import { SessionDetailDialog } from './SessionDetailDialog';
 
 const METHOD_LABEL: Record<string, string> = {
@@ -31,6 +36,7 @@ interface PaymentHistoryTableProps {
 
 export function PaymentHistoryTable({ rows, date }: PaymentHistoryTableProps) {
   const [detailSessionId, setDetailSessionId] = useState<string | null>(null);
+  const [printingId, setPrintingId] = useState<string | null>(null);
 
   const paid = rows.filter((r) => r.totalRevenue > 0);
 
@@ -80,6 +86,20 @@ export function PaymentHistoryTable({ rows, date }: PaymentHistoryTableProps) {
     return map;
   }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
   const totalRevenue = paid.reduce((s, r) => s + r.totalRevenue, 0);
+
+  async function handlePrintFullBill(sessionId: string) {
+    const key = `full:${sessionId}`;
+    setPrintingId(key);
+    const result = await getFullBillReceiptData(sessionId);
+    if (!result.ok) {
+      toast.error(result.error);
+      setPrintingId(null);
+      return;
+    }
+    const printResult = await printReceipt({ type: 'receipt', payment: result.data });
+    setPrintingId(null);
+    if (printResult.ok) toast.success('สั่งพิมพ์ใบเสร็จรวมแล้ว');
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -222,7 +242,21 @@ export function PaymentHistoryTable({ rows, date }: PaymentHistoryTableProps) {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <ChevronRight className="size-4 text-muted-foreground" />
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handlePrintFullBill(row.sessionId);
+                        }}
+                        disabled={printingId === `full:${row.sessionId}`}
+                        className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-medium text-foreground hover:bg-muted/50 disabled:opacity-50"
+                      >
+                        {printingId === `full:${row.sessionId}` ? <Loader2 className="size-3.5 animate-spin" /> : <Printer className="size-3.5" />}
+                        พิมพ์รวม
+                      </button>
+                      <ChevronRight className="size-4 text-muted-foreground" />
+                    </div>
                   </td>
                 </tr>
                 );

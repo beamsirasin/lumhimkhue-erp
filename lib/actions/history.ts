@@ -1,6 +1,6 @@
 'use server';
 
-import { eq, and, gte, not, lte, desc, asc, inArray } from 'drizzle-orm';
+import { eq, and, gte, not, lte, desc, asc, inArray, isNull } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
@@ -10,9 +10,35 @@ import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { writeAuditLog } from '@/lib/actions/audit';
 import { db } from '@/lib/db';
-import { sessions, tables, payments, paymentRows, paymentLineItems, paymentAdjustments, orders, auditLogs, cashierShifts, users } from '@/lib/db/schema';
+import {
+  sessions,
+  tables,
+  payments,
+  paymentRows,
+  paymentLineItems,
+  paymentAdjustments,
+  orders,
+  auditLogs,
+  cashierShifts,
+  users,
+  buffetChargeLines,
+  paymentAllocations,
+  paymentMethods,
+  receivingAccounts,
+  storeSettings,
+} from '@/lib/db/schema';
+import type { ReceiptData } from '@/lib/printer/types';
+import { resolveBillConfig } from '@/lib/utils/billConfig';
 
 const TZ = 'Asia/Bangkok';
+
+const METHOD_LABEL: Record<string, string> = {
+  cash: 'เงินสด',
+  cash_qr: 'เงินสด + QR',
+  qr_promptpay: 'QR PromptPay',
+  transfer: 'โอนเงิน',
+  card: 'บัตรเครดิต',
+};
 
 function dayRange(dateStr: string): { from: Date; to: Date } {
   const from = fromZonedTime(startOfDay(toZonedTime(new Date(dateStr), TZ)), TZ);
@@ -286,6 +312,336 @@ export async function getSessionDetail(sessionId: string) {
 export type SessionDetailData = NonNullable<
   Extract<Awaited<ReturnType<typeof getSessionDetail>>, { ok: true }>['data']
 >;
+
+function receiptDate(value: Date | string | null | undefined) {
+  if (!value) return '';
+  return new Date(value).toLocaleString('th-TH', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: TZ,
+  });
+}
+
+async function getReceiptShopInfo(kind: 'main' | 'taxInvoice' = 'main') {
+  const [settings] = await db.select().from(storeSettings).where(eq(storeSettings.id, 1)).limit(1);
+  const cfg = settings ? resolveBillConfig(settings, kind) : null;
+  const hidden = new Set(cfg?.hiddenFields ?? []);
+  return {
+    hidden,
+    paperWidth: (settings?.billPaperWidth as 58 | 80 | undefined) ?? 80,
+    logoUrl: cfg?.logoUrl,
+    logoHeight: cfg?.logoHeight,
+    shopNameTh: cfg?.shopNameTh ?? settings?.shopNameTh ?? 'ร้านชาบู',
+    shopNameEn: cfg?.shopNameEn,
+    companyName: cfg?.companyName,
+    shopAddress: cfg?.address,
+    phone: cfg?.phone,
+    taxId: cfg?.taxId,
+    branch: cfg?.branch,
+    registerNo: cfg?.registerNo,
+    footerNote: cfg?.footerNote,
+    vatPercent: cfg?.vatPercent ?? settings?.vatPercent ?? 7,
+    billTypeLabel: cfg?.billTypeLabel ?? 'receipt_short',
+  };
+}
+
+type ReceiptPaymentRow = NonNullable<ReceiptData['paymentRows']>[number];
+type ReceiptAllocation = NonNullable<ReceiptData['allocations']>[number];
+
+async function getReceiptPaymentRows(paymentIds: string[]) {
+  if (paymentIds.length === 0) return new Map<string, ReceiptPaymentRow[]>();
+  const rows = await db
+    .select({
+      paymentId: paymentRows.paymentId,
+      label: paymentMethods.name,
+      accountName: receivingAccounts.name,
+      amount: paymentRows.amount,
+      amountTendered: paymentRows.amountTendered,
+      changeAmount: paymentRows.changeAmount,
+      payerLabel: paymentRows.payerLabel,
+    })
+    .from(paymentRows)
+    .innerJoin(paymentMethods, eq(paymentRows.paymentMethodId, paymentMethods.id))
+    .innerJoin(receivingAccounts, eq(paymentRows.receivingAccountId, receivingAccounts.id))
+    .where(and(inArray(paymentRows.paymentId, paymentIds), eq(paymentRows.status, 'completed')));
+
+  const map = new Map<string, ReceiptPaymentRow[]>();
+  for (const row of rows) {
+    const list = map.get(row.paymentId) ?? [];
+    list.push({
+      label: row.label,
+      accountName: row.accountName,
+      amount: Number(row.amount),
+      amountTendered: row.amountTendered == null ? null : Number(row.amountTendered),
+      changeAmount: row.changeAmount == null ? null : Number(row.changeAmount),
+      payerLabel: row.payerLabel,
+    });
+    map.set(row.paymentId, list);
+  }
+  return map;
+}
+
+async function getReceiptAllocations(paymentIds: string[]) {
+  if (paymentIds.length === 0) return new Map<string, ReceiptAllocation[]>();
+  const rows = await db
+    .select({
+      paymentId: paymentAllocations.paymentId,
+      chargeLineId: paymentAllocations.chargeLineId,
+      chargeType: buffetChargeLines.chargeType,
+      label: buffetChargeLines.label,
+      quantity: paymentAllocations.quantity,
+      unitPrice: buffetChargeLines.unitPrice,
+      amount: paymentAllocations.amount,
+    })
+    .from(paymentAllocations)
+    .innerJoin(buffetChargeLines, eq(paymentAllocations.chargeLineId, buffetChargeLines.id))
+    .where(inArray(paymentAllocations.paymentId, paymentIds));
+
+  const map = new Map<string, ReceiptAllocation[]>();
+  for (const row of rows) {
+    const list = map.get(row.paymentId) ?? [];
+    list.push({
+      chargeLineId: row.chargeLineId,
+      chargeType: row.chargeType,
+      label: row.label,
+      quantity: row.quantity,
+      unitPrice: Number(row.unitPrice),
+      total: Number(row.amount),
+    });
+    map.set(row.paymentId, list);
+  }
+  return map;
+}
+
+function paymentMethodLabel(method: string) {
+  return METHOD_LABEL[method] ?? method;
+}
+
+export async function getPaymentReceiptData(paymentId: string) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'view_reports') && !can(authSession.user.role, 'manage_tables') && !can(authSession.user.role, 'process_payment'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  try {
+    const payment = await db.query.payments.findFirst({
+      where: eq(payments.id, paymentId),
+      with: {
+        session: { with: { table: true } },
+        processedByUser: true,
+      },
+    });
+    if (!payment || payment.status !== 'completed') return { ok: false as const, error: 'ไม่พบข้อมูลการชำระเงิน' };
+
+    const allPayments = await db.query.payments.findMany({
+      where: and(eq(payments.sessionId, payment.sessionId), eq(payments.status, 'completed')),
+      orderBy: [asc(payments.paidAt), asc(payments.id)],
+    });
+    const paymentEventNumber = Math.max(1, allPayments.findIndex((item) => item.id === payment.id) + 1);
+    const rowsByPayment = await getReceiptPaymentRows([payment.id]);
+    const allocationsByPayment = await getReceiptAllocations([payment.id]);
+    const paymentRowsForReceipt = rowsByPayment.get(payment.id) ?? [];
+    const allocations = allocationsByPayment.get(payment.id) ?? [];
+    const shop = await getReceiptShopInfo('main');
+    const hidden = shop.hidden;
+    const paidThisTime = Number(payment.total);
+    const paidBefore = Number(payment.paidBefore);
+    const remainingAfter = Number(payment.remainingAfter);
+    const billTotal = Number(payment.billTotalAtPayment);
+    const receiptData: ReceiptData = {
+      receiptType: 'receipt',
+      receiptKind: 'payment_event',
+      billTypeLabel: shop.billTypeLabel,
+      logoUrl: shop.logoUrl,
+      logoHeight: shop.logoHeight,
+      paperWidth: shop.paperWidth,
+      shopNameTh: shop.shopNameTh,
+      shopNameEn: shop.shopNameEn,
+      companyName: shop.companyName,
+      shopAddress: shop.shopAddress,
+      phone: shop.phone,
+      taxId: shop.taxId,
+      branch: shop.branch,
+      registerNo: shop.registerNo,
+      footerNote: shop.footerNote,
+      vatPercent: shop.vatPercent,
+      receiptNo: hidden.has('receiptNo') ? undefined : payment.receiptNo ?? undefined,
+      paymentId: payment.id,
+      paymentEventNumber,
+      tableNumber: hidden.has('tableNo') ? '' : payment.session.table.label,
+      cashierName: hidden.has('cashier') ? '' : payment.processedByUser?.name ?? '',
+      paidAt: hidden.has('date') ? '' : receiptDate(payment.paidAt),
+      sessionId: payment.sessionId,
+      items: allocations.length > 0
+        ? allocations.map((allocation) => ({
+            name: allocation.label,
+            quantity: allocation.quantity,
+            total: allocation.total,
+          }))
+        : [{ name: 'รายการชำระแบบไม่ได้ระบุหัว', quantity: 1, total: paidThisTime }],
+      subtotal: allocations.length > 0
+        ? allocations.reduce((sum, allocation) => sum + allocation.total, 0)
+        : paidThisTime,
+      discount: 0,
+      serviceCharge: 0,
+      total: paidThisTime,
+      settlementType: payment.settlementType,
+      billTotal,
+      paidBefore,
+      paidThisTime,
+      paidTotal: paidBefore + paidThisTime,
+      remainingAfter,
+      receivedAmount: paymentRowsForReceipt.length > 0
+        ? paymentRowsForReceipt.reduce((sum, row) => sum + (row.amountTendered ?? row.amount), 0)
+        : Number(payment.receivedAmount),
+      changeAmount: Number(payment.changeAmount),
+      paymentMethod: paymentRowsForReceipt.length > 0
+        ? paymentRowsForReceipt.map((row) => row.label).join(' + ')
+        : paymentMethodLabel(payment.paymentMethod),
+      paymentRows: paymentRowsForReceipt,
+      allocations,
+      allocationFallbackNote: allocations.length === 0 ? 'รายการชำระแบบไม่ได้ระบุหัว' : undefined,
+    };
+
+    void writeAuditLog({
+      userId: authSession.user.id,
+      role: authSession.user.role,
+      action: 'receipt_reprinted',
+      entity: 'payments',
+      entityId: payment.id,
+      after: { sessionId: payment.sessionId, paymentId: payment.id, receiptKind: 'payment_event', printedAt: new Date().toISOString() },
+    });
+
+    return { ok: true as const, data: receiptData };
+  } catch (e) {
+    console.error('[getPaymentReceiptData]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+export async function getFullBillReceiptData(sessionId: string) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'view_reports') && !can(authSession.user.role, 'manage_tables') && !can(authSession.user.role, 'process_payment'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  try {
+    const session = await db.query.sessions.findFirst({
+      where: eq(sessions.id, sessionId),
+      with: { table: true },
+    });
+    if (!session) return { ok: false as const, error: 'ไม่พบ session' };
+
+    const [chargeLines, completedPayments] = await Promise.all([
+      db.select().from(buffetChargeLines).where(and(eq(buffetChargeLines.sessionId, sessionId), isNull(buffetChargeLines.voidedAt))),
+      db.query.payments.findMany({
+        where: and(eq(payments.sessionId, sessionId), eq(payments.status, 'completed')),
+        orderBy: [asc(payments.paidAt), asc(payments.id)],
+        with: { processedByUser: true },
+      }),
+    ]);
+    const paymentIds = completedPayments.map((payment) => payment.id);
+    const [rowsByPayment, allocationsByPayment] = await Promise.all([
+      getReceiptPaymentRows(paymentIds),
+      getReceiptAllocations(paymentIds),
+    ]);
+    const shop = await getReceiptShopInfo('main');
+    const hidden = shop.hidden;
+    const latestPayment = completedPayments.at(-1);
+    const billTotal = latestPayment
+      ? Number(latestPayment.billTotalAtPayment)
+      : chargeLines.reduce((sum, line) => sum + Number(line.total), 0);
+    const paidTotal = completedPayments.reduce((sum, payment) => sum + Number(payment.total), 0);
+    const remaining = latestPayment ? Number(latestPayment.remainingAfter) : Math.max(0, billTotal - paidTotal);
+    const fullItems = chargeLines.map((line) => ({
+      name: line.label,
+      quantity: line.quantity,
+      total: Number(line.total),
+    }));
+    const paymentEvents = completedPayments.map((payment, index) => {
+      const allocations = allocationsByPayment.get(payment.id) ?? [];
+      return {
+        paymentId: payment.id,
+        paymentEventNumber: index + 1,
+        settlementType: payment.settlementType,
+        paidAt: payment.paidAt,
+        total: Number(payment.total),
+        paymentRows: (rowsByPayment.get(payment.id) ?? []).map((row) => ({
+          methodName: row.label,
+          accountName: row.accountName,
+          amount: row.amount,
+        })),
+        allocations: allocations.map((allocation) => ({
+          label: allocation.label,
+          quantity: allocation.quantity,
+          unitPrice: allocation.unitPrice,
+          total: allocation.total,
+        })),
+      };
+    });
+    const hasUnallocatedPayments = completedPayments.some((payment) => (allocationsByPayment.get(payment.id) ?? []).length === 0);
+    const receiptData: ReceiptData = {
+      receiptType: 'receipt',
+      receiptKind: 'full_bill',
+      billTypeLabel: shop.billTypeLabel,
+      logoUrl: shop.logoUrl,
+      logoHeight: shop.logoHeight,
+      paperWidth: shop.paperWidth,
+      shopNameTh: shop.shopNameTh,
+      shopNameEn: shop.shopNameEn,
+      companyName: shop.companyName,
+      shopAddress: shop.shopAddress,
+      phone: shop.phone,
+      taxId: shop.taxId,
+      branch: shop.branch,
+      registerNo: shop.registerNo,
+      footerNote: shop.footerNote,
+      vatPercent: shop.vatPercent,
+      receiptNo: hidden.has('receiptNo') ? undefined : latestPayment?.receiptNo ?? undefined,
+      tableNumber: hidden.has('tableNo') ? '' : session.table.label,
+      cashierName: hidden.has('cashier') ? '' : completedPayments.at(-1)?.processedByUser?.name ?? '',
+      paidAt: hidden.has('date') ? '' : receiptDate(latestPayment?.paidAt ?? new Date()),
+      sessionId,
+      items: fullItems,
+      subtotal: fullItems.reduce((sum, item) => sum + item.total, 0),
+      discount: 0,
+      serviceCharge: 0,
+      total: billTotal,
+      settlementType: latestPayment?.settlementType ?? 'final',
+      billTotal,
+      paidBefore: Math.max(0, paidTotal - Number(latestPayment?.total ?? 0)),
+      paidThisTime: Number(latestPayment?.total ?? 0),
+      paidTotal,
+      remainingAfter: remaining,
+      receivedAmount: paidTotal,
+      changeAmount: 0,
+      paymentMethod: paymentEvents.flatMap((event) => event.paymentRows.map((row) => row.methodName ?? '')).filter(Boolean).join(' + '),
+      paymentEvents,
+      fullBillSummary: {
+        billTotal,
+        paidTotal,
+        remaining,
+        totalHeads: chargeLines.reduce((sum, line) => sum + line.quantity, 0),
+        hasUnallocatedPayments,
+      },
+      allocationFallbackNote: hasUnallocatedPayments ? 'มีการชำระบางรายการที่ไม่ได้ระบุหัว' : undefined,
+    };
+
+    void writeAuditLog({
+      userId: authSession.user.id,
+      role: authSession.user.role,
+      action: 'full_bill_receipt_printed',
+      entity: 'sessions',
+      entityId: sessionId,
+      after: { sessionId, receiptKind: 'full_bill', printedAt: new Date().toISOString() },
+    });
+
+    return { ok: true as const, data: receiptData };
+  } catch (e) {
+    console.error('[getFullBillReceiptData]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
 
 export async function getHistoryCalendarDates(year: number, month: number) {
   const authSession = await auth();

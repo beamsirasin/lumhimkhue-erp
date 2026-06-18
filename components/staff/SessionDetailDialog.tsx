@@ -5,10 +5,17 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { format, differenceInMinutes } from 'date-fns';
 import { th } from 'date-fns/locale';
-import { Pencil, Trash2, Loader2, AlertTriangle } from 'lucide-react';
+import { Pencil, Trash2, Loader2, AlertTriangle, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { getSessionDetail, deletePaymentRecord, reopenSessionForPayment } from '@/lib/actions/history';
+import {
+  getSessionDetail,
+  deletePaymentRecord,
+  reopenSessionForPayment,
+  getPaymentReceiptData,
+  getFullBillReceiptData,
+} from '@/lib/actions/history';
+import { print as printReceipt } from '@/lib/printer/service';
 
 const METHOD_LABEL: Record<string, string> = {
   cash:         'เงินสด',
@@ -49,6 +56,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
   const [submitting,  setSubmitting]  = useState(false);
   const [mutationReason, setMutationReason] = useState('');
   const [selectedMutationPaymentId, setSelectedMutationPaymentId] = useState<string | null>(null);
+  const [printingReceiptId, setPrintingReceiptId] = useState<string | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -57,7 +65,35 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
     setSubmitting(false);
     setMutationReason('');
     setSelectedMutationPaymentId(null);
+    setPrintingReceiptId(null);
   }, [sessionId]);
+
+  async function handlePrintPayment(paymentId: string) {
+    setPrintingReceiptId(paymentId);
+    const result = await getPaymentReceiptData(paymentId);
+    if (!result.ok) {
+      toast.error(result.error);
+      setPrintingReceiptId(null);
+      return;
+    }
+    const printResult = await printReceipt({ type: 'receipt', payment: result.data });
+    setPrintingReceiptId(null);
+    if (printResult.ok) toast.success('สั่งพิมพ์ใบนี้แล้ว');
+  }
+
+  async function handlePrintFullBill() {
+    if (!sessionId) return;
+    setPrintingReceiptId(`full:${sessionId}`);
+    const result = await getFullBillReceiptData(sessionId);
+    if (!result.ok) {
+      toast.error(result.error);
+      setPrintingReceiptId(null);
+      return;
+    }
+    const printResult = await printReceipt({ type: 'receipt', payment: result.data });
+    setPrintingReceiptId(null);
+    if (printResult.ok) toast.success('สั่งพิมพ์ใบเสร็จรวมแล้ว');
+  }
 
   async function handleDelete() {
     const paymentId = selectedMutationPaymentId ?? data?.session.payment?.id;
@@ -189,9 +225,20 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
 
               return (
                 <div>
-                  <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    การชำระเงิน ({paymentEvents.length} ครั้ง)
-                  </p>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      การชำระเงิน ({paymentEvents.length} ครั้ง)
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handlePrintFullBill}
+                      disabled={printingReceiptId === `full:${sessionId}`}
+                      className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium text-foreground hover:bg-muted/50 disabled:opacity-50"
+                    >
+                      {printingReceiptId === `full:${sessionId}` ? <Loader2 className="size-3.5 animate-spin" /> : <Printer className="size-3.5" />}
+                      พิมพ์ใบเสร็จรวม
+                    </button>
+                  </div>
 
                   <div className="space-y-3">
                     {paymentEvents.map((payment, idx) => {
@@ -270,6 +317,15 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
 
                           {!isSelected && (
                             <div className="mt-2 flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void handlePrintPayment(payment.id)}
+                                disabled={printingReceiptId === payment.id}
+                                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/30 disabled:opacity-50 transition-colors"
+                              >
+                                {printingReceiptId === payment.id ? <Loader2 className="size-4 animate-spin" /> : <Printer className="size-4" />}
+                                พิมพ์ซ้ำใบนี้
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => { setSelectedMutationPaymentId(payment.id); setMutationReason(''); setEditConfirm(true); setDelConfirm(false); }}
