@@ -35,6 +35,8 @@ async function main() {
     receivingAccounts,
     paymentAdjustments,
     sessions,
+    buffetChargeLines,
+    paymentAllocations,
   } = await import('../lib/db/schema');
 
   console.log('Payment foundation verification');
@@ -270,6 +272,71 @@ async function main() {
     'paid sessions have zero remaining balance',
     `${paidSessionsWithRemaining?.count ?? 0} inconsistent`,
   );
+
+  // ─── Allocation integrity checks (Phase 8B-3) ────────────────────────────
+  // Skipped gracefully when the migration has not yet been applied.
+  let buffetTablesExist = false;
+  try {
+    await db.select({ n: sql<number>`1` }).from(buffetChargeLines).limit(0);
+    buffetTablesExist = true;
+  } catch {
+    // table not yet migrated
+  }
+
+  if (!buffetTablesExist) {
+    console.log('INFO buffet_charge_lines not yet migrated — skipping allocation checks (run db:migrate-phase8b1)');
+  } else {
+    const [allocQtyOverflow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(sql`
+        (
+          select bcl.id
+          from buffet_charge_lines bcl
+          left join payment_allocations pa on pa.charge_line_id = bcl.id
+          group by bcl.id, bcl.quantity
+          having coalesce(sum(pa.quantity), 0) > bcl.quantity
+        ) over_allocated_lines
+      `);
+    assert(
+      Number(allocQtyOverflow?.count ?? 0) === 0,
+      'no over-allocated buffet charge lines',
+      `${allocQtyOverflow?.count ?? 0} over-allocated`,
+    );
+
+    const [allocAmountMismatch] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(sql`
+        (
+          select p.id
+          from payments p
+          where p.status = 'completed'
+            and exists (select 1 from payment_allocations pa where pa.payment_id = p.id)
+            and abs(
+              coalesce(
+                (select sum(pa2.amount::numeric) from payment_allocations pa2 where pa2.payment_id = p.id),
+                0
+              ) - p.total::numeric
+            ) > 0.01
+        ) alloc_amount_mismatch_payments
+      `);
+    assert(
+      Number(allocAmountMismatch?.count ?? 0) === 0,
+      'allocation-aware payment totals match payment_allocations sum',
+      `${allocAmountMismatch?.count ?? 0} mismatches`,
+    );
+
+    const [voidedLineAllocs] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(paymentAllocations)
+      .innerJoin(buffetChargeLines, eq(paymentAllocations.chargeLineId, buffetChargeLines.id))
+      .where(sql`${buffetChargeLines.voidedAt} is not null`);
+    const voidedAllocCount = Number(voidedLineAllocs?.count ?? 0);
+    if (voidedAllocCount > 0) {
+      console.log(`WARN ${voidedAllocCount} allocation(s) reference voided charge lines — review payment_allocations table`);
+    } else {
+      console.log(`OK no allocations on voided charge lines`);
+    }
+  }
 
   // Warning-only: post-close payment mutations (does not affect pass/fail count)
   const [postCloseMutations] = await db

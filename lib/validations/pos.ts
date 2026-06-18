@@ -19,6 +19,13 @@ export const checkoutPaymentRowSchema = z.object({
   note: z.string().max(500).optional().nullable(),
 });
 
+export const allocationInputSchema = z.object({
+  chargeLineId: z.string().uuid(),
+  quantity: z.number().int().positive(),
+  amount: z.number().positive(),
+  note: z.string().max(500).optional().nullable(),
+});
+
 export const processPaymentSchema = z.object({
   sessionId: z.string().uuid(),
   settlementMode: z.enum(['partial', 'final']).default('final'),
@@ -31,8 +38,11 @@ export const processPaymentSchema = z.object({
   lineItems: z.array(lineItemSchema).default([]),
   /** Phase 2 true tender rows. Optional for legacy callers. */
   paymentRows: z.array(checkoutPaymentRowSchema).optional(),
+  /** Phase 8B-3 optional buffet charge line allocations. Legacy callers omit this field. */
+  allocations: z.array(allocationInputSchema).optional(),
 });
 
 export type ProcessPaymentInput = z.infer<typeof processPaymentSchema>;
 export type LineItemInput = z.infer<typeof lineItemSchema>;
 export type CheckoutPaymentRowInput = z.infer<typeof checkoutPaymentRowSchema>;
+export type AllocationInput = z.infer<typeof allocationInputSchema>;

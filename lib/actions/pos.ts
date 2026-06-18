@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { eq, and, inArray, asc, sql } from 'drizzle-orm';
+import { eq, and, inArray, asc, sql, isNull } from 'drizzle-orm';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
@@ -18,6 +18,8 @@ import {
   pricingTiles,
   storeSettings,
   cashierShifts,
+  buffetChargeLines,
+  paymentAllocations,
 } from '@/lib/db/schema';
 import { processPaymentSchema } from '@/lib/validations/pos';
 import {
@@ -102,6 +104,34 @@ export async function getPosSessionDetail(sessionId: string) {
     const isGroupBill = linkedSessionIds.length > 0;
     const linkedTableLabels = session.linkedSessions.map((s) => s.table.label);
 
+    // Charge lines live on the primary session; allocations may reference any session in the group
+    const [chargeLineRows, allocationRows] = await Promise.all([
+      db.select().from(buffetChargeLines).where(eq(buffetChargeLines.sessionId, sessionId)),
+      db.select({
+        chargeLineId: paymentAllocations.chargeLineId,
+        allocatedQty: sql<number>`sum(${paymentAllocations.quantity})::int`,
+      }).from(paymentAllocations)
+        .where(inArray(paymentAllocations.sessionId, allSessionIds))
+        .groupBy(paymentAllocations.chargeLineId),
+    ]);
+
+    const allocMap = new Map(allocationRows.map((r) => [r.chargeLineId, r.allocatedQty]));
+    const chargeLines = chargeLineRows.map((l) => {
+      const allocatedQuantity = allocMap.get(l.id) ?? 0;
+      return {
+        id: l.id,
+        pricingTileId: l.pricingTileId,
+        chargeType: l.chargeType,
+        label: l.label,
+        unitPrice: Number(l.unitPrice),
+        quantity: l.quantity,
+        allocatedQuantity,
+        remainingQuantity: Math.max(0, l.quantity - allocatedQuantity),
+        total: Number(l.total),
+        voidedAt: l.voidedAt,
+      };
+    });
+
     return {
       ok: true as const,
       data: {
@@ -111,6 +141,7 @@ export async function getPosSessionDetail(sessionId: string) {
         paymentSummary: { billTotal, paidTotal, remaining },
         isGroupBill,
         linkedTableLabels,
+        chargeLines,
       },
     };
   } catch (e) {
@@ -233,7 +264,7 @@ export async function processPayment(input: unknown) {
   const parsed = processPaymentSchema.safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
 
-  const { sessionId, settlementMode, paymentMethod, receivedAmount, discount, notes, receiptNo, lineItems, paymentRows: submittedPaymentRows } = parsed.data;
+  const { sessionId, settlementMode, paymentMethod, receivedAmount, discount, notes, receiptNo, lineItems, paymentRows: submittedPaymentRows, allocations } = parsed.data;
 
   try {
     // Parallel: session fetch + store settings + active shift lookup
@@ -430,6 +461,105 @@ export async function processPayment(input: unknown) {
     const remainingAfter = fromCents(remainingAfterCents);
     const paidTotal = fromCents(paidBeforeCents + paidThisTimeCents);
 
+    // ─── Optional allocation validation (Phase 8B-3) ─────────────────────────
+    // Set only when all checks pass; consumed after payment insert.
+    let pendingAllocations: Array<{ chargeLineId: string; quantity: number; amount: number; note?: string | null }> | undefined;
+    const allocLabelMap = new Map<string, string>();
+
+    if (allocations && allocations.length > 0) {
+      const inputLineIds = allocations.map((a) => a.chargeLineId);
+
+      if (new Set(inputLineIds).size !== inputLineIds.length) {
+        return { ok: false as const, error: 'พบรายการหัวซ้ำกัน กรุณาตรวจสอบ' };
+      }
+
+      const [allocLines, existingAllocRows] = await Promise.all([
+        db.select({
+          id: buffetChargeLines.id,
+          sessionId: buffetChargeLines.sessionId,
+          label: buffetChargeLines.label,
+          unitPrice: buffetChargeLines.unitPrice,
+          quantity: buffetChargeLines.quantity,
+          voidedAt: buffetChargeLines.voidedAt,
+        }).from(buffetChargeLines).where(inArray(buffetChargeLines.id, inputLineIds)),
+        db.select({
+          chargeLineId: paymentAllocations.chargeLineId,
+          allocatedQty: sql<number>`sum(${paymentAllocations.quantity})::int`,
+        }).from(paymentAllocations)
+          .where(inArray(paymentAllocations.chargeLineId, inputLineIds))
+          .groupBy(paymentAllocations.chargeLineId),
+      ]);
+
+      const lineMap = new Map(allocLines.map((l) => [l.id, l]));
+      const existAllocMap = new Map(existingAllocRows.map((r) => [r.chargeLineId, r.allocatedQty]));
+
+      for (const a of allocations) {
+        const line = lineMap.get(a.chargeLineId);
+        if (!line) return { ok: false as const, error: 'ไม่พบรายการหัว กรุณาตรวจสอบ' };
+        if (line.sessionId !== sessionId)
+          return { ok: false as const, error: 'รายการหัวไม่ตรงกับ session นี้' };
+        if (line.voidedAt)
+          return { ok: false as const, error: `รายการ ${line.label} ถูกยกเลิกแล้ว` };
+
+        const expectedCents = Math.round(Number(line.unitPrice) * a.quantity * 100);
+        const actualCents = toCents(a.amount);
+        if (expectedCents !== actualCents) {
+          return {
+            ok: false as const,
+            error: `ยอดชำระของหัวที่เลือกไม่ตรงกับราคาที่บันทึกไว้ (${line.label}: คาด ฿${(expectedCents / 100).toFixed(2)})`,
+          };
+        }
+
+        const existingQty = existAllocMap.get(a.chargeLineId) ?? 0;
+        if (existingQty + a.quantity > line.quantity) {
+          return {
+            ok: false as const,
+            error: `จำนวนหัวที่เลือกเกินจำนวนคงเหลือ (${line.label}: คงเหลือ ${line.quantity - existingQty} หัว)`,
+          };
+        }
+      }
+
+      const allocTotalCents = allocations.reduce((s, a) => s + toCents(a.amount), 0);
+      if (allocTotalCents !== paidThisTimeCents) {
+        return { ok: false as const, error: 'ยอดรายการหัวที่เลือกไม่ตรงกับยอดรับชำระ' };
+      }
+
+      if (settlementMode === 'final') {
+        const allActiveLines = await db.select({
+          id: buffetChargeLines.id,
+          label: buffetChargeLines.label,
+          quantity: buffetChargeLines.quantity,
+        }).from(buffetChargeLines).where(
+          and(eq(buffetChargeLines.sessionId, sessionId), isNull(buffetChargeLines.voidedAt)),
+        );
+        if (allActiveLines.length > 0) {
+          const allActiveIds = allActiveLines.map((l) => l.id);
+          const allExistRows = await db.select({
+            chargeLineId: paymentAllocations.chargeLineId,
+            allocatedQty: sql<number>`sum(${paymentAllocations.quantity})::int`,
+          }).from(paymentAllocations)
+            .where(inArray(paymentAllocations.chargeLineId, allActiveIds))
+            .groupBy(paymentAllocations.chargeLineId);
+          const allExistMap = new Map(allExistRows.map((r) => [r.chargeLineId, r.allocatedQty]));
+          const incomingByLineId = new Map(allocations.map((a) => [a.chargeLineId, a.quantity]));
+          for (const line of allActiveLines) {
+            const prevQty = allExistMap.get(line.id) ?? 0;
+            const newQty = incomingByLineId.get(line.id) ?? 0;
+            if (prevQty + newQty !== line.quantity) {
+              return {
+                ok: false as const,
+                error: `ยังมีจำนวนหัวที่ยังไม่ได้รับการชำระ ไม่สามารถปิดบิลได้ (${line.label}: ชำระแล้ว ${prevQty + newQty}/${line.quantity})`,
+              };
+            }
+          }
+        }
+      }
+
+      allocLines.forEach((l) => allocLabelMap.set(l.id, l.label));
+      pendingAllocations = allocations;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     const duplicateReceiptPayment = receiptNo
       ? await db.query.payments.findFirst({
           where: and(eq(payments.sessionId, sessionId), eq(payments.receiptNo, receiptNo), eq(payments.status, 'completed')),
@@ -532,6 +662,32 @@ export async function processPayment(input: unknown) {
       await ensurePaymentRowsForLegacyPayment(payment);
     }
 
+    // Insert payment allocations (allocation-aware path only)
+    const allocationsSummary: Array<{ id: string; chargeLineId: string; label: string; quantity: number; amount: number }> = [];
+    if (pendingAllocations && pendingAllocations.length > 0) {
+      const inserted = await db.insert(paymentAllocations).values(
+        pendingAllocations.map((a) => ({
+          paymentId: payment.id,
+          sessionId,
+          chargeLineId: a.chargeLineId,
+          quantity: a.quantity,
+          amount: a.amount.toFixed(2),
+          note: a.note ?? null,
+        })),
+      ).returning({ id: paymentAllocations.id, chargeLineId: paymentAllocations.chargeLineId });
+
+      const insertedMap = new Map(inserted.map((i) => [i.chargeLineId, i.id]));
+      for (const a of pendingAllocations) {
+        allocationsSummary.push({
+          id: insertedMap.get(a.chargeLineId) ?? '',
+          chargeLineId: a.chargeLineId,
+          label: allocLabelMap.get(a.chargeLineId) ?? '',
+          quantity: a.quantity,
+          amount: a.amount,
+        });
+      }
+    }
+
     // Insert payment line items
     if (resolvedLineItems.length > 0) {
       await db.insert(paymentLineItems).values(
@@ -599,6 +755,22 @@ export async function processPayment(input: unknown) {
         paymentRows: rowValidation?.ok ? rowValidation.data.rows.length : 1,
       },
     });
+    if (allocationsSummary.length > 0) {
+      writeAuditLog({
+        userId: authSession.user.id,
+        role: authSession.user.role,
+        action: 'payment_allocation_created',
+        entity: 'payment_allocations',
+        entityId: payment.id,
+        after: {
+          sessionId,
+          paymentId: payment.id,
+          allocationCount: allocationsSummary.length,
+          paidThisTime,
+          allocations: allocationsSummary.map((a) => ({ chargeLineId: a.chargeLineId, label: a.label, quantity: a.quantity, amount: a.amount })),
+        },
+      });
+    }
     return {
       ok: true as const,
       data: {
@@ -614,6 +786,7 @@ export async function processPayment(input: unknown) {
         paidTotal,
         remainingAfter,
         shiftWarning: !activeShiftId, // true = payment saved without a linked shift
+        ...(allocationsSummary.length > 0 && { allocations: allocationsSummary }),
       },
     };
   } catch (e) {
