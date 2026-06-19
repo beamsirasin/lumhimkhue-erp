@@ -15,6 +15,8 @@ import {
   payments,
   paymentLineItems,
   paymentRows,
+  paymentMethods,
+  receivingAccounts,
   pricingTiles,
   storeSettings,
   cashierShifts,
@@ -110,6 +112,56 @@ export async function getPosSessionDetail(sessionId: string) {
       where: and(inArray(payments.sessionId, allSessionIds), eq(payments.status, 'completed')),
       orderBy: [asc(payments.paidAt)],
     });
+    const paymentIds = completedPayments.map((payment) => payment.id);
+    const paymentRowDetails = paymentIds.length > 0
+      ? await db.select({
+          paymentId: paymentRows.paymentId,
+          methodId: paymentRows.paymentMethodId,
+          methodName: paymentMethods.name,
+          methodType: paymentMethods.type,
+          receivingAccountId: paymentRows.receivingAccountId,
+          receivingAccountName: receivingAccounts.name,
+          amount: paymentRows.amount,
+          amountTendered: paymentRows.amountTendered,
+          changeAmount: paymentRows.changeAmount,
+          status: paymentRows.status,
+          paidAt: paymentRows.paidAt,
+        })
+          .from(paymentRows)
+          .innerJoin(paymentMethods, eq(paymentMethods.id, paymentRows.paymentMethodId))
+          .innerJoin(receivingAccounts, eq(receivingAccounts.id, paymentRows.receivingAccountId))
+          .where(and(
+            inArray(paymentRows.paymentId, paymentIds),
+            eq(paymentRows.status, 'completed'),
+            isNull(paymentRows.voidedAt),
+          ))
+          .orderBy(asc(paymentRows.paidAt), asc(paymentRows.createdAt))
+      : [];
+    const paymentRowsByPaymentId = new Map<string, typeof paymentRowDetails>();
+    for (const row of paymentRowDetails) {
+      const rows = paymentRowsByPaymentId.get(row.paymentId) ?? [];
+      rows.push(row);
+      paymentRowsByPaymentId.set(row.paymentId, rows);
+    }
+    const paymentHistory = completedPayments.map((payment) => ({
+      id: payment.id,
+      amount: Number(payment.total),
+      paidAt: payment.paidAt,
+      settlementType: payment.settlementType,
+      status: payment.status,
+      rows: (paymentRowsByPaymentId.get(payment.id) ?? []).map((row) => ({
+        methodId: row.methodId,
+        methodName: row.methodName,
+        methodType: row.methodType,
+        receivingAccountId: row.receivingAccountId,
+        receivingAccountName: row.receivingAccountName,
+        amount: Number(row.amount),
+        amountTendered: row.amountTendered == null ? null : Number(row.amountTendered),
+        changeAmount: row.changeAmount == null ? null : Number(row.changeAmount),
+        status: row.status,
+        paidAt: row.paidAt,
+      })),
+    }));
     const paidTotal = completedPayments.reduce((sum, payment) => sum + Number(payment.total), 0);
     const latestPayment = completedPayments.at(-1);
     const billTotal = latestPayment ? Number(latestPayment.billTotalAtPayment) : subtotal;
@@ -157,6 +209,7 @@ export async function getPosSessionDetail(sessionId: string) {
         orders: sessionOrders,
         totals: { baseAmount, extraAmount, subtotal, total: subtotal },
         paymentSummary: { billTotal, paidTotal, remaining },
+        paymentHistory,
         isGroupBill,
         linkedTableLabels,
         chargeLines,

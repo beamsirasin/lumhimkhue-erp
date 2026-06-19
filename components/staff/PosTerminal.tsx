@@ -809,9 +809,29 @@ function PaymentPanel({
     checkoutMode === 'close_all' &&
     activeChargeLines.length > 0 &&
     closeAllAllocationCents === remainingBeforeCents;
-  const localPaymentHistoryTotal = localPaymentHistory.reduce((sum, entry) => sum + entry.amount, 0);
-  const priorPaidHistoryAmount = Math.max(0, paidBeforeSettlement - localPaymentHistoryTotal);
-  const hasPaymentHistorySummary = priorPaidHistoryAmount > 0 || localPaymentHistory.length > 0;
+  const serverPaymentHistory: PaymentHistoryEntry[] = (detail.paymentHistory ?? []).map((entry) => {
+    const methodLabel = [...new Set(entry.rows.map((row) => row.methodName).filter(Boolean))].join(' / ');
+    const accountLabel = [...new Set(entry.rows.map((row) => row.receivingAccountName).filter(Boolean))].join(' / ');
+    const paidAtDate = new Date(entry.paidAt);
+    return {
+      id: entry.id,
+      amount: entry.amount,
+      methodLabel: methodLabel || 'รับชำระ',
+      accountLabel: accountLabel || undefined,
+      paidAtLabel: Number.isNaN(paidAtDate.getTime())
+        ? ''
+        : paidAtDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' }),
+      settlementType: entry.settlementType ?? 'final',
+    };
+  });
+  const serverPaymentHistoryIds = new Set(serverPaymentHistory.map((entry) => entry.id));
+  const paymentHistoryEntries = [
+    ...serverPaymentHistory,
+    ...localPaymentHistory.filter((entry) => !serverPaymentHistoryIds.has(entry.id)),
+  ];
+  const paymentHistoryTotal = paymentHistoryEntries.reduce((sum, entry) => sum + entry.amount, 0);
+  const priorPaidHistoryAmount = Math.max(0, paidBeforeSettlement - paymentHistoryTotal);
+  const hasPaymentHistorySummary = priorPaidHistoryAmount > 0 || paymentHistoryEntries.length > 0;
 
   useEffect(() => {
     if (view !== 'payment' || checkoutMode === 'manual' || waitingForChargeLines) return;
@@ -1532,7 +1552,7 @@ function PaymentPanel({
                     </div>
                   </div>
                 )}
-                {localPaymentHistory.map((entry, index) => (
+                {paymentHistoryEntries.map((entry, index) => (
                   <div key={entry.id} className="rounded-xl border border-border bg-background px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -1814,10 +1834,10 @@ function PaymentPanel({
                     <p className="mt-0.5 text-[11px] text-muted-foreground">จากข้อมูลบิลนี้</p>
                   </div>
                 )}
-                {localPaymentHistory.slice(-2).map((entry, index) => (
+                {paymentHistoryEntries.slice(-2).map((entry, index) => (
                   <div key={entry.id} className="rounded-lg bg-muted/40 px-2.5 py-2">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-foreground">ชำระครั้งที่ {localPaymentHistory.length - localPaymentHistory.slice(-2).length + index + 1}</span>
+                      <span className="text-xs font-semibold text-foreground">ชำระครั้งที่ {paymentHistoryEntries.length - paymentHistoryEntries.slice(-2).length + index + 1}</span>
                       <span className="text-sm font-bold tabular-nums text-foreground">฿{entry.amount.toLocaleString('th-TH')}</span>
                     </div>
                     <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
