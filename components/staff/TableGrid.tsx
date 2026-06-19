@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useCallback, useRef, useContext, CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
@@ -384,105 +384,17 @@ function LinkedTablePicker({ tables, primaryTableId, selected, onToggle }: Linke
 
 /* ─── Types for session-open result ───────────────────────────────── */
 
-interface TableQrEntry {
+interface SessionOpenResult {
+  sessionId: string;
   sessionToken: string;
   tableQrToken: string;
   tableLabel: string;
-}
-
-interface SessionOpenResult extends TableQrEntry {
-  sessionId: string;
   startedAt: string;
-  linkedTables: TableQrEntry[];
-}
-
-/* ─── Post-open QR dialog ──────────────────────────────────────────── */
-
-interface QrDialogProps {
-  open: boolean;
-  data: SessionOpenResult | null;
-  onClose: () => void;
-}
-
-function SessionQrDialog({ open, data, onClose }: QrDialogProps) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
-  const [qrView, setQrView] = useState<{ url: string; label: string } | null>(null);
-  const router = useRouter();
-  if (!data) return null;
-
-  const allEntries: TableQrEntry[] = [
-    { sessionToken: data.sessionToken, tableQrToken: data.tableQrToken, tableLabel: data.tableLabel },
-    ...data.linkedTables,
-  ];
-
-  return (
-    <>
-      <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              โต๊ะ {allEntries.map((e) => e.tableLabel).join(', ')} พร้อมแล้ว
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-2">
-            {allEntries.map((entry) => {
-              const url = `${appUrl}/t/${entry.tableQrToken}/s/${entry.sessionToken}`;
-              return (
-                <div
-                  key={entry.sessionToken}
-                  className="flex items-center gap-2 rounded-xl border border-border bg-muted/30 px-4 py-4"
-                >
-                  <span className="flex-1 text-base font-semibold text-foreground">โต๊ะ {entry.tableLabel}</span>
-                  <Button
-                    variant="outline"
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(url).catch(() => {});
-                      toast.success('คัดลอก URL แล้ว');
-                    }}
-                  >
-                    <Link2 className="mr-1.5 size-4" />Link
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setQrView({ url, label: entry.tableLabel })}
-                    aria-label="ดู QR"
-                  >
-                    <Eye className="size-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const qrPrint: TableQrData = { tableNumber: entry.tableLabel, url, startedAt: data.startedAt };
-                      void printTableQr({ type: 'table_qr', table: qrPrint });
-                    }}
-                  >
-                    <Printer className="mr-1.5 size-4" />พิมพ์ QR
-                  </Button>
-                </div>
-              );
-            })}
-          </div>
-
-          <DialogFooter className="flex-row gap-3 sm:justify-between">
-            <Button
-              variant="outline"
-              onClick={() => { onClose(); router.push(`/pos?session=${data.sessionId}`); }}
-            >
-              <Receipt className="mr-1.5 size-4" />บิล
-            </Button>
-            <Button onClick={onClose}>ปิด</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <QrViewModal
-        url={qrView?.url ?? null}
-        label={qrView?.label ?? ''}
-        onClose={() => setQrView(null)}
-      />
-    </>
-  );
+  linkedTables: Array<{
+    sessionToken: string;
+    tableQrToken: string;
+    tableLabel: string;
+  }>;
 }
 
 /* ─── QR View Modal (show on screen) ──────────────────────────────── */
@@ -539,7 +451,7 @@ interface OpenTableFlowProps {
   pricingTiles: PricingTileData[];
   prefillGuests?: Record<string, number>;
   onClose: () => void;
-  onSuccess: (data: SessionOpenResult) => void;
+  onSuccess: (data: SessionOpenResult) => void | Promise<void>;
 }
 
 function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, onClose, onSuccess }: OpenTableFlowProps) {
@@ -580,11 +492,14 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
       });
       if (result.ok) {
         toast.success(`เปิดโต๊ะ ${table.label} สำเร็จ`);
-        onSuccess(result.data);
         onClose();
+        await onSuccess(result.data);
       } else {
         toast.error(result.error);
       }
+    } catch (error) {
+      console.error('[OpenTableFlow] Error', error);
+      toast.error('เปิดโต๊ะไม่สำเร็จ กรุณาลองใหม่');
     } finally {
       setSubmitting(false);
     }
@@ -783,7 +698,7 @@ function EditGuestsDialog({ open, sessionId, currentGuests, pricingTiles, onClos
   const totalGuests = Object.values(quantities).reduce((s, q) => s + q, 0);
 
   const handleSubmit = async () => {
-    if (!sessionId) return;
+    if (!sessionId || submitting) return;
     setSubmitting(true);
     const guests = pricingTiles
       .map((t) => ({ pricingTileId: t.id, quantity: quantities[t.id] ?? 0 }))
@@ -866,6 +781,7 @@ function TableSheet({
   if (!table) return null;
   const sess = table.activeSession;
   const visualStatus = getVisualStatus(table);
+
 
   // Whether this table is part of a linked group (primary or secondary)
   const isInLinkedGroup = sess
@@ -1097,8 +1013,7 @@ function TableSheet({
                     onClose();
                     // For partial-payment continuation, link directly to the continuation session.
                     // For linked-group secondaries, link to the primary session.
-                    const posSessionId = visualStatus === 'partial' ? sess.id : (sess.parentSessionId ?? sess.id);
-                    router.push(`/pos?session=${posSessionId}`);
+                    router.push('/pos');
                   }}
                   disabled={busy}
                   className="w-full rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
@@ -1366,7 +1281,7 @@ function TableSheet({
 
               <div className="space-y-2">
                 <button type="button"
-                  onClick={() => { onClose(); router.push(`/pos?session=${sess.parentSessionId ?? sess.id}`); }}
+                  onClick={() => { onClose(); router.push('/pos'); }}
                   disabled={busy}
                   className="w-full rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
                   <span className="flex items-center justify-center gap-2"><Receipt className="size-5" />บิล</span>
@@ -1658,9 +1573,6 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
   const [editGuestsSessionId, setEditGuestsSessionId] = useState<string | null>(null);
   const [editGuestsCurrentGuests, setEditGuestsCurrentGuests] = useState<{ pricingTileId: string; quantity: number }[]>([]);
 
-  // QR dialog — shown immediately after successfully opening a table
-  const [qrData, setQrData] = useState<SessionOpenResult | null>(null);
-
   const { data: tables = initialTables } = useQuery({
     queryKey: ['tables'],
     queryFn: async () => {
@@ -1675,6 +1587,13 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
   });
 
   const refetch = useCallback(() => qc.invalidateQueries({ queryKey: ['tables'] }), [qc]);
+  const fetchFreshTables = useCallback(async () => {
+    await qc.invalidateQueries({ queryKey: ['tables'] });
+    const res = await getTablesWithSessions();
+    if (!res.ok) throw new Error(res.error);
+    qc.setQueryData(['tables'], res.data);
+    return res.data;
+  }, [qc]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -1975,9 +1894,22 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
         pricingTiles={pricingTiles}
         prefillGuests={openFlowPrefill}
         onClose={() => { setOpenFlowOpen(false); setOpenFlowTable(null); }}
-        onSuccess={(data) => {
-          setQrData(data);
-          refetch();
+        onSuccess={async (data) => {
+          try {
+            const freshTables = await fetchFreshTables();
+            const openedTable = freshTables.find((t) => t.activeSession?.id === data.sessionId)
+              ?? freshTables.find((t) => t.label === data.tableLabel)
+              ?? null;
+            if (!openedTable) {
+              toast.error('เปิดโต๊ะสำเร็จ แต่โหลดรายละเอียดโต๊ะไม่สำเร็จ');
+              return;
+            }
+            setSheetTable(openedTable);
+            setSheetOpen(true);
+          } catch (error) {
+            console.error('[TableGrid] Failed to load opened table detail', error);
+            toast.error('เปิดโต๊ะสำเร็จ แต่โหลดรายละเอียดโต๊ะไม่สำเร็จ');
+          }
         }}
       />
 
@@ -1988,12 +1920,6 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
         onCreated={refetch}
       />
 
-      {/* QR Dialog — shown immediately after opening a table */}
-      <SessionQrDialog
-        open={!!qrData}
-        data={qrData}
-        onClose={() => setQrData(null)}
-      />
     </div>
   );
 }

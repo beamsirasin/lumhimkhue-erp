@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, memo, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, memo, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { differenceInSeconds } from 'date-fns';
 import { toast } from 'sonner';
@@ -88,29 +87,20 @@ interface PosTerminalProps {
   initialSessions: PosSession[];
   cashierName: string;
   initialSelectedId?: string | null;
-  autoOpenBill?: boolean;
-  autoOpenSessionId?: string | null;
-  autoOpenTableId?: string | null;
+
 }
 
 export function PosTerminal({
   initialSessions,
   cashierName,
   initialSelectedId = null,
-  autoOpenBill = false,
-  autoOpenSessionId = null,
-  autoOpenTableId = null,
 }: PosTerminalProps) {
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [groupPickerId, setGroupPickerId] = useState<string | null>(null);
-  const [autoOpenStatus, setAutoOpenStatus] = useState<'idle' | 'opening'>(
-    autoOpenBill && (autoOpenSessionId || autoOpenTableId) ? 'opening' : 'idle',
-  );
-  const autoOpenAttempted = useRef(false);
-  const queryClient = useQueryClient();
-  const router = useRouter();
 
-  const { data: sessions = [], refetch: refetchSessions } = useQuery({
+  const queryClient = useQueryClient();
+
+  const { data: sessions = [] } = useQuery({
     queryKey: ['pos-sessions'],
     queryFn: () => getPosSessionsForPos().then((r) => (r.ok ? r.data : [])),
     initialData: initialSessions,
@@ -125,45 +115,6 @@ export function PosTerminal({
     if (groupPickerId && !sessions.find((s) => s.id === groupPickerId)) setGroupPickerId(null);
   }, [sessions, selectedId, groupPickerId]);
 
-  useEffect(() => {
-    if (!autoOpenBill || autoOpenAttempted.current) return;
-    if (!autoOpenSessionId && !autoOpenTableId) return;
-
-    let cancelled = false;
-    autoOpenAttempted.current = true;
-
-    const openTargetBill = async () => {
-      try {
-        const fresh = await refetchSessions();
-        if (cancelled) return;
-        const freshSessions = fresh.data ?? [];
-        const target = autoOpenSessionId
-          ? freshSessions.find((s) => s.id === autoOpenSessionId)
-          : freshSessions.find((s) => s.tableId === autoOpenTableId && (s.status === 'active' || s.status === 'closing'));
-
-        if (!target) {
-          toast.error('ไม่พบบิลของโต๊ะนี้ หรือบิลถูกปิดไปแล้ว');
-          setAutoOpenStatus('idle');
-          router.replace('/pos', { scroll: false });
-          return;
-        }
-
-        setGroupPickerId(null);
-        setSelectedId(target.id);
-        setAutoOpenStatus('idle');
-        router.replace('/pos', { scroll: false });
-      } catch (error) {
-        if (cancelled) return;
-        console.error('[PosTerminal] Failed to auto-open bill', error);
-        toast.error('ไม่พบบิลของโต๊ะนี้ หรือบิลถูกปิดไปแล้ว');
-        setAutoOpenStatus('idle');
-        router.replace('/pos', { scroll: false });
-      }
-    };
-
-    void openTargetBill();
-    return () => { cancelled = true; };
-  }, [autoOpenBill, autoOpenSessionId, autoOpenTableId, refetchSessions, router]);
 
   const closing = useMemo(() => sessions.filter((s) => s.status === 'closing'), [sessions]);
   const active = useMemo(() => sessions.filter((s) => s.status === 'active'), [sessions]);
@@ -220,12 +171,6 @@ export function PosTerminal({
       {/* Cashier shift banner */}
       <ShiftWidget />
 
-      {autoOpenStatus === 'opening' && (
-        <div className="mb-4 flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm font-medium text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" />
-          กำลังเปิดบิล...
-        </div>
-      )}
 
       {/* Session grid */}
       {primarySessions.length === 0 ? (
@@ -648,28 +593,7 @@ function PaymentPanel({
   const [discountQty, setDiscountQty] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
 
-  // Auto-save guestQty when it changes (debounced 600ms)
   const queryClient = useQueryClient();
-  const isFirstGuestRender = useRef(true);
-  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [autoSaving, setAutoSaving] = useState(false);
-
-  useEffect(() => {
-    if (isFirstGuestRender.current) { isFirstGuestRender.current = false; return; }
-    clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(async () => {
-      setAutoSaving(true);
-      const result = await updateSessionGuests({
-        sessionId: session.id,
-        guests: guestTiles.map((t) => ({ pricingTileId: t.id, quantity: guestQty[t.id] ?? 0 })),
-      });
-      setAutoSaving(false);
-      if (!result.ok) toast.error(result.error);
-      else queryClient.invalidateQueries({ queryKey: ['pos-sessions'] });
-    }, 600);
-    return () => clearTimeout(autoSaveTimer.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guestQty]);
 
   // Payment-view state
   const [method, setMethod] = useState<'cash' | 'cash_qr' | 'qr_promptpay' | 'transfer' | 'card'>('qr_promptpay');
@@ -936,17 +860,24 @@ function PaymentPanel({
   }
 
   async function handleSave() {
+    if (saving) return;
     setSaving(true);
-    const result = await updateSessionGuests({
-      sessionId: session.id,
-      guests: guestTiles.map((t) => ({
-        pricingTileId: t.id,
-        quantity: guestQty[t.id] ?? 0,
-      })),
-    });
-    setSaving(false);
-    if (!result.ok) toast.error(result.error);
-    else toast.success('บันทึกแล้ว');
+    try {
+      const result = await updateSessionGuests({
+        sessionId: session.id,
+        guests: guestTiles.map((t) => ({
+          pricingTileId: t.id,
+          quantity: guestQty[t.id] ?? 0,
+        })),
+      });
+      if (!result.ok) toast.error(result.error);
+      else {
+        toast.success('บันทึกแล้ว');
+        queryClient.invalidateQueries({ queryKey: ['pos-sessions'] });
+      }
+    } finally {
+      setSaving(false);
+    }
   }
 
   const now = () => new Date().toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Bangkok' });
@@ -2723,7 +2654,7 @@ function PaymentPanel({
           )}
         </div>
         <div className="flex items-center gap-3">
-          {(autoSaving || saving) && (
+          {saving && (
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Loader2 className="size-3 animate-spin" />กำลังบันทึก…
             </span>
@@ -2887,7 +2818,7 @@ function PaymentPanel({
               </div>
             )}
             <div className="flex gap-2">
-              <button type="button" onClick={handleSave} disabled={saving || autoSaving}
+              <button type="button" onClick={handleSave} disabled={saving}
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-3 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-50 transition-colors">
                 <Save className="size-4" />บันทึก
               </button>
