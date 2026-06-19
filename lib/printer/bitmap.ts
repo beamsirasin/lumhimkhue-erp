@@ -239,7 +239,7 @@ export async function buildBitmapReceipt(data: ReceiptData, paperWidth: 58 | 80)
       const ratio = Math.min(1, maxH / img.naturalHeight, (W - PAD_X * 2) / img.naturalWidth);
       const imgW  = Math.round(img.naturalWidth  * ratio);
       const imgH  = Math.round(img.naturalHeight * ratio);
-      return await renderWithLogo(data, label, showTax, vat, vatAmt, isReceipt, img, imgW, imgH, paperWidth);
+      return await renderWithLogo(data, label, showTax, vat, vatAmt, img, imgW, imgH, paperWidth);
     } catch {
       // logo load failed — fall through to text-only render below
     }
@@ -297,15 +297,7 @@ export async function buildBitmapReceipt(data: ReceiptData, paperWidth: 58 | 80)
     lines.push({ t: 'row', l: `VAT ${vat}% (รวม)`, r: vatAmt.toFixed(2) });
   lines.push({ t: 'row', l: 'ทั้งหมด',   r: `฿${data.total.toFixed(2)}`, bold: true });
 
-  /* ── Payment ── */
-  if (isReceipt) {
-    lines.push({ t: 'hr' });
-    lines.push({ t: 'row', l: data.paymentMethod, r: `฿${data.receivedAmount.toFixed(2)}` });
-    if (data.changeAmount > 0)
-      lines.push({ t: 'row', l: 'เงินทอน', r: `฿${data.changeAmount.toFixed(2)}` });
-  }
-
-  /* ── Footer ── */
+  /* Footer */
   lines.push({ t: 'hr' });
   lines.push({ t: 'text', s: data.footerNote ?? 'ขอบคุณและขอให้โชคดี', a: 'c' });
   lines.push({ t: 'sp' });
@@ -320,7 +312,6 @@ async function renderWithLogo(
   showTax: boolean,
   vat: number,
   vatAmt: number,
-  isReceipt: boolean,
   img: HTMLImageElement,
   imgW: number,
   imgH: number,
@@ -377,12 +368,6 @@ async function renderWithLogo(
   if (showTax && vatAmt > 0)
     lines.push({ t: 'row', l: `VAT ${vat}% (รวม)`, r: vatAmt.toFixed(2) });
   lines.push({ t: 'row', l: 'ทั้งหมด',   r: `฿${data.total.toFixed(2)}`, bold: true });
-  if (isReceipt) {
-    lines.push({ t: 'hr' });
-    lines.push({ t: 'row', l: data.paymentMethod, r: `฿${data.receivedAmount.toFixed(2)}` });
-    if (data.changeAmount > 0)
-      lines.push({ t: 'row', l: 'เงินทอน', r: `฿${data.changeAmount.toFixed(2)}` });
-  }
   lines.push({ t: 'hr' });
   lines.push({ t: 'text', s: data.footerNote ?? 'ขอบคุณและขอให้โชคดี', a: 'c' });
   lines.push({ t: 'sp' });

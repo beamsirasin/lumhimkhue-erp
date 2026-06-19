@@ -32,36 +32,9 @@ function itemRow(name: string, qty: number, total: number): string {
   return `<div class="item-row"><span class="item-name">${esc(name)}</span><span class="item-qty">${qty}</span><span class="item-total">${total.toFixed(2)}</span></div>`;
 }
 
-function money(value: number): string {
-  return `฿${value.toFixed(2)}`;
-}
 
 function allocationRow(label: string, quantity: number, unitPrice: number, total: number): string {
   return `<div class="item-row"><span class="item-name">${esc(label)} x ${quantity}</span><span class="item-qty">${unitPrice.toFixed(2)}</span><span class="item-total">${total.toFixed(2)}</span></div>`;
-}
-
-function paymentRowsBlock(rows: NonNullable<ReceiptData['paymentRows']>, title: string): string {
-  const rowLines = rows.map((pr) => [
-    row(`${pr.label} / ${pr.accountName}`, money(pr.amount)),
-    pr.amountTendered != null ? row('รับเงินสด', money(pr.amountTendered)) : '',
-    pr.changeAmount != null && pr.changeAmount > 0 ? row('เงินทอน', money(pr.changeAmount)) : '',
-    pr.payerLabel ? row('ผู้ชำระ', pr.payerLabel) : '',
-  ].filter(Boolean).join('\n')).join('\n');
-  return `\n${hr()}\n<div class="center small bold">${esc(title)}</div>\n${rowLines}`;
-}
-
-function paymentEventRowsBlock(events: NonNullable<ReceiptData['paymentEvents']>): string {
-  if (events.length === 0) return '';
-  return `\n${hr()}\n<div class="center small bold">การชำระทั้งหมด</div>\n${events.map((event) => {
-    const title = `การชำระ #${event.paymentEventNumber} - ${event.settlementType === 'partial' ? 'ใบรับชำระบางส่วน' : 'ใบปิดบิล'}`;
-    const tenderRows = event.paymentRows.length > 0
-      ? event.paymentRows.map((pr) => row(`${pr.methodName ?? 'ชำระ'}${pr.accountName ? ` / ${pr.accountName}` : ''}`, money(pr.amount))).join('\n')
-      : row('รับชำระ', money(event.total));
-    const allocRows = event.allocations?.length
-      ? `<div class="small">${event.allocations.map((a) => `${esc(a.label)} x ${a.quantity} = ${money(a.total)}`).join('<br />')}</div>`
-      : '<div class="small">รายการชำระแบบไม่ได้ระบุหัว</div>';
-    return `<div class="small bold">${esc(title)}</div>\n${allocRows}\n${tenderRows}`;
-  }).join('\n')}`;
 }
 
 const STATION_LABEL: Record<string, string> = {
@@ -112,27 +85,13 @@ ${hr()}
                                  <div class="center small">ราคารวมภาษีมูลค่าเพิ่มแล้ว</div>` :
                                 `<div class="center bold">ใบกำกับภาษี</div>`;
 
-  const hasSettlementSummary =
-    isReceipt &&
-    data.settlementType != null &&
-    data.billTotal != null &&
-    data.paidBefore != null &&
-    data.paidThisTime != null &&
-    data.paidTotal != null &&
-    data.remainingAfter != null;
-  const settlementDocLabel = hasSettlementSummary && data.settlementType === 'partial'
-    ? `<div class="center bold">ใบรับชำระบางส่วน</div>`
-    : hasSettlementSummary && data.settlementType === 'final'
-      ? `<div class="center bold">ใบเสร็จรับเงิน</div>`
-      : docLabel;
-
   const receiptDocLabel = isFullBillReceipt
     ? `<div class="center bold">ใบเสร็จรวม / ใบสรุปบิล</div>`
     : isPaymentEventReceipt && data.settlementType === 'partial'
       ? `<div class="center bold">ใบรับชำระ / ใบรับชำระบางส่วน</div>`
       : isPaymentEventReceipt && data.settlementType === 'final'
         ? `<div class="center bold">ใบเสร็จรับเงิน / ใบปิดบิล</div>`
-        : settlementDocLabel;
+        : docLabel;
 
   /* Transaction details */
   const txDetails = `
@@ -168,39 +127,6 @@ ${discountRow}
 ${showTaxFields && vatAmount > 0 ? row(`ภาษีมูลค่าเพิ่ม ${vat}% (รวม)`, vatAmount.toFixed(2)) : ''}
 ${row('ทั้งหมด', `฿${data.total.toFixed(2)}`, true)}`;
 
-  const settlementBlock = hasSettlementSummary && !isFullBillReceipt ? `
-${hr()}
-${row('ยอดบิลทั้งหมด', money(data.billTotal!))}
-${row('ชำระก่อนหน้า', money(data.paidBefore!))}
-${row('ชำระครั้งนี้', money(data.paidThisTime!))}
-${row('ชำระแล้วรวม', money(data.paidTotal!))}
-${row('คงเหลือ', money(data.remainingAfter!), true)}` : '';
-
-  const fullBillSummaryBlock = isFullBillReceipt && data.fullBillSummary ? `
-${hr()}
-${row('ยอดบิลทั้งหมด', money(data.fullBillSummary.billTotal))}
-${row('ชำระแล้วรวม', money(data.fullBillSummary.paidTotal))}
-${row('คงเหลือ', money(data.fullBillSummary.remaining), true)}
-${data.fullBillSummary.totalHeads != null ? row('จำนวนหัวรวม', `${data.fullBillSummary.totalHeads}`) : ''}
-${data.fullBillSummary.hasUnallocatedPayments ? '<div class="small center">มีการชำระบางรายการที่ไม่ได้ระบุหัว</div>' : ''}` : '';
-
-  /* Payment (receipt only) */
-  const paymentBlock = isReceipt ? (() => {
-    if (isFullBillReceipt) return paymentEventRowsBlock(data.paymentEvents ?? []);
-    if (data.paymentRows?.length) {
-      const rowLines = data.paymentRows.map((pr) => [
-        row(`${esc(pr.label)} / ${esc(pr.accountName)}`, `฿${pr.amount.toFixed(2)}`),
-        pr.amountTendered != null ? row('รับเงินสด', `฿${pr.amountTendered.toFixed(2)}`) : '',
-        pr.changeAmount != null && pr.changeAmount > 0 ? row('เงินทอน', `฿${pr.changeAmount.toFixed(2)}`) : '',
-        pr.payerLabel ? row('ผู้ชำระ', esc(pr.payerLabel)) : '',
-      ].filter(Boolean).join('\n')).join('\n');
-      return isPaymentEventReceipt
-        ? paymentRowsBlock(data.paymentRows, 'ชำระครั้งนี้')
-        : `\n${hr()}\n${rowLines}`;
-    }
-    return `\n${hr()}\n${row(data.paymentMethod, `฿${data.receivedAmount.toFixed(2)}`)}\n${data.changeAmount > 0 ? row('เงินทอน', `฿${data.changeAmount.toFixed(2)}`) : ''}`;
-  })() : '';
-
   /* Footer */
   const footer = `<div class="center">${esc(data.footerNote ?? 'ขอบคุณและขอให้โชคดี')}</div>`;
 
@@ -216,9 +142,6 @@ ${receiptItemHeader}
 ${receiptItemRows}
 ${hr()}
 ${totalsBlock}
-${settlementBlock}
-${paymentBlock}
-${fullBillSummaryBlock}
 ${hr()}
 ${footer}
 `.trim();

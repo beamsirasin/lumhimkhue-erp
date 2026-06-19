@@ -190,13 +190,6 @@ export function buildReceipt(data: ReceiptData, paperWidth: 58 | 80, thaiCodepag
   }
   e = e.bold(true).line(row('ทั้งหมด', `฿${data.total.toFixed(2)}`, cols)).bold(false);
 
-  if (data.receiptType === 'receipt') {
-    e = e
-      .line(row(data.paymentMethod, `฿${data.receivedAmount.toFixed(2)}`, cols));
-    if (data.changeAmount > 0)
-      e = e.line(row('เงินทอน', `฿${data.changeAmount.toFixed(2)}`, cols));
-  }
-
   e = e
     .line(sep(cols))
     .align('center')
