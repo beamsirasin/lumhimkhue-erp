@@ -343,8 +343,75 @@ export const sessionGuests = pgTable(
       .notNull()
       .references(() => pricingTiles.id),
     quantity: integer('quantity').notNull(),
+    /** Snapshot of pricingTile.price at table-open time. Prevents live price changes from retroactively altering open bills. */
+    unitPrice: numeric('unit_price', { precision: 10, scale: 2 }).notNull().default('0'),
   },
   (t) => [index('session_guests_session_id_idx').on(t.sessionId)],
+);
+
+/**
+ * Buffet charge lines — the billable unit for a session.
+ * Created when a table is opened; snapshots label + unitPrice from the pricing tile.
+ * Supports future per-head partial payment allocation.
+ */
+export const buffetChargeLines = pgTable(
+  'buffet_charge_lines',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => sessions.id),
+    /** Source tile — null for manually-entered lines */
+    pricingTileId: uuid('pricing_tile_id').references(() => pricingTiles.id),
+    /** Machine code for the charge type, e.g. 'adult', 'child', 'small_child', 'staff', 'addon', 'discount', 'manual' */
+    chargeType: varchar('charge_type', { length: 30 }).notNull(),
+    /** Display name snapshotted at charge creation */
+    label: varchar('label', { length: 255 }).notNull(),
+    /** Price per unit snapshotted at charge creation */
+    unitPrice: numeric('unit_price', { precision: 10, scale: 2 }).notNull(),
+    quantity: integer('quantity').notNull(),
+    /** Stored computed total = unitPrice × quantity */
+    total: numeric('total', { precision: 10, scale: 2 }).notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    voidedAt: timestamp('voided_at'),
+  },
+  (t) => [
+    index('buffet_charge_lines_session_id_idx').on(t.sessionId),
+    index('buffet_charge_lines_pricing_tile_id_idx').on(t.pricingTileId),
+    index('buffet_charge_lines_charge_type_idx').on(t.chargeType),
+    index('buffet_charge_lines_voided_at_idx').on(t.voidedAt),
+  ],
+);
+
+/**
+ * Payment allocations — links a payment event to the buffet charge lines it paid for.
+ * Future invariant (enforced in Phase 8B-2+):
+ *   sum(allocations.amount) per payment = payments.total
+ *   sum(allocations.quantity) per charge line ≤ buffet_charge_lines.quantity
+ */
+export const paymentAllocations = pgTable(
+  'payment_allocations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    paymentId: uuid('payment_id')
+      .notNull()
+      .references(() => payments.id),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => sessions.id),
+    chargeLineId: uuid('charge_line_id')
+      .notNull()
+      .references(() => buffetChargeLines.id),
+    quantity: integer('quantity').notNull(),
+    amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+    note: text('note'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('payment_allocations_payment_id_idx').on(t.paymentId),
+    index('payment_allocations_session_id_idx').on(t.sessionId),
+    index('payment_allocations_charge_line_id_idx').on(t.chargeLineId),
+  ],
 );
 
 export const categories = pgTable('categories', {
@@ -1230,6 +1297,8 @@ export const sessionsRelations = relations(sessions, ({ one, many }) => ({
   payments: many(payments),
   paymentRows: many(paymentRows),
   customerVisits: many(customerVisits),
+  buffetChargeLines: many(buffetChargeLines),
+  paymentAllocations: many(paymentAllocations),
 }));
 
 export const sessionGuestsRelations = relations(sessionGuests, ({ one }) => ({
@@ -1240,6 +1309,33 @@ export const sessionGuestsRelations = relations(sessionGuests, ({ one }) => ({
   pricingTile: one(pricingTiles, {
     fields: [sessionGuests.pricingTileId],
     references: [pricingTiles.id],
+  }),
+}));
+
+export const buffetChargeLinesRelations = relations(buffetChargeLines, ({ one, many }) => ({
+  session: one(sessions, {
+    fields: [buffetChargeLines.sessionId],
+    references: [sessions.id],
+  }),
+  pricingTile: one(pricingTiles, {
+    fields: [buffetChargeLines.pricingTileId],
+    references: [pricingTiles.id],
+  }),
+  allocations: many(paymentAllocations),
+}));
+
+export const paymentAllocationsRelations = relations(paymentAllocations, ({ one }) => ({
+  payment: one(payments, {
+    fields: [paymentAllocations.paymentId],
+    references: [payments.id],
+  }),
+  session: one(sessions, {
+    fields: [paymentAllocations.sessionId],
+    references: [sessions.id],
+  }),
+  chargeLine: one(buffetChargeLines, {
+    fields: [paymentAllocations.chargeLineId],
+    references: [buffetChargeLines.id],
   }),
 }));
 
@@ -1286,6 +1382,7 @@ export const paymentsRelations = relations(payments, ({ one, many }) => ({
   }),
   lineItems: many(paymentLineItems),
   rows: many(paymentRows),
+  allocations: many(paymentAllocations),
   // Phase 1: Cash Control
   shift: one(cashierShifts, {
     fields: [payments.shiftId],
@@ -1708,6 +1805,10 @@ export type Session = typeof sessions.$inferSelect;
 export type NewSession = typeof sessions.$inferInsert;
 export type SessionGuest = typeof sessionGuests.$inferSelect;
 export type NewSessionGuest = typeof sessionGuests.$inferInsert;
+export type BuffetChargeLine = typeof buffetChargeLines.$inferSelect;
+export type NewBuffetChargeLine = typeof buffetChargeLines.$inferInsert;
+export type PaymentAllocation = typeof paymentAllocations.$inferSelect;
+export type NewPaymentAllocation = typeof paymentAllocations.$inferInsert;
 export type Category = typeof categories.$inferSelect;
 export type NewCategory = typeof categories.$inferInsert;
 export type MenuItem = typeof menuItems.$inferSelect;
