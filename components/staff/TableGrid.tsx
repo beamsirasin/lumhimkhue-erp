@@ -1011,11 +1011,11 @@ function TableSheet({
                   type="button"
                   onClick={() => {
                     onClose();
-                    // For partial-payment continuation, link directly to the continuation session.
-                    // For linked-group secondaries, link to the primary session.
-                    router.push('/pos');
+                    // Reuse POS' existing ?session= selection path so the bill opens as if selected in POS.
+                    const posSessionId = visualStatus === 'partial' ? sess.id : (sess.parentSessionId ?? sess.id);
+                    router.push(`/pos?session=${encodeURIComponent(posSessionId)}`);
                   }}
-                  disabled={busy}
+                  disabled={busy || !sess.id}
                   className="w-full rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
                 >
                   <span className="flex items-center justify-center gap-2"><Receipt className="size-5" />บิล</span>
@@ -1281,8 +1281,8 @@ function TableSheet({
 
               <div className="space-y-2">
                 <button type="button"
-                  onClick={() => { onClose(); router.push('/pos'); }}
-                  disabled={busy}
+                  onClick={() => { onClose(); router.push(`/pos?session=${encodeURIComponent(sess.parentSessionId ?? sess.id)}`); }}
+                  disabled={busy || !sess.id}
                   className="w-full rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
                   <span className="flex items-center justify-center gap-2"><Receipt className="size-5" />บิล</span>
                 </button>

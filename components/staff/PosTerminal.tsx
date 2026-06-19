@@ -109,11 +109,11 @@ export function PosTerminal({
   });
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (selectedId && !sessions.find((s) => s.id === selectedId)) setSelectedId(null);
+    // Keep selectedId even if the sessions list briefly does not include it yet.
+    // DetailPanel loads by session id and will show a safe error if the bill is truly gone.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (groupPickerId && !sessions.find((s) => s.id === groupPickerId)) setGroupPickerId(null);
-  }, [sessions, selectedId, groupPickerId]);
+  }, [sessions, groupPickerId]);
 
 
   const closing = useMemo(() => sessions.filter((s) => s.status === 'closing'), [sessions]);
@@ -401,6 +401,8 @@ function DetailPanel({ sessionId, cashierName, onPaid }: { sessionId: string; ca
     refetchInterval: sessionId ? 10_000 : false,
     staleTime: 5_000,
     placeholderData: (previousData) => previousData,
+    retry: (failureCount) => failureCount < 6,
+    retryDelay: 500,
   });
 
   useEffect(() => {
@@ -430,8 +432,15 @@ function DetailPanel({ sessionId, cashierName, onPaid }: { sessionId: string; ca
     staleTime: 30_000,
   });
 
-  if (isLoading && !visibleData) {
-    return <div className="flex h-full items-center justify-center"><p className="text-sm text-muted-foreground">กำลังโหลด…</p></div>;
+  if ((isLoading || isFetching) && !visibleData) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-3 text-sm font-medium text-muted-foreground shadow-sm">
+          <Loader2 className="size-4 animate-spin" />
+          กำลังโหลดบิล...
+        </div>
+      </div>
+    );
   }
 
   if (!visibleData) {
