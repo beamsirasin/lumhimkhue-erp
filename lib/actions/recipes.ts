@@ -141,34 +141,32 @@ export async function upsertRecipe(input: unknown) {
   const data = parsed.data;
 
   try {
-    await db.transaction(async (tx) => {
-      let recipeId = data.id;
+    let recipeId = data.id;
 
-      if (recipeId) {
-        await tx.update(recipes)
-          .set({ name: data.name, servingSize: data.servingSize, updatedAt: new Date() })
-          .where(eq(recipes.id, recipeId));
-        await tx.delete(recipeIngredients).where(eq(recipeIngredients.recipeId, recipeId));
-      } else {
-        const [newRecipe] = await tx
-          .insert(recipes)
-          .values({ menuItemId: data.menuItemId, name: data.name, servingSize: data.servingSize, isActive: true })
-          .returning({ id: recipes.id });
-        recipeId = newRecipe.id;
-      }
+    if (recipeId) {
+      await db.update(recipes)
+        .set({ name: data.name, servingSize: data.servingSize, updatedAt: new Date() })
+        .where(eq(recipes.id, recipeId));
+      await db.delete(recipeIngredients).where(eq(recipeIngredients.recipeId, recipeId));
+    } else {
+      const [newRecipe] = await db
+        .insert(recipes)
+        .values({ menuItemId: data.menuItemId, name: data.name, servingSize: data.servingSize, isActive: true })
+        .returning({ id: recipes.id });
+      recipeId = newRecipe.id;
+    }
 
-      if (data.ingredients.length > 0) {
-        await tx.insert(recipeIngredients).values(
-          data.ingredients.map((ing) => ({
-            recipeId: recipeId!,
-            ingredientId: ing.ingredientId,
-            quantity: ing.quantity.toString(),
-            unit: ing.unit,
-            notes: ing.notes ?? null,
-          })),
-        );
-      }
-    });
+    if (data.ingredients.length > 0) {
+      await db.insert(recipeIngredients).values(
+        data.ingredients.map((ing) => ({
+          recipeId: recipeId!,
+          ingredientId: ing.ingredientId,
+          quantity: ing.quantity.toString(),
+          unit: ing.unit,
+          notes: ing.notes ?? null,
+        })),
+      );
+    }
 
     revalidatePath('/recipes');
     return { ok: true as const };

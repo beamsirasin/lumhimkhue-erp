@@ -73,9 +73,22 @@ export async function getPosSessionDetail(sessionId: string) {
     });
     if (!session) return { ok: false as const, error: 'ไม่พบ session' };
 
-    // Group bill: include orders from linked sessions
-    const linkedSessionIds = session.linkedSessions.map((s) => s.id);
-    const allSessionIds = [sessionId, ...linkedSessionIds];
+    const primarySessionId = session.parentSessionId ?? session.id;
+    const billingSession = session.parentSessionId
+      ? await db.query.sessions.findFirst({
+          where: eq(sessions.id, primarySessionId),
+          with: {
+            table: true,
+            guests: { with: { pricingTile: true } },
+            linkedSessions: { with: { table: true } },
+          },
+        })
+      : session;
+    if (!billingSession) return { ok: false as const, error: 'ไม่พบ session หลักของบิล' };
+
+    // Group bill: include orders from primary + linked sessions
+    const linkedSessionIds = billingSession.linkedSessions.map((s) => s.id);
+    const allSessionIds = [primarySessionId, ...linkedSessionIds];
     const sessionOrders = await db.query.orders.findMany({
       where: inArray(orders.sessionId, allSessionIds),
       orderBy: [asc(orders.createdAt)],
@@ -106,7 +119,7 @@ export async function getPosSessionDetail(sessionId: string) {
 
     // Charge lines live on the primary session; allocations may reference any session in the group
     const [chargeLineRows, allocationRows] = await Promise.all([
-      db.select().from(buffetChargeLines).where(eq(buffetChargeLines.sessionId, sessionId)),
+      db.select().from(buffetChargeLines).where(eq(buffetChargeLines.sessionId, primarySessionId)),
       db.select({
         chargeLineId: paymentAllocations.chargeLineId,
         allocatedQty: sql<number>`sum(${paymentAllocations.quantity})::int`,
@@ -114,6 +127,11 @@ export async function getPosSessionDetail(sessionId: string) {
         .where(inArray(paymentAllocations.sessionId, allSessionIds))
         .groupBy(paymentAllocations.chargeLineId),
     ]);
+
+    const hasBillableGuests = billingSession.guests.some((guest) => guest.quantity > 0);
+    if (hasBillableGuests && chargeLineRows.length === 0) {
+      return { ok: false as const, error: 'กำลังโหลดรายการบิล กรุณารอสักครู่' };
+    }
 
     const allocMap = new Map(allocationRows.map((r) => [r.chargeLineId, r.allocatedQty]));
     const chargeLines = chargeLineRows.map((l) => {
@@ -135,7 +153,7 @@ export async function getPosSessionDetail(sessionId: string) {
     return {
       ok: true as const,
       data: {
-        session,
+        session: billingSession,
         orders: sessionOrders,
         totals: { baseAmount, extraAmount, subtotal, total: subtotal },
         paymentSummary: { billTotal, paidTotal, remaining },

@@ -566,24 +566,27 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
   const totalAmount = pricingTiles.reduce((s, t) => s + Number(t.price) * (quantities[t.id] ?? 0), 0);
 
   const handleSubmit = async () => {
-    if (!table) return;
+    if (!table || submitting) return;
     setSubmitting(true);
-    const guests = pricingTiles
-      .map((t) => ({ pricingTileId: t.id, quantity: quantities[t.id] ?? 0 }))
-      .filter((g) => g.quantity > 0);
-    const result = await openSession({
-      tableId: table.id,
-      linkedTableIds: linkedIds,
-      guests,
-      notes: notes || undefined,
-    });
-    setSubmitting(false);
-    if (result.ok) {
-      toast.success(`เปิดโต๊ะ ${table.label} สำเร็จ`);
-      onSuccess(result.data);
-      onClose();
-    } else {
-      toast.error(result.error);
+    try {
+      const guests = pricingTiles
+        .map((t) => ({ pricingTileId: t.id, quantity: quantities[t.id] ?? 0 }))
+        .filter((g) => g.quantity > 0);
+      const result = await openSession({
+        tableId: table.id,
+        linkedTableIds: linkedIds,
+        guests,
+        notes: notes || undefined,
+      });
+      if (result.ok) {
+        toast.success(`เปิดโต๊ะ ${table.label} สำเร็จ`);
+        onSuccess(result.data);
+        onClose();
+      } else {
+        toast.error(result.error);
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 

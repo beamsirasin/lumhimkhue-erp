@@ -1,12 +1,12 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { eq, inArray, or, and, ne } from 'drizzle-orm';
+import { eq, inArray, or, and, ne, sql, isNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
-import { sessions, tables, sessionGuests, pricingTiles } from '@/lib/db/schema';
+import { sessions, tables, sessionGuests, pricingTiles, buffetChargeLines, paymentAllocations } from '@/lib/db/schema';
 import { z } from 'zod';
 import { writeAuditLog } from '@/lib/actions/audit';
 
@@ -52,8 +52,9 @@ export async function openSession(input: unknown) {
         .from(tables)
         .where(inArray(tables.id, allTableIds)),
       nonZeroGuests.length > 0
-        ? db.select({ id: pricingTiles.id }).from(pricingTiles).where(eq(pricingTiles.isActive, true))
-        : Promise.resolve([] as { id: string }[]),
+        ? db.select({ id: pricingTiles.id, code: pricingTiles.code, name: pricingTiles.name, price: pricingTiles.price })
+            .from(pricingTiles).where(eq(pricingTiles.isActive, true))
+        : Promise.resolve([] as { id: string; code: string; name: string; price: string }[]),
     ]);
 
     for (const t of tableRows) {
@@ -67,6 +68,7 @@ export async function openSession(input: unknown) {
     if (!primaryTableRow) return { ok: false as const, error: 'ไม่พบโต๊ะ' };
 
     const activeTileIds = new Set(activeTiles.map((t) => t.id));
+    const tileMap = new Map(activeTiles.map((t) => [t.id, t]));
     for (const g of nonZeroGuests) {
       if (!activeTileIds.has(g.pricingTileId))
         return { ok: false as const, error: 'ไม่พบประเภทราคา' };
@@ -74,52 +76,113 @@ export async function openSession(input: unknown) {
 
     const startedAt = new Date();
     const sessionToken = nanoid(12);
+    let newSession: { id: string; sessionToken: string } | null = null;
+    let linkedSessionRows: Array<{
+      tableId: string;
+      startedAt: Date;
+      sessionToken: string;
+      status: 'active';
+      parentSessionId: string;
+    }> = [];
 
-    // Create primary session
-    const [newSession] = await db
-      .insert(sessions)
-      .values({
-        tableId,
+    const cleanupCreatedSession = async () => {
+      if (!newSession) return;
+      try {
+        await db.delete(buffetChargeLines).where(eq(buffetChargeLines.sessionId, newSession.id));
+        await db.delete(sessionGuests).where(eq(sessionGuests.sessionId, newSession.id));
+        await db.delete(sessions).where(eq(sessions.parentSessionId, newSession.id));
+        await db.delete(sessions).where(eq(sessions.id, newSession.id));
+        for (const tableRow of tableRows) {
+          await db.update(tables).set({ status: tableRow.status }).where(eq(tables.id, tableRow.id));
+        }
+      } catch (cleanupError) {
+        console.error('[openSession] Cleanup error', cleanupError);
+      }
+    };
+
+    try {
+      const [createdSession] = await db
+        .insert(sessions)
+        .values({
+          tableId,
+          startedAt,
+          sessionToken,
+          status: 'active',
+          notes: notes ?? null,
+          parentSessionId: null,
+          customerId: customerId ?? null,
+        })
+        .returning({ id: sessions.id, sessionToken: sessions.sessionToken });
+      newSession = createdSession;
+
+      // Pre-generate linked session rows (tokens captured for return value)
+      linkedSessionRows = linkedTableIds.map((ltId) => ({
+        tableId: ltId,
         startedAt,
-        sessionToken,
-        status: 'active',
-        notes: notes ?? null,
-        parentSessionId: null,
-        customerId: customerId ?? null,
-      })
-      .returning({ id: sessions.id, sessionToken: sessions.sessionToken });
+        sessionToken: nanoid(12),
+        status: 'active' as const,
+        parentSessionId: createdSession.id,
+      }));
 
-    // Insert session guests on primary session (skip if none — Drizzle errors on empty values)
-    if (nonZeroGuests.length > 0) {
-      await db.insert(sessionGuests).values(
-        nonZeroGuests.map((g) => ({
-          sessionId: newSession.id,
-          pricingTileId: g.pricingTileId,
-          quantity: g.quantity,
-        })),
-      );
+      if (linkedSessionRows.length > 0) {
+        await db.insert(sessions).values(linkedSessionRows);
+      }
+
+      // Insert session guests on primary session (skip if none - Drizzle errors on empty values)
+      if (nonZeroGuests.length > 0) {
+        await db.insert(sessionGuests).values(
+          nonZeroGuests.map((g) => ({
+            sessionId: createdSession.id,
+            pricingTileId: g.pricingTileId,
+            quantity: g.quantity,
+            unitPrice: tileMap.get(g.pricingTileId)?.price ?? '0',
+          })),
+        );
+
+        // Create buffet charge lines with snapshotted price.
+        await db.insert(buffetChargeLines).values(
+          nonZeroGuests.map((g) => {
+            const tile = tileMap.get(g.pricingTileId)!;
+            const unitPrice = Number(tile.price);
+            return {
+              sessionId: createdSession.id,
+              pricingTileId: g.pricingTileId,
+              chargeType: tile.code || tile.name || 'guest',
+              label: tile.name,
+              unitPrice: unitPrice.toFixed(2),
+              quantity: g.quantity,
+              total: (unitPrice * g.quantity).toFixed(2),
+            };
+          }),
+        );
+
+        const [guestCheck] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(sessionGuests)
+          .where(eq(sessionGuests.sessionId, createdSession.id));
+        const [chargeLineCheck] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(buffetChargeLines)
+          .where(eq(buffetChargeLines.sessionId, createdSession.id));
+        if (Number(guestCheck?.count ?? 0) < nonZeroGuests.length || Number(chargeLineCheck?.count ?? 0) < nonZeroGuests.length) {
+          throw new Error('openSession verification failed: missing guest or charge-line rows');
+        }
+      }
+
+      await db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, tableId));
+      if (linkedTableIds.length > 0) {
+        await db.update(tables).set({ status: 'linked' }).where(inArray(tables.id, linkedTableIds));
+      }
+    } catch (writeError) {
+      console.error('[openSession] Error', writeError);
+      await cleanupCreatedSession();
+      return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
     }
 
-    // Pre-generate linked session rows (tokens captured for return value)
-    const linkedSessionRows = linkedTableIds.map((ltId) => ({
-      tableId: ltId,
-      startedAt,
-      sessionToken: nanoid(12),
-      status: 'active' as const,
-      parentSessionId: newSession.id,
-    }));
-
-    if (linkedSessionRows.length > 0) {
-      await db.insert(sessions).values(linkedSessionRows);
+    if (!newSession) {
+      console.error('[openSession] Error', new Error('session was not created'));
+      return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
     }
-
-    await Promise.all([
-      db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, tableId)),
-      linkedTableIds.length > 0
-        ? db.update(tables).set({ status: 'linked' }).where(inArray(tables.id, linkedTableIds))
-        : Promise.resolve(),
-    ]);
-
     const thLocale: Intl.DateTimeFormatOptions = {
       dateStyle: 'short',
       timeStyle: 'short',
@@ -146,6 +209,23 @@ export async function openSession(input: unknown) {
       entityId: newSession.id,
       after: { tableId, linkedTableIds, sessionToken: newSession.sessionToken },
     });
+    if (nonZeroGuests.length > 0) {
+      writeAuditLog({
+        userId: authSession.user.id,
+        role: authSession.user.role,
+        action: 'headcount_created',
+        entity: 'session_guests',
+        entityId: newSession.id,
+        after: {
+          guests: nonZeroGuests.map((g) => ({
+            pricingTileId: g.pricingTileId,
+            label: tileMap.get(g.pricingTileId)?.name,
+            quantity: g.quantity,
+            unitPrice: tileMap.get(g.pricingTileId)?.price,
+          })),
+        },
+      });
+    }
     return {
       ok: true as const,
       data: {
@@ -292,16 +372,113 @@ export async function updateSessionGuests(input: unknown) {
   const nonZero = guests.filter((g) => g.quantity > 0);
 
   try {
+    // Fetch tile data, current active charge lines, and allocation sums in parallel
+    const tileIds = nonZero.map((g) => g.pricingTileId);
+    const [currentChargeLines, allocationRows, tileRows, oldGuests] = await Promise.all([
+      db.select().from(buffetChargeLines).where(
+        and(eq(buffetChargeLines.sessionId, sessionId), isNull(buffetChargeLines.voidedAt)),
+      ),
+      db.select({
+        chargeLineId: paymentAllocations.chargeLineId,
+        allocatedQty: sql<number>`sum(${paymentAllocations.quantity})::int`,
+      }).from(paymentAllocations)
+        .where(eq(paymentAllocations.sessionId, sessionId))
+        .groupBy(paymentAllocations.chargeLineId),
+      tileIds.length > 0
+        ? db.select({ id: pricingTiles.id, code: pricingTiles.code, name: pricingTiles.name, price: pricingTiles.price })
+            .from(pricingTiles).where(inArray(pricingTiles.id, tileIds))
+        : Promise.resolve([] as { id: string; code: string; name: string; price: string }[]),
+      db.select().from(sessionGuests).where(eq(sessionGuests.sessionId, sessionId)),
+    ]);
+
+    const tileMap = new Map(tileRows.map((t) => [t.id, t]));
+    const allocMap = new Map(allocationRows.map((r) => [r.chargeLineId, r.allocatedQty]));
+    const newTileIds = new Set(nonZero.map((g) => g.pricingTileId));
+
+    // Allocation guard: block reducing any charge line below its already-allocated quantity
+    for (const line of currentChargeLines) {
+      const allocatedQty = allocMap.get(line.id) ?? 0;
+      if (allocatedQty === 0) continue;
+      const newGuest = nonZero.find((g) => g.pricingTileId === line.pricingTileId);
+      const newQty = newGuest?.quantity ?? 0;
+      if (newQty < allocatedQty) {
+        return {
+          ok: false as const,
+          error: `ไม่สามารถลดจำนวนหัวต่ำกว่าจำนวนที่ชำระแล้ว (${line.label}: ชำระแล้ว ${allocatedQty} หัว)`,
+        };
+      }
+    }
+
+    // Replace session_guests with unitPrice snapshots
     await db.delete(sessionGuests).where(eq(sessionGuests.sessionId, sessionId));
     if (nonZero.length > 0) {
       await db.insert(sessionGuests).values(
-        nonZero.map((g) => ({
-          sessionId,
-          pricingTileId: g.pricingTileId,
-          quantity: g.quantity,
-        })),
+        nonZero.map((g) => {
+          const tile = tileMap.get(g.pricingTileId);
+          // Reuse snapshotted unitPrice from existing charge line if available; else use live price
+          const existingLine = currentChargeLines.find((l) => l.pricingTileId === g.pricingTileId);
+          const unitPrice = existingLine ? existingLine.unitPrice : (tile?.price ?? '0');
+          return {
+            sessionId,
+            pricingTileId: g.pricingTileId,
+            quantity: g.quantity,
+            unitPrice,
+          };
+        }),
       );
     }
+
+    // Sync buffet_charge_lines
+    const chargeLineByTileId = new Map(
+      currentChargeLines.map((l) => [l.pricingTileId, l]),
+    );
+
+    // Void removed lines (only safe because allocation guard above already blocked any with allocations)
+    const linesToVoid = currentChargeLines.filter((l) => !newTileIds.has(l.pricingTileId ?? ''));
+    if (linesToVoid.length > 0) {
+      await db.update(buffetChargeLines)
+        .set({ voidedAt: new Date() })
+        .where(inArray(buffetChargeLines.id, linesToVoid.map((l) => l.id)));
+    }
+
+    // Update existing lines or create new ones
+    for (const g of nonZero) {
+      const tile = tileMap.get(g.pricingTileId);
+      const existingLine = chargeLineByTileId.get(g.pricingTileId);
+
+      if (existingLine) {
+        // Keep existing unitPrice snapshot; only update quantity + total
+        await db.update(buffetChargeLines)
+          .set({
+            quantity: g.quantity,
+            total: (Number(existingLine.unitPrice) * g.quantity).toFixed(2),
+          })
+          .where(eq(buffetChargeLines.id, existingLine.id));
+      } else if (tile) {
+        // New tile not seen before: create charge line with current tile price
+        const unitPrice = Number(tile.price);
+        await db.insert(buffetChargeLines).values({
+          sessionId,
+          pricingTileId: g.pricingTileId,
+          chargeType: tile.code || tile.name || 'guest',
+          label: tile.name,
+          unitPrice: unitPrice.toFixed(2),
+          quantity: g.quantity,
+          total: (unitPrice * g.quantity).toFixed(2),
+        });
+      }
+    }
+
+    writeAuditLog({
+      userId: authSession.user.id,
+      role: authSession.user.role,
+      action: 'headcount_changed',
+      entity: 'session_guests',
+      entityId: sessionId,
+      before: { guests: oldGuests.map((g) => ({ pricingTileId: g.pricingTileId, quantity: g.quantity })) },
+      after: { guests: nonZero.map((g) => ({ pricingTileId: g.pricingTileId, quantity: g.quantity })) },
+    });
+
     revalidatePath('/tables');
     revalidatePath('/pos');
     return { ok: true as const };
@@ -396,11 +573,15 @@ export async function closeSingleSession(input: { sessionId: string }) {
         const newPrimary = children[0];
         const rest = children.slice(1);
 
-        // Transfer guests to new primary
+        // Transfer guests and buffet charge lines to new primary
         await db
           .update(sessionGuests)
           .set({ sessionId: newPrimary.id })
           .where(eq(sessionGuests.sessionId, input.sessionId));
+        await db
+          .update(buffetChargeLines)
+          .set({ sessionId: newPrimary.id })
+          .where(eq(buffetChargeLines.sessionId, input.sessionId));
 
         // New primary: clear parentSessionId
         await db
@@ -500,11 +681,15 @@ export async function transferPrimary(input: { newPrimarySessionId: string }) {
       .from(sessions)
       .where(eq(sessions.parentSessionId, oldPrimaryId));
 
-    // 1. Transfer session_guests from old primary to new primary
+    // 1. Transfer session_guests and buffet charge lines from old primary to new primary
     await db
       .update(sessionGuests)
       .set({ sessionId: input.newPrimarySessionId })
       .where(eq(sessionGuests.sessionId, oldPrimaryId));
+    await db
+      .update(buffetChargeLines)
+      .set({ sessionId: input.newPrimarySessionId })
+      .where(eq(buffetChargeLines.sessionId, oldPrimaryId));
 
     // 2. New primary: clear parentSessionId
     await db

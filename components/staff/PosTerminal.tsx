@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useRef, memo, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -292,7 +292,7 @@ export function PosTerminal({ initialSessions, cashierName, initialSelectedId = 
           onClick={() => setSelectedId(null)}
         >
           <div
-            className="relative w-full max-w-[92vw] max-h-[95dvh] overflow-y-auto rounded-2xl bg-card border border-border shadow-2xl"
+            className="relative h-[calc(100dvh-2rem)] max-h-[820px] w-full max-w-[1180px] overflow-hidden rounded-2xl bg-card border border-border shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -381,13 +381,28 @@ const SessionCard = memo(function SessionCard({ session, selected, onSelect, lin
 });
 
 function DetailPanel({ sessionId, cashierName, onPaid }: { sessionId: string; cashierName: string; onPaid: () => void }) {
-  const { data, isLoading } = useQuery({
+  const [lastGoodData, setLastGoodData] = useState<PosSessionDetail | null>(null);
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['pos-detail', sessionId],
-    queryFn: () => getPosSessionDetail(sessionId).then((r) => (r.ok ? r.data : null)),
+    queryFn: async () => {
+      const result = await getPosSessionDetail(sessionId);
+      if (!result.ok) throw new Error(result.error);
+      return result.data;
+    },
     enabled: !!sessionId,
     refetchInterval: sessionId ? 10_000 : false,
     staleTime: 5_000,
+    placeholderData: (previousData) => previousData,
   });
+
+  useEffect(() => {
+    if (!data) return;
+    const timer = window.setTimeout(() => setLastGoodData(data), 0);
+    return () => window.clearTimeout(timer);
+  }, [data]);
+
+  const visibleData = data ?? lastGoodData;
+  const detailError = error instanceof Error ? error.message : 'โหลดข้อมูลบิลไม่สำเร็จ';
 
   const { data: tileData } = useQuery({
     queryKey: ['pos-tiles'],
@@ -407,26 +422,50 @@ function DetailPanel({ sessionId, cashierName, onPaid }: { sessionId: string; ca
     staleTime: 30_000,
   });
 
-  if (isLoading || !data) {
+  if (isLoading && !visibleData) {
     return <div className="flex h-full items-center justify-center"><p className="text-sm text-muted-foreground">กำลังโหลด…</p></div>;
   }
 
+  if (!visibleData) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <div className="max-w-sm rounded-xl border border-border bg-card p-5 text-center shadow-sm">
+          <p className="text-sm font-semibold text-foreground">โหลดข้อมูลบิลไม่สำเร็จ</p>
+          <p className="mt-2 text-sm text-muted-foreground">{detailError}</p>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+          >
+            โหลดอีกครั้ง
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <PaymentPanel
-      detail={data}
-      guestTiles={tileData?.guests ?? []}
-      addonTiles={tileData?.addons ?? []}
-      discountTiles={tileData?.discounts ?? []}
-      cashierName={cashierName}
-      storeSettings={storeData ?? null}
-      isGroupBill={data.isGroupBill}
-      linkedTableLabels={data.linkedTableLabels}
-      paymentOptions={paymentOptions}
-      onPaid={onPaid}
-    />
+    <div className="relative h-full min-h-0">
+      {(isFetching || isError) && (
+        <div className="pointer-events-none absolute left-1/2 top-2 z-20 -translate-x-1/2 rounded-full border border-border bg-card/95 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
+          {isError ? detailError : 'กำลังอัปเดตข้อมูลบิล...'}
+        </div>
+      )}
+      <PaymentPanel
+        detail={visibleData}
+        guestTiles={tileData?.guests ?? []}
+        addonTiles={tileData?.addons ?? []}
+        discountTiles={tileData?.discounts ?? []}
+        cashierName={cashierName}
+        storeSettings={storeData ?? null}
+        isGroupBill={visibleData.isGroupBill}
+        linkedTableLabels={visibleData.linkedTableLabels}
+        paymentOptions={paymentOptions}
+        onPaid={onPaid}
+      />
+    </div>
   );
 }
-
 /* ─── Tile counter tile (compact, for POS) ─────────────────────────── */
 
 function PosTile({
@@ -496,8 +535,18 @@ type PaymentRowDraft = {
   payerLabel: string;
 };
 
+type PaymentHistoryEntry = {
+  id: string;
+  amount: number;
+  methodLabel: string;
+  paidAtLabel: string;
+  settlementType: SettlementMode | string;
+  receipt?: ReceiptData;
+  allocations?: Array<{ label: string; quantity: number; amount: number }>;
+};
 type SettlementMode = 'final' | 'partial';
 type CheckoutMode = 'close_all' | 'head' | 'manual';
+type PaymentMode = 'full' | 'items';
 
 function PaymentPanel({
   detail,
@@ -572,8 +621,12 @@ function PaymentPanel({
   const [submitting, setSubmitting] = useState(false);
   const [paid, setPaid] = useState(false);
   const [settlementMode, setSettlementMode] = useState<SettlementMode>('final');
-  const [checkoutMode, setCheckoutMode] = useState<CheckoutMode>('close_all');
+  const [checkoutMode, setCheckoutMode] = useState<CheckoutMode>('head');
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>('full');
   const [selectedHeadQty, setSelectedHeadQty] = useState<Record<string, number>>({});
+  const [paymentDetailsOpen, setPaymentDetailsOpen] = useState(false);
+  const [paymentHistoryDialogOpen, setPaymentHistoryDialogOpen] = useState(false);
+  const [localPaymentHistory, setLocalPaymentHistory] = useState<PaymentHistoryEntry[]>([]);
 
   // Split payment state — sequential rounds
   type CompletedRound = { items: { pricingTileId: string; name: string; qty: number; price: number }[]; subtotal: number; method: 'cash' | 'qr_promptpay' | 'cash_qr'; cashPortion?: number };
@@ -591,6 +644,8 @@ function PaymentPanel({
   const [draftAccountId, setDraftAccountId] = useState('');
   const [draftAmountInput, setDraftAmountInput] = useState('');
   const [draftTenderedInput, setDraftTenderedInput] = useState('');
+  const [draftAmountAutoPrefilled, setDraftAmountAutoPrefilled] = useState(false);
+  const [draftTenderedAutoPrefilled, setDraftTenderedAutoPrefilled] = useState(false);
   const [draftPayerLabel, setDraftPayerLabel] = useState('');
   const [notesOpen, setNotesOpen] = useState(false);
 
@@ -667,6 +722,7 @@ function PaymentPanel({
   } | null>(null);
   const [taxForm, setTaxForm] = useState({ companyName: '', phone: '', taxId: '', address: '' });
   const [lastReceipt, setLastReceipt] = useState<ReceiptData | null>(null);
+  const [lastPaymentId, setLastPaymentId] = useState<string | null>(null);
 
   const baseTotal = guestTiles.reduce(
     (sum, t) => sum + Number(t.price) * (guestQty[t.id] ?? 0),
@@ -698,13 +754,9 @@ function PaymentPanel({
   const draftRowsTotal = paymentRowsDraft.reduce((s, r) => s + r.amount, 0);
   const activeChargeLines = (detail.chargeLines ?? []).filter((line) => !line.voidedAt && line.remainingQuantity > 0);
   const allChargeLines = detail.chargeLines ?? [];
-  const totalHeads = allChargeLines
-    .filter((line) => !line.voidedAt)
-    .reduce((sum, line) => sum + line.quantity, 0);
-  const paidHeads = allChargeLines
-    .filter((line) => !line.voidedAt)
-    .reduce((sum, line) => sum + line.allocatedQuantity, 0);
-  const remainingHeads = activeChargeLines.reduce((sum, line) => sum + line.remainingQuantity, 0);
+  const billHasGuestLines = session.guests.some((guest) => guest.quantity > 0);
+  const waitingForChargeLines = billHasGuestLines && allChargeLines.length === 0 && remainingBeforePayment > 0;
+  const remainingHeadTotal = activeChargeLines.reduce((sum, line) => sum + line.remainingQuantity, 0);
   const selectedHeadTotal = activeChargeLines.reduce(
     (sum, line) => sum + Math.min(line.remainingQuantity, Math.max(0, selectedHeadQty[line.id] ?? 0)),
     0,
@@ -732,24 +784,84 @@ function PaymentPanel({
   const remainingBeforeCents = Math.round(remainingBeforePayment * 100);
   const closeAllAllocationCents = Math.round(closeAllAllocationAmount * 100);
   const selectedHeadAmountCents = Math.round(selectedHeadAmount * 100);
+  const chargeSelectionKey = activeChargeLines
+    .map((line) => `${line.id}:${line.remainingQuantity}`)
+    .join('|');
   const allRemainingHeadsSelected =
     activeChargeLines.length > 0 &&
     activeChargeLines.every((line) => (selectedHeadQty[line.id] ?? 0) === line.remainingQuantity);
   const canFinalHeadSettlement = allRemainingHeadsSelected && selectedHeadAmountCents === remainingBeforeCents;
   const effectiveSettlementMode: SettlementMode =
-    checkoutMode === 'close_all'
-      ? 'final'
-      : checkoutMode === 'head'
-        ? canFinalHeadSettlement ? 'final' : 'partial'
-        : settlementMode;
-  const paymentTargetAmount = checkoutMode === 'head' ? selectedHeadAmount : remainingBeforePayment;
+    checkoutMode === 'manual'
+      ? settlementMode
+      : canFinalHeadSettlement ? 'final' : 'partial';
+  const paymentTargetAmount = checkoutMode === 'manual'
+    ? remainingBeforePayment
+    : paymentMode === 'full'
+      ? remainingBeforePayment
+      : selectedHeadAmount;
   const paymentTargetCents = Math.round(paymentTargetAmount * 100);
   const remainingForDraft = Math.max(0, paymentTargetAmount - draftRowsTotal);
-  const remainingAfterDraft = Math.max(0, remainingBeforePayment - draftRowsTotal);
+  const remainingAfterSelection = Math.max(0, remainingBeforePayment - paymentTargetAmount);
+  const draftMethodForSync = paymentOptions.find((methodOption) => methodOption.id === draftMethodId) ?? null;
+  const draftSyncMethodId = draftMethodForSync?.id;
+  const draftSyncMethodType = draftMethodForSync?.type;
+  const draftRemainingInputValue = remainingForDraft > 0 ? String(remainingForDraft) : '';
   const canAutoAllocateCloseAll =
     checkoutMode === 'close_all' &&
     activeChargeLines.length > 0 &&
     closeAllAllocationCents === remainingBeforeCents;
+  const localPaymentHistoryTotal = localPaymentHistory.reduce((sum, entry) => sum + entry.amount, 0);
+  const priorPaidHistoryAmount = Math.max(0, paidBeforeSettlement - localPaymentHistoryTotal);
+  const hasPaymentHistorySummary = priorPaidHistoryAmount > 0 || localPaymentHistory.length > 0;
+
+  useEffect(() => {
+    if (view !== 'payment' || checkoutMode === 'manual' || waitingForChargeLines) return;
+    if (activeChargeLines.length === 0 && allChargeLines.length === 0 && remainingBeforePayment > 0) return;
+    const nextSelection = paymentMode === 'full'
+      ? Object.fromEntries(activeChargeLines.map((line) => [line.id, line.remainingQuantity]))
+      : {};
+    const timer = window.setTimeout(() => setSelectedHeadQty(nextSelection), 0);
+    return () => window.clearTimeout(timer);
+  }, [view, checkoutMode, paymentMode, chargeSelectionKey, waitingForChargeLines]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (view !== 'payment' || !draftSyncMethodId) return;
+    const timer = window.setTimeout(() => {
+      setDraftAmountInput(draftRemainingInputValue);
+      setDraftTenderedInput(draftSyncMethodType === 'cash' ? draftRemainingInputValue : '');
+      setDraftAmountAutoPrefilled(draftRemainingInputValue !== '');
+      setDraftTenderedAutoPrefilled(draftSyncMethodType === 'cash' && draftRemainingInputValue !== '');
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [view, draftSyncMethodId, draftSyncMethodType, draftRemainingInputValue]);
+  function resetDraftPaymentRows() {
+    setPaymentRowsDraft([]);
+    setDraftMethodId('');
+    setDraftAccountId('');
+    setDraftAmountInput('');
+    setDraftTenderedInput('');
+    setDraftAmountAutoPrefilled(false);
+    setDraftTenderedAutoPrefilled(false);
+    setDraftPayerLabel('');
+  }
+
+  function selectPaymentMode(nextMode: PaymentMode) {
+    setPaymentMode(nextMode);
+    setCheckoutMode('head');
+    setSettlementMode('final');
+    resetDraftPaymentRows();
+    setSelectedHeadQty(
+      nextMode === 'full'
+        ? Object.fromEntries(activeChargeLines.map((line) => [line.id, line.remainingQuantity]))
+        : {},
+    );
+  }
+
+  function openPaymentScreen() {
+    selectPaymentMode('full');
+    setView('payment');
+  }
 
   function setHeadQuantity(lineId: string, quantity: number) {
     const line = activeChargeLines.find((item) => item.id === lineId);
@@ -773,6 +885,7 @@ function PaymentPanel({
   }
 
   const now = () => new Date().toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Bangkok' });
+  const paymentHistoryTime = () => new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' });
 
   function buildShopInfo(billType: BillTypeKey, s?: StoreSettingsData | null) {
     const src = s ?? storeSettings;
@@ -885,7 +998,7 @@ function PaymentPanel({
       const draftRowsTotalCents = Math.round(draftRowsTotal * 100);
       if (checkoutMode === 'head') {
         if (selectedAllocations.length === 0 || selectedHeadAmountCents <= 0) {
-          toast.error('กรุณาเลือกจำนวนหัวที่ต้องการรับชำระ');
+          toast.error('กรุณาเลือกรายการที่ต้องการรับชำระ');
           return;
         }
         if (activeChargeLines.some((line) => (selectedHeadQty[line.id] ?? 0) > line.remainingQuantity)) {
@@ -893,11 +1006,11 @@ function PaymentPanel({
           return;
         }
         if (draftRowsTotalCents !== selectedHeadAmountCents) {
-          toast.error('ยอดรับชำระไม่ตรงกับจำนวนหัวที่เลือก');
+          toast.error('ยอดรับชำระไม่ตรงกับรายการที่เลือก');
           return;
         }
         if (selectedHeadAmountCents > remainingBeforeCents) {
-          toast.error('ยอดหัวที่เลือกมากกว่ายอดคงเหลือ');
+          toast.error('ยอดรายการที่เลือกมากกว่ายอดคงเหลือ');
           return;
         }
       } else if (checkoutMode === 'close_all') {
@@ -1020,21 +1133,39 @@ function PaymentPanel({
       setDraftAccountId('');
       setDraftAmountInput('');
       setDraftTenderedInput('');
+      setDraftAmountAutoPrefilled(false);
+      setDraftTenderedAutoPrefilled(false);
       setDraftPayerLabel('');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['pos-sessions'] }),
         queryClient.invalidateQueries({ queryKey: ['pos-detail', session.id] }),
       ]);
-      await printPaymentEventReceipt(result.data.paymentId, receipt);
+      setLastPaymentId(result.data.paymentId);
+      setLocalPaymentHistory((prev) => [...prev, {
+        id: result.data.paymentId,
+        amount: result.data.total,
+        methodLabel: draftMethodLabel || 'รับชำระ',
+        paidAtLabel: paymentHistoryTime(),
+        settlementType: result.data.settlementType,
+        receipt,
+        allocations: 'allocations' in result.data
+          ? result.data.allocations?.map((allocation: { label: string; quantity: number; amount: number }) => ({
+            label: allocation.label,
+            quantity: allocation.quantity,
+            amount: allocation.amount,
+          }))
+          : undefined,
+      }]);
       if (effectiveSettlementMode === 'partial') {
         toast.success(
           checkoutMode === 'head'
-            ? `รับชำระตามหัวสำเร็จ เหลือ ฿${result.data.remainingAfter.toLocaleString('th-TH')}`
+            ? `รับชำระตามรายการสำเร็จ เหลือ ฿${result.data.remainingAfter.toLocaleString('th-TH')}`
             : `รับชำระบางส่วนแล้ว เหลือ ฿${result.data.remainingAfter.toLocaleString('th-TH')}`,
         );
         setSettlementMode('final');
+        setCheckoutMode('head');
+        setPaymentMode('full');
         setSelectedHeadQty({});
-        setView('bill');
         return;
       }
       setPaid(true);
@@ -1113,7 +1244,15 @@ function PaymentPanel({
     };
     setLastReceipt(receipt);
     setPaid(true);
-    await printPaymentEventReceipt(result.data.paymentId, receipt);
+    setLastPaymentId(result.data.paymentId);
+    setLocalPaymentHistory((prev) => [...prev, {
+      id: result.data.paymentId,
+      amount: result.data.total,
+      methodLabel: METHOD_LABEL[method],
+      paidAtLabel: paymentHistoryTime(),
+      settlementType: result.data.settlementType,
+      receipt,
+    }]);
   }
 
   /* ── Success ── */
@@ -1137,7 +1276,7 @@ function PaymentPanel({
           <p className="text-xs text-muted-foreground">โต๊ะยังแสดงสถานะ &quot;จ่ายแล้ว&quot; — ปิดโต๊ะได้ที่ จัดการโต๊ะ</p>
         </div>
         <div className="flex gap-3">
-          <button type="button" onClick={() => void printReceipt({ type: 'receipt', payment: lastReceipt })}
+          <button type="button" onClick={() => void (lastPaymentId ? printPaymentEventReceipt(lastPaymentId, lastReceipt) : printReceipt({ type: 'receipt', payment: lastReceipt }))}
             className="flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">
             <Printer className="size-4" />พิมพ์ซ้ำ
           </button>
@@ -1222,9 +1361,11 @@ function PaymentPanel({
             : isPartialDraftValid;
     const confirmLabel =
       checkoutMode === 'head'
-        ? effectiveSettlementMode === 'final'
-          ? `รับชำระตามหัวและปิดบิล ฿${paymentTargetAmount.toLocaleString('th-TH')}`
-          : `รับชำระตามหัว ฿${paymentTargetAmount.toLocaleString('th-TH')}`
+        ? paymentMode === 'full'
+          ? `รับชำระและปิดบิล ฿${paymentTargetAmount.toLocaleString('th-TH')}`
+          : effectiveSettlementMode === 'final'
+            ? `รับชำระตามรายการและปิดบิล ฿${paymentTargetAmount.toLocaleString('th-TH')}`
+            : `รับชำระตามรายการ ฿${paymentTargetAmount.toLocaleString('th-TH')}`
         : checkoutMode === 'close_all'
           ? `ปิดบิลและชำระคงเหลือ ฿${remainingBeforePayment.toLocaleString('th-TH')}`
           : settlementMode === 'final'
@@ -1232,6 +1373,29 @@ function PaymentPanel({
             : `รับชำระบางส่วน ฿${draftRowsTotal.toLocaleString('th-TH')}`;
     const numpadSetter = isCashMethod ? setDraftTenderedInput : setDraftAmountInput;
     const numpadValue = isCashMethod ? draftTenderedInput : draftAmountInput;
+    const numpadAutoPrefilled = isCashMethod ? draftTenderedAutoPrefilled : draftAmountAutoPrefilled;
+    const setNumpadAutoPrefilled = isCashMethod ? setDraftTenderedAutoPrefilled : setDraftAmountAutoPrefilled;
+    const handleNumpadPress = (key: string) => {
+      if (key === '⌫') {
+        numpadSetter((value) => value.length > 1 ? value.slice(0, -1) : '0');
+        setNumpadAutoPrefilled(false);
+        return;
+      }
+      if (key === 'C') {
+        numpadSetter('0');
+        setNumpadAutoPrefilled(false);
+        return;
+      }
+      if (numpadAutoPrefilled) {
+        numpadSetter(key);
+        setNumpadAutoPrefilled(false);
+        return;
+      }
+      numpadSetter((value) => {
+        const next = value === '0' ? key : value + key;
+        return next.length <= 7 ? next : value;
+      });
+    };
     const predictAmounts = (t: number): number[] => {
       const seen = new Set<number>();
       const out: number[] = [];
@@ -1247,14 +1411,17 @@ function PaymentPanel({
     const activeQuickAmounts = isCashMethod ? cashQuickAmounts : qrQuickAmounts;
     const selectDraftMethod = (methodId: string) => {
       const found = paymentOptions.find((opt) => opt.id === methodId) ?? null;
+      const nextAmount = remainingForDraft > 0 ? String(remainingForDraft) : '';
       setDraftMethodId(methodId);
       const defaultAcc =
         found?.accounts.find((a) => a.id === found.defaultAccountId) ??
         found?.accounts[0] ??
         null;
       setDraftAccountId(defaultAcc?.id ?? '');
-      setDraftAmountInput(remainingForDraft > 0 ? String(remainingForDraft) : '');
-      setDraftTenderedInput('');
+      setDraftAmountInput(nextAmount);
+      setDraftTenderedInput(found?.type === 'cash' ? nextAmount : '');
+      setDraftAmountAutoPrefilled(nextAmount !== '');
+      setDraftTenderedAutoPrefilled(found?.type === 'cash' && nextAmount !== '');
     };
     const addDraftRow = () => {
       if (!canAddRow || !draftMethod || !draftAccount) return;
@@ -1275,6 +1442,8 @@ function PaymentPanel({
       setDraftAccountId('');
       setDraftAmountInput('');
       setDraftTenderedInput('');
+      setDraftAmountAutoPrefilled(false);
+      setDraftTenderedAutoPrefilled(false);
       setDraftPayerLabel('');
     };
     const confirmDisabled =
@@ -1284,11 +1453,95 @@ function PaymentPanel({
       !canConfirmSettlement;
 
     return (
-      <div className="flex h-[90dvh]">
+      <div className="flex h-full min-h-0">
         {TaxInvoicePopup}
-
-        {/* ── Left panel: discount / summary / confirm ── */}
-        <div className="flex flex-col overflow-y-auto p-5 gap-3 min-w-0 basis-[44%] shrink-0">
+        {paymentHistoryDialogOpen && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4" onClick={() => setPaymentHistoryDialogOpen(false)}>
+            <div
+              className="flex max-h-[82dvh] w-full max-w-2xl flex-col rounded-2xl border border-border bg-card shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-4">
+                <div>
+                  <p className="text-base font-semibold text-foreground">ประวัติชำระบิลนี้</p>
+                  <p className="text-xs text-muted-foreground">โต๊ะ {session.table.label} · ชำระแล้ว ฿{paidBeforeSettlement.toLocaleString('th-TH')}</p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="ปิดประวัติชำระ"
+                  onClick={() => setPaymentHistoryDialogOpen(false)}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-5 space-y-3">
+                {priorPaidHistoryAmount > 0 && (
+                  <div className="rounded-xl border border-border bg-muted/30 px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">ชำระก่อนหน้า</p>
+                        <p className="mt-1 text-xs text-muted-foreground">รายละเอียดรอบก่อนหน้ามาจากยอดรวมที่โหลดมากับบิลนี้</p>
+                      </div>
+                      <p className="text-xl font-bold tabular-nums text-foreground">฿{priorPaidHistoryAmount.toLocaleString('th-TH')}</p>
+                    </div>
+                  </div>
+                )}
+                {localPaymentHistory.map((entry, index) => (
+                  <div key={entry.id} className="rounded-xl border border-border bg-background px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-foreground">ชำระครั้งที่ {index + 1}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {entry.methodLabel} · {entry.settlementType === 'partial' ? 'บางส่วน' : 'ปิดบิล'} · {entry.paidAtLabel}
+                        </p>
+                      </div>
+                      <p className="shrink-0 text-xl font-bold tabular-nums text-foreground">฿{entry.amount.toLocaleString('th-TH')}</p>
+                    </div>
+                    {entry.allocations && entry.allocations.length > 0 && (
+                      <div className="mt-3 rounded-lg bg-muted/40 px-3 py-2">
+                        <p className="mb-1 text-[11px] font-semibold text-muted-foreground">รายการที่ผูกชำระ</p>
+                        <div className="space-y-1">
+                          {entry.allocations.map((allocation, allocationIndex) => (
+                            <div key={`${entry.id}-${allocationIndex}`} className="flex justify-between gap-3 text-xs">
+                              <span className="min-w-0 truncate text-muted-foreground">{allocation.label} ×{allocation.quantity}</span>
+                              <span className="shrink-0 tabular-nums font-semibold text-foreground">฿{allocation.amount.toLocaleString('th-TH')}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="mt-3 flex flex-wrap justify-end gap-2">
+                      {entry.receipt && (
+                        <button
+                          type="button"
+                          onClick={() => void printPaymentEventReceipt(entry.id, entry.receipt!)}
+                          className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/50"
+                        >
+                          พิมพ์ใบนี้
+                        </button>
+                      )}
+                      {lastReceipt && (
+                        <button
+                          type="button"
+                          onClick={() => void (lastPaymentId ? printPaymentEventReceipt(lastPaymentId, lastReceipt) : printReceipt({ type: 'receipt', payment: lastReceipt }))}
+                          className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/50"
+                        >
+                          พิมพ์ใบล่าสุด
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {!hasPaymentHistorySummary && (
+                  <p className="rounded-xl border border-dashed border-border py-8 text-center text-sm text-muted-foreground">ยังไม่มีประวัติชำระสำหรับบิลนี้</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        {/* ── Left panel: head selection / secondary details ── */}
+        <div className="flex min-h-0 flex-col overflow-hidden p-4 gap-2.5 min-w-0 basis-[46%] shrink-0">
 
           {/* Header */}
           <div className="flex items-center gap-2 shrink-0">
@@ -1304,203 +1557,243 @@ function PaymentPanel({
             )}
           </div>
 
-          {/* Checkout mode */}
-          <div className="shrink-0 rounded-xl border border-border bg-card p-1">
-            <div className="grid grid-cols-3 gap-1">
-              {([
-                { value: 'close_all' as const, label: 'ปิดบิลทั้งหมด', disabled: false },
-                { value: 'head' as const, label: 'รับชำระตามหัว', disabled: activeChargeLines.length === 0 },
-                { value: 'manual' as const, label: 'รับชำระจำนวนเงินเอง', disabled: false },
-              ]).map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  disabled={option.disabled}
-                  onClick={() => {
-                    setCheckoutMode(option.value);
-                    if (option.value === 'close_all') setSettlementMode('final');
-                    if (option.value === 'head') setSettlementMode('partial');
-                  }}
-                  className={`min-h-11 rounded-lg px-2 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
-                    checkoutMode === option.value
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
+          <div className="shrink-0 rounded-xl border border-border bg-muted/30 p-1">
+            <div className="grid grid-cols-2 gap-1">
+              <button
+                type="button"
+                onClick={() => selectPaymentMode('full')}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                  paymentMode === 'full'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:bg-background hover:text-foreground'
+                }`}
+              >
+                รับชำระเต็ม
+              </button>
+              <button
+                type="button"
+                onClick={() => selectPaymentMode('items')}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                  paymentMode === 'items'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:bg-background hover:text-foreground'
+                }`}
+              >
+                รับชำระตามรายการ
+              </button>
             </div>
           </div>
 
-          {checkoutMode !== 'close_all' && (
-            <div className="shrink-0 rounded-xl border border-border bg-card p-1">
-              <div className="grid grid-cols-2 gap-1">
-                {([
-                  { value: 'partial' as const, label: 'รับชำระบางส่วน', disabled: checkoutMode === 'head' },
-                  { value: 'final' as const, label: 'ปิดบิลทั้งหมด', disabled: checkoutMode === 'head' },
-                ]).map((option) => {
-                  const active = checkoutMode === 'head'
-                    ? effectiveSettlementMode === option.value
-                    : settlementMode === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      disabled={option.disabled}
-                      onClick={() => setSettlementMode(option.value)}
-                      className={`min-h-11 rounded-lg px-3 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                        active
-                          ? 'bg-primary text-primary-foreground shadow-sm'
-                          : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
+          {lastReceipt && (
+            <div className="shrink-0 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-800 dark:bg-emerald-950/30">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">ชำระเงินสำเร็จ</p>
+                  <p className="text-sm font-bold tabular-nums text-foreground">฿{lastReceipt.total.toLocaleString('th-TH')}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void (lastPaymentId ? printPaymentEventReceipt(lastPaymentId, lastReceipt) : printReceipt({ type: 'receipt', payment: lastReceipt }))}
+                  className="shrink-0 rounded-lg border border-emerald-300 bg-background px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/50"
+                >
+                  พิมพ์ใบล่าสุด
+                </button>
               </div>
             </div>
           )}
 
-          {checkoutMode === 'head' && (
-            <div className="shrink-0 rounded-xl border border-border bg-card p-3 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">รับชำระตามหัว</p>
-                  <p className="text-xs text-muted-foreground">เลือกจำนวนหัวที่รับเงินในรอบนี้</p>
-                </div>
-                <p className="shrink-0 text-right text-lg font-bold tabular-nums text-primary">
-                  ฿{selectedHeadAmount.toLocaleString('th-TH')}
+          <div className="shrink-0 rounded-xl border border-border bg-card p-3 space-y-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {paymentMode === 'full' ? 'รับชำระเต็ม' : 'รับชำระตามรายการ'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {paymentMode === 'full'
+                    ? 'รับยอดคงเหลือทั้งหมดและปิดบิล'
+                    : 'เลือกรายการคงเหลือที่ต้องการรับชำระในรอบนี้'}
                 </p>
               </div>
+              <p className="shrink-0 text-right text-lg font-bold tabular-nums text-primary">
+                ฿{paymentTargetAmount.toLocaleString('th-TH')}
+              </p>
+            </div>
 
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-lg bg-muted/50 px-2 py-2">
-                  <p className="text-[11px] text-muted-foreground">ทั้งหมด</p>
-                  <p className="text-base font-bold tabular-nums text-foreground">{totalHeads}</p>
-                </div>
-                <div className="rounded-lg bg-muted/50 px-2 py-2">
-                  <p className="text-[11px] text-muted-foreground">จ่ายแล้ว</p>
-                  <p className="text-base font-bold tabular-nums text-emerald-600">{paidHeads}</p>
-                </div>
-                <div className="rounded-lg bg-muted/50 px-2 py-2">
-                  <p className="text-[11px] text-muted-foreground">คงเหลือ</p>
-                  <p className="text-base font-bold tabular-nums text-red-500">{remainingHeads}</p>
+            <div className="grid grid-cols-3 gap-1.5 text-center">
+              <div className="rounded-lg bg-muted/50 px-2 py-2">
+                <p className="text-[11px] text-muted-foreground">ยอดบิลทั้งหมด</p>
+                <p className="text-base font-bold tabular-nums text-foreground">฿{billTotalForSettlement.toLocaleString('th-TH')}</p>
+              </div>
+              <div className="rounded-lg bg-muted/50 px-2 py-2">
+                <p className="text-[11px] text-muted-foreground">ชำระแล้ว</p>
+                <p className="text-base font-bold tabular-nums text-emerald-600">฿{paidBeforeSettlement.toLocaleString('th-TH')}</p>
+              </div>
+              <div className="rounded-lg bg-muted/50 px-2 py-2">
+                <p className="text-[11px] text-muted-foreground">คงเหลือ</p>
+                <p className="text-base font-bold tabular-nums text-red-500">฿{remainingBeforePayment.toLocaleString('th-TH')}</p>
+              </div>
+            </div>
+
+            {paymentMode === 'full' ? (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">เลือกรายการคงเหลือทั้งหมด</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">รวม {remainingHeadTotal} หัว จาก {activeChargeLines.length} รายการ</p>
+                  </div>
+                  <p className="text-xl font-bold tabular-nums text-primary">฿{remainingBeforePayment.toLocaleString('th-TH')}</p>
                 </div>
               </div>
-
-              <div className="max-h-64 overflow-y-auto pr-1 space-y-2">
-                {allChargeLines.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
-                    ไม่พบรายการหัวสำหรับบิลนี้
-                  </p>
-                ) : (
-                  allChargeLines.map((line) => {
-                    const selectable = !line.voidedAt && line.remainingQuantity > 0;
-                    const selectedQty = Math.min(line.remainingQuantity, Math.max(0, selectedHeadQty[line.id] ?? 0));
-                    const selectedAmount = selectedQty * line.unitPrice;
-                    return (
-                      <div
-                        key={line.id}
-                        className={`rounded-lg border px-3 py-3 ${
-                          selectable ? 'border-border bg-background' : 'border-border/60 bg-muted/30 opacity-70'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-foreground">{line.label}</p>
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                              ฿{line.unitPrice.toLocaleString('th-TH')} / หัว · ทั้งหมด {line.quantity} · จ่ายแล้ว {line.allocatedQuantity} · คงเหลือ {line.remainingQuantity}
-                              {line.voidedAt ? ' · ยกเลิกแล้ว' : ''}
-                            </p>
-                            {selectedQty > 0 && (
-                              <p className="mt-1 text-xs font-semibold tabular-nums text-primary">
-                                รอบนี้ {selectedQty} หัว = ฿{selectedAmount.toLocaleString('th-TH')}
+            ) : (
+              <>
+                <div className="min-h-0 max-h-[230px] overflow-y-auto pr-1 space-y-2">
+                  {allChargeLines.length === 0 ? (
+                    <p className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-muted-foreground">
+                      {waitingForChargeLines ? 'กำลังโหลดรายการบิล กรุณารอสักครู่' : 'ไม่พบรายการสำหรับบิลนี้'}
+                    </p>
+                  ) : (
+                    allChargeLines.map((line) => {
+                      const selectable = !line.voidedAt && line.remainingQuantity > 0;
+                      const selectedQty = Math.min(line.remainingQuantity, Math.max(0, selectedHeadQty[line.id] ?? 0));
+                      const selectedAmount = selectedQty * line.unitPrice;
+                      return (
+                        <div
+                          key={line.id}
+                          className={`rounded-lg border px-3 py-3 ${
+                            selectable ? 'border-border bg-background' : 'border-border/60 bg-muted/30 opacity-70'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-foreground">{line.label}</p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                ฿{line.unitPrice.toLocaleString('th-TH')} / หัว · ทั้งหมด {line.quantity} · จ่ายแล้ว {line.allocatedQuantity} · คงเหลือ {line.remainingQuantity}
+                                {line.voidedAt ? ' · ยกเลิกแล้ว' : ''}
                               </p>
-                            )}
-                          </div>
-                          <div className="shrink-0 text-right">
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                aria-label={`ลด ${line.label}`}
-                                disabled={!selectable || selectedQty === 0}
-                                onClick={() => setHeadQuantity(line.id, selectedQty - 1)}
-                                className="flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-card text-lg font-bold text-foreground hover:bg-muted/50 disabled:opacity-30"
-                              >
-                                −
-                              </button>
-                              <span className="flex h-11 w-12 items-center justify-center rounded-lg bg-muted text-base font-bold tabular-nums text-foreground">
-                                {selectedQty}
-                              </span>
-                              <button
-                                type="button"
-                                aria-label={`เพิ่ม ${line.label}`}
-                                disabled={!selectable || selectedQty >= line.remainingQuantity}
-                                onClick={() => setHeadQuantity(line.id, selectedQty + 1)}
-                                className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary text-lg font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
-                              >
-                                +
-                              </button>
+                              {selectedQty > 0 && (
+                                <p className="mt-1 text-xs font-semibold tabular-nums text-primary">
+                                  รอบนี้ {selectedQty} หัว = ฿{selectedAmount.toLocaleString('th-TH')}
+                                </p>
+                              )}
                             </div>
-                            <div className="mt-1 flex gap-1">
-                              <button
-                                type="button"
-                                disabled={!selectable}
-                                onClick={() => setHeadQuantity(line.id, line.remainingQuantity)}
-                                className="min-h-9 flex-1 rounded-lg border border-border px-2 text-xs font-medium text-foreground hover:bg-muted/50 disabled:opacity-30"
-                              >
-                                ทั้งหมด
-                              </button>
-                              <button
-                                type="button"
-                                disabled={!selectable || selectedQty === 0}
-                                onClick={() => setHeadQuantity(line.id, 0)}
-                                className="min-h-9 flex-1 rounded-lg border border-border px-2 text-xs font-medium text-muted-foreground hover:bg-muted/50 disabled:opacity-30"
-                              >
-                                ล้าง
-                              </button>
+                            <div className="shrink-0 text-right">
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  aria-label={`ลด ${line.label}`}
+                                  disabled={!selectable || selectedQty === 0}
+                                  onClick={() => setHeadQuantity(line.id, selectedQty - 1)}
+                                  className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-lg font-bold text-foreground hover:bg-muted/50 disabled:opacity-30"
+                                >
+                                  −
+                                </button>
+                                <span className="flex h-10 w-11 items-center justify-center rounded-lg bg-muted text-base font-bold tabular-nums text-foreground">
+                                  {selectedQty}
+                                </span>
+                                <button
+                                  type="button"
+                                  aria-label={`เพิ่ม ${line.label}`}
+                                  disabled={!selectable || selectedQty >= line.remainingQuantity}
+                                  onClick={() => setHeadQuantity(line.id, selectedQty + 1)}
+                                  className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-lg font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
+                                >
+                                  +
+                                </button>
+                              </div>
+                              <div className="mt-1 flex gap-1">
+                                <button
+                                  type="button"
+                                  disabled={!selectable}
+                                  onClick={() => setHeadQuantity(line.id, line.remainingQuantity)}
+                                  className="min-h-8 flex-1 rounded-lg border border-border px-2 text-xs font-medium text-foreground hover:bg-muted/50 disabled:opacity-30"
+                                >
+                                  ทั้งหมด
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={!selectable || selectedQty === 0}
+                                  onClick={() => setHeadQuantity(line.id, 0)}
+                                  className="min-h-8 flex-1 rounded-lg border border-border px-2 text-xs font-medium text-muted-foreground hover:bg-muted/50 disabled:opacity-30"
+                                >
+                                  ล้าง
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })
+                      );
+                    })
+                  )}
+                </div>
+
+                {selectedHeadTotal === 0 ? (
+                  <p className="text-center text-xs text-amber-600 dark:text-amber-400">กรุณาเลือกรายการที่ต้องการรับชำระ</p>
+                ) : canFinalHeadSettlement ? (
+                  <p className="text-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    เลือกรายการคงเหลือครบแล้ว สามารถปิดบิลได้
+                  </p>
+                ) : allRemainingHeadsSelected ? (
+                  <p className="text-center text-xs text-amber-600 dark:text-amber-400">
+                    เลือกรายการครบแล้ว แต่ยอดยังไม่ตรงกับยอดคงเหลือ ระบบจะรับเป็นบางส่วน
+                  </p>
+                ) : (
+                  <p className="text-center text-xs text-muted-foreground">
+                    ยังเลือกรายการไม่ครบทั้งหมด ระบบจะรับชำระบางส่วน
+                  </p>
                 )}
-              </div>
-
-              {selectedHeadTotal === 0 ? (
-                <p className="text-center text-xs text-amber-600 dark:text-amber-400">กรุณาเลือกจำนวนหัวที่ต้องการรับชำระ</p>
-              ) : canFinalHeadSettlement ? (
-                <p className="text-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  เลือกครบทุกหัว สามารถปิดบิลได้
-                </p>
-              ) : allRemainingHeadsSelected ? (
-                <p className="text-center text-xs text-amber-600 dark:text-amber-400">
-                  เลือกครบทุกหัวแล้ว แต่ยังมียอดนอกหัวคงเหลือ ต้องรับชำระบางส่วนก่อน
-                </p>
-              ) : (
-                <p className="text-center text-xs text-muted-foreground">
-                  ยังเลือกหัวไม่ครบทั้งหมด ต้องรับชำระบางส่วน
-                </p>
-              )}
+              </>
+            )}
+          </div>          {hasPaymentHistorySummary && (
+            <div className="shrink-0 rounded-xl border border-border bg-card px-3 py-2.5">
+              <button
+                type="button"
+                onClick={() => setPaymentHistoryDialogOpen(true)}
+                className="flex w-full items-center justify-between gap-2 text-left"
+              >
+                <span className="text-xs font-semibold text-foreground">ประวัติชำระบิลนี้</span>
+                <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
+                  รวม ฿{paidBeforeSettlement.toLocaleString('th-TH')} · ดูรายละเอียด
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentHistoryDialogOpen(true)}
+                className="mt-2 block max-h-24 w-full space-y-1.5 overflow-y-auto rounded-lg text-left"
+              >
+                {priorPaidHistoryAmount > 0 && (
+                  <div className="rounded-lg bg-muted/40 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-foreground">ชำระก่อนหน้า</span>
+                      <span className="text-sm font-bold tabular-nums text-foreground">฿{priorPaidHistoryAmount.toLocaleString('th-TH')}</span>
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">จากข้อมูลบิลนี้</p>
+                  </div>
+                )}
+                {localPaymentHistory.slice(-2).map((entry, index) => (
+                  <div key={entry.id} className="rounded-lg bg-muted/40 px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-foreground">ชำระครั้งที่ {localPaymentHistory.length - localPaymentHistory.slice(-2).length + index + 1}</span>
+                      <span className="text-sm font-bold tabular-nums text-foreground">฿{entry.amount.toLocaleString('th-TH')}</span>
+                    </div>
+                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                      {entry.methodLabel} · {entry.settlementType === 'partial' ? 'บางส่วน' : 'ปิดบิล'} · {entry.paidAtLabel}
+                    </p>
+                  </div>
+                ))}
+              </button>
             </div>
           )}
-
-          {checkoutMode === 'manual' && (
-            <div className="shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-              โหมดนี้ไม่ได้ระบุหัวที่ชำระ รายงานตามหัวอาจไม่สมบูรณ์
-            </div>
-          )}
-
-          {checkoutMode === 'close_all' && activeChargeLines.length > 0 && !canAutoAllocateCloseAll && (
-            <div className="shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-              ยอดคงเหลือไม่ตรงกับรายการหัวทั้งหมด ระบบจะปิดบิลแบบเดิมโดยไม่ส่ง allocations
-            </div>
-          )}
-
-          {/* Discount tiles */}
+          <div className="shrink-0 rounded-xl border border-dashed border-border bg-muted/20 px-3 py-2">
+            <button
+              type="button"
+              onClick={() => setPaymentDetailsOpen((value) => !value)}
+              className="flex w-full items-center justify-between gap-2 text-left text-xs font-medium text-muted-foreground hover:text-foreground"
+            >
+              <span>รายละเอียดเพิ่มเติม</span>
+              <span className="text-[11px]">{paymentDetailsOpen ? 'ซ่อน' : 'เปิด'}</span>
+            </button>
+            {paymentDetailsOpen && (
+              <div className="mt-2 space-y-2">          {/* Discount tiles */}
           {discountTiles.length > 0 && (
             <div className="shrink-0">
               <p className="mb-1.5 flex items-center gap-1 text-xs font-semibold text-foreground">
@@ -1524,7 +1817,7 @@ function PaymentPanel({
           </div>
 
           {/* Totals with item breakdown */}
-          <div className="shrink-0 rounded-xl bg-muted/40 border border-border px-4 py-3 space-y-1.5">
+          <div className="hidden">
             <p className="text-xs font-semibold text-muted-foreground mb-2">รายการ</p>
             {/* Guest lines */}
             {guestTiles.filter((t) => (guestQty[t.id] ?? 0) > 0).map((t) => {
@@ -1590,14 +1883,17 @@ function PaymentPanel({
             {taxInvoice ? `📄 ${taxInvoice.companyName}` : '+ ออกใบกำกับภาษี'}
           </button>
 
+              </div>
+            )}
+          </div>
           {/* Helper text */}
           {paymentOptions.length === 0 ? (
             <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
               ไม่สามารถโหลดช่องทางชำระได้ — กรุณาลองรีเฟรชหน้า
             </p>
-          ) : checkoutMode === 'head' && selectedHeadTotal === 0 ? (
+          ) : checkoutMode === 'head' && paymentMode === 'items' && selectedHeadTotal === 0 ? (
             <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
-              กรุณาเลือกจำนวนหัวที่ต้องการรับชำระ
+              กรุณาเลือกรายการที่ต้องการรับชำระ
             </p>
           ) : paymentRowsDraft.length === 0 ? (
             <p className="shrink-0 text-center text-xs text-muted-foreground">
@@ -1605,11 +1901,11 @@ function PaymentPanel({
             </p>
           ) : checkoutMode === 'head' && selectedHeadAmountCents > remainingBeforeCents ? (
             <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
-              ยอดหัวที่เลือกมากกว่ายอดคงเหลือ
+              ยอดรายการที่เลือกมากกว่ายอดคงเหลือ
             </p>
           ) : checkoutMode === 'head' && !isDraftComplete ? (
             <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
-              ยอดรับชำระไม่ตรงกับจำนวนหัวที่เลือก
+              ยอดรับชำระไม่ตรงกับรายการที่เลือก
             </p>
           ) : checkoutMode === 'manual' && settlementMode === 'partial' && isDraftComplete ? (
             <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
@@ -1617,16 +1913,11 @@ function PaymentPanel({
             </p>
           ) : null}
 
-          {/* Confirm */}
-          <button type="button" onClick={handleSubmit} disabled={confirmDisabled}
-            className="shrink-0 flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-base font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors mt-auto">
-            {submitting && <Loader2 className="size-4 animate-spin" />}
-            {submitting ? 'กำลังดำเนินการ…' : confirmLabel}
-          </button>
+
         </div>
 
         {/* ── Right panel: payment rows + static numpad ── */}
-        <div className="flex-1 border-l border-border p-4 flex flex-col gap-2.5 bg-muted/20 overflow-y-auto min-w-0">
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden border-l border-border bg-muted/20 p-3 min-w-0">
 
           {paymentOptions.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
@@ -1637,56 +1928,44 @@ function PaymentPanel({
           ) : (
             <>
               {/* Balance summary */}
-              <div className="shrink-0 rounded-xl bg-card border border-border px-4 py-3 space-y-1.5">
+              <div className="shrink-0 rounded-xl bg-card border border-border px-3 py-2 space-y-0.5">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">ยอดบิลทั้งหมด</span>
                   <span className="tabular-nums font-semibold text-foreground">฿{billTotalForSettlement.toLocaleString('th-TH')}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">ชำระแล้ว</span>
-                  <span className="tabular-nums font-semibold text-emerald-600">฿{paidBeforeSettlement.toLocaleString('th-TH')}</span>
+                  <span className="text-muted-foreground">เลือกชำระครั้งนี้</span>
+                  <span className="tabular-nums font-semibold text-primary">฿{paymentTargetAmount.toLocaleString('th-TH')}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">คงเหลือก่อนรับรอบนี้</span>
-                  <span className="tabular-nums font-semibold text-foreground">฿{remainingBeforePayment.toLocaleString('th-TH')}</span>
-                </div>
-                {checkoutMode === 'head' && (
-                  <>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">หัวที่เลือกครั้งนี้</span>
-                      <span className="tabular-nums font-semibold text-foreground">{selectedHeadTotal} หัว</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">เลือกชำระครั้งนี้</span>
-                      <span className="tabular-nums font-semibold text-primary">฿{paymentTargetAmount.toLocaleString('th-TH')}</span>
-                    </div>
-                  </>
-                )}
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">รายการรับเงิน</span>
+                  <span className="text-muted-foreground">รับแล้วรอบนี้</span>
                   <span className="tabular-nums font-semibold text-primary">฿{draftRowsTotal.toLocaleString('th-TH')}</span>
                 </div>
-                <div className="flex justify-between font-bold border-t border-border/60 pt-1.5 mt-0.5">
-                  <span className="text-sm text-foreground">คงเหลือหลังรับ</span>
-                  <span className={`tabular-nums text-lg ${remainingAfterDraft > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                    ฿{remainingAfterDraft.toLocaleString('th-TH')}
+                <div className="flex items-end justify-between gap-3 rounded-lg bg-primary/10 px-3 py-1.5">
+                  <span className="text-sm font-semibold text-primary">ต้องรับรอบนี้</span>
+                  <span className={`tabular-nums text-xl font-bold leading-none ${remainingForDraft > 0 ? 'text-primary' : 'text-emerald-600'}`}>
+                    ฿{remainingForDraft.toLocaleString('th-TH')}
                   </span>
                 </div>
-                {checkoutMode === 'head' && paymentRowsDraft.length > 0 && draftRowsTotalCents !== paymentTargetCents && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">คงเหลือของทั้งบิลหลังเลือกรอบนี้</span>
+                  <span className={`tabular-nums font-semibold ${remainingAfterSelection > 0 ? 'text-muted-foreground' : 'text-emerald-600'}`}>
+                    ฿{remainingAfterSelection.toLocaleString('th-TH')}
+                  </span>
+                </div>
+                {paymentRowsDraft.length > 0 && draftRowsTotalCents !== paymentTargetCents && (
                   <p className="text-center text-xs font-medium text-amber-600 dark:text-amber-400">
-                    ยอดรายการรับเงินต้องเท่ากับ ฿{paymentTargetAmount.toLocaleString('th-TH')}
+                    ยอดรับเงินต้องเท่ากับ ฿{paymentTargetAmount.toLocaleString('th-TH')}
                   </p>
                 )}
                 {isCashMethod && draftChange > 0 && (
                   <div className="flex justify-between text-sm font-semibold text-emerald-600 pt-0.5">
-                    <span>เงินทอน (ร้าง)</span>
+                    <span>เงินทอน</span>
                     <span className="tabular-nums">฿{draftChange.toLocaleString('th-TH')}</span>
                   </div>
                 )}
-              </div>
-
-              {isDraftComplete && (
-                <div className="shrink-0 rounded-xl bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800 px-4 py-3 text-center">
+              </div>              {isDraftComplete && (
+                <div className="shrink-0 rounded-xl bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800 px-3 py-2 text-center">
                   <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">ครบยอดแล้ว — กดยืนยันชำระได้เลย</p>
                 </div>
               )}
@@ -1695,13 +1974,13 @@ function PaymentPanel({
               {!isDraftComplete && (
                 <div className="shrink-0">
                   <p className="text-[11px] font-medium text-muted-foreground mb-1.5">ช่องทางชำระ</p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-1.5">
                     {paymentOptions.map((m) => (
                       <button
                         key={m.id}
                         type="button"
                         onClick={() => selectDraftMethod(m.id)}
-                        className={`rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors ${
+                        className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
                           draftMethodId === m.id
                             ? 'border-primary bg-primary text-primary-foreground shadow-sm'
                             : 'border-border bg-card text-foreground hover:bg-muted/50'
@@ -1718,13 +1997,13 @@ function PaymentPanel({
               {!isDraftComplete && draftMethod && draftMethod.accounts.length > 1 && (
                 <div className="shrink-0">
                   <p className="text-[11px] font-medium text-muted-foreground mb-1.5">บัญชี</p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-1.5">
                     {draftMethod.accounts.map((acc) => (
                       <button
                         key={acc.id}
                         type="button"
                         onClick={() => setDraftAccountId(acc.id)}
-                        className={`rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors ${
+                        className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
                           draftAccountId === acc.id
                             ? 'border-primary bg-primary text-primary-foreground shadow-sm'
                             : 'border-border bg-card text-foreground hover:bg-muted/50'
@@ -1737,41 +2016,42 @@ function PaymentPanel({
                 </div>
               )}
 
-              {/* Numpad display — ALWAYS visible */}
-              <div className="shrink-0 rounded-2xl border border-border bg-card px-5 py-4 text-right">
-                <p className="text-xs font-medium text-muted-foreground mb-1.5">
-                  {draftMethodId === ''
-                    ? 'เลือกช่องทางชำระ'
-                    : isCashMethod && draftAmountNum > 0
-                      ? `รับเงินมา — ส่วนลูกค้า ฿${draftAmountNum.toLocaleString('th-TH')}`
-                      : 'ยอดชำระ'}
-                </p>
-                <p className={`text-5xl font-bold tabular-nums leading-none ${draftMethodId === '' ? 'text-muted-foreground/40' : 'text-foreground'}`}>
-                  {draftMethodId === '' ? '—' : `฿${Number(numpadValue || '0').toLocaleString('th-TH')}`}
-                </p>
-                {isCashMethod && draftTenderedNum > 0 && draftChange < 0 && (
-                  <p className="text-sm mt-3 tabular-nums font-semibold text-red-500">จำนวนเงินไม่เพียงพอ</p>
-                )}
-                {isCashMethod && draftTenderedNum > 0 && draftChange >= 0 && (
-                  <p className="text-sm mt-3 tabular-nums font-semibold text-emerald-600">เงินทอน ฿{draftChange.toLocaleString('th-TH')}</p>
+              {/* Numpad display - ALWAYS visible */}
+              <div className="shrink-0 rounded-xl border border-border bg-card px-3 py-2">
+                {isCashMethod && draftMethodId !== '' ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-3 text-xs">
+                      <span className="text-muted-foreground">ยอดชำระด้วยเงินสด</span>
+                      <span className="font-semibold tabular-nums text-foreground">฿{draftAmountNum.toLocaleString('th-TH')}</span>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-medium text-muted-foreground">รับเงินสดจากลูกค้า</p>
+                      <p className="text-2xl font-bold tabular-nums leading-none text-foreground">฿{draftTenderedNum.toLocaleString('th-TH')}</p>
+                    </div>
+                    <div className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1 text-sm font-semibold ${draftChange < 0 ? 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400'}`}>
+                      <span>{draftChange < 0 ? 'ขาดเงินสด' : 'เงินทอน'}</span>
+                      <span className="tabular-nums">฿{Math.abs(draftChange).toLocaleString('th-TH')}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-right">
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">
+                      {draftMethodId === '' ? 'เลือกช่องทางชำระ' : 'ยอดชำระ'}
+                    </p>
+                    <p className="text-2xl font-bold tabular-nums leading-none text-foreground">
+                      {draftMethodId === '' ? `฿${remainingForDraft.toLocaleString('th-TH')}` : `฿${Number(numpadValue || '0').toLocaleString('th-TH')}`}
+                    </p>
+                  </div>
                 )}
               </div>
-
               {/* Numpad keys — ALWAYS visible; disabled when no method or bill is complete */}
-              <div className={`shrink-0 grid grid-cols-3 gap-2 ${draftMethodId === '' || isDraftComplete ? 'opacity-30 pointer-events-none' : ''}`}>
+              <div className={`shrink-0 grid grid-cols-3 gap-1.5 ${draftMethodId === '' || isDraftComplete ? 'opacity-30 pointer-events-none' : ''}`}>
                 {(['7','8','9','4','5','6','1','2','3','C','0','⌫'] as const).map((k) => (
                   <button
                     key={k}
                     type="button"
-                    onClick={() => {
-                      if (k === '⌫') numpadSetter((v) => v.length > 1 ? v.slice(0, -1) : '0');
-                      else if (k === 'C') numpadSetter('0');
-                      else numpadSetter((v) => {
-                        const next = v === '0' ? k : v + k;
-                        return next.length <= 7 ? next : v;
-                      });
-                    }}
-                    className={`rounded-2xl text-xl font-bold transition-colors active:scale-95 select-none h-[60px] ${
+                    onClick={() => handleNumpadPress(k)}
+                    className={`rounded-lg text-base font-bold transition-colors active:scale-95 select-none h-10 ${
                       k === 'C'  ? 'bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 dark:bg-red-950/30 dark:border-red-900 dark:text-red-400' :
                       k === '⌫' ? 'bg-muted border border-border text-foreground hover:bg-muted/70' :
                                    'bg-card border border-border text-foreground hover:bg-muted/50 shadow-sm'
@@ -1784,19 +2064,22 @@ function PaymentPanel({
 
               {/* Quick amounts */}
               {!isDraftComplete && draftMethodId !== '' && activeQuickAmounts.length > 0 && (
-                <div className="shrink-0 flex gap-2">
+                <div className="shrink-0 flex gap-1.5">
                   {activeQuickAmounts.map((amt) => (
                     <button
                       key={amt}
                       type="button"
-                      onClick={() => numpadSetter(String(amt))}
-                      className={`flex-1 rounded-xl border py-2.5 text-sm font-semibold tabular-nums transition-colors ${
+                      onClick={() => {
+                        numpadSetter(String(amt));
+                        setNumpadAutoPrefilled(false);
+                      }}
+                      className={`flex-1 rounded-lg border py-2 text-xs font-semibold tabular-nums transition-colors ${
                         numpadValue === String(amt)
                           ? 'border-primary bg-primary text-primary-foreground'
                           : 'border-border bg-card text-foreground hover:bg-muted/50'
                       }`}
                     >
-                      {!isCashMethod && amt === remainingForDraft ? 'คงเหลือ' : `฿${amt.toLocaleString('th-TH')}`}
+                      {isCashMethod && amt === draftAmountNum ? 'พอดี' : !isCashMethod && amt === remainingForDraft ? 'คงเหลือ' : `฿${amt.toLocaleString('th-TH')}`}
                     </button>
                   ))}
                 </div>
@@ -1808,7 +2091,7 @@ function PaymentPanel({
                   type="button"
                   disabled={!canAddRow}
                   onClick={addDraftRow}
-                  className="shrink-0 w-full rounded-xl border border-dashed border-primary py-3 text-sm font-semibold text-primary hover:bg-primary/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="shrink-0 w-full rounded-xl border border-dashed border-primary py-2.5 text-sm font-semibold text-primary hover:bg-primary/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   + เพิ่มรายการชำระ
                 </button>
@@ -1816,10 +2099,10 @@ function PaymentPanel({
 
               {/* Draft rows list */}
               {paymentRowsDraft.length > 0 && (
-                <div className="shrink-0 space-y-2">
+                <div className="min-h-0 max-h-24 overflow-y-auto space-y-1.5 pr-1">
                   <p className="text-[11px] font-semibold text-muted-foreground">รายการที่เพิ่มแล้ว</p>
                   {paymentRowsDraft.map((row, idx) => (
-                    <div key={row.id} className="flex items-start gap-2 rounded-xl bg-card border border-border px-3 py-3">
+                    <div key={row.id} className="flex items-start gap-2 rounded-xl bg-card border border-border px-3 py-2">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-foreground leading-tight">
                           {idx + 1}. {row.paymentMethodName}
@@ -1849,6 +2132,15 @@ function PaymentPanel({
                   ))}
                 </div>
               )}
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={confirmDisabled}
+                className="mt-auto flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
+              >
+                {submitting && <Loader2 className="size-4 animate-spin" />}
+                {submitting ? 'กำลังดำเนินการ…' : confirmLabel}
+              </button>
             </>
           )}
         </div>
@@ -1998,7 +2290,15 @@ function PaymentPanel({
       setLastReceipt(receipt);
 
       setPaid(true);
-      await printPaymentEventReceipt(result.data.paymentId, receipt);
+      setLastPaymentId(result.data.paymentId);
+      setLocalPaymentHistory((prev) => [...prev, {
+        id: result.data.paymentId,
+        amount: result.data.total,
+        methodLabel: METHOD_LABEL[dbMethod],
+        paidAtLabel: paymentHistoryTime(),
+        settlementType: result.data.settlementType,
+        receipt,
+      }]);
     }
 
     const activeTiles = [...guestTiles, ...addonTiles].filter((t) => (roundRemaining[t.id] ?? 0) > 0);
@@ -2023,7 +2323,7 @@ function PaymentPanel({
           {!allDone && activeTiles.length > 0 && (
             <div className="shrink-0">
               <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">เลือกรายการรอบนี้</p>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 {activeTiles.map((t) => {
                   const remaining = roundRemaining[t.id] ?? 0;
                   const selected  = roundSelection[t.id] ?? 0;
@@ -2203,7 +2503,7 @@ function PaymentPanel({
                 </button>
               </div>
             ) : (
-              <div className="shrink-0 rounded-2xl border border-border bg-card px-5 py-4 text-right">
+              <div className="shrink-0 rounded-xl border border-border bg-card px-3 py-2 text-right">
                 <p className="text-xs font-medium text-muted-foreground mb-1">
                   {roundMethod === 'qr_promptpay' ? 'ยอดชำระ QR' : 'รับเงิน'}
                 </p>
@@ -2224,7 +2524,7 @@ function PaymentPanel({
                 ? setRoundCashQrCashInput
                 : setRoundNumpad;
               return (
-                <div className="flex-1 grid grid-cols-3 gap-2 content-start">
+                <div className="flex-1 grid grid-cols-3 gap-1.5 content-start">
                   {(['7','8','9','4','5','6','1','2','3','C','0','⌫'] as const).map((k) => (
                     <button
                       key={k}
@@ -2238,7 +2538,7 @@ function PaymentPanel({
                           return next.length <= 7 ? next : v;
                         });
                       }}
-                      className={`rounded-2xl text-xl font-bold transition-colors active:scale-95 select-none h-[60px] ${
+                      className={`rounded-lg text-base font-bold transition-colors active:scale-95 select-none h-10 ${
                         roundMethod === 'qr_promptpay'
                           ? 'bg-muted/30 border border-border text-muted-foreground/30 cursor-not-allowed'
                           : k === 'C'  ? 'bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 dark:bg-red-950/30 dark:border-red-900 dark:text-red-400' :
@@ -2487,7 +2787,7 @@ function PaymentPanel({
                 <Printer className="size-4" />ปริ้นบิล
               </button>
             </div>
-            <button type="button" onClick={() => setView('payment')}
+            <button type="button" onClick={openPaymentScreen}
               className="w-full rounded-xl bg-primary py-4 text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
               ชำระเงิน →
             </button>

@@ -874,36 +874,34 @@ export async function createPurchaseOrder(input: unknown) {
     const vatAmount = subtotal * (vatRate / 100);
     const total = subtotal + vatAmount;
 
-    const result = await db.transaction(async (tx) => {
-      const [po] = await tx.insert(purchaseOrders).values({
-        poNumber,
-        supplierId: poData.supplierId,
-        status: 'draft',
-        orderDate: poData.orderDate,
-        expectedDate: poData.expectedDate ?? null,
-        vatRate: String(vatRate),
-        subtotal: String(subtotal.toFixed(2)),
-        vatAmount: String(vatAmount.toFixed(2)),
-        total: String(total.toFixed(2)),
-        hasTaxInvoice: poData.hasTaxInvoice,
-        taxInvoiceNumber: poData.taxInvoiceNumber ?? null,
-        notes: poData.notes ?? null,
-        createdBy: userId,
-      }).returning({ id: purchaseOrders.id });
+    const [po] = await db.insert(purchaseOrders).values({
+      poNumber,
+      supplierId: poData.supplierId,
+      status: 'draft',
+      orderDate: poData.orderDate,
+      expectedDate: poData.expectedDate ?? null,
+      vatRate: String(vatRate),
+      subtotal: String(subtotal.toFixed(2)),
+      vatAmount: String(vatAmount.toFixed(2)),
+      total: String(total.toFixed(2)),
+      hasTaxInvoice: poData.hasTaxInvoice,
+      taxInvoiceNumber: poData.taxInvoiceNumber ?? null,
+      notes: poData.notes ?? null,
+      createdBy: userId,
+    }).returning({ id: purchaseOrders.id });
 
-      await tx.insert(purchaseOrderItems).values(
-        items.map((item) => ({
-          purchaseOrderId: po.id,
-          ingredientId: item.ingredientId,
-          quantity: String(item.quantity),
-          unit: item.unit,
-          unitCost: String(item.unitCost),
-          lineTotal: String((item.quantity * item.unitCost).toFixed(2)),
-        })),
-      );
+    await db.insert(purchaseOrderItems).values(
+      items.map((item) => ({
+        purchaseOrderId: po.id,
+        ingredientId: item.ingredientId,
+        quantity: String(item.quantity),
+        unit: item.unit,
+        unitCost: String(item.unitCost),
+        lineTotal: String((item.quantity * item.unitCost).toFixed(2)),
+      })),
+    );
 
-      return po.id;
-    });
+    const result = po.id;
 
     revalidatePath('/inventory/orders');
     revalidatePath('/inventory');
@@ -930,33 +928,31 @@ export async function updatePurchaseOrder(input: unknown) {
     const vatAmount = subtotal * (vatRate / 100);
     const total = subtotal + vatAmount;
 
-    await db.transaction(async (tx) => {
-      await tx.update(purchaseOrders).set({
-        supplierId: poData.supplierId,
-        orderDate: poData.orderDate,
-        expectedDate: poData.expectedDate ?? null,
-        vatRate: String(vatRate),
-        subtotal: String(subtotal.toFixed(2)),
-        vatAmount: String(vatAmount.toFixed(2)),
-        total: String(total.toFixed(2)),
-        hasTaxInvoice: poData.hasTaxInvoice,
-        taxInvoiceNumber: poData.taxInvoiceNumber ?? null,
-        notes: poData.notes ?? null,
-        updatedAt: new Date(),
-      }).where(eq(purchaseOrders.id, id));
+    await db.update(purchaseOrders).set({
+      supplierId: poData.supplierId,
+      orderDate: poData.orderDate,
+      expectedDate: poData.expectedDate ?? null,
+      vatRate: String(vatRate),
+      subtotal: String(subtotal.toFixed(2)),
+      vatAmount: String(vatAmount.toFixed(2)),
+      total: String(total.toFixed(2)),
+      hasTaxInvoice: poData.hasTaxInvoice,
+      taxInvoiceNumber: poData.taxInvoiceNumber ?? null,
+      notes: poData.notes ?? null,
+      updatedAt: new Date(),
+    }).where(eq(purchaseOrders.id, id));
 
-      await tx.delete(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, id));
-      await tx.insert(purchaseOrderItems).values(
-        items.map((item) => ({
-          purchaseOrderId: id,
-          ingredientId: item.ingredientId,
-          quantity: String(item.quantity),
-          unit: item.unit,
-          unitCost: String(item.unitCost),
-          lineTotal: String((item.quantity * item.unitCost).toFixed(2)),
-        })),
-      );
-    });
+    await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, id));
+    await db.insert(purchaseOrderItems).values(
+      items.map((item) => ({
+        purchaseOrderId: id,
+        ingredientId: item.ingredientId,
+        quantity: String(item.quantity),
+        unit: item.unit,
+        unitCost: String(item.unitCost),
+        lineTotal: String((item.quantity * item.unitCost).toFixed(2)),
+      })),
+    );
 
     revalidatePath('/inventory/orders');
     revalidatePath(`/inventory/orders/${id}`);
@@ -1003,60 +999,58 @@ export async function receiveOrder(input: unknown) {
       where: eq(purchaseOrderItems.purchaseOrderId, id),
     });
 
-    await db.transaction(async (tx) => {
-      // Create goods receipt record
-      const [receipt] = await tx.insert(goodsReceipts).values({
-        purchaseOrderId: id,
-        receivedDate,
-        notes: notes ?? null,
-        receivedBy: userId,
-      }).returning({ id: goodsReceipts.id });
+    // Create goods receipt record
+    const [receipt] = await db.insert(goodsReceipts).values({
+      purchaseOrderId: id,
+      receivedDate,
+      notes: notes ?? null,
+      receivedBy: userId,
+    }).returning({ id: goodsReceipts.id });
 
-      // Create receipt items + update PO item received quantities + update lastCost
-      for (const receivedItem of items) {
-        if (receivedItem.receivedQuantity <= 0) continue;
+    // Create receipt items + update PO item received quantities + update lastCost
+    for (const receivedItem of items) {
+      if (receivedItem.receivedQuantity <= 0) continue;
 
-        await tx.insert(goodsReceiptItems).values({
-          goodsReceiptId: receipt.id,
-          purchaseOrderItemId: receivedItem.id,
-          receivedQuantity: String(receivedItem.receivedQuantity),
-          discrepancyType: receivedItem.discrepancyType,
-          discrepancyNotes: receivedItem.discrepancyNotes ?? null,
-        });
+      await db.insert(goodsReceiptItems).values({
+        goodsReceiptId: receipt.id,
+        purchaseOrderItemId: receivedItem.id,
+        receivedQuantity: String(receivedItem.receivedQuantity),
+        discrepancyType: receivedItem.discrepancyType,
+        discrepancyNotes: receivedItem.discrepancyNotes ?? null,
+      });
 
-        // Accumulate receivedQuantity on PO item
-        const poItem = poItems.find((p) => p.id === receivedItem.id);
-        if (poItem) {
-          const newReceivedQty = Number(poItem.receivedQuantity ?? 0) + receivedItem.receivedQuantity;
-          await tx.update(purchaseOrderItems)
-            .set({ receivedQuantity: String(newReceivedQty) })
-            .where(eq(purchaseOrderItems.id, receivedItem.id));
+      // Accumulate receivedQuantity on PO item
+      const poItem = poItems.find((p) => p.id === receivedItem.id);
+      if (poItem) {
+        const newReceivedQty = Number(poItem.receivedQuantity ?? 0) + receivedItem.receivedQuantity;
+        await db.update(purchaseOrderItems)
+          .set({ receivedQuantity: String(newReceivedQty) })
+          .where(eq(purchaseOrderItems.id, receivedItem.id));
 
-          // Update lastCost on ingredient
-          await tx.update(ingredients)
-            .set({ lastCost: poItem.unitCost, updatedAt: new Date() })
-            .where(eq(ingredients.id, poItem.ingredientId));
-        }
+        // Update lastCost on ingredient
+        await db.update(ingredients)
+          .set({ lastCost: poItem.unitCost, updatedAt: new Date() })
+          .where(eq(ingredients.id, poItem.ingredientId));
       }
+    }
 
-      // Determine new PO status
-      const updatedPoItems = await tx
-        .select({ quantity: purchaseOrderItems.quantity, receivedQuantity: purchaseOrderItems.receivedQuantity })
-        .from(purchaseOrderItems)
-        .where(eq(purchaseOrderItems.purchaseOrderId, id));
+    // Determine new PO status
+    const updatedPoItems = await db
+      .select({ quantity: purchaseOrderItems.quantity, receivedQuantity: purchaseOrderItems.receivedQuantity })
+      .from(purchaseOrderItems)
+      .where(eq(purchaseOrderItems.purchaseOrderId, id));
 
-      const allReceived = !isPartial && updatedPoItems.every(
-        (item) => Number(item.receivedQuantity ?? 0) >= Number(item.quantity),
-      );
+    const allReceived = !isPartial && updatedPoItems.every(
+      (item) => Number(item.receivedQuantity ?? 0) >= Number(item.quantity),
+    );
 
-      await tx.update(purchaseOrders).set({
-        status: allReceived ? 'received' : 'partial_received',
-        receivedDate: allReceived ? receivedDate : null,
-        hasTaxInvoice,
-        taxInvoiceNumber: taxInvoiceNumber ?? null,
-        updatedAt: new Date(),
-      }).where(eq(purchaseOrders.id, id));
-    });
+    await db.update(purchaseOrders).set({
+      status: allReceived ? 'received' : 'partial_received',
+      receivedDate: allReceived ? receivedDate : null,
+      hasTaxInvoice,
+      taxInvoiceNumber: taxInvoiceNumber ?? null,
+      updatedAt: new Date(),
+    }).where(eq(purchaseOrders.id, id));
 
     revalidatePath('/inventory/orders');
     revalidatePath(`/inventory/orders/${id}`);
