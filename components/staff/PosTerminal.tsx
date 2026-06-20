@@ -2682,7 +2682,7 @@ function PaymentPanel({
         <div>
           <p className="text-base font-semibold text-foreground">โต๊ะ {session.table.label}</p>
           {isGroupBill && linkedTableLabels && (
-            <p className="text-xs font-medium text-violet-600 dark:text-violet-400 mt-0.5">
+            <p className="text-xs font-medium text-[var(--status-purple-fg)] mt-0.5">
               บิลกลุ่ม · รวมโต๊ะ {[session.table.label, ...linkedTableLabels].join(', ')}
             </p>
           )}
@@ -2694,7 +2694,7 @@ function PaymentPanel({
             </span>
           )}
           {session.status === 'closing' && (
-            <span className="rounded-full bg-red-100 dark:bg-red-950/40 px-3 py-1 text-xs font-semibold text-red-700 dark:text-red-400">
+            <span className="rounded-full bg-[var(--status-danger-bg)] px-3 py-1 text-xs font-semibold text-[var(--status-danger-fg)]">
               รอเรียกเก็บเงิน
             </span>
           )}
@@ -2761,7 +2761,8 @@ function PaymentPanel({
                 <div className="flex-1 overflow-y-auto p-5">
                   <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">รายการที่เลือก</p>
                   {selectedGuests.length === 0 && selectedAddons.length === 0 ? (
-                    <div className="flex h-40 flex-col items-center justify-center text-center">
+                    <div className="flex h-40 flex-col items-center justify-center text-center gap-2">
+                      <Tag className="size-7 text-muted-foreground/30" />
                       <p className="text-sm text-muted-foreground">แตะ tile เพื่อเพิ่มรายการ</p>
                     </div>
                   ) : (
@@ -2793,7 +2794,7 @@ function PaymentPanel({
                             </div>
                             <div className="flex justify-between mt-1">
                               <span className="text-xs text-muted-foreground">+฿{Number(t.price).toLocaleString('th-TH')}</span>
-                              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">฿{(Number(t.price) * qty).toLocaleString('th-TH')}</span>
+                              <span className="text-xs font-semibold text-[var(--status-success-fg)]">฿{(Number(t.price) * qty).toLocaleString('th-TH')}</span>
                             </div>
                           </button>
                         );
@@ -2814,7 +2815,7 @@ function PaymentPanel({
                       <div className="mt-5 flex items-center justify-center gap-6">
                         <button type="button" aria-label="ลด"
                           onClick={() => handlePosQtyChange(Math.max(0, editingPosQty - 1))}
-                          className="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-2xl font-bold text-foreground hover:bg-red-100 hover:text-red-700 active:scale-95 transition-all"
+                          className="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-2xl font-bold text-foreground hover:bg-[var(--status-danger-bg)] hover:text-[var(--status-danger-fg)] active:scale-95 transition-all"
                         >−</button>
                         <span className="w-12 text-center text-3xl font-bold tabular-nums text-foreground">{editingPosQty}</span>
                         <button type="button" aria-label="เพิ่ม"
