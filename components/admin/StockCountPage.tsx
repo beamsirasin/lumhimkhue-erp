@@ -25,6 +25,7 @@ import {
   type LowStockItem,
 } from '@/lib/actions/inventory';
 import { StockCountHistoryTab } from '@/components/admin/StockCountHistoryTab';
+import { AppShell } from '@/components/ui/app-shell';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -251,55 +252,20 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
   const guestCount = initialData.todayGuestCount;
 
   return (
-    <div className="p-5 md:p-6 space-y-5 md:space-y-6">
-      {/* Tab navigation */}
-      <div className="border-b border-border -mx-5 md:-mx-6 px-5 md:px-6">
-        <div className="flex gap-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab('daily')}
-            className={cn(
-              'px-4 py-3 text-sm font-medium border-b-2 transition-colors',
-              activeTab === 'daily'
-                ? 'border-primary text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
-            )}
-          >
-            นับสต็อกรายวัน
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('history')}
-            className={cn(
-              'px-4 py-3 text-sm font-medium border-b-2 transition-colors',
-              activeTab === 'history'
-                ? 'border-primary text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
-            )}
-          >
-            ผลการนับสต็อก
-          </button>
-        </div>
-      </div>
-
-      {activeTab === 'history' && <StockCountHistoryTab />}
-
-      {activeTab === 'daily' && (
-      <>
-      {/* Header */}
+    <AppShell>
+      {/* Page header with V2 tab switcher */}
       <PageHeader
-        title="นับสต็อกรายวัน"
-        subtitle={format(new Date(today + 'T00:00:00'), 'd MMMM yyyy', { locale: th })}
-        noBorder
+        title={activeTab === 'daily' ? 'นับสต็อกรายวัน' : 'ผลการนับสต็อก'}
+        subtitle={activeTab === 'daily' ? format(new Date(today + 'T00:00:00'), 'd MMMM yyyy', { locale: th }) : undefined}
         actions={
-          <div className="flex items-center gap-2">
-            {guestCount > 0 && (
+          <div className="flex items-center gap-3">
+            {activeTab === 'daily' && guestCount > 0 && (
               <span className="flex items-center gap-1.5 rounded-full border border-[var(--status-info-border)] bg-[var(--status-info-bg)] px-3 py-1 text-xs font-medium text-[var(--status-info-fg)]">
                 <Users className="size-3.5" />
                 {guestCount.toLocaleString('th-TH')} หัว
               </span>
             )}
-            {existing ? (
+            {activeTab === 'daily' && (existing ? (
               <StatusBadge
                 label={existing.status === 'submitted' ? 'ส่งแล้ว' : 'แบบร่าง'}
                 variant={existing.status === 'submitted' ? 'success' : 'warning'}
@@ -307,10 +273,41 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
               />
             ) : (
               <StatusBadge label="ใหม่" variant="neutral" size="md" />
-            )}
+            ))}
+            <div className="flex gap-px rounded-lg bg-muted p-1">
+              <button
+                type="button"
+                onClick={() => setActiveTab('daily')}
+                className={cn(
+                  'rounded-md px-3.5 py-1.5 text-sm font-medium transition-all duration-150',
+                  activeTab === 'daily'
+                    ? 'bg-[var(--surface-1)] text-foreground shadow-sm ring-1 ring-border'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                นับรายวัน
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('history')}
+                className={cn(
+                  'rounded-md px-3.5 py-1.5 text-sm font-medium transition-all duration-150',
+                  activeTab === 'history'
+                    ? 'bg-[var(--surface-1)] text-foreground shadow-sm ring-1 ring-border'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                ประวัติ
+              </button>
+            </div>
           </div>
         }
       />
+
+      {activeTab === 'history' && <StockCountHistoryTab />}
+
+      {activeTab === 'daily' && (
+      <>
 
       {/* Summary bar */}
       <div className="rounded-xl border border-border bg-muted/30 px-5 py-3 flex flex-wrap gap-6 items-center">
@@ -737,6 +734,6 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
       )}
       </>
       )}
-    </div>
+    </AppShell>
   );
 }
