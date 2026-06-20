@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { logoutAction } from '@/lib/actions/auth';
 import type { Role } from '@/lib/auth/permissions';
 import {
@@ -767,6 +768,8 @@ export function StandardSidebarLayout({
               </h1>
             )}
           </div>
+
+          <ThemeToggle />
 
           {/* User avatar — visible on small screens where sidebar is hidden */}
           <div
