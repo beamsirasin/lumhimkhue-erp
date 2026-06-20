@@ -21,6 +21,7 @@ import type { BillTypeKey } from '@/lib/utils/billConfig';
 import { incrementReceiptCounter } from '@/lib/actions/store';
 import type { PosSession, PosSessionDetail } from '@/lib/actions/pos';
 import { Printer, CheckCircle2, Tag, Package, X, Loader2, Receipt, Save, AlertCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { PricingTile as PricingTileCard } from '@/components/staff/PricingTile';
 import { ShiftWidget } from '@/components/staff/ShiftWidget';
 import { print as printReceipt } from '@/lib/printer/service';
@@ -156,25 +157,29 @@ export function PosTerminal({
   }, [linkedMap]);
 
   return (
-    <div className="p-6">
+    <div className="min-h-[calc(100dvh-4rem)] bg-[var(--surface-0)] p-4 sm:p-6">
       {/* Header */}
-      <div className="mb-4">
+      <div className="mb-4 rounded-2xl border border-border bg-[var(--surface-1)] p-4 shadow-[var(--shadow-soft)]">
         <h1 className="text-xl font-semibold text-foreground">POS / แคชเชียร์</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           {closing.length > 0 && (
-            <span className="text-red-600 dark:text-red-400 font-medium">{closing.length} รอเรียกเก็บเงิน · </span>
+            <span className="text-[var(--status-danger-fg)] font-medium">{closing.length} รอเรียกเก็บเงิน · </span>
           )}
           {active.length} โต๊ะที่ใช้งาน
         </p>
       </div>
 
       {/* Cashier shift banner */}
-      <ShiftWidget />
+      <div className="mb-4">
+        <ShiftWidget />
+      </div>
 
 
       {/* Session grid */}
       {primarySessions.length === 0 ? (
-        <p className="py-24 text-center text-sm text-muted-foreground">ไม่มีโต๊ะที่ใช้งาน</p>
+        <div className="rounded-2xl border border-dashed border-border bg-[var(--surface-1)] px-6 py-20 text-center shadow-[var(--shadow-soft)]">
+          <p className="text-sm font-medium text-muted-foreground">ไม่มีโต๊ะที่ใช้งาน</p>
+        </div>
       ) : (
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {primarySessions.map((s) => {
@@ -193,9 +198,9 @@ export function PosTerminal({
             return (
               <div key={s.id} className="relative">
                 {linked.length >= 2 && (
-                  <div className="absolute inset-0 translate-x-2 translate-y-2 rounded-xl border-2 border-border bg-card z-0" />
+                  <div className="absolute inset-0 translate-x-2 translate-y-2 rounded-xl border-2 border-border bg-[var(--surface-2)] z-0" />
                 )}
-                <div className="absolute inset-0 translate-x-1 translate-y-1 rounded-xl border-2 border-border bg-card z-[1]" />
+                <div className="absolute inset-0 translate-x-1 translate-y-1 rounded-xl border-2 border-border bg-[var(--surface-1)] z-[1]" />
                 <div className="relative z-[2]">
                   <SessionCard
                     session={frontSession}
@@ -230,7 +235,7 @@ export function PosTerminal({
             onClick={() => setGroupPickerId(null)}
           >
             <div
-              className="w-full max-w-md rounded-2xl bg-card border border-border p-6 shadow-2xl space-y-3"
+              className="w-full max-w-md rounded-2xl bg-[var(--surface-1)] border border-border p-6 shadow-2xl space-y-3"
               onClick={(e) => e.stopPropagation()}
             >
               <p className="text-base font-semibold text-foreground">เลือกบิลที่ต้องการเปิด</p>
@@ -247,10 +252,10 @@ export function PosTerminal({
                       onClick={() => { setSelectedId(s.id); setGroupPickerId(null); }}
                       className={`w-full flex items-center justify-between rounded-xl border px-4 py-4 text-left transition-colors ${
                         isPaid
-                          ? 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50'
+                          ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] hover:opacity-90'
                           : isClosing
-                            ? 'border-red-200 bg-red-50 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/30 dark:hover:bg-red-950/50'
-                            : 'border-border hover:bg-muted/50'
+                            ? 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] hover:opacity-90'
+                            : 'border-border bg-[var(--surface-1)] hover:bg-[var(--surface-2)]'
                       }`}
                     >
                       <div>
@@ -262,19 +267,19 @@ export function PosTerminal({
                               : (s.parentSessionId ? 'บัญชีรอง' : 'บัญชีหลัก')}
                           </span>
                           {isClosing && (
-                            <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
+                            <span className="rounded-full bg-[var(--status-danger-bg)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--status-danger-fg)]">
                               รอชำระ
                             </span>
                           )}
                           {isPaid && (
-                            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                            <span className="rounded-full bg-[var(--status-success-bg)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--status-success-fg)]">
                               จ่ายแล้ว
                             </span>
                           )}
                         </div>
                         <p className="mt-0.5 text-xs text-muted-foreground">{guestCount} คน</p>
                       </div>
-                      <p className={`text-sm font-bold tabular-nums ${isPaid ? 'text-emerald-700 dark:text-emerald-400' : 'text-foreground'}`}>
+                      <p className={`text-sm font-bold tabular-nums ${isPaid ? 'text-[var(--status-success-fg)]' : 'text-foreground'}`}>
                         ฿{total.toLocaleString('th-TH')}
                       </p>
                     </button>
@@ -284,7 +289,7 @@ export function PosTerminal({
               <button
                 type="button"
                 onClick={() => setGroupPickerId(null)}
-                className="w-full rounded-xl border border-border py-3.5 text-sm font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
+                className="w-full rounded-xl border border-border bg-[var(--surface-1)] py-3.5 text-sm font-medium text-muted-foreground hover:bg-[var(--surface-2)] transition-colors"
               >
                 ยกเลิก
               </button>
@@ -300,7 +305,7 @@ export function PosTerminal({
           onClick={() => setSelectedId(null)}
         >
           <div
-            className="relative h-[calc(100dvh-2rem)] max-h-[820px] w-full max-w-[1180px] overflow-hidden rounded-2xl bg-card border border-border shadow-2xl"
+            className="relative h-[calc(100dvh-2rem)] max-h-[820px] w-full max-w-[1180px] overflow-hidden rounded-2xl bg-[var(--surface-1)] border border-border shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -331,16 +336,16 @@ const SessionCard = memo(function SessionCard({ session, selected, onSelect, lin
   const totalGuests = session.guests.reduce((s, g) => s + g.quantity, 0);
 
   const isContinuation = !!session.parentSessionId;
-  let cardClass = 'rounded-xl border-2 p-3 text-left transition-all duration-150 w-full ';
-  if (selected) {
-    cardClass += 'border-primary bg-primary text-primary-foreground shadow-md';
-  } else if (isClosing) {
-    cardClass += 'border-red-300 bg-red-50 hover:bg-red-100 dark:border-red-700 dark:bg-red-950/30 dark:hover:bg-red-950/50';
-  } else if (isPaid) {
-    cardClass += 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50';
-  } else {
-    cardClass += 'border-border bg-card hover:bg-muted/50';
-  }
+  const cardClass = cn(
+    'min-h-32 rounded-xl border-2 p-3 text-left transition-all duration-150 w-full shadow-[var(--shadow-soft)]',
+    selected
+      ? 'border-primary bg-primary text-primary-foreground shadow-md'
+      : isClosing
+        ? 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] hover:opacity-90'
+        : isPaid
+          ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] hover:opacity-90'
+          : 'border-border bg-[var(--surface-1)] hover:bg-[var(--surface-2)]',
+  );
 
   return (
     <button type="button" onClick={handleClick} className={cardClass}>
@@ -356,24 +361,24 @@ const SessionCard = memo(function SessionCard({ session, selected, onSelect, lin
             />
           )}
           {isContinuation && (
-            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-amber-400/80 text-white' : 'bg-amber-100 text-amber-700'}`}>
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-amber-400/80 text-white' : 'bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]'}`}>
               ชำระบางส่วน
             </span>
           )}
           {isClosing && (
-            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-red-400/80 text-white' : 'bg-red-100 text-red-700'}`}>
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-red-400/80 text-white' : 'bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]'}`}>
               รอบิล
             </span>
           )}
           {isPaid && (
-            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-emerald-400/80 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-emerald-400/80 text-white' : 'bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'}`}>
               จ่ายแล้ว
             </span>
           )}
         </div>
       </div>
       <p className={`mt-0.5 text-xs ${selected ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>{totalGuests} คน</p>
-      <p className={`mt-1 text-sm font-semibold tabular-nums ${selected ? 'text-primary-foreground' : isPaid ? 'text-emerald-700 dark:text-emerald-400' : 'text-foreground'}`}>
+      <p className={`mt-1 text-sm font-semibold tabular-nums ${selected ? 'text-primary-foreground' : isPaid ? 'text-[var(--status-success-fg)]' : 'text-foreground'}`}>
         ฿{total.toLocaleString('th-TH')}
       </p>
       {linkedCount > 0 && (
@@ -525,7 +530,7 @@ function PosTile({
           : <Tag className="size-7 text-red-400 opacity-70" />
       )}
       <p className="mt-0.5 text-center text-[11px] font-semibold text-foreground line-clamp-1 w-full">{tile.name}</p>
-      <p className={`text-[11px] font-bold ${tile.category === 'discount' ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'}`}>{priceLabel}</p>
+      <p className={`text-[11px] font-bold ${tile.category === 'discount' ? 'text-red-600 dark:text-red-400' : 'text-[var(--status-success-fg)]'}`}>{priceLabel}</p>
       <div className="flex items-center gap-1 mt-1">
         <button type="button" aria-label="ลด" onClick={onDec} disabled={qty === 0}
           className="flex h-5 w-5 items-center justify-center rounded-full bg-card/70 text-xs font-bold text-foreground hover:bg-card disabled:opacity-30 shadow-sm transition-colors">−</button>
