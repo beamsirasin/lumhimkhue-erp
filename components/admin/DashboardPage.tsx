@@ -9,18 +9,22 @@ import {
   ChartTooltip,
   ChartXAxis,
   ChartYAxis,
+  CartesianGrid,
   BarChart, Bar,
   PieChart, Pie, Cell, Legend,
 } from '@/components/ui/chart';
 import { getDashboardData, getDashboardKpisForPeriod } from '@/lib/actions/dashboard';
-import type { DashboardData, KpiMetric } from '@/lib/actions/dashboard';
+import type { DashboardData } from '@/lib/actions/dashboard';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card';
 import { PageHeader } from '@/components/ui/page-header';
-import { SectionCard } from '@/components/ui/section-card';
+import { DataCard } from '@/components/ui/section-card';
 import { StatusBadge } from '@/components/ui/status-badge';
 import type { BadgeVariant } from '@/components/ui/status-badge';
-import { Banknote, Table2, Users, TrendingUp, Percent, Clock, BarChart2 } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
+import { AppShell } from '@/components/ui/app-shell';
+import { Banknote, Table2, Users, TrendingUp, Percent, Clock, BarChart2, CreditCard } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { CHART_COLORS } from '@/lib/tokens';
 
 type Period = 'today' | 'week' | 'month';
@@ -52,6 +56,9 @@ const STATUS_CONFIG: Record<TableStatus, { label: string; variant: BadgeVariant 
   cleaning:  { label: 'ทำความสะอาด',   variant: 'warning' },
   reserved:  { label: 'จอง',            variant: 'info' },
 };
+
+/* Always show all 4 status tiles even when count is 0 */
+const TABLE_STATUS_ORDER: TableStatus[] = ['available', 'occupied', 'cleaning', 'reserved'];
 
 const PIE_COLORS: readonly string[] = CHART_COLORS;
 
@@ -87,8 +94,8 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
   const vsLabel = PERIOD_VS[period];
 
   return (
-    <div className="page-shell">
-      {/* Header row */}
+    <AppShell>
+      {/* Header + period selector */}
       <PageHeader
         title="แดชบอร์ด"
         subtitle={format(new Date(), 'EEEE d MMMM yyyy', { locale: th })}
@@ -99,11 +106,12 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
                 key={p}
                 type="button"
                 onClick={() => setPeriod(p)}
-                className={`rounded-md px-3.5 py-1.5 text-sm font-medium transition-all duration-150 ${
+                className={cn(
+                  'rounded-md px-3.5 py-1.5 text-sm font-medium transition-all duration-150',
                   period === p
-                    ? 'bg-card text-foreground shadow-sm ring-1 ring-border'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
+                    ? 'bg-[var(--surface-1)] text-foreground shadow-sm ring-1 ring-border'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
               >
                 {PERIOD_LABELS[p]}
               </button>
@@ -113,7 +121,7 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
       />
 
       <ErrorBoundary>
-        {/* Row 1: core revenue KPIs */}
+        {/* Primary KPIs */}
         <StatCardGrid cols={4}>
           <StatCard
             loading={kpisLoading}
@@ -167,171 +175,192 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
           />
         </StatCardGrid>
 
-        {/* Row 2: efficiency KPIs */}
-        <StatCardGrid cols={4}>
-          <StatCard
-            loading={kpisLoading}
-            label="Food Cost %"
-            value={kpis?.foodCostPct.available ? `${kpis.foodCostPct.value.toFixed(1)}%` : 'N/A'}
-            subLabel={
-              !kpis?.foodCostPct.available
-                ? 'ยังไม่มีสูตรอาหาร'
-                : kpis.foodCostPct.value > 35
-                  ? 'เกินเป้า (≤35%)'
-                  : 'อยู่ในเป้า'
-            }
-            valueClassName={
-              kpis?.foodCostPct.available
-                ? kpis.foodCostPct.value > 35
-                  ? 'text-red-600 dark:text-red-400'
-                  : 'text-emerald-600 dark:text-emerald-400'
-                : undefined
-            }
-            icon={<Percent className="size-4" />}
-            accent={
-              kpis?.foodCostPct.available
-                ? kpis.foodCostPct.value > 35 ? 'danger' : 'success'
-                : 'default'
-            }
-          />
-          <StatCard
-            loading={kpisLoading}
-            label="Labor Cost %"
-            value={kpis?.laborCostPct.available ? `${kpis.laborCostPct.value.toFixed(1)}%` : 'N/A'}
-            subLabel={kpis?.laborCostPct.available ? undefined : 'ยังไม่มีข้อมูลเงินเดือน'}
-            icon={<Users className="size-4" />}
-            accent="default"
-          />
-          <StatCard
-            loading={kpisLoading}
-            label="เฉลี่ยรอบโต๊ะ/วัน"
-            value={kpis ? kpis.avgTableTurns.value.toFixed(1) : '—'}
-            unit="รอบ"
-            trend={kpis?.avgTableTurns ? {
-              pct: kpis.avgTableTurns.changePct ?? 0,
-              dir: kpis.avgTableTurns.changeDir ?? 'flat',
-              label: vsLabel,
-            } : undefined}
-            icon={<Clock className="size-4" />}
-            accent="info"
-          />
-          <StatCard
-            loading={kpisLoading}
-            label="รายได้/ที่นั่ง/วัน"
-            value={kpis ? `฿${kpis.revpash.value.toFixed(0)}` : '—'}
-            trend={kpis?.revpash ? {
-              pct: kpis.revpash.changePct ?? 0,
-              dir: kpis.revpash.changeDir ?? 'flat',
-              label: vsLabel,
-            } : undefined}
-            icon={<BarChart2 className="size-4" />}
-            accent="default"
-          />
-        </StatCardGrid>
-      </ErrorBoundary>
-
-      {/* Charts row */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <SectionCard title="รายได้ 7 วันที่ผ่านมา" className="lg:col-span-2">
-          <ChartContainer height={200}>
-            <BarChart data={revenueByDay} barSize={28}>
-              <ChartXAxis
-                dataKey="date"
-                tickFormatter={(v) => format(new Date(v + 'T00:00:00'), 'd/M', { locale: th })}
-              />
-              <ChartYAxis tickFormatter={(v) => `฿${(v / 1000).toFixed(0)}k`} width={48} />
-              <ChartTooltip
-                formatter={(v) => [`฿${Number(v).toLocaleString('th-TH')}`, 'รายได้']}
-                labelFormatter={(v) => format(new Date(v + 'T00:00:00'), 'd MMMM', { locale: th })}
-              />
-              <Bar dataKey="revenue" fill="oklch(0.30 0.11 248)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ChartContainer>
-        </SectionCard>
-
-        <SectionCard title="วิธีชำระเงินวันนี้">
-          {paymentMethods.length === 0 ? (
-            <div className="flex h-[200px] items-center justify-center">
-              <p className="text-sm text-muted-foreground">ยังไม่มีข้อมูล</p>
-            </div>
-          ) : (
-            <ChartContainer height={200}>
-              <PieChart>
-                <Pie
-                  data={paymentMethods}
-                  dataKey="total"
-                  nameKey="method"
-                  cx="50%" cy="50%"
-                  innerRadius={50}
-                  outerRadius={75}
-                  paddingAngle={2}
-                >
-                  {paymentMethods.map((_, i) => (
-                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
+        {/* Revenue chart + live floor status */}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          <DataCard
+            title="รายได้ 7 วันที่ผ่านมา"
+            subtitle="ยอดรายได้รวมต่อวัน"
+            className="lg:col-span-2"
+          >
+            <ChartContainer height={216}>
+              <BarChart data={revenueByDay} barSize={28}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--border)" />
+                <ChartXAxis
+                  dataKey="date"
+                  tickFormatter={(v) => format(new Date(v + 'T00:00:00'), 'd/M', { locale: th })}
+                />
+                <ChartYAxis tickFormatter={(v) => `฿${(v / 1000).toFixed(0)}k`} width={48} />
                 <ChartTooltip
-                  formatter={(v, name) => [`฿${Number(v).toLocaleString('th-TH')}`, METHOD_LABEL[String(name)] ?? name]}
+                  formatter={(v) => [`฿${Number(v).toLocaleString('th-TH')}`, 'รายได้']}
+                  labelFormatter={(v) => format(new Date(v + 'T00:00:00'), 'd MMMM', { locale: th })}
                 />
-                <Legend
-                  formatter={(v) => METHOD_LABEL[v] ?? v}
-                  iconType="circle"
-                  iconSize={8}
-                  wrapperStyle={{ fontSize: 11 }}
-                />
-              </PieChart>
+                <Bar dataKey="revenue" fill="oklch(0.30 0.11 248)" radius={[4, 4, 0, 0]} />
+              </BarChart>
             </ChartContainer>
-          )}
-        </SectionCard>
-      </div>
+          </DataCard>
 
-      {/* Bottom row */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <SectionCard title="เมนูยอดนิยมวันนี้ (Top 10)">
-          {topMenuItems.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">ยังไม่มีออเดอร์วันนี้</p>
-          ) : (
-            <ol className="space-y-3">
-              {topMenuItems.map((item, i) => {
-                const max = topMenuItems[0].quantity;
+          <DataCard title="สถานะโต๊ะ ณ ขณะนี้" subtitle="จำนวนโต๊ะแยกตามสถานะ">
+            <div className="grid grid-cols-2 gap-3">
+              {TABLE_STATUS_ORDER.map((status) => {
+                const cfg = STATUS_CONFIG[status];
+                const count = tableSummary.find((t) => t.status === status)?.count ?? 0;
                 return (
-                  <li key={item.name} className="flex items-center gap-3">
-                    <span className="w-5 shrink-0 text-right text-xs tabular-nums font-semibold text-muted-foreground/40">
-                      {i + 1}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-sm font-medium text-foreground truncate">{item.name}</span>
-                        <span className="ml-2 shrink-0 text-xs tabular-nums text-muted-foreground">{item.quantity} จาน</span>
-                      </div>
-                      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-primary/60 transition-all"
-                          style={{ width: `${(item.quantity / max) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  </li>
+                  <div
+                    key={status}
+                    className="flex flex-col gap-2 rounded-xl border border-border bg-[var(--surface-2)] p-4"
+                  >
+                    <StatusBadge label={cfg.label} variant={cfg.variant} dot size="sm" />
+                    <p className="text-[28px] font-bold tabular-nums text-foreground leading-none">{count}</p>
+                  </div>
                 );
               })}
-            </ol>
-          )}
-        </SectionCard>
+            </div>
+          </DataCard>
+        </div>
 
-        <SectionCard title="สถานะโต๊ะปัจจุบัน">
-          <div className="grid grid-cols-2 gap-3">
-            {tableSummary.map((t) => {
-              const cfg = STATUS_CONFIG[t.status as TableStatus] ?? { label: t.status, variant: 'neutral' as BadgeVariant };
-              return (
-                <div key={t.status} className="flex items-center gap-3 rounded-xl bg-muted/40 border border-border p-4">
-                  <StatusBadge label={cfg.label} variant={cfg.variant} dot />
-                  <p className="text-2xl font-bold tabular-nums text-foreground leading-none">{t.count}</p>
-                </div>
-              );
-            })}
-          </div>
-        </SectionCard>
-      </div>
-    </div>
+        {/* Sales detail row */}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <DataCard title="เมนูยอดนิยมวันนี้" subtitle="Top 10 รายการที่สั่งมากที่สุด">
+            {topMenuItems.length === 0 ? (
+              <EmptyState
+                title="ยังไม่มีออเดอร์"
+                description="ยังไม่มีรายการสั่งอาหารในวันนี้"
+                size="sm"
+              />
+            ) : (
+              <ol className="space-y-3">
+                {topMenuItems.map((item, i) => {
+                  const max = topMenuItems[0].quantity;
+                  return (
+                    <li key={item.name} className="flex items-center gap-3">
+                      <span className="w-5 shrink-0 text-right text-xs tabular-nums font-semibold text-muted-foreground/40">
+                        {i + 1}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-sm font-medium text-foreground truncate">{item.name}</span>
+                          <span className="ml-2 shrink-0 text-xs tabular-nums text-muted-foreground">{item.quantity} จาน</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-primary/60 transition-all"
+                            style={{ width: `${(item.quantity / max) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </DataCard>
+
+          <DataCard title="วิธีชำระเงินวันนี้" subtitle="สัดส่วนยอดชำระแยกตามวิธี">
+            {paymentMethods.length === 0 ? (
+              <EmptyState
+                icon={<CreditCard className="size-5" />}
+                title="ยังไม่มีข้อมูล"
+                description="ยังไม่มีการชำระเงินในวันนี้"
+                size="sm"
+              />
+            ) : (
+              <ChartContainer height={200}>
+                <PieChart>
+                  <Pie
+                    data={paymentMethods}
+                    dataKey="total"
+                    nameKey="method"
+                    cx="50%" cy="50%"
+                    innerRadius={50}
+                    outerRadius={75}
+                    paddingAngle={2}
+                  >
+                    {paymentMethods.map((_, i) => (
+                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <ChartTooltip
+                    formatter={(v, name) => [`฿${Number(v).toLocaleString('th-TH')}`, METHOD_LABEL[String(name)] ?? name]}
+                  />
+                  <Legend
+                    formatter={(v) => METHOD_LABEL[v] ?? v}
+                    iconType="circle"
+                    iconSize={8}
+                    wrapperStyle={{ fontSize: 11 }}
+                  />
+                </PieChart>
+              </ChartContainer>
+            )}
+          </DataCard>
+        </div>
+
+        {/* Efficiency KPIs — secondary row */}
+        <div>
+          <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+            ตัวชี้วัดประสิทธิภาพ
+          </p>
+          <StatCardGrid cols={4}>
+            <StatCard
+              loading={kpisLoading}
+              label="Food Cost %"
+              value={kpis?.foodCostPct.available ? `${kpis.foodCostPct.value.toFixed(1)}%` : 'N/A'}
+              subLabel={
+                !kpis?.foodCostPct.available
+                  ? 'ยังไม่มีสูตรอาหาร'
+                  : kpis.foodCostPct.value > 35
+                    ? 'เกินเป้า (≤35%)'
+                    : 'อยู่ในเป้า'
+              }
+              valueClassName={
+                kpis?.foodCostPct.available
+                  ? kpis.foodCostPct.value > 35
+                    ? 'text-red-600 dark:text-red-400'
+                    : 'text-emerald-600 dark:text-emerald-400'
+                  : undefined
+              }
+              icon={<Percent className="size-4" />}
+              accent={
+                kpis?.foodCostPct.available
+                  ? kpis.foodCostPct.value > 35 ? 'danger' : 'success'
+                  : 'default'
+              }
+            />
+            <StatCard
+              loading={kpisLoading}
+              label="Labor Cost %"
+              value={kpis?.laborCostPct.available ? `${kpis.laborCostPct.value.toFixed(1)}%` : 'N/A'}
+              subLabel={kpis?.laborCostPct.available ? undefined : 'ยังไม่มีข้อมูลเงินเดือน'}
+              icon={<Users className="size-4" />}
+              accent="default"
+            />
+            <StatCard
+              loading={kpisLoading}
+              label="เฉลี่ยรอบโต๊ะ/วัน"
+              value={kpis ? kpis.avgTableTurns.value.toFixed(1) : '—'}
+              unit="รอบ"
+              trend={kpis?.avgTableTurns ? {
+                pct: kpis.avgTableTurns.changePct ?? 0,
+                dir: kpis.avgTableTurns.changeDir ?? 'flat',
+                label: vsLabel,
+              } : undefined}
+              icon={<Clock className="size-4" />}
+              accent="info"
+            />
+            <StatCard
+              loading={kpisLoading}
+              label="รายได้/ที่นั่ง/วัน"
+              value={kpis ? `฿${kpis.revpash.value.toFixed(0)}` : '—'}
+              trend={kpis?.revpash ? {
+                pct: kpis.revpash.changePct ?? 0,
+                dir: kpis.revpash.changeDir ?? 'flat',
+                label: vsLabel,
+              } : undefined}
+              icon={<BarChart2 className="size-4" />}
+              accent="default"
+            />
+          </StatCardGrid>
+        </div>
+      </ErrorBoundary>
+    </AppShell>
   );
 }

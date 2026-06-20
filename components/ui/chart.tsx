@@ -47,4 +47,4 @@ export function ChartYAxis(props: React.ComponentProps<typeof YAxis>) {
   );
 }
 
-export { BarChart, Bar, PieChart, Pie, Cell, Legend } from 'recharts';
+export { BarChart, Bar, PieChart, Pie, Cell, Legend, CartesianGrid } from 'recharts';
