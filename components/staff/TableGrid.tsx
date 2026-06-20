@@ -64,6 +64,7 @@ import { differenceInSeconds, formatDistanceToNowStrict } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { PricingTile } from '@/components/staff/PricingTile';
 import { CashierHeaderSlotContext } from '@/components/shared/SidebarLayout';
+import { cn } from '@/lib/utils';
 
 /* ─── Status config ────────────────────────────────────────────────── */
 
@@ -201,7 +202,7 @@ function TileSummaryPanel({ pricingTiles, quantities, onChange }: TileSummaryPan
   const editingQty = editingId ? (quantities[editingId] ?? 0) : 0;
 
   return (
-    <div className="w-full md:w-64 shrink-0 rounded-xl border border-border bg-muted/40 p-3 flex flex-col md:h-full">
+    <div className="w-full md:w-64 shrink-0 rounded-xl border border-border bg-[var(--surface-2)] p-3 flex flex-col md:h-full">
       <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">รายการ</p>
       {selected.length === 0 ? (
         <p className="flex-1 flex items-center justify-center text-center text-xs text-muted-foreground leading-relaxed">
@@ -261,7 +262,7 @@ function TileSummaryPanel({ pricingTiles, quantities, onChange }: TileSummaryPan
                   onChange(editingId!, next);
                   if (next === 0) setEditingId(null);
                 }}
-                className="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-2xl font-bold text-foreground hover:bg-red-100 hover:text-red-700 active:scale-95 transition-all"
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-2xl font-bold text-foreground hover:bg-[var(--status-danger-bg)] hover:text-[var(--status-danger-fg)] active:scale-95 transition-all"
               >−</button>
               <span className="w-12 text-center text-3xl font-bold tabular-nums text-foreground">{editingQty}</span>
               <button
@@ -322,12 +323,12 @@ function LinkedTablePicker({ tables, primaryTableId, selected, onToggle }: Linke
   }, [canvasW, canvasH]);
 
   return (
-    <div ref={containerRef} className="relative w-full flex-1 min-h-0 overflow-hidden rounded-xl border border-border bg-slate-50/80">
+    <div ref={containerRef} className="relative w-full flex-1 min-h-0 overflow-hidden rounded-xl border border-border bg-[var(--surface-2)]">
       {/* dot grid */}
-      <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="xMidYMid slice">
+      <svg className="absolute inset-0 h-full w-full pointer-events-none text-border" preserveAspectRatio="xMidYMid slice">
         <defs>
           <pattern id="lp-dots" width="24" height="24" patternUnits="userSpaceOnUse">
-            <circle cx="1" cy="1" r="1" fill="#cbd5e1" />
+            <circle cx="1" cy="1" r="1" fill="currentColor" />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#lp-dots)" />
@@ -413,11 +414,11 @@ function QrViewModal({ url, label, onClose }: { url: string | null; label: strin
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-foreground/55 p-4 backdrop-blur-[2px]"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-2xl bg-card border border-border p-6 shadow-2xl text-center"
+        className="w-full max-w-sm rounded-2xl border border-border bg-[var(--surface-1)] p-6 text-center shadow-[var(--shadow-dialog)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">
@@ -655,15 +656,15 @@ interface MoveTableFlowProps {
 // This is an in-canvas overlay mode — the parent controls which table is selected
 function MoveTableBanner({ sessionLabel, onCancel }: { sessionLabel: string; onCancel: () => void }) {
   return (
-    <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-lg">
-      <MoveRight className="size-5 text-amber-600 shrink-0" />
-      <p className="text-sm font-medium text-amber-800">
+    <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3 shadow-[var(--shadow-card)]">
+      <MoveRight className="size-5 shrink-0 text-[var(--status-warning-fg)]" />
+      <p className="text-sm font-medium text-[var(--status-warning-fg)]">
         โหมดย้ายโต๊ะ — <span className="font-bold">{sessionLabel}</span> — คลิกโต๊ะว่างเพื่อย้าย
       </p>
       <button
         type="button"
         onClick={onCancel}
-        className="ml-auto rounded-lg border border-amber-300 px-3 py-1 text-xs text-amber-700 hover:bg-amber-100"
+        className="ml-auto rounded-lg border border-[var(--status-warning-border)] px-3 py-1 text-xs font-medium text-[var(--status-warning-fg)] hover:bg-[var(--surface-1)]"
       >
         ยกเลิก
       </button>
@@ -860,14 +861,14 @@ function TableSheet({
                 type="button"
                 disabled={busy}
                 onClick={() => handleTransferPrimary(sess!.id)}
-                className="ml-auto rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-semibold text-violet-700 hover:bg-violet-200 disabled:opacity-50 transition-colors"
+                className="ml-auto rounded-full border border-[var(--status-purple-border)] bg-[var(--status-purple-bg)] px-2.5 py-0.5 text-xs font-semibold text-[var(--status-purple-fg)] hover:border-[var(--status-purple-fg)] disabled:opacity-50 transition-colors"
               >
                 ตั้งเป็นหลัก
               </button>
             ) : (
               <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${
                 visualStatus === 'paid'
-                  ? 'bg-emerald-100 text-emerald-700'
+                  ? 'border border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'
                   : `${STATUS_CONFIG[visualStatus].bg} ${STATUS_CONFIG[visualStatus].text}`
               }`}>
                 {STATUS_CONFIG[visualStatus].label}
@@ -900,9 +901,9 @@ function TableSheet({
             <>
               {/* Partial payment notice banner */}
               {visualStatus === 'partial' && (
-                <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
-                  <p className="text-xs font-semibold text-amber-700">ชำระบางส่วนแล้ว</p>
-                  <p className="text-xs text-amber-600 mt-0.5">
+                <div className="rounded-xl border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3">
+                  <p className="text-xs font-semibold text-[var(--status-warning-fg)]">ชำระบางส่วนแล้ว</p>
+                  <p className="mt-0.5 text-xs text-[var(--status-warning-fg)]">
                     ยังค้างชำระ {sess.totalGuests} คน · ฿{sess.baseAmount.toLocaleString('th-TH')} — กดบิลเพื่อชำระส่วนที่เหลือ
                   </p>
                 </div>
@@ -1043,17 +1044,17 @@ function TableSheet({
                 {isInLinkedGroup ? (
                   <div className="grid grid-cols-2 gap-2">
                     <button type="button" onClick={handleCloseSingle} disabled={busy}
-                      className="rounded-xl border border-red-200 px-4 py-4 text-base font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
+                      className="rounded-xl border border-[var(--status-danger-border)] px-4 py-4 text-base font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors">
                       ปิดโต๊ะนี้
                     </button>
                     <button type="button" onClick={handleCloseAll} disabled={busy}
-                      className="rounded-xl border border-red-400 bg-red-50 px-4 py-4 text-base font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors">
+                      className="rounded-xl border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-4 py-4 text-base font-semibold text-[var(--status-danger-fg)] hover:border-[var(--status-danger-fg)] disabled:opacity-50 transition-colors">
                       ปิดทั้งหมด
                     </button>
                   </div>
                 ) : (
                   <button type="button" onClick={handleForceClose} disabled={busy}
-                    className="w-full rounded-xl border border-red-200 px-4 py-4 text-base font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
+                    className="w-full rounded-xl border border-[var(--status-danger-border)] px-4 py-4 text-base font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors">
                     บังคับปิดโต๊ะ
                   </button>
                 )}
@@ -1085,7 +1086,7 @@ function TableSheet({
                   if (r.ok) { toast.success('ยกเลิกการจองแล้ว'); onClose(); onRefetch(); }
                   else toast.error(r.error);
                 })}
-                className="w-full rounded-xl border border-red-200 px-4 py-4 text-base font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                className="w-full rounded-xl border border-[var(--status-danger-border)] px-4 py-4 text-base font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors"
               >
                 ยกเลิกจอง
               </button>
@@ -1095,7 +1096,7 @@ function TableSheet({
           {/* ── PAID (no session — table stuck in paid state) ── */}
           {visualStatus === 'paid' && !sess && (
             <div className="space-y-4">
-              <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3 text-sm text-emerald-700">
+              <div className="rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-3 text-sm text-[var(--status-success-fg)]">
                 ชำระเงินแล้ว — กรุณาเคลียร์โต๊ะ
               </div>
               <button
@@ -1126,8 +1127,8 @@ function TableSheet({
             const paidUrl = `${appUrl}/t/${table.qrToken}/s/${sess.sessionToken}`;
             return (
               <>
-                <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3 space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-emerald-700 font-medium">
+                <div className="space-y-2 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-3 text-sm">
+                  <div className="flex items-center gap-2 font-medium text-[var(--status-success-fg)]">
                     <CheckCircle2 className="size-4 shrink-0" />
                     ชำระเงินแล้ว — รอเคลียร์โต๊ะ
                   </div>
@@ -1141,12 +1142,12 @@ function TableSheet({
                   </div>
                   <div className="flex justify-between text-xs border-t border-emerald-100 pt-1.5">
                     <span className="text-muted-foreground">ยอดรวม</span>
-                    <span className="font-semibold text-emerald-800">฿{sess.baseAmount.toLocaleString('th-TH')}</span>
+                    <span className="font-semibold text-[var(--status-success-fg)]">฿{sess.baseAmount.toLocaleString('th-TH')}</span>
                   </div>
                   {hasGroup && (
                     <div className="flex flex-wrap gap-1 pt-0.5">
                       {[table, ...paidLinked].map((t) => (
-                        <span key={t.id} className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                        <span key={t.id} className="rounded-full border border-[var(--status-success-border)] bg-[var(--surface-1)] px-2 py-0.5 text-[10px] font-medium text-[var(--status-success-fg)]">
                           โต๊ะ {t.label}
                         </span>
                       ))}
@@ -1302,17 +1303,17 @@ function TableSheet({
                 {sess.parentSessionId ? (
                   <div className="grid grid-cols-2 gap-2">
                     <button type="button" onClick={handleCloseSingle} disabled={busy}
-                      className="rounded-xl border border-red-200 px-4 py-4 text-base font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
+                      className="rounded-xl border border-[var(--status-danger-border)] px-4 py-4 text-base font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors">
                       ปิดโต๊ะนี้
                     </button>
                     <button type="button" onClick={handleCloseAll} disabled={busy}
-                      className="rounded-xl border border-red-400 bg-red-50 px-4 py-4 text-base font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors">
+                      className="rounded-xl border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-4 py-4 text-base font-semibold text-[var(--status-danger-fg)] hover:border-[var(--status-danger-fg)] disabled:opacity-50 transition-colors">
                       ปิดทั้งหมด
                     </button>
                   </div>
                 ) : (
                   <button type="button" onClick={handleForceClose} disabled={busy}
-                    className="w-full rounded-xl border border-red-200 px-4 py-4 text-base font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
+                    className="w-full rounded-xl border border-[var(--status-danger-border)] px-4 py-4 text-base font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors">
                     บังคับปิดโต๊ะ
                   </button>
                 )}
@@ -1398,12 +1399,12 @@ function TableNode({ table, editMode, moveMode, colorOverride, linkedTableLabels
       <span className={`text-lg font-bold tabular-nums ${cfg.text}`}>{table.label}</span>
       <span className={`mt-0.5 h-1.5 w-1.5 rounded-full ${cfg.dot}`} />
       {vs === 'paid' ? (
-        <span className="mt-0.5 rounded-sm bg-red-200 px-1 py-0.5 text-[8px] font-bold leading-none text-red-700">
+        <span className="mt-0.5 rounded-sm border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-1 py-0.5 text-[8px] font-bold leading-none text-[var(--status-danger-fg)]">
           จ่ายแล้ว
         </span>
       ) : vs === 'partial' ? (
         <>
-          <span className="mt-0.5 rounded-sm bg-amber-200 px-1 py-0.5 text-[8px] font-bold leading-none text-amber-800">
+          <span className="mt-0.5 rounded-sm border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-1 py-0.5 text-[8px] font-bold leading-none text-[var(--status-warning-fg)]">
             ชำระบางส่วน
           </span>
           <ElapsedBadge startedAt={table.activeSession!.startedAt} />
@@ -1416,7 +1417,7 @@ function TableNode({ table, editMode, moveMode, colorOverride, linkedTableLabels
 
       {/* Link badge — shown on primary (has children) and on linked children */}
       {(linkedToLabel || (linkedTableLabels && linkedTableLabels.length > 0)) && (
-        <div className={`mt-0.5 flex items-center gap-0.5 text-[9px] font-bold leading-tight ${colorOverride ? colorOverride.text : 'text-violet-700'}`}>
+        <div className={`mt-0.5 flex items-center gap-0.5 text-[9px] font-bold leading-tight ${colorOverride ? colorOverride.text : 'text-[var(--status-purple-fg)]'}`}>
           <Link2 className="size-2.5 shrink-0" />
           <span>{linkedToLabel ?? linkedTableLabels!.join(', ')}</span>
         </div>
@@ -1427,7 +1428,7 @@ function TableNode({ table, editMode, moveMode, colorOverride, linkedTableLabels
           type="button"
           aria-label="แก้ไขโต๊ะ"
           onClick={(e) => { e.stopPropagation(); onClickEdit(table); }}
-          className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-card border border-border shadow hover:bg-muted/50 transition-colors"
+          className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-[var(--surface-1)] shadow hover:bg-[var(--surface-2)] transition-colors"
         >
           <Settings2 className="h-3 w-3 text-muted-foreground" />
         </button>
@@ -1476,7 +1477,7 @@ function TableEditPanel({ table, onClose, onSaved, onDeleted }: TableEditPanelPr
   return (
     <>
       {confirmDialog}
-      <div className="w-64 shrink-0 border-l border-border bg-card p-4 space-y-4 overflow-y-auto">
+      <div className="w-64 shrink-0 space-y-4 overflow-y-auto border-l border-border bg-[var(--surface-1)] p-4 shadow-[var(--shadow-card)]">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-foreground">แก้ไขโต๊ะ {table.label}</p>
         <button type="button" aria-label="ปิด" onClick={onClose} className="rounded p-0.5 hover:bg-muted/50 transition-colors"><X className="h-4 w-4 text-muted-foreground" /></button>
@@ -1499,7 +1500,7 @@ function TableEditPanel({ table, onClose, onSaved, onDeleted }: TableEditPanelPr
       </div>
       <Button onClick={handleSave} disabled={saving} className="w-full">{saving ? 'บันทึก...' : 'บันทึก'}</Button>
       {table.status === 'available' && (
-        <button type="button" onClick={handleDelete} disabled={deleting} className="w-full rounded-lg border border-red-200 py-1.5 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50">ลบโต๊ะนี้ออกจากผัง</button>
+        <button type="button" onClick={handleDelete} disabled={deleting} className="w-full rounded-lg border border-[var(--status-danger-border)] py-1.5 text-xs text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50">ลบโต๊ะนี้ออกจากผัง</button>
       )}
     </div>
     </>
@@ -1677,14 +1678,14 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
     setCashierHeaderSlot(
       <div className="flex flex-1 items-center justify-between min-w-0 gap-2">
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <LegendDot color="bg-green-500" label={`ว่าง (${counts.available ?? 0})`} />
-          <LegendDot color="bg-red-500" label={`มีลูกค้า (${counts.occupied ?? 0})`} />
-          <LegendDot color="bg-blue-500" label={`จอง (${counts.reserved ?? 0})`} />
+          <LegendDot color={STATUS_CONFIG.available.dot} label={`ว่าง (${counts.available ?? 0})`} />
+          <LegendDot color={STATUS_CONFIG.occupied.dot} label={`มีลูกค้า (${counts.occupied ?? 0})`} />
+          <LegendDot color={STATUS_CONFIG.reserved.dot} label={`จอง (${counts.reserved ?? 0})`} />
           {(counts.linked ?? 0) > 0 && (
-            <LegendDot color="bg-violet-500" label={`เชื่อมโยง (${counts.linked})`} />
+            <LegendDot color={STATUS_CONFIG.linked.dot} label={`เชื่อมโยง (${counts.linked})`} />
           )}
           {(counts.partial ?? 0) > 0 && (
-            <LegendDot color="bg-amber-500" label={`ชำระบางส่วน (${counts.partial})`} />
+            <LegendDot color={STATUS_CONFIG.partial.dot} label={`ชำระบางส่วน (${counts.partial})`} />
           )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -1742,15 +1743,15 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
     <div className="flex h-full flex-col overflow-hidden">
       {/* Toolbar — shown only in standard sidebar layout (touchscreen uses the header slot) */}
       {!setCashierHeaderSlot && (
-        <div className="flex shrink-0 items-center justify-between border-b border-border bg-card px-6 py-3 gap-4">
+        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border bg-[var(--surface-1)] px-6 py-3 shadow-[var(--shadow-card)]">
           <div className="flex items-center gap-4">
             <h1 className="text-base font-bold tracking-tight text-foreground">ผังโต๊ะ</h1>
             <div className="hidden sm:flex items-center gap-3 text-xs text-muted-foreground">
-              <LegendDot color="bg-green-500" label={`ว่าง (${counts.available ?? 0})`} />
-              <LegendDot color="bg-red-500" label={`มีลูกค้า (${counts.occupied ?? 0})`} />
-              <LegendDot color="bg-blue-500" label={`จอง (${counts.reserved ?? 0})`} />
-              {(counts.linked ?? 0) > 0 && <LegendDot color="bg-violet-500" label={`เชื่อมโยง (${counts.linked})`} />}
-              {(counts.partial ?? 0) > 0 && <LegendDot color="bg-amber-500" label={`ชำระบางส่วน (${counts.partial})`} />}
+              <LegendDot color={STATUS_CONFIG.available.dot} label={`ว่าง (${counts.available ?? 0})`} />
+              <LegendDot color={STATUS_CONFIG.occupied.dot} label={`มีลูกค้า (${counts.occupied ?? 0})`} />
+              <LegendDot color={STATUS_CONFIG.reserved.dot} label={`จอง (${counts.reserved ?? 0})`} />
+              {(counts.linked ?? 0) > 0 && <LegendDot color={STATUS_CONFIG.linked.dot} label={`เชื่อมโยง (${counts.linked})`} />}
+              {(counts.partial ?? 0) > 0 && <LegendDot color={STATUS_CONFIG.partial.dot} label={`ชำระบางส่วน (${counts.partial})`} />}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -1774,7 +1775,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
 
       {/* Move mode banner */}
       {moveSessionId && (
-        <div className="flex shrink-0 items-center justify-center border-b border-amber-200 bg-amber-50 px-4 py-2">
+        <div className="flex shrink-0 items-center justify-center border-b border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-2">
           <MoveTableBanner
             sessionLabel={moveSessionLabel}
             onCancel={() => { setMoveSessionId(null); setMoveSessionLabel(''); }}
@@ -1785,17 +1786,17 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
       {/* Canvas + Edit Panel */}
       <div className="flex flex-1 overflow-hidden">
         {/* Canvas area: measures itself, scales canvas to fit without scrolling */}
-        <div ref={containerRef} className="flex-1 overflow-hidden bg-muted/50 flex items-center justify-center">
+        <div ref={containerRef} className="flex flex-1 items-center justify-center overflow-hidden bg-[var(--surface-0)]">
           {/* Spacer: occupies the scaled dimensions so centering works correctly */}
           <div style={{ width: canvasW * scale, height: canvasH * scale, flexShrink: 0 }}>
           <DndContext sensors={sensors} modifiers={[snapModifier]} onDragEnd={handleDragEnd}>
             <div
-              className="relative bg-card rounded-xl shadow-inner border border-border"
+              className="relative rounded-xl border border-border bg-[var(--surface-1)] shadow-[var(--shadow-card)]"
               style={{ width: canvasW, height: canvasH, transform: `scale(${scale})`, transformOrigin: 'top left' }}
               onClick={editMode ? (e) => { if (e.target === e.currentTarget) setEditingTable(null); } : undefined}
             >
-              <svg className="absolute inset-0 pointer-events-none" width={canvasW} height={canvasH}>
-                <defs><pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.8" fill="#e2e8f0" /></pattern></defs>
+              <svg className="absolute inset-0 pointer-events-none text-border" width={canvasW} height={canvasH}>
+                <defs><pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.8" fill="currentColor" /></pattern></defs>
                 <rect width="100%" height="100%" fill="url(#grid)" />
                 {/* Dashed lines connecting linked table groups — color per group */}
                 {linkPairs.map(({ from, to, colorHex }) => (
@@ -1927,7 +1928,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
 function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <span className="flex items-center gap-1">
-      <span className={`h-2 w-2 rounded-full ${color}`} />
+      <span className={cn('h-2 w-2 rounded-full', color)} />
       {label}
     </span>
   );
