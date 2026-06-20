@@ -235,7 +235,7 @@ export function CustomerMenuPage({
               >
                 {catName}
                 {catLimit !== null && (
-                  <span className={`ml-1 text-[10px] ${isAtMax ? 'text-red-400' : 'opacity-60'}`}>
+                  <span className={`ml-1 text-[10px] ${isAtMax ? 'text-[var(--status-danger-fg)]' : 'opacity-60'}`}>
                     {cartQtyForCat}/{catLimit}
                   </span>
                 )}
@@ -247,8 +247,8 @@ export function CustomerMenuPage({
 
       {/* Closed notice */}
       {isClosed && (
-        <div className="mx-4 mt-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
-          <p className="text-sm text-amber-800 font-medium">
+        <div className="mx-4 mt-4 rounded-lg bg-[var(--status-warning-bg)] border border-[var(--status-warning-border)] px-4 py-3">
+          <p className="text-sm text-[var(--status-warning-fg)] font-medium">
             {session.status === 'closing' ? t.closingNotice : t.closedNotice}
           </p>
         </div>
@@ -256,8 +256,8 @@ export function CustomerMenuPage({
 
       {/* Waiting for kitchen notice */}
       {!isClosed && hasUnserved && (
-        <div className="mx-4 mt-4 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3">
-          <p className="text-sm text-blue-800 font-medium">{t.waitingNotice}</p>
+        <div className="mx-4 mt-4 rounded-lg bg-[var(--status-info-bg)] border border-[var(--status-info-border)] px-4 py-3">
+          <p className="text-sm text-[var(--status-info-fg)] font-medium">{t.waitingNotice}</p>
         </div>
       )}
 
@@ -320,8 +320,8 @@ export function CustomerMenuPage({
                     </p>
                     <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none ${
                       mi.isBuffet
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-orange-100 text-orange-700'
+                        ? 'bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'
+                        : 'bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]'
                     }`}>
                       {mi.isBuffet ? t.buffet : t.extra}
                     </span>
@@ -336,7 +336,7 @@ export function CustomerMenuPage({
 
                   {/* Extra price */}
                   {!mi.isBuffet && (
-                    <p className="text-xs font-semibold text-red-600">
+                    <p className="text-xs font-semibold text-[var(--status-danger-fg)]">
                       +฿{Number(mi.extraPrice).toLocaleString('th-TH')}
                     </p>
                   )}
@@ -389,7 +389,7 @@ export function CustomerMenuPage({
             <span className="tabular-nums font-semibold">{totalItems}</span>{' '}
             {t.cartItems}
             {totalExtra > 0 && (
-              <span className="ml-2 font-semibold text-red-600">
+              <span className="ml-2 font-semibold text-[var(--status-danger-fg)]">
                 +฿{totalExtra.toLocaleString('th-TH')}
               </span>
             )}
