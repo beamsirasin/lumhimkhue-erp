@@ -15,11 +15,11 @@ const ITEM_STATUS_LABEL: Record<string, string> = {
 };
 
 const ITEM_STATUS_COLOR: Record<string, string> = {
-  pending: 'bg-amber-100 text-amber-700',
-  preparing: 'bg-blue-100 text-blue-700',
-  ready: 'bg-green-100 text-green-700',
-  served: 'bg-muted/50 text-muted-foreground',
-  cancelled: 'bg-red-100 text-red-500',
+  pending:   'bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]',
+  preparing: 'bg-[var(--status-info-bg)] text-[var(--status-info-fg)]',
+  ready:     'bg-[var(--status-success-bg)] text-[var(--status-success-fg)]',
+  served:    'bg-muted/50 text-muted-foreground',
+  cancelled: 'bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]',
 };
 
 interface OrderListProps {
