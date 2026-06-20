@@ -2,10 +2,11 @@
 
 import { useState, useEffect, memo, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
+import { CheckCircle2, ChefHat, Clock, Loader2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { getKdsItems, serveGroup, cancelGroup } from '@/lib/actions/kds';
 import type { KdsItem } from '@/lib/actions/kds';
+import { cn } from '@/lib/utils';
 
 type Station = KdsItem['station'];
 
@@ -65,6 +66,23 @@ function groupItems(items: KdsItem[]): KdsGroup[] {
 
 const LATE_SEC = 600;
 
+const CARD_TONE = {
+  waiting: {
+    card: 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)]',
+    header: 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)]',
+    accent: 'text-[var(--status-warning-fg)]',
+    media: 'border-[var(--status-warning-border)] bg-[var(--surface-2)]',
+    divide: 'divide-[var(--status-warning-border)]/45',
+  },
+  late: {
+    card: 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)]',
+    header: 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)]',
+    accent: 'text-[var(--status-danger-fg)]',
+    media: 'border-[var(--status-danger-border)] bg-[var(--surface-2)]',
+    divide: 'divide-[var(--status-danger-border)]/45',
+  },
+} as const;
+
 const KdsCard = memo(function KdsCard({
   group,
   isPending,
@@ -88,33 +106,31 @@ const KdsCard = memo(function KdsCard({
   }, [group.orderedAt]);
 
   const isLate = seconds >= LATE_SEC;
+  const tone = isLate ? CARD_TONE.late : CARD_TONE.waiting;
 
   return (
-    <div className={`flex flex-col overflow-hidden rounded-xl border-2 ${
-      isLate ? 'border-red-400 bg-red-50' : 'border-amber-300 bg-amber-50'
-    }`}>
+    <div className={cn('flex flex-col overflow-hidden rounded-xl border-2 shadow-[var(--shadow-card)]', tone.card)}>
       {/* Card header */}
-      <div className={`flex items-center justify-between px-3 py-2 border-b ${
-        isLate ? 'bg-red-100 border-red-200' : 'bg-amber-100 border-amber-200'
-      }`}>
-        <div>
-          <p className="text-sm font-bold text-foreground">โต๊ะ {group.tableNumber}</p>
-          <p className={`text-[11px] font-medium ${isLate ? 'text-red-700' : 'text-amber-700'}`}>
+      <div className={cn('flex items-center justify-between border-b px-3 py-2.5', tone.header)}>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold text-foreground">โต๊ะ {group.tableNumber}</p>
+          <p className={cn('mt-0.5 text-[11px] font-semibold', tone.accent)}>
             {STATION_LABEL[group.station]}
           </p>
         </div>
-        <div className="text-right shrink-0">
-          <p className={`text-[10px] tabular-nums font-semibold ${isLate ? 'text-red-600' : 'text-amber-600'}`}>
+        <div className="ml-3 shrink-0 text-right">
+          <p className={cn('inline-flex items-center gap-1 text-[10px] font-semibold tabular-nums', tone.accent)}>
+            <Clock className="size-3" />
             {seconds}s
           </p>
           {isLate && (
-            <p className="text-[9px] font-bold text-red-500">เสิร์ฟช้า</p>
+            <p className="mt-0.5 text-[9px] font-bold text-[var(--status-danger-fg)]">เสิร์ฟช้า</p>
           )}
         </div>
       </div>
 
       {/* Item list */}
-      <ul className={`flex-1 divide-y px-2 py-1 ${isLate ? 'divide-red-100' : 'divide-amber-100'}`}>
+      <ul className={cn('flex-1 divide-y px-2 py-1', tone.divide)}>
         {group.items.map((item) => (
           <li key={item.id} className="flex items-center gap-1.5 py-1.5">
             {item.imageUrl ? (
@@ -122,19 +138,17 @@ const KdsCard = memo(function KdsCard({
               <img
                 src={item.imageUrl}
                 alt={item.menuItemName}
-                className={`h-7 w-7 rounded object-cover shrink-0 border ${
-                  isLate ? 'border-red-200' : 'border-amber-200'
-                }`}
+                className={cn('h-7 w-7 shrink-0 rounded border object-cover', tone.media)}
               />
             ) : (
-              <div className={`h-7 w-7 rounded shrink-0 ${isLate ? 'bg-red-200' : 'bg-amber-200'}`} />
+              <div className={cn('h-7 w-7 shrink-0 rounded border', tone.media)} />
             )}
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold leading-tight text-foreground truncate">
+              <p className="truncate text-xs font-semibold leading-tight text-foreground">
                 {item.menuItemName}
               </p>
               {item.notes && (
-                <p className="mt-0.5 text-[10px] text-muted-foreground truncate">{item.notes}</p>
+                <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{item.notes}</p>
               )}
             </div>
             <span className="shrink-0 text-sm font-bold tabular-nums text-foreground">
@@ -145,14 +159,14 @@ const KdsCard = memo(function KdsCard({
       </ul>
 
       {/* Action buttons */}
-      <div className="px-2 pb-2 flex gap-1.5">
+      <div className="flex gap-1.5 px-2 pb-2">
         <button
           type="button"
           disabled={isPending}
           onClick={onServe}
-          className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-600 py-2 text-xs font-bold text-white hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 transition-colors"
+          className="flex min-h-10 flex-1 items-center justify-center gap-1 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] py-2 text-xs font-bold text-[var(--status-success-fg)] transition-colors hover:border-[var(--status-success-fg)] disabled:opacity-50"
         >
-          {isPending && <Loader2 className="size-3 animate-spin" />}
+          {isPending ? <Loader2 className="size-3 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
           เสิร์ฟ
         </button>
         {confirming ? (
@@ -160,7 +174,7 @@ const KdsCard = memo(function KdsCard({
             type="button"
             disabled={isPending}
             onClick={() => { setConfirming(false); onCancel(); }}
-            className="flex-1 rounded-lg bg-red-600 py-2 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+            className="min-h-10 flex-1 rounded-lg border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] py-2 text-xs font-bold text-[var(--status-danger-fg)] transition-colors hover:border-[var(--status-danger-fg)] disabled:opacity-50"
           >
             ยืนยัน?
           </button>
@@ -170,8 +184,9 @@ const KdsCard = memo(function KdsCard({
             disabled={isPending}
             onClick={() => setConfirming(true)}
             onBlur={() => setConfirming(false)}
-            className="rounded-lg border border-border/60 px-2.5 py-2 text-xs font-medium text-muted-foreground hover:border-red-300 hover:text-red-600 disabled:opacity-50 transition-colors"
+            className="flex min-h-10 items-center justify-center gap-1 rounded-lg border border-border/70 px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-[var(--status-danger-border)] hover:bg-[var(--status-danger-bg)] hover:text-[var(--status-danger-fg)] disabled:opacity-50"
           >
+            <XCircle className="size-3.5" />
             ยกเลิก
           </button>
         )}
@@ -236,23 +251,29 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
   );
 
   return (
-    <div className="flex h-screen flex-col" style={{ background: 'oklch(0.11 0.015 248)' }}>
+    <div className="flex h-screen flex-col bg-[var(--sidebar)] text-[var(--sidebar-foreground)]">
       {/* Top bar */}
-      <header className="flex items-center justify-between border-b px-6 py-3" style={{ borderColor: 'oklch(0.25 0.03 248)', background: 'oklch(0.15 0.02 248)' }}>
-        <div>
-          <h1 className="text-lg font-semibold text-white">Kitchen Display</h1>
-          <p className="text-xs text-muted-foreground">{groups.length} ออเดอร์ที่รอเสิร์ฟ</p>
+      <header className="flex items-center justify-between gap-4 border-b border-[var(--sidebar-border)] bg-[var(--sidebar-header)] px-6 py-3 shadow-[var(--shadow-subtle)]">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-[var(--sidebar-border)] bg-[var(--sidebar-active)] text-[var(--sidebar-active-foreground)]">
+            <ChefHat className="size-5" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="truncate text-lg font-semibold text-[var(--sidebar-active-foreground)]">Kitchen Display</h1>
+            <p className="text-xs text-[var(--sidebar-foreground)]">{groups.length} ออเดอร์ที่รอเสิร์ฟ</p>
+          </div>
         </div>
         {/* Station tabs */}
-        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+        <div className="flex items-center justify-end gap-1.5 overflow-x-auto py-1">
           <button
             type="button"
             onClick={() => setActiveStation('all')}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+            className={cn(
+              'min-h-9 shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
               activeStation === 'all'
-                ? 'bg-card text-foreground'
-                : 'text-muted-foreground hover:text-white/80'
-            }`}
+                ? 'border-[var(--sidebar-ring)] bg-[var(--sidebar-active)] text-[var(--sidebar-active-foreground)] shadow-[var(--shadow-subtle)]'
+                : 'border-transparent text-[var(--sidebar-foreground)] hover:border-[var(--sidebar-border)] hover:bg-[var(--sidebar-accent)] hover:text-[var(--sidebar-accent-foreground)]',
+            )}
           >
             ทั้งหมด
             {groups.length > 0 && (
@@ -264,11 +285,12 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
               key={s}
               type="button"
               onClick={() => setActiveStation(s)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              className={cn(
+                'min-h-9 shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
                 activeStation === s
-                  ? 'bg-card text-foreground'
-                  : 'text-muted-foreground hover:text-white/80'
-              }`}
+                  ? 'border-[var(--sidebar-ring)] bg-[var(--sidebar-active)] text-[var(--sidebar-active-foreground)] shadow-[var(--shadow-subtle)]'
+                  : 'border-transparent text-[var(--sidebar-foreground)] hover:border-[var(--sidebar-border)] hover:bg-[var(--sidebar-accent)] hover:text-[var(--sidebar-accent-foreground)]',
+              )}
             >
               {STATION_LABEL[s]}
               <span className="ml-1.5 tabular-nums">({stationGroupCount[s]})</span>
@@ -281,7 +303,11 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
       <main className="flex-1 overflow-y-auto p-4">
         {visibleGroups.length === 0 ? (
           <div className="flex h-full items-center justify-center">
-            <p className="text-muted-foreground">ไม่มีรายการที่รอเสิร์ฟ</p>
+            <div className="flex min-h-40 min-w-72 flex-col items-center justify-center rounded-xl border border-[var(--sidebar-border)] bg-[var(--surface-1)] px-8 py-6 text-center shadow-[var(--shadow-card)]">
+              <ChefHat className="size-9 text-muted-foreground" />
+              <p className="mt-3 text-sm font-semibold text-foreground">ไม่มีรายการที่รอเสิร์ฟ</p>
+              <p className="mt-1 text-xs text-muted-foreground">ครัวยังไม่มีออเดอร์ใหม่</p>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-6 gap-4">
