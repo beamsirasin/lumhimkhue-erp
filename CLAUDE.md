@@ -1,4 +1,4 @@
-# Shabu Buffet ERP — CLAUDE.md
+# Shabu Buffet ERP — CLAUDE.md (V2)
 
 Read this file at the start of every session. It is the authoritative reference for this codebase.
 
@@ -9,6 +9,8 @@ Read this file at the start of every session. It is the authoritative reference 
 Full-stack ERP/POS SaaS for a Thai shabu buffet restaurant chain. Covers the entire operations loop: customer QR ordering → kitchen display → cashier checkout → owner analytics, with inventory, HR, and payroll management.
 
 **Production stack:** Next.js 16 App Router · React 19 · TypeScript (strict) · Neon PostgreSQL · Drizzle ORM · Auth.js v5 (next-auth beta) · Vercel deployment
+
+**Current phase:** Phase 12 — V2 UI Revamp (in progress). See `docs/reui-v2/00_MASTER_PLAN.md`.
 
 ---
 
@@ -45,8 +47,11 @@ Full-stack ERP/POS SaaS for a Thai shabu buffet restaurant chain. Covers the ent
 | cmdk | ^1.1.1 | command palette |
 | tw-animate-css | ^1.4.0 | animation utilities |
 | @base-ui/react | ^1.5.0 | low-level primitives |
+| resend | ^6.12.4 | email (optional) |
+| react-easy-crop | ^5.5.7 | image cropping in menu management |
+| react-day-picker | ^10.0.1 | calendar date picker |
 
-**Not installed / not used:** Prisma, Pusher, WebSocket, Redis (except Upstash for rate limiting), external payment gateway, Stripe, React Native.
+**Not installed / not used:** Prisma, Pusher, WebSocket, Redis (except Upstash for rate limiting), external payment gateway, Stripe, React Native, Playwright.
 
 ---
 
@@ -100,8 +105,8 @@ app/
     login/            → Credential login form
   page.tsx            → Root redirect by role
   unauthorized/       → Role-denied fallback
-  layout.tsx          → Root layout (QueryProvider, error boundary)
-  globals.css         → Tailwind v4 CSS config + theme tokens
+  layout.tsx          → Root layout (QueryProvider, Toaster)
+  globals.css         → Tailwind v4 CSS config + all theme tokens
 
   api/
     auth/[...nextauth]/   → NextAuth handler
@@ -120,7 +125,7 @@ components/
   shared/             → Layouts, QueryProvider, ErrorBoundary, ConfirmDialog
   ui/                 → shadcn/ui primitives + custom: data-table, empty-state,
                         loading-skeleton, page-header, section-card, stat-card,
-                        status-badge, etc.
+                        status-badge, app-shell, form-section, input-group, etc.
 
 lib/
   db/
@@ -144,7 +149,7 @@ lib/
   printer/
     service.ts        → Public API: print(job, printerId?)
     escpos.ts         → ESC/POS command builders (Thai codepage: cp874/thai13/11/42)
-    bitmap.ts         → Bitmap-mode Thai rendering (image fallback for printers without Thai codepage)
+    bitmap.ts         → Bitmap-mode Thai rendering (image fallback)
     types.ts          → PrintJob, ReceiptData, KitchenOrderData, PrinterConfig types
     store.ts          → Default printer persistence (localStorage / idb-keyval)
     capabilities.ts   → Printer capability detection
@@ -158,12 +163,24 @@ lib/
     utils.ts          → cn(), currency formatting, date utils
     billConfig.ts     → Bill layout resolver (A5 / 80mm)
   tokens.ts           → Token generation for table QR, queue, session identifiers
+  perf.ts             → Performance timing utility
 
 proxy.ts              → Renamed Next.js middleware (auth guard + x-current-path header)
+auth.ts               → NextAuth exports re-export
 next.config.ts        → Remote image patterns, Turbopack, barrel tree-shaking, legacy redirect
 drizzle.config.ts     → Drizzle Kit config
 components.json       → shadcn/ui config (base-nova, neutral, CSS variables)
-scripts/              → One-off backfill/verify/audit/migrate-images scripts
+vercel.json           → Region: sin1, Cron: daily-report 16:30 UTC
+
+docs/
+  reui-v2/            → V2 revamp phase plans (active)
+  archive/            → Historical audit and polish docs (read-only reference)
+    reui-polish/      → Superseded V1 polish plans
+
+scripts/
+  backfill-payment-rows.ts    → One-time payment row backfill (keep, still in package.json)
+  verify-payment-foundation.ts → Payment foundation verify (keep, still in package.json)
+  archive/                    → Completed one-off scripts (read-only reference)
 ```
 
 ---
@@ -191,7 +208,7 @@ All schema lives in `lib/db/schema.ts`. Do not split it. Never use Prisma.
 | `sessionGuests` | id, sessionId, pricingTileId, quantity, unitPrice (snapshot) |
 | `buffetChargeLines` | id, sessionId, pricingTileId, chargeType, label, unitPrice, quantity, total, voidedAt |
 
-### Payment Tables (Phase 1+)
+### Payment Tables
 | Table | Key Columns |
 |---|---|
 | `payments` | id, sessionId, subtotal, serviceCharge, discount, total, paymentMethod (legacy enum), paidAt, processedBy, receiptNo, shiftId, status, settlementType, billTotalAtPayment, paidBefore, remainingAfter |
@@ -326,24 +343,26 @@ Return type: always `{ ok: true, data: T } | { ok: false, error: string }`.
 
 ---
 
-## UI Zones — Design Philosophy
+## UI Zones — V2 Design Philosophy
 
-This codebase has **three distinct UI zones** with different design rules. Never apply POS design patterns to admin pages, and never apply admin UI patterns to POS screens.
+This codebase has **three strictly separated UI zones**. Never apply POS patterns to admin pages, and never apply admin patterns to POS screens. This boundary is inviolable.
 
 ### Zone 1 — Customer (QR / Mobile)
 **Routes:** `(customer)/t/*`, `(customer)/q/*`
 - Mobile-first, 375px min-width
 - Large touch targets (min 44px)
 - Minimal text, strong imagery
-- Tailwind only, no data-heavy components
 - Thai language throughout
+- TanStack Query polling: 10s orders, 5s unserved check, 10s queue status
+- **No data-table, no sidebar, no admin patterns here**
 
 ### Zone 2 — Operational Staff (POS / KDS / Queue / Tables)
 **Routes:** `(staff)/pos`, `(staff)/kds`, `(staff)/queue`, `(staff)/tables`
 - **Touch-optimized, large buttons, minimal animation, instant feedback**
-- POS: 2-column layout (session list left, detail right), numpad-style input
+- POS: 2-column layout (session list left, detail/numpad right)
 - KDS: board/card layout by station, bold status colors
 - Tables: floor-plan grid with drag-and-drop
+- Queue: card-per-entry, large font, called/seated states
 - No small fonts, no hover-only interactions
 - Do NOT apply data-table, filter bars, or admin-style forms here
 - Polling: KDS 3s, POS 5s, Tables 5s, Queue 5s
@@ -354,11 +373,12 @@ This codebase has **three distinct UI zones** with different design rules. Never
 - Tablet/desktop, 768px+
 - IBM Plex Sans Thai, weight 400/500 only
 - Navy blue primary (`oklch(0.30 0.11 248)`)
+- Dark ink sidebar (`oklch(0.155 0.04 248)`)
 - Flat clean design — no gradients, no heavy shadows
 - `rounded-lg` (8px) default border radius
 - **shadcn/ui base-nova** components (neutral base, CSS variables)
-- **ReUI patterns welcome here** — see ReUI Direction section
-- Polling: Dashboard 60s
+- **ReUI V2 patterns are the standard here** — see ReUI V2 Direction section below
+- Polling: Dashboard 60s; most admin pages no polling
 
 ---
 
@@ -369,42 +389,122 @@ Tailwind: v4, CSS-first config in app/globals.css
 shadcn/ui: base-nova style, neutral base color, CSS variables on
 Font: IBM Plex Sans Thai, weight 400 + 500 only
 Primary: oklch(0.30 0.11 248) = navy blue
+Sidebar: oklch(0.155 0.04 248) = dark ink navy
 ```
 
 **CSS custom properties (defined in `app/globals.css`):**
 - `--surface-0/1/2/raised` — elevation layers
 - `--surface-primary-subtle/muted` — tinted panels for active states
 - `--shadow-card/raised/dialog` — shadow utilities
+- `--status-{success/danger/warning/info/neutral/purple/orange/cyan}-{bg/fg/border}` — semantic status tokens
+- `--sidebar-*` — sidebar-specific tokens (header, active, active-foreground)
 - Standard shadcn tokens: `--primary`, `--background`, `--foreground`, `--border`, `--muted`, etc.
+
+**Token system is locked during V2 UI revamp.** Additions are OK; editing existing tokens requires explicit approval.
 
 **Rules:**
 - Never add a new CSS file; extend `globals.css` or use Tailwind classes
-- Never use inline `style={{}}` except for dynamic values (position, width%)
+- Never use inline `style={{}}` except for dynamic values (position coordinates, width%)
 - WCAG AA contrast on all text
 - All icon-only buttons must have `aria-label`
 - Use `cn()` from `@/lib/utils` for conditional class merging
 
 ---
 
-## ReUI Direction
+## ReUI V2 Direction
 
-ReUI is used as a **supplementary shadcn/ui pattern/block source** for admin and back-office pages only.
+ReUI is the **primary pattern standard** for all admin and back-office pages.
 
-### Where ReUI patterns are welcome
-Admin dashboards · Reports · Settings forms · Data tables with filters · HR forms · Inventory CRUD · Payroll tables · Empty states · Dialogs/modals · Badges · Stat cards · Section cards · Page headers
+### V2 Admin Page Skeleton (every admin list page follows this)
 
-### Where ReUI must NOT be applied
+```
+PageHeader
+  title + subtitle
+  action button: [+ เพิ่ม] → opens Sheet
+
+Filter bar (inside section-card or flush above DataTable)
+  search input | status dropdown | date picker | [reset]
+
+DataTable
+  sortable column headers
+  StatusBadge for status values
+  row action: DropdownMenu (…) with แก้ไข / ลบ / etc.
+  pagination
+
+Sheet (right-side drawer — opens on Add / Edit)
+  react-hook-form + Zod
+  [บันทึก] [ยกเลิก]
+```
+
+### V2 Component Standards
+
+| Pattern | Rule |
+|---|---|
+| Create/Edit forms | **Always `Sheet` (right drawer)** — never full-page, never Dialog |
+| Destructive actions | **Always `ConfirmDialog` first** — never inline |
+| List pages | `PageHeader` + filter bar + `DataTable` — no exceptions |
+| Zero data | **Always `EmptyState`** component with contextual icon + message |
+| Loading state | **Always `LoadingSkeleton`** while async data is fetching |
+| KPI / stats | `StatCard` + `StatCardGrid` |
+| Status values | `StatusBadge` with semantic variant tokens |
+| Class merging | `cn()` from `@/lib/utils` — never template literals for classes |
+| Icons | `lucide-react` only — no other icon libraries |
+| Forms | `react-hook-form` + Zod + `@hookform/resolvers` — no uncontrolled inputs |
+
+### Where ReUI Patterns Are Welcome
+Admin dashboards · Reports · Settings forms · DataTables with filters · HR forms · Inventory CRUD · Payroll tables · Empty states · Dialogs/modals · Badges · Stat cards · Section cards · Page headers
+
+### Where ReUI Must NOT Be Applied
 POS cashier screens · KDS board · Tables floor plan · Queue board · Any touchscreen-optimized flow · Customer ordering pages
 
-### Rules for adopting ReUI components
+### Rules for Adopting New ReUI Patterns
 1. Copy the component into `components/ui/` — do not import from an external package
 2. Adapt to the project's existing CSS variable theme (`--primary`, `--surface-*`, etc.)
 3. Replace any hardcoded colors with theme tokens
-4. Wire all forms to react-hook-form + Zod (not uncontrolled inputs)
+4. Wire all forms to react-hook-form + Zod
 5. Replace any data fetching with server actions returning `{ ok, data | error }`
 6. Add auth guards and role checks consistent with the existing pattern
 7. Do not introduce another UI library (no Mantine, no Radix standalone, no MUI)
-8. Prefer reusing existing `components/ui/` components before copying new ones
+8. Prefer reusing existing `components/ui/` before copying new ones
+
+---
+
+## Existing UI Component Library (`components/ui/`)
+
+Always check here before creating new components.
+
+| Component | Purpose |
+|---|---|
+| `app-shell.tsx` | `AppShell` — page wrapper, `max-w-[1400px]`, `px-6 py-5` |
+| `badge.tsx` | shadcn Badge |
+| `button.tsx` | shadcn Button |
+| `calendar.tsx` | Date picker calendar |
+| `card.tsx` | shadcn Card |
+| `chart.tsx` | Recharts wrapper (ChartContainer, Bar, Pie, etc.) |
+| `collapsible.tsx` | shadcn Collapsible |
+| `command.tsx` | shadcn Command (cmdk) |
+| `data-table.tsx` | Generic DataTable with column defs, sort, pagination |
+| `dialog.tsx` | shadcn Dialog — use for destructive confirms only |
+| `dropdown-menu.tsx` | shadcn DropdownMenu — row action menus (…) |
+| `empty-state.tsx` | `EmptyState` — zero-data states |
+| `form-section.tsx` | Form group with title + description |
+| `input-group.tsx` | Input with prefix/suffix addons |
+| `input.tsx` | shadcn Input |
+| `label.tsx` | shadcn Label |
+| `loading-skeleton.tsx` | `LoadingSkeleton` — animated placeholder while loading |
+| `page-header.tsx` | `PageHeader` — title + subtitle + action slot |
+| `popover.tsx` | shadcn Popover |
+| `section-card.tsx` | `SectionCard` — content card with optional header |
+| `select.tsx` | shadcn Select |
+| `separator.tsx` | shadcn Separator |
+| `sheet.tsx` | shadcn Sheet — **primary create/edit form container** |
+| `skeleton.tsx` | shadcn Skeleton primitive |
+| `stat-card.tsx` | `StatCard` + `StatCardGrid` — KPI metric display |
+| `status-badge.tsx` | `StatusBadge` — semantic colored badge (uses status tokens) |
+| `table-map.tsx` | Table floor plan map |
+| `table.tsx` | shadcn Table primitive |
+| `tabs.tsx` | shadcn Tabs |
+| `textarea.tsx` | shadcn Textarea |
 
 ---
 
@@ -429,10 +529,6 @@ POS cashier screens · KDS board · Tables floor plan · Queue board · Any touc
 - Primary: cp874 / thai13 / thai11 / thai42 via ReceiptPrinterEncoder
 - Fallback: bitmap mode (`lib/printer/bitmap.ts`) — renders Thai text as image for printers without Thai codepage
 
-### Printer Config Persistence
-- Stored in localStorage / idb-keyval (browser-side)
-- DB-backed multi-printer config accessible via `(staff)/printers`
-
 ---
 
 ## POS / Payment Business Rules
@@ -449,16 +545,15 @@ payment recorded → status: paid
   ↓ table freed → status: available
 ```
 
-### Payment Model (Phase 1+)
+### Payment Model
 - Each checkout creates one `payments` row (summary) + one or more `paymentRows` (per method/account)
 - `paymentRows` supports mixed payment (cash + QR on same bill)
-- `paymentAllocations` tracks which charge lines each payment row covers (Phase 8B-2)
+- `paymentAllocations` tracks which charge lines each payment row covers
 - `paymentAdjustments` is an **immutable audit ledger** — never delete rows, only append (void/refund types)
 - `settlementType`: `partial` = deposit taken, session still open; `final` = session closed
 - `billTotalAtPayment` snapshot prevents total drift when prices change mid-session
 
 ### Pricing Tile Model
-- `pricingTiles` replace legacy `pricingTiers`
 - Categories: `guest` (adult/child buffet prices), `addon` (extra items), `discount`, `loyalty` (point redemption)
 - Prices are **snapshotted** into `sessionGuests.unitPrice` at session open — do not re-read live tile prices during checkout
 
@@ -485,9 +580,11 @@ payment recorded → status: paid
 |---|---|
 | KDS | 3s |
 | Tables grid | 5s |
-| POS notifications | 5s |
+| POS sessions | 5s |
+| POS session detail | 10s |
 | Queue (host) | 5s |
 | Customer "my orders" | 10s |
+| Customer unserved check | 5s |
 | Queue (customer) | 10s |
 | Dashboard | 60s |
 
@@ -547,6 +644,7 @@ npm run db:seed-hr                 # seed HR data
 npm run db:studio                  # open Drizzle Studio
 npm run db:migrate-payment-foundation  # payment methods/accounts bootstrap
 npm run payments:verify            # verify payment foundation setup
+npm run payments:backfill          # one-time payment row backfill
 ```
 
 ---
@@ -605,34 +703,57 @@ host@shabu.local     / password123   role: cashier (queue/tables modules)
 
 ---
 
-## Important Constraints
+## Root Hygiene Rules
 
-- **No Prisma** — Drizzle ORM only
-- **No WebSocket / SSE / Pusher** — polling only
-- **No external payment gateway** — record payment method and amount only
-- **No Redis** — Upstash only (rate limiting), no caching infrastructure
-- **No React Native** — web only
-- **No new UI libraries** — shadcn/ui + ReUI patterns only
-- **Vercel + Neon only** — no self-hosted infra assumptions
-- **Thai language** in all UI-facing text; English in code identifiers and comments
-- **Currency: THB** — format with `฿` prefix, 2 decimal places
+- **Root is for config only.** Only keep files that tooling requires at root: `CLAUDE.md`, `AGENTS.md`, `README.md`, `package.json`, `package-lock.json`, `tsconfig.json`, `components.json`, `drizzle.config.ts`, `next.config.ts`, `vercel.json`, `eslint.config.mjs`, `postcss.config.mjs`, `proxy.ts`, `auth.ts`, `.env*`, `.gitignore`.
+- **Temp scripts go in `scripts/`**, never at root. If they were one-off and are complete, move to `scripts/archive/`.
+- **Audit and analysis documents go in `docs/archive/`**, never at root.
+- **V2 planning documents go in `docs/reui-v2/`**, not at root.
+- **If `eslint.config.mjs` has entries for temp files that no longer exist, remove them immediately.**
 
 ---
 
-## Phase Progress
+## V2 Protected Files
 
-- [x] Phase 1 — Foundation (scaffold, schema, seed)
-- [x] Phase 2 — Auth (NextAuth v5, role guards, module access)
-- [x] Phase 3 — Table Management (floor plan, sessions, QR)
-- [x] Phase 4 — Customer Ordering (QR menu, cart, order tracking)
-- [x] Phase 5 — Kitchen Display (KDS by station, status transitions)
-- [x] Phase 6 — Queue System (host management, public status)
-- [x] Phase 7 — POS (cashier terminal, pricing tiles, receipt printing)
-- [x] Phase 8 — Owner Dashboard (KPI, charts, reports)
-- [x] Phase 8B — Payment Foundation (multi-row payments, charge lines, shifts, allocations)
-- [x] Phase 9 — Polish + Deploy
-- [x] Phase 10 — Inventory (ingredients, suppliers, POs, stock counts)
-- [x] Phase 11 — HR & Payroll (employees, schedules, time tracking, payroll cycles)
+These files must NOT be modified during V2 UI phases without explicit approval:
+
+### Critical — Business Logic (Frozen)
+```
+lib/db/schema.ts
+lib/actions/pos.ts
+lib/actions/sessions.ts
+lib/actions/shifts.ts
+lib/actions/tables.ts
+lib/actions/history.ts
+lib/actions/inventory.ts
+lib/actions/hr.ts
+lib/payments/foundation.ts
+lib/auth/config.ts
+lib/auth/permissions.ts
+lib/printer/*
+proxy.ts
+```
+
+### High Risk — Operational UI (Touch-Safe Redesign Only)
+```
+components/staff/PosTerminal.tsx
+components/staff/KdsBoard.tsx
+components/staff/TableGrid.tsx
+components/staff/QueueBoard.tsx
+components/staff/ShiftWidget.tsx
+app/(customer)/t/[tableToken]/s/[sessionToken]/page.tsx
+app/(staff)/layout.tsx
+app/(admin)/layout.tsx
+```
+
+### Infrastructure (Explicit Approval Required for Any Change)
+```
+package.json (dependency changes require explicit approval)
+next.config.ts
+vercel.json
+drizzle.config.ts
+app/globals.css (token changes; additions OK, editing existing tokens needs approval)
+```
 
 ---
 
@@ -650,3 +771,33 @@ host@shabu.local     / password123   role: cashier (queue/tables modules)
 - Do not modify `paymentAdjustments` rows — append only, never update/delete
 - Do not run `npm run build` or `npm run db:push` without explicit user approval
 - Do not install new dependencies without explicit user approval
+- Do not create temp scripts at root — use `scripts/` directory
+- Do not use Playwright — it has been removed from this project
+
+---
+
+## Phase Progress
+
+- [x] Phase 1 — Foundation (scaffold, schema, seed)
+- [x] Phase 2 — Auth (NextAuth v5, role guards, module access)
+- [x] Phase 3 — Table Management (floor plan, sessions, QR)
+- [x] Phase 4 — Customer Ordering (QR menu, cart, order tracking)
+- [x] Phase 5 — Kitchen Display (KDS by station, status transitions)
+- [x] Phase 6 — Queue System (host management, public status)
+- [x] Phase 7 — POS (cashier terminal, pricing tiles, receipt printing)
+- [x] Phase 8 — Owner Dashboard (KPI, charts, reports)
+- [x] Phase 8B — Payment Foundation (multi-row payments, charge lines, shifts, allocations)
+- [x] Phase 9 — Polish + Deploy
+- [x] Phase 10 — Inventory (ingredients, suppliers, POs, stock counts)
+- [x] Phase 11 — HR & Payroll (employees, schedules, time tracking, payroll cycles)
+- [ ] **Phase 12 — V2 UI Revamp** ← current
+  - [x] Phase 12.0 — Cleanup: Playwright removal, root hygiene, CLAUDE.md rewrite
+  - [ ] Phase 12.1 — Admin App Shell redesign (sidebar, nav, shell)
+  - [ ] Phase 12.2 — Admin core pages (dashboard, menu, users, settings)
+  - [ ] Phase 12.3 — Admin inventory module
+  - [ ] Phase 12.4 — Admin HR & payroll module
+  - [ ] Phase 12.5 — Admin reports & remaining admin pages
+  - [ ] Phase 12.6 — Operational staff polish (POS, KDS, Tables, Queue)
+  - [ ] Phase 12.7 — Customer QR redesign + login page
+
+See `docs/reui-v2/00_MASTER_PLAN.md` for the full revamp plan.
