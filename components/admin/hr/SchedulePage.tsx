@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
 import { format, eachDayOfInterval, parseISO } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -64,8 +63,7 @@ function CellDisplay({ entry }: { entry?: ScheduleEntry }) {
   );
 }
 
-export function SchedulePage({ initialCycles, settings, initialEmployees }: Props) {
-  const router = useRouter();
+export function SchedulePage({ initialCycles, settings }: Props) {
   const [cycles, setCycles] = useState(initialCycles);
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(cycles[0]?.id ?? null);
   const [grid, setGrid] = useState<GridData>(null);

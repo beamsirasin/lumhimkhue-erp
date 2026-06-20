@@ -135,10 +135,6 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
     }));
   }
 
-  function updateNotes(id: string, val: string) {
-    setItemMap((prev) => ({ ...prev, [id]: { ...prev[id], notes: val } }));
-  }
-
   // Grouped by category, filtered by countFrequency
   const grouped = useMemo(
     () =>

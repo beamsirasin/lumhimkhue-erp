@@ -138,7 +138,7 @@ export function StoreSettingsForm({ initialData }: Props) {
   function toggleSection(tab: string, key: SectionKey) {
     setBillStates(p => {
       const cur = new Set(p[tab].hiddenFields);
-      cur.has(key) ? cur.delete(key) : cur.add(key);
+      if (cur.has(key)) { cur.delete(key); } else { cur.add(key); }
       return { ...p, [tab]: { ...p[tab], hiddenFields: cur } };
     });
   }
@@ -259,6 +259,7 @@ export function StoreSettingsForm({ initialData }: Props) {
                   {/* Logo upload */}
                   {logoUrl ? (
                     <div className="flex items-start gap-4">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- logo preview uses dynamic inline height; <Image> requires known dimensions */}
                       <img
                         src={logoUrl}
                         alt="โลโก้"

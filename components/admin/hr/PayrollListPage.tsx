@@ -50,7 +50,7 @@ const STATUS_BADGE: Record<string, BadgeVariant> = {
 
 export function PayrollListPage({ initialCycles }: Props) {
   const router = useRouter();
-  const [cycles, setCycles] = useState(initialCycles);
+  const [cycles] = useState(initialCycles);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: '', workStartDate: '', workEndDate: '', payDate: '', notes: '' });
   const [pending, startTransition] = useTransition();
