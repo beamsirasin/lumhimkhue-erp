@@ -53,7 +53,7 @@ import {
   ROLE_LABEL,
 } from './nav-config';
 
-/* ─── Role NAV config (admin icons live here, not in nav-config) ─ */
+/* ─── Role NAV config ────────────────────────────────────────── */
 
 const hrGroup: NavGroup = {
   label: 'พนักงาน (HR)',
@@ -143,11 +143,11 @@ const NAV: Record<Role, NavSection[]> = {
     {
       heading: 'ตั้งค่า / Admin',
       items: [
-        { href: '/settings', label: 'ตั้งค่าบิล',   Icon: Settings },
+        { href: '/settings',         label: 'ตั้งค่าบิล',      Icon: Settings },
         { href: '/payment-settings', label: 'Payment Settings', Icon: CreditCard },
-        { href: '/users',    label: 'บัญชีผู้ใช้',   Icon: Users },
-        { href: '/printers', label: 'เครื่องพิมพ์',  Icon: Printer },
-        { href: '/system',   label: 'ข้อมูลระบบ',    Icon: Info },
+        { href: '/users',            label: 'บัญชีผู้ใช้',     Icon: Users },
+        { href: '/printers',         label: 'เครื่องพิมพ์',    Icon: Printer },
+        { href: '/system',           label: 'ข้อมูลระบบ',      Icon: Info },
       ],
     },
   ],
@@ -186,12 +186,18 @@ const NAV: Record<Role, NavSection[]> = {
   ],
 };
 
+/* ─── Shared style constants ─────────────────────────────────── */
+
+const ACTIVE_CLS   = 'bg-[var(--sidebar-active)] text-[var(--sidebar-active-foreground)]';
+const INACTIVE_CLS = 'text-sidebar-foreground/75 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground';
+const ACTIVE_BORDER = 'border-l-2 border-l-sidebar-primary';
+
 /* ─── Badge ──────────────────────────────────────────────────── */
 
 function NavBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+    <span className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white tabular-nums">
       {count > 99 ? '99+' : count}
     </span>
   );
@@ -221,7 +227,7 @@ function SidebarTooltip({ label, children }: { label: string; children: React.Re
       <div
         ref={tipRef}
         style={{ position: 'fixed', left: 'calc(4rem + 10px)', display: 'none', transform: 'translateY(-50%)' }}
-        className="pointer-events-none z-50 whitespace-nowrap rounded-lg border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg"
+        className="pointer-events-none z-50 whitespace-nowrap rounded-lg border border-border bg-popover px-3 py-1.5 text-xs font-medium text-popover-foreground shadow-[var(--shadow-raised)]"
       >
         {label}
       </div>
@@ -279,10 +285,8 @@ function NavGroupItem({
       >
         <button
           type="button"
-          className={`relative flex w-full items-center justify-center rounded-xl p-3 transition-all duration-150 ${
-            isGroupActive
-              ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-              : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+          className={`relative flex w-full items-center justify-center rounded-lg p-3 transition-colors duration-150 ${
+            isGroupActive ? ACTIVE_CLS : INACTIVE_CLS
           }`}
         >
           <Icon className="size-5 shrink-0" />
@@ -300,7 +304,7 @@ function NavGroupItem({
             display: 'none',
             background: 'var(--sidebar-accent)',
           }}
-          className="z-50 min-w-[180px] overflow-hidden rounded-xl border border-white/10 shadow-xl"
+          className="z-50 min-w-[188px] overflow-hidden rounded-xl border border-white/10 shadow-[var(--shadow-raised)]"
           onMouseEnter={() => {
             if (leaveTimer.current) clearTimeout(leaveTimer.current);
           }}
@@ -310,7 +314,7 @@ function NavGroupItem({
             }, 150);
           }}
         >
-          <p className="border-b border-white/8 px-3.5 py-2 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
+          <p className="border-b border-white/8 px-3.5 py-2 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
             {group.label}
           </p>
           <div className="p-1.5 space-y-0.5">
@@ -325,10 +329,8 @@ function NavGroupItem({
                   href={href}
                   prefetch={false}
                   onClick={onNavigate}
-                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 ${
-                    isActive
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150 ${
+                    isActive ? ACTIVE_CLS : INACTIVE_CLS
                   }`}
                 >
                   <ChildIcon className="size-4 shrink-0" />
@@ -344,7 +346,7 @@ function NavGroupItem({
 
   const triggerCls =
     size === 'large'
-      ? 'flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors duration-150'
+      ? 'flex w-full items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors duration-150'
       : 'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150';
   const iconCls   = size === 'large' ? 'size-5 shrink-0' : 'size-4 shrink-0';
   const childCls  =
@@ -358,8 +360,8 @@ function NavGroupItem({
       <CollapsibleTrigger
         className={`${triggerCls} ${
           isGroupActive
-            ? 'bg-sidebar-accent text-sidebar-accent-foreground font-semibold border-l-[3px] border-l-sidebar-primary'
-            : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+            ? `${ACTIVE_CLS} font-semibold ${ACTIVE_BORDER}`
+            : INACTIVE_CLS
         }`}
       >
         <Icon className={`${iconCls} ${isGroupActive ? 'text-sidebar-primary' : ''}`} />
@@ -374,7 +376,7 @@ function NavGroupItem({
         />
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="mt-0.5 ml-4 border-l border-sidebar-border pl-3 space-y-px">
+        <div className="mt-0.5 ml-4 border-l border-sidebar-border/60 pl-3 space-y-px">
           {group.children.map(({ href, label, Icon: ChildIcon }) => {
             const isActive =
               href === '/tables'
@@ -389,8 +391,8 @@ function NavGroupItem({
                 onClick={onNavigate}
                 className={`${childCls} ${
                   isActive
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium border-l-[3px] border-l-sidebar-primary'
-                    : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                    ? `${ACTIVE_CLS} font-medium ${ACTIVE_BORDER}`
+                    : INACTIVE_CLS
                 }`}
               >
                 <ChildIcon className={`${childIconCls} ${isActive ? 'text-sidebar-primary' : ''}`} />
@@ -424,14 +426,14 @@ function NavItems({
 }) {
   const itemCls =
     size === 'large'
-      ? 'flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors duration-150'
+      ? 'flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors duration-150'
       : 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150';
   const iconCls = size === 'large' ? 'size-5 shrink-0' : 'size-4 shrink-0';
 
   if (collapsed) {
     const allItems = sections.flatMap((s) => s.items);
     return (
-      <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-1">
+      <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
         {allItems.map((item) => {
           if (isNavGroup(item)) {
             return (
@@ -455,13 +457,11 @@ function NavItems({
                 href={href}
                 prefetch={false}
                 onClick={onNavigate}
-                className={`relative flex items-center justify-center rounded-xl p-3 transition-all duration-150 ${
-                  isActive
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
-                    : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                className={`relative flex items-center justify-center rounded-lg p-3 transition-colors duration-150 ${
+                  isActive ? ACTIVE_CLS : INACTIVE_CLS
                 }`}
               >
-                <Icon className={`size-5 shrink-0 transition-colors ${isActive ? 'text-sidebar-primary' : ''}`} />
+                <Icon className={`size-5 shrink-0 ${isActive ? 'text-sidebar-primary' : ''}`} />
                 {badge > 0 && (
                   <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-red-400 shadow-sm" />
                 )}
@@ -474,11 +474,11 @@ function NavItems({
   }
 
   return (
-    <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
+    <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
       {sections.map((section, i) => (
         <div key={i}>
           {section.heading && (
-            <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40">
+            <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/35">
               {section.heading}
             </p>
           )}
@@ -507,8 +507,8 @@ function NavItems({
                   onClick={onNavigate}
                   className={`${itemCls} ${
                     isActive
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-semibold border-l-[3px] border-l-sidebar-primary'
-                      : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
+                      ? `${ACTIVE_CLS} font-semibold ${ACTIVE_BORDER}`
+                      : INACTIVE_CLS
                   }`}
                 >
                   <Icon className={`${iconCls} ${isActive ? 'text-sidebar-primary' : ''}`} />
@@ -549,20 +549,21 @@ function SidebarInner({
 }) {
   return (
     <div className="flex h-full flex-col bg-sidebar">
+      {/* Logo strip */}
       {collapsed ? (
-        <div className="flex h-14 shrink-0 items-center justify-center border-b border-white/8 bg-[var(--sidebar-header)]">
+        <div className="flex h-[52px] shrink-0 items-center justify-center border-b border-sidebar-border/50 bg-[var(--sidebar-header)]">
           <button
             type="button"
             onClick={onToggleCollapse}
             aria-label="ขยาย sidebar"
-            className="flex size-9 items-center justify-center rounded-lg bg-sidebar-primary/20 ring-1 ring-sidebar-primary/40 hover:bg-sidebar-primary/30 transition-colors"
+            className="flex size-9 items-center justify-center rounded-lg bg-sidebar-primary/15 ring-1 ring-sidebar-primary/30 hover:bg-sidebar-primary/25 transition-colors"
           >
             <ChevronLeft className="size-4 text-sidebar-primary rotate-180" />
           </button>
         </div>
       ) : (
-        <div className="flex h-14 shrink-0 items-center gap-3 border-b border-white/8 px-4 bg-[var(--sidebar-header)]">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary/20 ring-1 ring-sidebar-primary/40">
+        <div className="flex h-[52px] shrink-0 items-center gap-3 border-b border-sidebar-border/50 px-4 bg-[var(--sidebar-header)]">
+          <div className="flex size-[34px] shrink-0 items-center justify-center rounded-lg bg-sidebar-primary/15 ring-1 ring-sidebar-primary/30">
             <Image
               src="/images/logo.png"
               alt="ร้านชาบู ERP"
@@ -572,8 +573,10 @@ function SidebarInner({
             />
           </div>
           <div className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-white leading-tight">ร้านชาบู ERP</span>
-            <span className="block text-[10px] text-sidebar-foreground/60 leading-tight">
+            <span className="block text-[13px] font-semibold text-white leading-tight tracking-tight">
+              ร้านชาบู ERP
+            </span>
+            <span className="block text-[10px] text-sidebar-foreground/50 leading-tight mt-0.5">
               Restaurant Management
             </span>
           </div>
@@ -582,9 +585,9 @@ function SidebarInner({
               type="button"
               onClick={onToggleCollapse}
               aria-label="ยุบ sidebar"
-              className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-white/10 hover:text-white transition-colors"
+              className="flex size-7 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/40 hover:bg-white/8 hover:text-sidebar-foreground transition-colors"
             >
-              <ChevronLeft className="size-4" />
+              <ChevronLeft className="size-3.5" />
             </button>
           )}
         </div>
@@ -599,9 +602,10 @@ function SidebarInner({
         collapsed={collapsed}
       />
 
+      {/* User footer */}
       {collapsed ? (
-        <div className="shrink-0 border-t border-white/8 p-2 flex flex-col items-center gap-1.5">
-          <div className="flex size-8 items-center justify-center rounded-full bg-sidebar-primary/20 text-xs font-bold text-sidebar-primary ring-1 ring-sidebar-primary/30">
+        <div className="shrink-0 border-t border-sidebar-border/50 p-2 flex flex-col items-center gap-1.5">
+          <div className="flex size-8 items-center justify-center rounded-full bg-sidebar-primary/15 text-xs font-bold text-sidebar-primary ring-1 ring-sidebar-primary/25">
             {userName.charAt(0).toUpperCase()}
           </div>
           <SidebarTooltip label="ออกจากระบบ">
@@ -609,7 +613,7 @@ function SidebarInner({
               <button
                 type="submit"
                 aria-label="ออกจากระบบ"
-                className="flex w-full items-center justify-center rounded-lg p-2 text-sidebar-foreground/40 hover:bg-red-500/12 hover:text-red-300 transition-colors duration-150"
+                className="flex w-full items-center justify-center rounded-lg p-2 text-sidebar-foreground/35 hover:bg-red-500/10 hover:text-red-300 transition-colors duration-150"
               >
                 <LogOut className="size-4 shrink-0" />
               </button>
@@ -617,14 +621,14 @@ function SidebarInner({
           </SidebarTooltip>
         </div>
       ) : (
-        <div className="shrink-0 border-t border-white/8 p-3 space-y-1">
+        <div className="shrink-0 border-t border-sidebar-border/50 p-3 space-y-1">
           <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-sidebar-primary/20 text-xs font-bold text-sidebar-primary ring-1 ring-sidebar-primary/30">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-sidebar-primary/15 text-xs font-bold text-sidebar-primary ring-1 ring-sidebar-primary/25">
               {userName.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-semibold text-white leading-tight">{userName}</p>
-              <p className="truncate text-[11px] text-sidebar-foreground/60 leading-tight mt-0.5">
+              <p className="truncate text-[11px] text-sidebar-foreground/50 leading-tight mt-0.5">
                 {ROLE_LABEL[role]}
               </p>
             </div>
@@ -632,7 +636,7 @@ function SidebarInner({
           <form action={logoutAction}>
             <button
               type="submit"
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/50 transition-colors duration-150 hover:bg-red-500/12 hover:text-red-300"
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/45 transition-colors duration-150 hover:bg-red-500/10 hover:text-red-300"
             >
               <LogOut className="size-4 shrink-0" />
               ออกจากระบบ
@@ -705,28 +709,32 @@ export function StandardSidebarLayout({
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
+      {/* Desktop / tablet fixed sidebar */}
       <aside
         className={
           isTablet
             ? sidebarCollapsed
               ? 'transition-all duration-300 hidden md:block fixed inset-y-0 left-0 z-20 w-16'
-              : 'transition-all duration-300 hidden md:block fixed inset-y-0 left-0 z-20 w-72'
-            : 'hidden lg:block fixed inset-y-0 left-0 z-20 w-64'
+              : 'transition-all duration-300 hidden md:block fixed inset-y-0 left-0 z-20 w-[260px]'
+            : 'hidden lg:block fixed inset-y-0 left-0 z-20 w-[260px]'
         }
       >
         <SidebarInner {...innerProps} />
       </aside>
 
+      {/* Main content area */}
       <div
         className={
           isTablet
             ? sidebarCollapsed
               ? 'flex flex-col flex-1 min-w-0 overflow-hidden transition-all duration-300 md:pl-16'
-              : 'flex flex-col flex-1 min-w-0 overflow-hidden transition-all duration-300 md:pl-72'
-            : 'flex flex-col flex-1 min-w-0 overflow-hidden lg:pl-64'
+              : 'flex flex-col flex-1 min-w-0 overflow-hidden transition-all duration-300 md:pl-[260px]'
+            : 'flex flex-col flex-1 min-w-0 overflow-hidden lg:pl-[260px]'
         }
       >
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card/80 backdrop-blur-sm px-5">
+        {/* Top header bar */}
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-[var(--surface-1)] px-4 md:px-5">
+          {/* Mobile hamburger */}
           <Sheet open={mobileOpen} onOpenChange={(open) => setMobileOpen(open)}>
             <SheetTrigger
               aria-label="เปิดเมนู"
@@ -740,7 +748,7 @@ export function StandardSidebarLayout({
             </SheetTrigger>
             <SheetContent
               side="left"
-              className={isTablet ? 'w-72 p-0' : 'w-64 p-0'}
+              className="w-[260px] p-0"
               showCloseButton={false}
             >
               <SidebarInner
@@ -751,11 +759,25 @@ export function StandardSidebarLayout({
             </SheetContent>
           </Sheet>
 
-          {pageTitle && (
-            <h1 className="text-[15px] font-semibold text-foreground tracking-tight">
-              {pageTitle}
-            </h1>
-          )}
+          {/* Page title */}
+          <div className="flex-1 min-w-0">
+            {pageTitle && (
+              <h1 className="text-[15px] font-semibold text-foreground tracking-tight truncate">
+                {pageTitle}
+              </h1>
+            )}
+          </div>
+
+          {/* User avatar — visible on small screens where sidebar is hidden */}
+          <div
+            className={
+              isTablet ? 'flex md:hidden items-center' : 'flex lg:hidden items-center'
+            }
+          >
+            <div className="flex size-7 items-center justify-center rounded-full bg-[var(--surface-primary-subtle)] text-xs font-semibold text-primary ring-1 ring-primary/20">
+              {userName.charAt(0).toUpperCase()}
+            </div>
+          </div>
         </header>
 
         <main className="flex-1 overflow-y-auto">{children}</main>
