@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -7,7 +7,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { toast } from 'sonner';
-import { GripVertical, Pencil, Plus, X } from 'lucide-react';
+import {
+  GripVertical, Pencil, Plus, X,
+  MoreHorizontal, KeyRound, Trash2, Search, Users,
+} from 'lucide-react';
 import {
   DndContext,
   PointerSensor,
@@ -43,6 +46,25 @@ import {
   type ResetPasswordInput,
 } from '@/lib/validations/staff';
 import type { StaffMember } from '@/lib/actions/staff';
+import { cn } from '@/lib/utils';
+import { AppShell } from '@/components/ui/app-shell';
+import { PageHeader } from '@/components/ui/page-header';
+import { DataTable } from '@/components/ui/data-table';
+import { StatusBadge } from '@/components/ui/status-badge';
+import type { BadgeVariant } from '@/components/ui/status-badge';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+import { useConfirm } from '@/components/shared/ConfirmDialog';
+
+/* ─── Label maps ─────────────────────────────────────────────── */
 
 const ROLE_LABEL: Record<string, string> = {
   owner:   'เจ้าของ',
@@ -51,11 +73,11 @@ const ROLE_LABEL: Record<string, string> = {
   kitchen: 'ครัว',
 };
 
-const ROLE_COLOR: Record<string, string> = {
-  owner:   'bg-purple-100 text-purple-700',
-  manager: 'bg-indigo-100 text-indigo-700',
-  cashier: 'bg-blue-100 text-blue-700',
-  kitchen: 'bg-orange-100 text-orange-700',
+const ROLE_VARIANT: Record<string, BadgeVariant> = {
+  owner:   'purple',
+  manager: 'info',
+  cashier: 'neutral',
+  kitchen: 'orange',
 };
 
 const UI_LAYOUT_LABEL: Record<string, string> = {
@@ -64,10 +86,10 @@ const UI_LAYOUT_LABEL: Record<string, string> = {
   tablet:      'Tablet',
 };
 
-const UI_LAYOUT_COLOR: Record<string, string> = {
-  touchscreen: 'bg-cyan-100 text-cyan-700',
-  desktop:     'bg-muted/50 text-muted-foreground',
-  tablet:      'bg-violet-100 text-violet-700',
+const UI_LAYOUT_VARIANT: Record<string, BadgeVariant> = {
+  touchscreen: 'cyan',
+  desktop:     'neutral',
+  tablet:      'info',
 };
 
 /* ─── Module groups (for the checkbox UI) ───────────────────── */
@@ -105,19 +127,27 @@ export const MODULE_GROUPS = [
   },
 ];
 
+/* ─── Types ──────────────────────────────────────────────────── */
+
 interface StaffPageProps {
   initialData: StaffMember[];
   initialMenuLabels?: Record<string, string>;
 }
 
-type Modal =
+type SheetState =
   | { type: 'add' }
   | { type: 'edit'; member: StaffMember }
   | { type: 'resetPwd'; member: StaffMember }
-  | { type: 'delete'; member: StaffMember };
+  | null;
+
+/* ─── Main page component ───────────────────────────────────── */
 
 export function StaffPage({ initialData, initialMenuLabels = {} }: StaffPageProps) {
-  const [modal, setModal] = useState<Modal | null>(null);
+  const [sheet, setSheet] = useState<SheetState>(null);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const { openConfirm, dialog: confirmDialog } = useConfirm();
   const queryClient = useQueryClient();
 
   const { data: staff = [] } = useQuery({
@@ -133,195 +163,267 @@ export function StaffPage({ initialData, initialMenuLabels = {} }: StaffPageProp
     onSuccess: (r) => { if (!r.ok) toast.error(r.error); else invalidate(); },
   });
 
-  const { mutate: deleteMember, isPending: isDeleting } = useMutation({
+  const { mutate: deleteMember } = useMutation({
     mutationFn: (id: string) => deleteStaff(id),
     onSuccess: (r) => {
       if (!r.ok) { toast.error(r.error); return; }
       toast.success('ลบ User แล้ว');
-      setModal(null);
       invalidate();
     },
   });
 
-  return (
-    <div className="page-shell">
-      <div className="flex items-center justify-between gap-3">
+  /* ─── Filter ─── */
+  const hasFilter = search || roleFilter !== 'all' || statusFilter !== 'all';
+  const filteredStaff = staff.filter((m) => {
+    const q = search.toLowerCase();
+    const matchSearch = !q || m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q);
+    const matchRole = roleFilter === 'all' || m.role === roleFilter;
+    const matchStatus =
+      statusFilter === 'all' ||
+      (statusFilter === 'active' ? m.isActive : !m.isActive);
+    return matchSearch && matchRole && matchStatus;
+  });
+
+  /* ─── DataTable columns ─── */
+  const columns = [
+    {
+      key: 'user',
+      header: 'ผู้ใช้',
+      render: (m: StaffMember) => (
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">บัญชีผู้ใช้</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">{staff.length} บัญชี</p>
+          <p className="font-medium text-foreground">{m.name}</p>
+          <p className="mt-0.5 text-[12px] text-muted-foreground">{m.email}</p>
         </div>
+      ),
+    },
+    {
+      key: 'role',
+      header: 'Role',
+      render: (m: StaffMember) => (
+        <StatusBadge
+          label={ROLE_LABEL[m.role] ?? m.role}
+          variant={ROLE_VARIANT[m.role] ?? 'neutral'}
+        />
+      ),
+    },
+    {
+      key: 'ui',
+      header: 'UI Layout',
+      render: (m: StaffMember) =>
+        m.uiLayout ? (
+          <StatusBadge
+            label={UI_LAYOUT_LABEL[m.uiLayout] ?? m.uiLayout}
+            variant={UI_LAYOUT_VARIANT[m.uiLayout] ?? 'neutral'}
+          />
+        ) : (
+          <span className="text-[12px] text-muted-foreground/60">ค่าเดิม</span>
+        ),
+    },
+    {
+      key: 'modules',
+      header: 'เมนู',
+      render: (m: StaffMember) =>
+        m.allowedModules?.length ? (
+          <span className="inline-flex items-center rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-[11px] font-medium text-foreground ring-1 ring-inset ring-border">
+            {m.allowedModules.length} เมนู
+          </span>
+        ) : (
+          <span className="text-[12px] text-muted-foreground/60">ค่าเดิม</span>
+        ),
+    },
+    {
+      key: 'createdAt',
+      header: 'สมัครเมื่อ',
+      render: (m: StaffMember) => (
+        <span className="text-[12px] text-muted-foreground whitespace-nowrap">
+          {format(new Date(m.createdAt), 'd MMM yy', { locale: th })}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'สถานะ',
+      align: 'center' as const,
+      render: (m: StaffMember) => (
         <button
           type="button"
-          onClick={() => setModal({ type: 'add' })}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+          disabled={isTogglingActive && toggleActiveVar === m.id}
+          onClick={() => toggleActive(m.id)}
+          className={cn(
+            'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset transition-opacity disabled:opacity-50 hover:opacity-75',
+            m.isActive
+              ? 'bg-[var(--status-success-bg)] text-[var(--status-success-fg)] ring-[var(--status-success-border)]'
+              : 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)] ring-[var(--status-neutral-border)]',
+          )}
         >
-          <span className="text-base leading-none">+</span> เพิ่ม User
+          {isTogglingActive && toggleActiveVar === m.id
+            ? '…'
+            : m.isActive
+              ? 'เปิด'
+              : 'ปิด'}
         </button>
-      </div>
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right' as const,
+      width: '52px',
+      render: (m: StaffMember) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
+            aria-label="เมนูเพิ่มเติม"
+          >
+            <MoreHorizontal className="size-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="bottom" align="end">
+            <DropdownMenuItem onClick={() => setSheet({ type: 'edit', member: m })}>
+              <Pencil className="size-3.5" />
+              แก้ไข
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSheet({ type: 'resetPwd', member: m })}>
+              <KeyRound className="size-3.5" />
+              รีเซ็ตรหัสผ่าน
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() =>
+                openConfirm(
+                  `ลบ "${m.name}" ออกจากระบบ? การกระทำนี้ไม่สามารถยกเลิกได้`,
+                  () => deleteMember(m.id),
+                  { confirmLabel: 'ลบ' },
+                )
+              }
+            >
+              <Trash2 className="size-3.5" />
+              ลบ
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
 
-      <div className="section-card overflow-hidden">
-        <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/40">
-              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">ชื่อ</th>
-              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Email</th>
-              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Role</th>
-              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">UI</th>
-              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">เมนู</th>
-              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">สมัครเมื่อ</th>
-              <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">สถานะ</th>
-              <th className="px-4 py-3 w-8" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {staff.map((member) => (
-              <tr key={member.id} className={`hover:bg-muted/30 transition-colors ${!member.isActive ? 'opacity-50' : ''}`}>
-                <td className="px-4 py-3 font-semibold text-foreground">{member.name}</td>
-                <td className="px-4 py-3 text-muted-foreground text-[13px]">{member.email}</td>
-                <td className="px-4 py-3">
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${ROLE_COLOR[member.role] ?? 'bg-muted text-muted-foreground ring-border'}`}>
-                    {ROLE_LABEL[member.role] ?? member.role}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  {member.uiLayout ? (
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${UI_LAYOUT_COLOR[member.uiLayout]}`}>
-                      {UI_LAYOUT_LABEL[member.uiLayout]}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground/60">ค่าเดิม</span>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  {member.allowedModules?.length ? (
-                    <span className="text-[13px] text-foreground font-medium">{member.allowedModules.length} เมนู</span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground/60">ค่าเดิม</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                  {format(new Date(member.createdAt), 'd MMM yy', { locale: th })}
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <button
-                    type="button"
-                    disabled={isTogglingActive && toggleActiveVar === member.id}
-                    onClick={() => toggleActive(member.id)}
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset disabled:opacity-50 transition-colors ${
-                      member.isActive
-                        ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:ring-emerald-900'
-                        : 'bg-muted text-muted-foreground ring-border hover:bg-muted/80'
-                    }`}
-                  >
-                    {isTogglingActive && toggleActiveVar === member.id ? '…' : member.isActive ? 'เปิด' : 'ปิด'}
-                  </button>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setModal({ type: 'edit', member })}
-                      className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      แก้ไข
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setModal({ type: 'resetPwd', member })}
-                      className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      รีเซ็ตรหัสผ่าน
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setModal({ type: 'delete', member })}
-                      className="text-xs font-medium text-red-400 hover:text-red-600 transition-colors"
-                    >
-                      ลบ
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-      </div>
+  return (
+    <>
+      <AppShell>
+        <PageHeader
+          title="บัญชีผู้ใช้"
+          subtitle={`${staff.length} บัญชีในระบบ`}
+          actions={
+            <Button type="button" onClick={() => setSheet({ type: 'add' })}>
+              <Plus className="size-4" />
+              เพิ่ม User
+            </Button>
+          }
+        />
 
-      {modal && (
-        <div
-          className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 backdrop-blur-[2px] px-4 py-8 overflow-y-auto"
-          onClick={() => setModal(null)}
-        >
-          <div onClick={(e) => e.stopPropagation()} className="my-auto">
-            {modal.type === 'add' && (
-              <StaffForm
-                initialMenuLabels={initialMenuLabels}
-                onClose={() => setModal(null)}
-                onSaved={() => { invalidate(); setModal(null); }}
-              />
-            )}
-            {modal.type === 'edit' && (
-              <StaffForm
-                initial={modal.member}
-                initialMenuLabels={initialMenuLabels}
-                onClose={() => setModal(null)}
-                onSaved={() => { invalidate(); setModal(null); }}
-              />
-            )}
-            {modal.type === 'resetPwd' && (
-              <ResetPasswordForm
-                member={modal.member}
-                onClose={() => setModal(null)}
-              />
-            )}
-            {modal.type === 'delete' && (
-              <div className="w-80 rounded-xl bg-card border border-border p-6 shadow-2xl">
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-[13px] font-semibold text-foreground">ยืนยันการลบ</h2>
-                  <button
-                    type="button"
-                    aria-label="ปิด"
-                    onClick={() => setModal(null)}
-                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-sm"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <p className="mb-1 text-sm text-foreground">
-                  ลบ <span className="font-semibold">{modal.member.name}</span> ออกจากระบบ?
-                </p>
-                <p className="mb-5 text-xs text-muted-foreground">{modal.member.email}</p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setModal(null)}
-                    className="flex-1 rounded-lg border border-border py-2 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
-                  >
-                    ยกเลิก
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isDeleting}
-                    onClick={() => deleteMember(modal.member.id)}
-                    className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
-                  >
-                    {isDeleting ? 'กำลังลบ…' : 'ลบ'}
-                  </button>
-                </div>
-              </div>
-            )}
+        {/* Filter bar */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[200px] flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="ค้นหาชื่อหรือ Email…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={cn(INPUT, 'pl-8')}
+            />
           </div>
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className={cn(INPUT, 'w-auto')}
+          >
+            <option value="all">Role ทั้งหมด</option>
+            {Object.entries(ROLE_LABEL).map(([v, l]) => (
+              <option key={v} value={v}>{l}</option>
+            ))}
+          </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className={cn(INPUT, 'w-auto')}
+          >
+            <option value="all">สถานะทั้งหมด</option>
+            <option value="active">เปิดใช้งาน</option>
+            <option value="inactive">ปิดใช้งาน</option>
+          </select>
+          {hasFilter && (
+            <button
+              type="button"
+              onClick={() => { setSearch(''); setRoleFilter('all'); setStatusFilter('all'); }}
+              className="text-xs text-muted-foreground underline transition-colors hover:text-foreground"
+            >
+              ล้างตัวกรอง
+            </button>
+          )}
         </div>
-      )}
-    </div>
+
+        <DataTable
+          columns={columns}
+          rows={filteredStaff}
+          keyFn={(m) => m.id}
+          rowClassName={(m) => (!m.isActive ? 'opacity-60' : '')}
+          emptyState={
+            <EmptyState
+              icon={<Users className="size-5" />}
+              title={hasFilter ? 'ไม่พบผลลัพธ์' : 'ยังไม่มีบัญชีผู้ใช้'}
+              description={
+                hasFilter
+                  ? 'ลองปรับตัวกรองใหม่อีกครั้ง'
+                  : 'กดปุ่ม "เพิ่ม User" เพื่อสร้างบัญชีแรก'
+              }
+            />
+          }
+        />
+      </AppShell>
+
+      {/* Form sheet — add / edit / reset password */}
+      <Sheet
+        open={sheet !== null}
+        onOpenChange={(open) => { if (!open) setSheet(null); }}
+      >
+        <SheetContent
+          side="right"
+          className="sm:max-w-[580px] gap-0 p-0"
+          showCloseButton={false}
+        >
+          {(sheet?.type === 'add' || sheet?.type === 'edit') && (
+            <StaffForm
+              key={sheet.type === 'edit' ? sheet.member.id : 'new'}
+              initial={sheet.type === 'edit' ? sheet.member : undefined}
+              initialMenuLabels={initialMenuLabels}
+              onClose={() => setSheet(null)}
+              onSaved={() => { invalidate(); setSheet(null); }}
+            />
+          )}
+          {sheet?.type === 'resetPwd' && (
+            <ResetPasswordForm
+              key={sheet.member.id}
+              member={sheet.member}
+              onClose={() => setSheet(null)}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {confirmDialog}
+    </>
   );
 }
 
+/* ─── Shared form styles ─────────────────────────────────────── */
+
 const ROLES = Object.entries(ROLE_LABEL) as [string, string][];
-const INPUT = 'w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground transition-colors';
-const BTN   = 'w-full rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors';
+
+const INPUT =
+  'h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 transition-colors';
+
+const FIELD_INPUT =
+  'w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground transition-colors';
 
 /* ─── UI Layout picker ──────────────────────────────────────── */
 
@@ -915,104 +1017,121 @@ function StaffForm({
   }
 
   return (
-    <div className="w-[560px] max-w-[calc(100vw-2rem)] rounded-xl bg-card border border-border shadow-2xl">
+    <form onSubmit={handleSubmit(onSubmit)} className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-5 py-4">
-        <h2 className="text-[13px] font-semibold text-foreground">{initial ? 'แก้ไข User' : 'เพิ่ม User'}</h2>
+      <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-5">
+        <h2 className="text-sm font-semibold text-foreground">
+          {initial ? 'แก้ไข User' : 'เพิ่ม User'}
+        </h2>
         <button
           type="button"
           aria-label="ปิด"
           onClick={onClose}
-          className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-sm"
+          className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
-          ✕
+          <X className="size-4" />
         </button>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <div className="p-5 space-y-5 max-h-[75vh] overflow-y-auto">
+      {/* Scrollable form content */}
+      <div className="flex-1 space-y-5 overflow-y-auto p-5">
 
-          {/* Basic info */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2 sm:col-span-1">
-              <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อ</label>
-              <input {...register('name')} className={INPUT} />
-              {errors.name && <p className="mt-1 text-xs text-destructive">{errors.name.message}</p>}
-            </div>
-            <div className="col-span-2 sm:col-span-1">
-              <label className="block text-xs font-medium text-foreground mb-1.5">Role</label>
-              <select {...register('role')} className={INPUT}>
-                {ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </div>
+        {/* Basic info */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2 sm:col-span-1">
+            <label className="mb-1.5 block text-xs font-medium text-foreground">ชื่อ</label>
+            <input {...register('name')} className={FIELD_INPUT} />
+            {errors.name && <p className="mt-1 text-xs text-destructive">{errors.name.message}</p>}
+          </div>
+          <div className="col-span-2 sm:col-span-1">
+            <label className="mb-1.5 block text-xs font-medium text-foreground">Role</label>
+            <select {...register('role')} className={FIELD_INPUT}>
+              {ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <div className="col-span-2">
+            <label className="mb-1.5 block text-xs font-medium text-foreground">Username (Email)</label>
+            <input {...register('email')} type="email" className={FIELD_INPUT} placeholder="user@example.com" />
+            {errors.email && <p className="mt-1 text-xs text-destructive">{errors.email.message}</p>}
+          </div>
+          {!initial && (
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-foreground mb-1.5">Username (Email)</label>
-              <input {...register('email')} type="email" className={INPUT} placeholder="user@example.com" />
-              {errors.email && <p className="mt-1 text-xs text-destructive">{errors.email.message}</p>}
+              <label className="mb-1.5 block text-xs font-medium text-foreground">รหัสผ่าน</label>
+              <input
+                {...register('password' as keyof (CreateStaffInput | UpdateStaffInput))}
+                type="password"
+                className={FIELD_INPUT}
+              />
+              {(errors as { password?: { message?: string } }).password && (
+                <p className="mt-1 text-xs text-destructive">
+                  {(errors as { password?: { message?: string } }).password?.message}
+                </p>
+              )}
             </div>
-            {!initial && (
-              <div className="col-span-2">
-                <label className="block text-xs font-medium text-foreground mb-1.5">รหัสผ่าน</label>
-                <input
-                  {...register('password' as keyof (CreateStaffInput | UpdateStaffInput))}
-                  type="password"
-                  className={INPUT}
-                />
-                {(errors as { password?: { message?: string } }).password && (
-                  <p className="mt-1 text-xs text-red-600">{(errors as { password?: { message?: string } }).password?.message}</p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* UI Layout selector */}
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-2">รูปแบบ UI</label>
-            <Controller
-              control={control}
-              name="uiLayout"
-              render={({ field }) => (
-                <UiLayoutPicker
-                  value={(field.value ?? '') as 'touchscreen' | 'desktop' | 'tablet' | ''}
-                  onChange={(v) => field.onChange(v)}
-                />
-              )}
-            />
-            {errors.uiLayout && (
-              <p className="mt-1 text-xs text-red-600">{errors.uiLayout.message}</p>
-            )}
-          </div>
-
-          {/* Module picker */}
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-2">เมนูที่เข้าถึงได้</label>
-            <Controller
-              control={control}
-              name="allowedModules"
-              render={({ field }) => (
-                <ModulePicker
-                  value={field.value ?? []}
-                  onChange={field.onChange}
-                  navLayout={navLayout}
-                  onNavLayoutChange={setNavLayout}
-                  menuLabels={menuLabels}
-                  onMenuLabelsChange={setMenuLabels}
-                  error={errors.allowedModules?.message ?? (errors.allowedModules as { root?: { message?: string } })?.root?.message}
-                />
-              )}
-            />
-          </div>
-
+          )}
         </div>
 
-        {/* Footer */}
-        <div className="border-t border-border px-5 py-4">
-          <button type="submit" disabled={isSubmitting} className={BTN}>
-            {isSubmitting ? 'กำลังบันทึก…' : 'บันทึก'}
-          </button>
+        {/* UI Layout selector */}
+        <div>
+          <label className="mb-2 block text-xs font-medium text-foreground">รูปแบบ UI</label>
+          <Controller
+            control={control}
+            name="uiLayout"
+            render={({ field }) => (
+              <UiLayoutPicker
+                value={(field.value ?? '') as 'touchscreen' | 'desktop' | 'tablet' | ''}
+                onChange={(v) => field.onChange(v)}
+              />
+            )}
+          />
+          {errors.uiLayout && (
+            <p className="mt-1 text-xs text-destructive">{errors.uiLayout.message}</p>
+          )}
         </div>
-      </form>
-    </div>
+
+        {/* Module picker */}
+        <div>
+          <label className="mb-2 block text-xs font-medium text-foreground">เมนูที่เข้าถึงได้</label>
+          <Controller
+            control={control}
+            name="allowedModules"
+            render={({ field }) => (
+              <ModulePicker
+                value={field.value ?? []}
+                onChange={field.onChange}
+                navLayout={navLayout}
+                onNavLayoutChange={setNavLayout}
+                menuLabels={menuLabels}
+                onMenuLabelsChange={setMenuLabels}
+                error={
+                  errors.allowedModules?.message ??
+                  (errors.allowedModules as { root?: { message?: string } })?.root?.message
+                }
+              />
+            )}
+          />
+        </div>
+
+      </div>
+
+      {/* Footer */}
+      <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-5 py-4">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
+        >
+          ยกเลิก
+        </button>
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+        >
+          {isSubmitting ? 'กำลังบันทึก…' : 'บันทึก'}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -1038,21 +1157,62 @@ function ResetPasswordForm({
   }
 
   return (
-    <div className="w-80 rounded-xl bg-card p-5 shadow-xl">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-foreground">รีเซ็ตรหัสผ่าน — {member.name}</h2>
-        <button type="button" aria-label="ปิด" onClick={onClose} className="text-muted-foreground hover:text-muted-foreground">×</button>
-      </div>
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
-        <input type="hidden" {...register('id')} />
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* Header */}
+      <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-5">
         <div>
-          <label className="block text-xs font-medium text-foreground mb-1">รหัสผ่านใหม่</label>
-          <input {...register('password')} type="password" className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" />
-          {errors.password && <p className="mt-1 text-xs text-red-600">{errors.password.message}</p>}
+          <h2 className="text-sm font-semibold text-foreground">รีเซ็ตรหัสผ่าน</h2>
+          <p className="text-[12px] text-muted-foreground">{member.name}</p>
         </div>
-        <button type="submit" disabled={isSubmitting} className="w-full rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
-          {isSubmitting ? 'กำลังรีเซ็ต…' : 'ยืนยันรีเซ็ตรหัสผ่าน'}
+        <button
+          type="button"
+          aria-label="ปิด"
+          onClick={onClose}
+          className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <X className="size-4" />
         </button>
+      </div>
+
+      {/* Form */}
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-1 flex-col p-5">
+        <div className="flex-1 space-y-4">
+          <div className="rounded-lg border border-border bg-[var(--surface-2)] p-3 text-[13px] text-muted-foreground">
+            <span className="font-medium text-foreground">{member.name}</span>
+            <span className="mx-1.5 text-border">·</span>
+            {member.email}
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-foreground">รหัสผ่านใหม่</label>
+            <input
+              {...register('password')}
+              type="password"
+              className={FIELD_INPUT}
+            />
+            {errors.password && (
+              <p className="mt-1 text-xs text-destructive">{errors.password.message}</p>
+            )}
+          </div>
+        </div>
+        <input type="hidden" {...register('id')} />
+
+        {/* Footer */}
+        <div className="mt-5 flex items-center justify-end gap-2 border-t border-border pt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
+          >
+            ยกเลิก
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="rounded-lg bg-destructive px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-destructive/90 disabled:opacity-50"
+          >
+            {isSubmitting ? 'กำลังรีเซ็ต…' : 'ยืนยันรีเซ็ตรหัสผ่าน'}
+          </button>
+        </div>
       </form>
     </div>
   );
