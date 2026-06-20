@@ -2,9 +2,13 @@
 
 import { useState } from 'react';
 import { format } from 'date-fns';
+import { th } from 'date-fns/locale';
 import { useQuery } from '@tanstack/react-query';
 import { HistoryCalendar } from '@/components/staff/HistoryCalendar';
 import { SessionHistoryTable } from '@/components/staff/SessionHistoryTable';
+import { AppShell } from '@/components/ui/app-shell';
+import { PageHeader } from '@/components/ui/page-header';
+import { TableSkeleton } from '@/components/ui/loading-skeleton';
 import { getSessionHistory } from '@/lib/actions/history';
 
 export default function HistoryPage() {
@@ -18,17 +22,19 @@ export default function HistoryPage() {
   });
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="shrink-0 px-6 pt-6 pb-0">
-        <HistoryCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
-      </div>
-      <div className="flex-1 min-w-0 overflow-hidden">
+    <AppShell className="flex h-full flex-col overflow-hidden space-y-4">
+      <PageHeader
+        title="ประวัติ Session"
+        subtitle={format(new Date(selectedDate), 'EEEE d MMMM yyyy', { locale: th })}
+        actions={<HistoryCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />}
+      />
+      <div className="min-h-0 flex-1 overflow-hidden">
         {isLoading ? (
-          <div className="py-16 text-center text-sm text-muted-foreground">กำลังโหลด...</div>
+          <TableSkeleton rows={6} cols={6} />
         ) : (
           <SessionHistoryTable rows={rows} date={selectedDate} />
         )}
       </div>
-    </div>
+    </AppShell>
   );
 }

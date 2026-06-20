@@ -1,11 +1,22 @@
 ﻿'use client';
 
-import { useState, useMemo } from 'react';
-import { format } from 'date-fns';
+import { useMemo, useState } from 'react';
+import { differenceInMinutes, format } from 'date-fns';
 import { th } from 'date-fns/locale';
-import { differenceInMinutes } from 'date-fns';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Timer, UsersRound } from 'lucide-react';
 import type { SessionHistoryRow } from '@/lib/actions/history';
+import { DataCard } from '@/components/ui/section-card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { StatCard, StatCardGrid } from '@/components/ui/stat-card';
+import { StatusBadge } from '@/components/ui/status-badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { SessionDetailDialog } from './SessionDetailDialog';
 
 interface SessionHistoryTableProps {
@@ -16,28 +27,34 @@ interface SessionHistoryTableProps {
 const LINK_COLORS: { border: string; badge: string }[] = [
   { border: '#8b5cf6', badge: 'bg-violet-100 text-violet-700' },
   { border: '#f97316', badge: 'bg-orange-100 text-orange-700' },
-  { border: '#14b8a6', badge: 'bg-teal-100 text-teal-700'    },
-  { border: '#ec4899', badge: 'bg-pink-100 text-pink-700'    },
-  { border: '#d97706', badge: 'bg-amber-100 text-amber-700'  },
-  { border: '#06b6d4', badge: 'bg-cyan-100 text-cyan-700'    },
+  { border: '#14b8a6', badge: 'bg-teal-100 text-teal-700' },
+  { border: '#ec4899', badge: 'bg-pink-100 text-pink-700' },
+  { border: '#d97706', badge: 'bg-amber-100 text-amber-700' },
+  { border: '#06b6d4', badge: 'bg-cyan-100 text-cyan-700' },
 ];
 
 export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
   const [detailSessionId, setDetailSessionId] = useState<string | null>(null);
 
-  const totalGuests      = rows.reduce((s, r) => s + r.guestCount,      0);
-  const totalAdults      = rows.reduce((s, r) => s + r.adultCount,      0);
-  const totalChildren    = rows.reduce((s, r) => s + r.childCount,      0);
-  const totalToddlers    = rows.reduce((s, r) => s + r.toddlerCount,    0);
-  const totalStaff       = rows.reduce((s, r) => s + r.staffCount,      0);
+  const totalGuests = rows.reduce((s, r) => s + r.guestCount, 0);
+  const totalAdults = rows.reduce((s, r) => s + r.adultCount, 0);
+  const totalChildren = rows.reduce((s, r) => s + r.childCount, 0);
+  const totalToddlers = rows.reduce((s, r) => s + r.toddlerCount, 0);
+  const totalStaff = rows.reduce((s, r) => s + r.staffCount, 0);
   const totalStaffGuests = rows.reduce((s, r) => s + r.staffGuestCount, 0);
 
-  // Build link groups: sessionId → { color, peerLabels, isSplit, seqIndex, groupSize }
+  const guestBreakdown = [
+    totalAdults > 0 && `ผู้ใหญ่ ${totalAdults}`,
+    totalChildren > 0 && `เด็ก ${totalChildren}`,
+    totalToddlers > 0 && `เด็กเล็ก ${totalToddlers}`,
+    totalStaff > 0 && `พนักงาน ${totalStaff}`,
+    totalStaffGuests > 0 && `พนักงานพา ${totalStaffGuests}`,
+  ].filter(Boolean).join(' · ');
+
   const linkInfo = useMemo(() => {
     const map = new Map<string, { border: string; badge: string; peers: string[]; isSplit: boolean; seqIndex: number; groupSize: number }>();
     let colorIdx = 0;
 
-    // Find all primary sessions that have at least one secondary
     const primariesWithChildren = new Set(
       rows.filter((r) => r.parentSessionId).map((r) => r.parentSessionId!),
     );
@@ -48,9 +65,7 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
       const group = [...(primary ? [primary] : []), ...children];
       if (group.length < 2) continue;
 
-      // Split payment: all sessions share the same table label
       const isSplit = group.every((r) => r.tableLabel === group[0].tableLabel);
-
       const color = LINK_COLORS[colorIdx % LINK_COLORS.length];
       colorIdx++;
 
@@ -66,70 +81,63 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
   }, [rows]);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Summary — fixed */}
-      <div className="shrink-0 grid grid-cols-2 gap-3 p-6 pb-4">
-        <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">จำนวน session</p>
-          <p className="mt-1 text-xl font-bold text-foreground">{rows.length}</p>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">ผู้เข้าใช้รวม</p>
-          <p className="mt-1 text-xl font-bold text-foreground">{totalGuests} คน</p>
-          <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-            {[
-              totalAdults      > 0 && `ผู้ใหญ่ ${totalAdults}`,
-              totalChildren    > 0 && `เด็ก ${totalChildren}`,
-              totalToddlers    > 0 && `เด็กเล็ก ${totalToddlers}`,
-              totalStaff       > 0 && `พนักงาน ${totalStaff}`,
-              totalStaffGuests > 0 && `พนักงานพา ${totalStaffGuests}`,
-            ].filter(Boolean).join(' · ')}
-          </p>
-        </div>
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="shrink-0 pb-4">
+        <StatCardGrid cols={2}>
+          <StatCard label="จำนวน session" value={rows.length} icon={<Timer className="size-4" />} />
+          <StatCard
+            label="ผู้เข้าใช้รวม"
+            value={totalGuests}
+            unit="คน"
+            subLabel={guestBreakdown || 'ยังไม่มีข้อมูลผู้เข้าใช้'}
+            icon={<UsersRound className="size-4" />}
+            accent="info"
+          />
+        </StatCardGrid>
       </div>
 
-      {/* Table — scrollable */}
-      <div className="flex-1 overflow-y-auto px-6 pb-6">
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <DataCard title="รายการ Session" subtitle={`${format(new Date(date), 'd MMMM yyyy', { locale: th })} · ${rows.length} รายการ`} noPadding>
           {rows.length === 0 ? (
-            <div className="py-16 text-center text-sm text-muted-foreground">
-              ไม่มีข้อมูลในวันที่ {format(new Date(date), 'd MMMM yyyy', { locale: th })}
-            </div>
+            <EmptyState
+              icon={<Timer className="size-5" />}
+              title="ไม่มีข้อมูล Session"
+              description={`ไม่พบข้อมูลในวันที่ ${format(new Date(date), 'd MMMM yyyy', { locale: th })}`}
+              size="lg"
+            />
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">โต๊ะ</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">เริ่ม</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">สิ้นสุด</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">เวลา</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">ผู้เข้าใช้</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-border bg-[var(--surface-2)] hover:bg-[var(--surface-2)]">
+                  <TableHead className="px-4 py-3 text-xs font-semibold text-muted-foreground">โต๊ะ</TableHead>
+                  <TableHead className="px-4 py-3 text-xs font-semibold text-muted-foreground">เริ่ม</TableHead>
+                  <TableHead className="px-4 py-3 text-xs font-semibold text-muted-foreground">สิ้นสุด</TableHead>
+                  <TableHead className="px-4 py-3 text-xs font-semibold text-muted-foreground">เวลา</TableHead>
+                  <TableHead className="px-4 py-3 text-xs font-semibold text-muted-foreground">ผู้เข้าใช้</TableHead>
+                  <TableHead className="px-4 py-3" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {rows.map((row) => {
                   const durationMin = row.closedAt
                     ? differenceInMinutes(new Date(row.closedAt), new Date(row.startedAt))
                     : null;
                   const isOpen = row.status !== 'closed';
-                  const link   = linkInfo.get(row.sessionId);
+                  const link = linkInfo.get(row.sessionId);
 
                   return (
-                    <tr
+                    <TableRow
                       key={row.sessionId}
-                      className="border-b border-border/30 last:border-0 hover:bg-muted/30 cursor-pointer"
+                      className="cursor-pointer border-border/60 hover:bg-muted/30"
                       onClick={() => setDetailSessionId(row.sessionId)}
                     >
-                      {/* Table label + link indicator */}
-                      <td className="py-3 pr-4">
+                      <TableCell className="py-3 pr-4">
                         <div className="flex items-center gap-0">
-                          {/* Colored left accent bar for linked groups */}
                           <div
-                            className="w-1 self-stretch rounded-r-full mr-3 shrink-0"
+                            className="mr-3 w-1 self-stretch rounded-r-full shrink-0"
                             style={{ backgroundColor: link && !link.isSplit ? link.border : 'transparent' }}
                           />
-                          <div className="flex flex-col gap-0.5">
+                          <div className="flex flex-col gap-1">
                             <span className="font-semibold text-foreground">
                               {row.tableLabel}
                               {row.zone !== 'ทั่วไป' && (
@@ -145,48 +153,49 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
                             )}
                           </div>
                         </div>
-                      </td>
-
-                      <td className="px-4 py-3 tabular-nums text-muted-foreground">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 tabular-nums text-muted-foreground">
                         {format(new Date(row.startedAt), 'HH:mm', { locale: th })}
-                      </td>
-                      <td className="px-4 py-3 tabular-nums text-muted-foreground">
-                        {row.closedAt
-                          ? format(new Date(row.closedAt), 'HH:mm', { locale: th })
-                          : isOpen
-                            ? <span className="text-green-600 text-xs font-medium">ยังเปิดอยู่</span>
-                            : '—'}
-                      </td>
-                      <td className="px-4 py-3 tabular-nums text-muted-foreground text-xs">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 tabular-nums text-muted-foreground">
+                        {row.closedAt ? (
+                          format(new Date(row.closedAt), 'HH:mm', { locale: th })
+                        ) : isOpen ? (
+                          <StatusBadge label="ยังเปิดอยู่" variant="success" dot />
+                        ) : (
+                          '—'
+                        )}
+                      </TableCell>
+                      <TableCell className="px-4 py-3 tabular-nums text-xs text-muted-foreground">
                         {durationMin !== null
                           ? durationMin >= 60
                             ? `${Math.floor(durationMin / 60)}ชม. ${durationMin % 60}น.`
                             : `${durationMin}น.`
                           : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-xs text-muted-foreground">
                         {row.guestCount === 0 ? (
                           <span className="text-muted-foreground">—</span>
                         ) : (
                           <div className="space-y-0.5">
-                            {row.adultCount      > 0 && <div>ผู้ใหญ่ {row.adultCount}</div>}
-                            {row.childCount      > 0 && <div>เด็ก {row.childCount}</div>}
-                            {row.toddlerCount    > 0 && <div>เด็กเล็ก {row.toddlerCount}</div>}
-                            {row.staffCount      > 0 && <div>พนักงาน {row.staffCount}</div>}
+                            {row.adultCount > 0 && <div>ผู้ใหญ่ {row.adultCount}</div>}
+                            {row.childCount > 0 && <div>เด็ก {row.childCount}</div>}
+                            {row.toddlerCount > 0 && <div>เด็กเล็ก {row.toddlerCount}</div>}
+                            {row.staffCount > 0 && <div>พนักงาน {row.staffCount}</div>}
                             {row.staffGuestCount > 0 && <div>พนักงานพา {row.staffGuestCount}</div>}
                           </div>
                         )}
-                      </td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
                         <ChevronRight className="size-4 text-muted-foreground" />
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           )}
-        </div>
+        </DataCard>
       </div>
 
       <SessionDetailDialog

@@ -7,7 +7,7 @@ import { format, differenceInMinutes } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { Pencil, Trash2, Loader2, AlertTriangle, Printer } from 'lucide-react';
 import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   getSessionDetail,
   deletePaymentRecord,
@@ -124,9 +124,10 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
 
   return (
     <Dialog open={!!sessionId} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-xl max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto bg-[var(--surface-raised)] sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>รายละเอียด Session</DialogTitle>
+          <DialogDescription>ตรวจสอบประวัติโต๊ะ รายการอาหาร และการชำระเงิน</DialogDescription>
         </DialogHeader>
 
         {isLoading && (
@@ -140,7 +141,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
         {data && (
           <div className="space-y-4">
             {/* Session header */}
-            <div className="rounded-lg bg-muted/30 p-4 space-y-2 text-sm">
+            <div className="rounded-xl border border-border bg-[var(--surface-2)] p-4 space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">โต๊ะ</span>
                 <span className="font-semibold text-foreground">
@@ -245,7 +246,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                       const shiftStatus = payment.shift?.status ?? null;
                       const isSelected = selectedMutationPaymentId === payment.id;
                       return (
-                        <div key={payment.id} className="rounded-lg bg-green-50 border border-green-200 p-3 space-y-2 text-sm">
+                        <div key={payment.id} className="rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-3 space-y-2 text-sm">
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
