@@ -1,19 +1,18 @@
-﻿'use client';
+'use client';
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, ToggleLeft, ToggleRight, GitBranch } from 'lucide-react';
+import { Plus, Pencil, ToggleLeft, ToggleRight, GitBranch, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { AppShell } from '@/components/ui/app-shell';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { getBranches, createBranch, updateBranch, toggleBranchActive } from '@/lib/actions/branches';
 import type { Branch } from '@/lib/db/schema';
 
@@ -68,28 +67,40 @@ export function BranchesPage({ initialBranches }: { initialBranches: Branch[] })
     setShowForm(true);
   }
 
+  function closeForm() {
+    setShowForm(false);
+    setEditing(null);
+  }
+
   return (
-    <div className="page-shell">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">จัดการสาขา</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">{branches.length} สาขา</p>
-        </div>
-        <Button onClick={openCreate}>
-          <Plus className="size-4 mr-1.5" />
-          เพิ่มสาขา
-        </Button>
-      </div>
+    <AppShell>
+      <PageHeader
+        title="จัดการสาขา"
+        subtitle={`${branches.length} สาขา`}
+        actions={
+          <Button onClick={openCreate}>
+            <Plus className="size-4 mr-1.5" />
+            เพิ่มสาขา
+          </Button>
+        }
+      />
 
       {branches.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl bg-card py-16 shadow-sm ring-1 ring-border/40">
-          <GitBranch className="size-10 text-muted-foreground/60 mb-3" />
-          <p className="text-sm text-muted-foreground">ยังไม่มีสาขา</p>
-        </div>
+        <EmptyState
+          icon={<GitBranch className="size-5" />}
+          title="ยังไม่มีสาขา"
+          description="เพิ่มสาขาแรกเพื่อเริ่มใช้งานระบบ"
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {branches.map((b) => (
-            <div key={b.id} className={`rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/40 ${!b.isActive ? 'opacity-60' : ''}`}>
+            <div
+              key={b.id}
+              className={cn(
+                'rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/40',
+                !b.isActive && 'opacity-60',
+              )}
+            >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-semibold text-foreground truncate">{b.name}</p>
@@ -97,9 +108,10 @@ export function BranchesPage({ initialBranches }: { initialBranches: Branch[] })
                   {b.phone && <p className="text-xs text-muted-foreground mt-1">{b.phone}</p>}
                   {b.taxId && <p className="text-xs text-muted-foreground">เลขภาษี: {b.taxId}</p>}
                 </div>
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${b.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-muted/50 text-muted-foreground'}`}>
-                  {b.isActive ? 'ใช้งาน' : 'ปิด'}
-                </span>
+                <StatusBadge
+                  label={b.isActive ? 'ใช้งาน' : 'ปิด'}
+                  variant={b.isActive ? 'success' : 'neutral'}
+                />
               </div>
 
               <div className="mt-4 flex items-center gap-2">
@@ -114,7 +126,7 @@ export function BranchesPage({ initialBranches }: { initialBranches: Branch[] })
                   className="ml-auto text-muted-foreground hover:text-muted-foreground transition-colors"
                 >
                   {b.isActive
-                    ? <ToggleRight className="size-6 text-emerald-500" />
+                    ? <ToggleRight className="size-6 text-[var(--status-success-fg)]" />
                     : <ToggleLeft className="size-6" />}
                 </button>
               </div>
@@ -123,39 +135,60 @@ export function BranchesPage({ initialBranches }: { initialBranches: Branch[] })
         </div>
       )}
 
-      <Dialog open={showForm} onOpenChange={(open) => { if (!open) { setShowForm(false); setEditing(null); } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editing ? 'แก้ไขสาขา' : 'เพิ่มสาขาใหม่'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
+      <Sheet open={showForm} onOpenChange={(open) => { if (!open) closeForm(); }}>
+        <SheetContent side="right" showCloseButton={false} className="flex flex-col gap-0 p-0 sm:max-w-[420px]">
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <p className="text-base font-semibold text-foreground">
+              {editing ? 'แก้ไขสาขา' : 'เพิ่มสาขาใหม่'}
+            </p>
+            <Button variant="ghost" size="icon" aria-label="ปิด" onClick={closeForm}>
+              <X className="size-4" />
+            </Button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
             <div className="space-y-1.5">
               <Label>ชื่อสาขา *</Label>
-              <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="สาขาสยาม" />
+              <Input
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="สาขาสยาม"
+              />
             </div>
             <div className="space-y-1.5">
               <Label>ที่อยู่</Label>
-              <Input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} placeholder="123 ถนน..." />
+              <Input
+                value={form.address}
+                onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+                placeholder="123 ถนน..."
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>เบอร์โทร</Label>
-                <Input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="02-xxx-xxxx" />
+                <Input
+                  value={form.phone}
+                  onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                  placeholder="02-xxx-xxxx"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>เลขภาษี</Label>
-                <Input value={form.taxId} onChange={(e) => setForm((f) => ({ ...f, taxId: e.target.value }))} placeholder="0-0000-00000" />
+                <Input
+                  value={form.taxId}
+                  onChange={(e) => setForm((f) => ({ ...f, taxId: e.target.value }))}
+                  placeholder="0-0000-00000"
+                />
               </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowForm(false)}>ยกเลิก</Button>
+          <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
+            <Button variant="outline" onClick={closeForm}>ยกเลิก</Button>
             <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !form.name.trim()}>
               {saveMut.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </AppShell>
   );
 }

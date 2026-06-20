@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import { useConfirm } from '@/components/shared/ConfirmDialog';
@@ -11,10 +11,17 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
+import { AppShell } from '@/components/ui/app-shell';
+import { PageHeader } from '@/components/ui/page-header';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
+import { StatusBadge, type BadgeVariant } from '@/components/ui/status-badge';
+import { DataCard } from '@/components/ui/section-card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { getAllPrinters, savePrinter, deletePrinter, setDefaultPrinter } from '@/lib/printer/store';
 import { getCapabilities, isLocalhost } from '@/lib/printer/capabilities';
 import { requestUSBDevice } from '@/lib/printer/transports/usb';
-import { testPrint, printByteMap } from '@/lib/printer/service';
+import { testPrint } from '@/lib/printer/service';
 import type { PrinterConfig, PrinterType } from '@/lib/printer/types';
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
@@ -25,10 +32,10 @@ const TYPE_LABEL: Record<PrinterType, string> = {
   browser: 'Browser',
 };
 
-const TYPE_BADGE: Record<PrinterType, string> = {
-  usb:     'bg-blue-100 text-blue-700',
-  network: 'bg-green-100 text-green-700',
-  browser: 'bg-muted/50 text-muted-foreground',
+const TYPE_BADGE_VARIANT: Record<PrinterType, BadgeVariant> = {
+  usb:     'info',
+  network: 'success',
+  browser: 'neutral',
 };
 
 /* ─── Form state ─────────────────────────────────────────────────────────── */
@@ -179,41 +186,44 @@ export function PrintersPage() {
   }
 
   return (
-    <div className="page-shell">
+    <AppShell>
       {confirmDialog}
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-xl font-bold tracking-tight text-foreground">เครื่องพิมพ์</h1>
-        <button
-          type="button"
-          onClick={openAdd}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="size-4" />
-          เพิ่มเครื่องพิมพ์
-        </button>
-      </div>
+
+      <PageHeader
+        title="เครื่องพิมพ์"
+        subtitle="จัดการเครื่องพิมพ์ใบเสร็จและสลิปครัว"
+        actions={
+          <Button onClick={openAdd}>
+            <Plus className="size-4 mr-1.5" />
+            เพิ่มเครื่องพิมพ์
+          </Button>
+        }
+      />
 
       {/* Printer list */}
       {loading ? (
-        <div className="text-sm text-muted-foreground py-12 text-center">กำลังโหลด…</div>
-      ) : printers.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 gap-3">
-          <Printer className="size-10 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">ยังไม่มีเครื่องพิมพ์</p>
-          <button
-            type="button"
-            onClick={openAdd}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
-          >
-            เพิ่มเครื่องพิมพ์ตัวแรก
-          </button>
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-14 rounded-xl" />
+          ))}
         </div>
+      ) : printers.length === 0 ? (
+        <EmptyState
+          icon={<Printer className="size-5" />}
+          title="ยังไม่มีเครื่องพิมพ์"
+          description="เพิ่มเครื่องพิมพ์เพื่อเริ่มพิมพ์ใบเสร็จและสลิปครัว"
+          action={
+            <Button size="sm" onClick={openAdd}>
+              <Plus className="size-4 mr-1.5" />
+              เพิ่มเครื่องพิมพ์
+            </Button>
+          }
+        />
       ) : (
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <DataCard noPadding>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border bg-muted/30">
+              <tr className="border-b border-border bg-[var(--surface-2)]">
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">ชื่อ</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">ประเภท</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">กระดาษ</th>
@@ -226,9 +236,7 @@ export function PrintersPage() {
                 <tr key={p.id} className="hover:bg-muted/30">
                   <td className="px-4 py-3 font-medium text-foreground">{p.name}</td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${TYPE_BADGE[p.type]}`}>
-                      {TYPE_LABEL[p.type]}
-                    </span>
+                    <StatusBadge label={TYPE_LABEL[p.type]} variant={TYPE_BADGE_VARIANT[p.type]} />
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{p.paperWidth} mm</td>
                   <td className="px-4 py-3 text-center">
@@ -264,7 +272,7 @@ export function PrintersPage() {
                         type="button"
                         onClick={() => handleDelete(p)}
                         aria-label="ลบ"
-                        className="text-muted-foreground hover:text-red-600"
+                        className="text-muted-foreground hover:text-[var(--status-danger-fg)]"
                       >
                         <Trash2 className="size-3.5" />
                       </button>
@@ -274,10 +282,10 @@ export function PrintersPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </DataCard>
       )}
 
-      {/* Modal */}
+      {/* Printer config wizard — Dialog kept for multi-step flow */}
       <Dialog open={modalOpen} onOpenChange={(open) => { if (!open) setModalOpen(false); }}>
         <DialogContent className="sm:max-w-md" showCloseButton={false}>
           <DialogHeader>
@@ -362,7 +370,7 @@ export function PrintersPage() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </AppShell>
   );
 }
 
