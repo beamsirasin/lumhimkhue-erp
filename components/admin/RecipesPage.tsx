@@ -8,9 +8,7 @@ import {
   Plus,
   Trash2,
   Save,
-  ChevronRight,
   Search,
-  AlertCircle,
   X,
 } from 'lucide-react';
 import {
@@ -21,6 +19,14 @@ import {
   type MenuItemCostRow,
   type RecipeWithIngredients,
 } from '@/lib/actions/recipes';
+import { AppShell } from '@/components/ui/app-shell';
+import { PageHeader } from '@/components/ui/page-header';
+import { DataCard } from '@/components/ui/section-card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -187,45 +193,45 @@ function RecipeEditor({
     });
   }
 
-  return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-5 py-4">
-        <div>
-          <p className="text-xs text-muted-foreground">สูตรอาหารสำหรับ</p>
-          <h2 className="text-base font-semibold text-foreground">{menuItem.name}</h2>
-        </div>
-        <button
-          type="button"
-          aria-label="ปิด"
-          onClick={onClose}
-          className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-        >
-          <X className="size-4" />
-        </button>
-      </div>
+  const grossMarginPct =
+    liveTheoreticalCost > 0 && menuItem.price > 0
+      ? ((menuItem.price - liveTheoreticalCost) / menuItem.price) * 100
+      : null;
 
-      <div className="flex flex-1 min-h-0 gap-0 divide-x divide-border">
+  return (
+    <DataCard
+      title={menuItem.name}
+      subtitle="สูตรอาหารสำหรับเมนูนี้"
+      actions={
+        <Button variant="ghost" size="sm" aria-label="ปิด" onClick={onClose}>
+          <X className="size-4" />
+        </Button>
+      }
+    >
+      <div className="flex min-h-0 gap-0 divide-x divide-border -m-5">
         {/* Left: existing recipes list */}
         <div className="w-44 shrink-0 overflow-y-auto p-3 space-y-1">
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={newRecipe}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            className="w-full justify-start gap-2 text-xs"
           >
             <Plus className="size-3.5" />
             สูตรใหม่
-          </button>
+          </Button>
           {recipes.map((recipe) => (
             <button
               key={recipe.id}
               type="button"
               onClick={() => loadRecipe(recipe)}
-              className={`w-full truncate rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors ${
+              className={cn(
+                'w-full truncate rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors',
                 editingRecipeId === recipe.id
                   ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-muted/50'
-              }`}
+                  : 'text-muted-foreground hover:bg-muted/50',
+              )}
             >
               {recipe.name}
             </button>
@@ -238,21 +244,21 @@ function RecipeEditor({
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="block text-xs font-medium text-muted-foreground mb-1">ชื่อสูตร</label>
-              <input
+              <Input
                 value={recipeName}
                 onChange={(e) => setRecipeName(e.target.value)}
                 placeholder="เช่น สูตรมาตรฐาน"
-                className="w-full rounded-lg border border-border bg-background text-foreground px-3 py-1.5 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
+                className="h-8 text-sm"
               />
             </div>
             <div className="w-24">
               <label className="block text-xs font-medium text-muted-foreground mb-1">ขนาดเสิร์ฟ</label>
-              <input
+              <Input
                 type="number"
                 min={1}
                 value={servingSize}
                 onChange={(e) => setServingSize(Math.max(1, parseInt(e.target.value) || 1))}
-                className="w-full rounded-lg border border-border bg-background text-foreground px-3 py-1.5 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
+                className="h-8 text-sm"
               />
             </div>
           </div>
@@ -260,11 +266,11 @@ function RecipeEditor({
           {/* Ingredient search */}
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-            <input
+            <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="ค้นหาวัตถุดิบ..."
-              className="w-full rounded-lg border border-border bg-background text-foreground pl-8 pr-3 py-1.5 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
+              className="pl-8 h-8 text-sm"
             />
           </div>
 
@@ -289,43 +295,47 @@ function RecipeEditor({
                       </option>
                     ))}
                   </select>
-                  <input
+                  <Input
                     type="number"
                     min={0}
                     step={0.01}
                     value={row.quantity || ''}
                     onChange={(e) => updateRow(row.key, { quantity: parseFloat(e.target.value) || 0 })}
                     placeholder="ปริมาณ"
-                    className="w-20 rounded-lg border border-border bg-background text-foreground px-2 py-1.5 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
+                    className="w-20 h-8 text-sm"
                   />
-                  <input
+                  <Input
                     value={row.unit}
                     onChange={(e) => updateRow(row.key, { unit: e.target.value })}
                     placeholder="หน่วย"
-                    className="w-16 rounded-lg border border-border bg-background text-foreground px-2 py-1.5 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
+                    className="w-16 h-8 text-sm"
                   />
                   <span className="w-16 text-right text-xs text-muted-foreground tabular-nums">
                     ฿{fmt(lineCost)}
                   </span>
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon"
                     aria-label="ลบ"
                     onClick={() => removeRow(row.key)}
-                    className="shrink-0 rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-500"
+                    className="size-7 shrink-0 text-muted-foreground hover:text-[var(--status-danger-fg)]"
                   >
                     <Trash2 className="size-3.5" />
-                  </button>
+                  </Button>
                 </div>
               );
             })}
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={addRow}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+              className="gap-1.5 text-xs text-muted-foreground"
             >
               <Plus className="size-3.5" />
               เพิ่มวัตถุดิบ
-            </button>
+            </Button>
           </div>
 
           {/* Live cost summary */}
@@ -337,16 +347,17 @@ function RecipeEditor({
             {menuItem.price > 0 && (
               <div className="flex justify-between text-sm mt-1">
                 <span className="text-muted-foreground">Gross Margin</span>
-                <span className={`font-semibold ${
-                  liveTheoreticalCost > 0
-                    ? ((menuItem.price - liveTheoreticalCost) / menuItem.price) * 100 < 30
-                      ? 'text-red-600'
-                      : 'text-green-600'
-                    : 'text-muted-foreground'
-                }`}>
-                  {liveTheoreticalCost > 0
-                    ? fmtPct(((menuItem.price - liveTheoreticalCost) / menuItem.price) * 100)
-                    : '—'}
+                <span
+                  className={cn(
+                    'font-semibold',
+                    grossMarginPct === null
+                      ? 'text-muted-foreground'
+                      : grossMarginPct < 30
+                        ? 'text-[var(--status-danger-fg)]'
+                        : 'text-[var(--status-success-fg)]',
+                  )}
+                >
+                  {grossMarginPct !== null ? fmtPct(grossMarginPct) : '—'}
                 </span>
               </div>
             )}
@@ -354,30 +365,32 @@ function RecipeEditor({
 
           {/* Actions */}
           <div className="flex gap-2 pt-1">
-            <button
+            <Button
               type="button"
               onClick={handleSave}
               disabled={isPending}
-              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              size="sm"
             >
               <Save className="size-3.5" />
               บันทึก
-            </button>
+            </Button>
             {editingRecipeId && (
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => handleDelete(editingRecipeId)}
                 disabled={isPending}
-                className="flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                className="text-[var(--status-danger-fg)] border-[var(--status-danger-border)] hover:bg-[var(--status-danger-bg)]"
               >
                 <Trash2 className="size-3.5" />
                 ลบสูตร
-              </button>
+              </Button>
             )}
           </div>
         </div>
       </div>
-    </div>
+    </DataCard>
   );
 }
 
@@ -421,107 +434,117 @@ export function RecipesPage({ initialMatrix, allIngredients }: Props) {
     : 0;
 
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* Left panel: menu item list */}
-      <div className={`flex flex-col ${selected ? 'hidden lg:flex w-96' : 'flex-1'} border-r border-border bg-card`}>
-        {/* Header */}
-        <div className="border-b border-border px-5 py-4">
-          <div className="flex items-center justify-between mb-3">
-            <h1 className="text-[15px] font-bold tracking-tight text-foreground">สูตรอาหาร</h1>
-            <span className="text-xs text-muted-foreground">{totalWithRecipe}/{matrix.length} มีสูตร</span>
-          </div>
-          <div className="relative mb-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-            <input
+    <AppShell>
+      <PageHeader
+        title="สูตรอาหาร"
+        subtitle={`${totalWithRecipe} จาก ${matrix.length} เมนูมีสูตร · ต้นทุนเฉลี่ย ฿${fmt(avgCost)}`}
+      />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[380px_1fr]">
+        {/* Left panel: menu item list */}
+        <DataCard
+          noPadding
+          title="เมนูทั้งหมด"
+          subtitle={`${filtered.length} รายการ`}
+          actions={
+            <Button
+              type="button"
+              variant={filterNoRecipe ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setFilterNoRecipe((v) => !v)}
+              className="text-xs"
+            >
+              {filterNoRecipe ? 'แสดงทั้งหมด' : 'ยังไม่มีสูตร'}
+            </Button>
+          }
+        >
+          {/* Search */}
+          <div className="relative p-3 border-b border-border">
+            <Search className="absolute left-5.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+            <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="ค้นหาเมนู..."
-              className="w-full rounded-lg border border-border bg-background text-foreground pl-9 pr-3 py-2 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
+              className="pl-8 h-8 text-sm"
             />
           </div>
-          <button
-            type="button"
-            onClick={() => setFilterNoRecipe((v) => !v)}
-            className={`text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
-              filterNoRecipe
-                ? 'bg-amber-100 text-amber-800'
-                : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-            }`}
-          >
-            {filterNoRecipe ? 'แสดงทั้งหมด' : 'เฉพาะยังไม่มีสูตร'}
-          </button>
-        </div>
 
-        {/* Stats row */}
-        <div className="flex gap-4 border-b border-border bg-muted/30 px-5 py-3">
-          <div>
-            <p className="text-xs text-muted-foreground">ต้นทุนเฉลี่ย</p>
-            <p className="text-sm font-semibold text-foreground">฿{fmt(avgCost)}</p>
-          </div>
-        </div>
-
-        {/* List */}
-        <div className="flex-1 overflow-y-auto divide-y divide-border">
-          {filtered.length === 0 && (
-            <div className="py-12 text-center">
-              <BookOpen className="mx-auto size-8 text-muted-foreground/60 mb-2" />
-              <p className="text-sm text-muted-foreground">ไม่พบเมนู</p>
-            </div>
-          )}
-          {filtered.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setSelected(item)}
-              className={`w-full flex items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-muted/30 ${
-                selected?.id === item.id ? 'bg-muted/30' : ''
-              }`}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium text-foreground">{item.name}</span>
-                  {!item.hasRecipe && (
-                    <AlertCircle className="size-3.5 shrink-0 text-amber-400" />
+          {/* List */}
+          <div className="divide-y divide-border">
+            {filtered.length === 0 ? (
+              <EmptyState
+                icon={<BookOpen className="size-5" />}
+                title="ไม่พบเมนู"
+                description={filterNoRecipe ? 'ทุกเมนูมีสูตรอาหารแล้ว' : 'ลองเปลี่ยนคำค้นหา'}
+                size="sm"
+              />
+            ) : (
+              filtered.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSelected(item)}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30',
+                    selected?.id === item.id && 'bg-[var(--surface-primary-subtle)]',
                   )}
-                </div>
-                <p className="text-xs text-muted-foreground">{item.categoryName}</p>
-              </div>
-              <div className="text-right shrink-0">
-                <p className="text-sm font-medium text-foreground">
-                  ฿{fmt(item.theoreticalCost)}
-                </p>
-                {item.margin !== null && (
-                  <p className={`text-xs font-medium ${item.margin < 30 ? 'text-red-500' : 'text-green-600'}`}>
-                    {fmtPct(item.margin)}
-                  </p>
-                )}
-              </div>
-              <ChevronRight className="size-4 shrink-0 text-muted-foreground/60" />
-            </button>
-          ))}
-        </div>
-      </div>
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="truncate text-sm font-medium text-foreground">{item.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-muted-foreground">{item.categoryName}</p>
+                      <StatusBadge
+                        label={item.hasRecipe ? 'มีสูตร' : 'ไม่มีสูตร'}
+                        variant={item.hasRecipe ? 'success' : 'warning'}
+                        size="sm"
+                        dot
+                      />
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-medium text-foreground tabular-nums">
+                      ฿{fmt(item.theoreticalCost)}
+                    </p>
+                    {item.margin !== null && (
+                      <p
+                        className={cn(
+                          'text-xs font-medium tabular-nums',
+                          item.margin < 30
+                            ? 'text-[var(--status-danger-fg)]'
+                            : 'text-[var(--status-success-fg)]',
+                        )}
+                      >
+                        {fmtPct(item.margin)}
+                      </p>
+                    )}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </DataCard>
 
-      {/* Right panel: recipe editor */}
-      {selected && (
-        <div className="flex-1 min-w-0 bg-card overflow-hidden">
+        {/* Right panel: recipe editor */}
+        {selected ? (
           <RecipeEditor
+            key={selected.id}
             menuItem={selected}
             allIngredients={allIngredients}
             onClose={() => setSelected(null)}
             onSaved={invalidate}
           />
-        </div>
-      )}
-
-      {!selected && (
-        <div className="hidden lg:flex flex-1 items-center justify-center bg-muted/30">
-          <div className="text-center">
-            <BookOpen className="mx-auto size-10 text-muted-foreground/60 mb-3" />
-            <p className="text-sm text-muted-foreground">เลือกเมนูเพื่อจัดการสูตรอาหาร</p>
-          </div>
-        </div>
-      )}
-    </div>
+        ) : (
+          <DataCard className="flex items-center justify-center min-h-[400px]">
+            <EmptyState
+              icon={<BookOpen className="size-5" />}
+              title="เลือกเมนูเพื่อจัดการสูตร"
+              description="คลิกที่รายการเมนูทางซ้ายเพื่อเพิ่มหรือแก้ไขสูตรอาหาร"
+            />
+          </DataCard>
+        )}
+      </div>
+    </AppShell>
   );
 }

@@ -21,6 +21,7 @@ import type { BillTypeKey } from '@/lib/utils/billConfig';
 import { incrementReceiptCounter } from '@/lib/actions/store';
 import type { PosSession, PosSessionDetail } from '@/lib/actions/pos';
 import { Printer, CheckCircle2, Tag, Package, X, Loader2, Receipt, Save, AlertCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { PricingTile as PricingTileCard } from '@/components/staff/PricingTile';
 import { ShiftWidget } from '@/components/staff/ShiftWidget';
 import { print as printReceipt } from '@/lib/printer/service';
@@ -156,25 +157,29 @@ export function PosTerminal({
   }, [linkedMap]);
 
   return (
-    <div className="p-6">
+    <div className="min-h-[calc(100dvh-4rem)] bg-[var(--surface-0)] p-4 sm:p-6">
       {/* Header */}
-      <div className="mb-4">
+      <div className="mb-4 rounded-2xl border border-border bg-[var(--surface-1)] p-4 shadow-[var(--shadow-soft)]">
         <h1 className="text-xl font-semibold text-foreground">POS / แคชเชียร์</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           {closing.length > 0 && (
-            <span className="text-red-600 dark:text-red-400 font-medium">{closing.length} รอเรียกเก็บเงิน · </span>
+            <span className="text-[var(--status-danger-fg)] font-medium">{closing.length} รอเรียกเก็บเงิน · </span>
           )}
           {active.length} โต๊ะที่ใช้งาน
         </p>
       </div>
 
       {/* Cashier shift banner */}
-      <ShiftWidget />
+      <div className="mb-4">
+        <ShiftWidget />
+      </div>
 
 
       {/* Session grid */}
       {primarySessions.length === 0 ? (
-        <p className="py-24 text-center text-sm text-muted-foreground">ไม่มีโต๊ะที่ใช้งาน</p>
+        <div className="rounded-2xl border border-dashed border-border bg-[var(--surface-1)] px-6 py-20 text-center shadow-[var(--shadow-soft)]">
+          <p className="text-sm font-medium text-muted-foreground">ไม่มีโต๊ะที่ใช้งาน</p>
+        </div>
       ) : (
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {primarySessions.map((s) => {
@@ -193,9 +198,9 @@ export function PosTerminal({
             return (
               <div key={s.id} className="relative">
                 {linked.length >= 2 && (
-                  <div className="absolute inset-0 translate-x-2 translate-y-2 rounded-xl border-2 border-border bg-card z-0" />
+                  <div className="absolute inset-0 translate-x-2 translate-y-2 rounded-xl border-2 border-border bg-[var(--surface-2)] z-0" />
                 )}
-                <div className="absolute inset-0 translate-x-1 translate-y-1 rounded-xl border-2 border-border bg-card z-[1]" />
+                <div className="absolute inset-0 translate-x-1 translate-y-1 rounded-xl border-2 border-border bg-[var(--surface-1)] z-[1]" />
                 <div className="relative z-[2]">
                   <SessionCard
                     session={frontSession}
@@ -230,7 +235,7 @@ export function PosTerminal({
             onClick={() => setGroupPickerId(null)}
           >
             <div
-              className="w-full max-w-md rounded-2xl bg-card border border-border p-6 shadow-2xl space-y-3"
+              className="w-full max-w-md rounded-2xl bg-[var(--surface-1)] border border-border p-6 shadow-2xl space-y-3"
               onClick={(e) => e.stopPropagation()}
             >
               <p className="text-base font-semibold text-foreground">เลือกบิลที่ต้องการเปิด</p>
@@ -247,10 +252,10 @@ export function PosTerminal({
                       onClick={() => { setSelectedId(s.id); setGroupPickerId(null); }}
                       className={`w-full flex items-center justify-between rounded-xl border px-4 py-4 text-left transition-colors ${
                         isPaid
-                          ? 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50'
+                          ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] hover:opacity-90'
                           : isClosing
-                            ? 'border-red-200 bg-red-50 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/30 dark:hover:bg-red-950/50'
-                            : 'border-border hover:bg-muted/50'
+                            ? 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] hover:opacity-90'
+                            : 'border-border bg-[var(--surface-1)] hover:bg-[var(--surface-2)]'
                       }`}
                     >
                       <div>
@@ -262,19 +267,19 @@ export function PosTerminal({
                               : (s.parentSessionId ? 'บัญชีรอง' : 'บัญชีหลัก')}
                           </span>
                           {isClosing && (
-                            <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700">
+                            <span className="rounded-full bg-[var(--status-danger-bg)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--status-danger-fg)]">
                               รอชำระ
                             </span>
                           )}
                           {isPaid && (
-                            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                            <span className="rounded-full bg-[var(--status-success-bg)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--status-success-fg)]">
                               จ่ายแล้ว
                             </span>
                           )}
                         </div>
                         <p className="mt-0.5 text-xs text-muted-foreground">{guestCount} คน</p>
                       </div>
-                      <p className={`text-sm font-bold tabular-nums ${isPaid ? 'text-emerald-700 dark:text-emerald-400' : 'text-foreground'}`}>
+                      <p className={`text-sm font-bold tabular-nums ${isPaid ? 'text-[var(--status-success-fg)]' : 'text-foreground'}`}>
                         ฿{total.toLocaleString('th-TH')}
                       </p>
                     </button>
@@ -284,7 +289,7 @@ export function PosTerminal({
               <button
                 type="button"
                 onClick={() => setGroupPickerId(null)}
-                className="w-full rounded-xl border border-border py-3.5 text-sm font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
+                className="w-full rounded-xl border border-border bg-[var(--surface-1)] py-3.5 text-sm font-medium text-muted-foreground hover:bg-[var(--surface-2)] transition-colors"
               >
                 ยกเลิก
               </button>
@@ -300,7 +305,7 @@ export function PosTerminal({
           onClick={() => setSelectedId(null)}
         >
           <div
-            className="relative h-[calc(100dvh-2rem)] max-h-[820px] w-full max-w-[1180px] overflow-hidden rounded-2xl bg-card border border-border shadow-2xl"
+            className="relative h-[calc(100dvh-2rem)] max-h-[820px] w-full max-w-[1180px] overflow-hidden rounded-2xl bg-[var(--surface-1)] border border-border shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -331,16 +336,16 @@ const SessionCard = memo(function SessionCard({ session, selected, onSelect, lin
   const totalGuests = session.guests.reduce((s, g) => s + g.quantity, 0);
 
   const isContinuation = !!session.parentSessionId;
-  let cardClass = 'rounded-xl border-2 p-3 text-left transition-all duration-150 w-full ';
-  if (selected) {
-    cardClass += 'border-primary bg-primary text-primary-foreground shadow-md';
-  } else if (isClosing) {
-    cardClass += 'border-red-300 bg-red-50 hover:bg-red-100 dark:border-red-700 dark:bg-red-950/30 dark:hover:bg-red-950/50';
-  } else if (isPaid) {
-    cardClass += 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50';
-  } else {
-    cardClass += 'border-border bg-card hover:bg-muted/50';
-  }
+  const cardClass = cn(
+    'min-h-32 rounded-xl border-2 p-3 text-left transition-all duration-150 w-full shadow-[var(--shadow-soft)]',
+    selected
+      ? 'border-primary bg-primary text-primary-foreground shadow-md'
+      : isClosing
+        ? 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] hover:opacity-90'
+        : isPaid
+          ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] hover:opacity-90'
+          : 'border-border bg-[var(--surface-1)] hover:bg-[var(--surface-2)]',
+  );
 
   return (
     <button type="button" onClick={handleClick} className={cardClass}>
@@ -356,24 +361,24 @@ const SessionCard = memo(function SessionCard({ session, selected, onSelect, lin
             />
           )}
           {isContinuation && (
-            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-amber-400/80 text-white' : 'bg-amber-100 text-amber-700'}`}>
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-amber-400/80 text-white' : 'bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]'}`}>
               ชำระบางส่วน
             </span>
           )}
           {isClosing && (
-            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-red-400/80 text-white' : 'bg-red-100 text-red-700'}`}>
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-red-400/80 text-white' : 'bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]'}`}>
               รอบิล
             </span>
           )}
           {isPaid && (
-            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-emerald-400/80 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-emerald-400/80 text-white' : 'bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'}`}>
               จ่ายแล้ว
             </span>
           )}
         </div>
       </div>
       <p className={`mt-0.5 text-xs ${selected ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>{totalGuests} คน</p>
-      <p className={`mt-1 text-sm font-semibold tabular-nums ${selected ? 'text-primary-foreground' : isPaid ? 'text-emerald-700 dark:text-emerald-400' : 'text-foreground'}`}>
+      <p className={`mt-1 text-sm font-semibold tabular-nums ${selected ? 'text-primary-foreground' : isPaid ? 'text-[var(--status-success-fg)]' : 'text-foreground'}`}>
         ฿{total.toLocaleString('th-TH')}
       </p>
       {linkedCount > 0 && (
@@ -525,7 +530,7 @@ function PosTile({
           : <Tag className="size-7 text-red-400 opacity-70" />
       )}
       <p className="mt-0.5 text-center text-[11px] font-semibold text-foreground line-clamp-1 w-full">{tile.name}</p>
-      <p className={`text-[11px] font-bold ${tile.category === 'discount' ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'}`}>{priceLabel}</p>
+      <p className={`text-[11px] font-bold ${tile.category === 'discount' ? 'text-red-600 dark:text-red-400' : 'text-[var(--status-success-fg)]'}`}>{priceLabel}</p>
       <div className="flex items-center gap-1 mt-1">
         <button type="button" aria-label="ลด" onClick={onDec} disabled={qty === 0}
           className="flex h-5 w-5 items-center justify-center rounded-full bg-card/70 text-xs font-bold text-foreground hover:bg-card disabled:opacity-30 shadow-sm transition-colors">−</button>
@@ -1295,9 +1300,9 @@ function PaymentPanel({
 
     return (
       <div className="p-6 space-y-6">
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30 p-8 text-center space-y-3">
-          <CheckCircle2 className="mx-auto size-12 text-emerald-500" />
-          <h2 className="text-xl font-bold text-emerald-800 dark:text-emerald-300">ชำระเงินสำเร็จ</h2>
+        <div className="rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-8 text-center space-y-3">
+          <CheckCircle2 className="mx-auto size-12 text-[var(--status-success-fg)]" />
+          <h2 className="text-xl font-bold text-[var(--status-success-fg)]">ชำระเงินสำเร็จ</h2>
           <p className="text-3xl font-bold tabular-nums text-foreground">฿{lastReceipt.total.toLocaleString('th-TH')}</p>
           {lastReceipt.changeAmount > 0 && <p className="text-base text-muted-foreground">เงินทอน ฿{lastReceipt.changeAmount.toLocaleString('th-TH')}</p>}
           <p className="text-sm text-muted-foreground">โต๊ะ {lastReceipt.tableNumber} · ชำระด้วย {lastReceipt.paymentMethod}</p>
@@ -1309,7 +1314,7 @@ function PaymentPanel({
             <Printer className="size-4" />พิมพ์ซ้ำ
           </button>
           <button type="button" onClick={handleForceClose} disabled={submitting}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-red-300 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--status-danger-border)] py-3 text-sm font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors">
             {submitting && <Loader2 className="size-3.5 animate-spin" />}
             {submitting ? 'กำลังปิด…' : 'บังคับปิดโต๊ะ'}
           </button>
@@ -1616,7 +1621,7 @@ function PaymentPanel({
             </button>
             <h2 className="text-sm font-semibold text-foreground">ชำระเงิน — โต๊ะ {session.table.label}</h2>
             {isGroupBill && linkedTableLabels && (
-              <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
+              <span className="rounded-full bg-[var(--status-purple-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--status-purple-fg)]">
                 กลุ่ม {[session.table.label, ...linkedTableLabels].join(', ')}
               </span>
             )}
@@ -1650,16 +1655,16 @@ function PaymentPanel({
           </div>
 
           {lastReceipt && (
-            <div className="shrink-0 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-800 dark:bg-emerald-950/30">
+            <div className="shrink-0 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">ชำระเงินสำเร็จ</p>
+                  <p className="text-xs font-semibold text-[var(--status-success-fg)]">ชำระเงินสำเร็จ</p>
                   <p className="text-sm font-bold tabular-nums text-foreground">฿{lastReceipt.total.toLocaleString('th-TH')}</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => void (lastPaymentId ? printPaymentEventReceipt(lastPaymentId, lastReceipt) : printReceipt({ type: 'receipt', payment: lastReceipt }))}
-                  className="shrink-0 rounded-lg border border-emerald-300 bg-background px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/50"
+                  className="shrink-0 rounded-lg border border-[var(--status-success-border)] bg-background px-3 py-2 text-xs font-semibold text-[var(--status-success-fg)] hover:bg-[var(--status-success-bg)]"
                 >
                   พิมพ์ใบล่าสุด
                 </button>
@@ -1691,11 +1696,11 @@ function PaymentPanel({
               </div>
               <div className="rounded-lg bg-muted/50 px-2 py-2">
                 <p className="text-[11px] text-muted-foreground">ชำระแล้ว</p>
-                <p className="text-base font-bold tabular-nums text-emerald-600">฿{paidBeforeSettlement.toLocaleString('th-TH')}</p>
+                <p className="text-base font-bold tabular-nums text-[var(--status-success-fg)]">฿{paidBeforeSettlement.toLocaleString('th-TH')}</p>
               </div>
               <div className="rounded-lg bg-muted/50 px-2 py-2">
                 <p className="text-[11px] text-muted-foreground">คงเหลือ</p>
-                <p className="text-base font-bold tabular-nums text-red-500">฿{remainingBeforePayment.toLocaleString('th-TH')}</p>
+                <p className="text-base font-bold tabular-nums text-[var(--status-danger-fg)]">฿{remainingBeforePayment.toLocaleString('th-TH')}</p>
               </div>
             </div>
 
@@ -1792,13 +1797,13 @@ function PaymentPanel({
                 </div>
 
                 {selectedHeadTotal === 0 ? (
-                  <p className="text-center text-xs text-amber-600 dark:text-amber-400">กรุณาเลือกรายการที่ต้องการรับชำระ</p>
+                  <p className="text-center text-xs text-[var(--status-warning-fg)]">กรุณาเลือกรายการที่ต้องการรับชำระ</p>
                 ) : canFinalHeadSettlement ? (
-                  <p className="text-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                  <p className="text-center text-xs font-semibold text-[var(--status-success-fg)]">
                     เลือกรายการคงเหลือครบแล้ว สามารถปิดบิลได้
                   </p>
                 ) : allRemainingHeadsSelected ? (
-                  <p className="text-center text-xs text-amber-600 dark:text-amber-400">
+                  <p className="text-center text-xs text-[var(--status-warning-fg)]">
                     เลือกรายการครบแล้ว แต่ยอดยังไม่ตรงกับยอดคงเหลือ ระบบจะรับเป็นบางส่วน
                   </p>
                 ) : (
@@ -1943,7 +1948,7 @@ function PaymentPanel({
           <button type="button"
             onClick={() => { setTaxForm(taxInvoice ?? { companyName: '', phone: '', taxId: '', address: '' }); setTaxInvoiceOpen(true); }}
             className={`shrink-0 w-full rounded-xl border py-2.5 text-xs font-medium transition-colors ${
-              taxInvoice ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-400' : 'border-border text-foreground hover:bg-muted/50'
+              taxInvoice ? 'border-[var(--status-info-border)] bg-[var(--status-info-bg)] text-[var(--status-info-fg)]' : 'border-border text-foreground hover:bg-muted/50'
             }`}>
             {taxInvoice ? `📄 ${taxInvoice.companyName}` : '+ ออกใบกำกับภาษี'}
           </button>
@@ -1953,11 +1958,11 @@ function PaymentPanel({
           </div>
           {/* Helper text */}
           {paymentOptions.length === 0 ? (
-            <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
+            <p className="shrink-0 text-center text-xs text-[var(--status-warning-fg)]">
               ไม่สามารถโหลดช่องทางชำระได้ — กรุณาลองรีเฟรชหน้า
             </p>
           ) : checkoutMode === 'head' && paymentMode === 'items' && selectedHeadTotal === 0 ? (
-            <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
+            <p className="shrink-0 text-center text-xs text-[var(--status-warning-fg)]">
               กรุณาเลือกรายการที่ต้องการรับชำระ
             </p>
           ) : paymentRowsDraft.length === 0 ? (
@@ -1965,15 +1970,15 @@ function PaymentPanel({
               เลือกช่องทางและเพิ่มรายการชำระก่อนยืนยัน
             </p>
           ) : checkoutMode === 'head' && selectedHeadAmountCents > remainingBeforeCents ? (
-            <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
+            <p className="shrink-0 text-center text-xs text-[var(--status-warning-fg)]">
               ยอดรายการที่เลือกมากกว่ายอดคงเหลือ
             </p>
           ) : checkoutMode === 'head' && !isDraftComplete ? (
-            <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
+            <p className="shrink-0 text-center text-xs text-[var(--status-warning-fg)]">
               ยอดรับชำระไม่ตรงกับรายการที่เลือก
             </p>
           ) : checkoutMode === 'manual' && settlementMode === 'partial' && isDraftComplete ? (
-            <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
+            <p className="shrink-0 text-center text-xs text-[var(--status-warning-fg)]">
               ยอดนี้ครบคงเหลือแล้ว กรุณาใช้โหมดปิดบิลทั้งหมด
             </p>
           ) : null}
@@ -2008,30 +2013,30 @@ function PaymentPanel({
                 </div>
                 <div className="flex items-end justify-between gap-3 rounded-lg bg-primary/10 px-3 py-1.5">
                   <span className="text-sm font-semibold text-primary">ต้องรับรอบนี้</span>
-                  <span className={`tabular-nums text-xl font-bold leading-none ${remainingForDraft > 0 ? 'text-primary' : 'text-emerald-600'}`}>
+                  <span className={`tabular-nums text-xl font-bold leading-none ${remainingForDraft > 0 ? 'text-primary' : 'text-[var(--status-success-fg)]'}`}>
                     ฿{remainingForDraft.toLocaleString('th-TH')}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">คงเหลือของทั้งบิลหลังเลือกรอบนี้</span>
-                  <span className={`tabular-nums font-semibold ${remainingAfterSelection > 0 ? 'text-muted-foreground' : 'text-emerald-600'}`}>
+                  <span className={`tabular-nums font-semibold ${remainingAfterSelection > 0 ? 'text-muted-foreground' : 'text-[var(--status-success-fg)]'}`}>
                     ฿{remainingAfterSelection.toLocaleString('th-TH')}
                   </span>
                 </div>
                 {paymentRowsDraft.length > 0 && draftRowsTotalCents !== paymentTargetCents && (
-                  <p className="text-center text-xs font-medium text-amber-600 dark:text-amber-400">
+                  <p className="text-center text-xs font-medium text-[var(--status-warning-fg)]">
                     ยอดรับเงินต้องเท่ากับ ฿{paymentTargetAmount.toLocaleString('th-TH')}
                   </p>
                 )}
                 {isCashMethod && draftChange > 0 && (
-                  <div className="flex justify-between text-sm font-semibold text-emerald-600 pt-0.5">
+                  <div className="flex justify-between text-sm font-semibold text-[var(--status-success-fg)] pt-0.5">
                     <span>เงินทอน</span>
                     <span className="tabular-nums">฿{draftChange.toLocaleString('th-TH')}</span>
                   </div>
                 )}
               </div>              {isDraftComplete && (
-                <div className="shrink-0 rounded-xl bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800 px-3 py-2 text-center">
-                  <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">ครบยอดแล้ว — กดยืนยันชำระได้เลย</p>
+                <div className="shrink-0 rounded-xl bg-[var(--status-success-bg)] border border-[var(--status-success-border)] px-3 py-2 text-center">
+                  <p className="text-sm font-semibold text-[var(--status-success-fg)]">ครบยอดแล้ว — กดยืนยันชำระได้เลย</p>
                 </div>
               )}
 
@@ -2103,7 +2108,7 @@ function PaymentPanel({
                         <span className="mt-1 block truncate text-lg font-bold tabular-nums leading-none">฿{draftTenderedNum.toLocaleString('th-TH')}</span>
                       </button>
                     </div>
-                    <div className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1 text-sm font-semibold ${draftChange < 0 ? 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400'}`}>
+                    <div className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1 text-sm font-semibold ${draftChange < 0 ? 'bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]' : 'bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'}`}>
                       <span>{draftChange === 0 ? 'พอดี' : draftChange < 0 ? 'ขาดเงินสด' : 'เงินทอน'}</span>
                       <span className="tabular-nums">{draftChange === 0 ? '฿0' : `฿${Math.abs(draftChange).toLocaleString('th-TH')}`}</span>
                     </div>
@@ -2127,7 +2132,7 @@ function PaymentPanel({
                     type="button"
                     onClick={() => handleNumpadPress(k)}
                     className={`rounded-lg text-base font-bold transition-colors active:scale-95 select-none h-10 ${
-                      k === 'C'  ? 'bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 dark:bg-red-950/30 dark:border-red-900 dark:text-red-400' :
+                      k === 'C'  ? 'bg-[var(--status-danger-bg)] border border-[var(--status-danger-border)] text-[var(--status-danger-fg)] hover:opacity-80' :
                       k === '⌫' ? 'bg-muted border border-border text-foreground hover:bg-muted/70' :
                                    'bg-card border border-border text-foreground hover:bg-muted/50 shadow-sm'
                     }`}
@@ -2187,7 +2192,7 @@ function PaymentPanel({
                           type="button"
                           aria-label={`ลบรายการ ${idx + 1}`}
                           onClick={() => setPaymentRowsDraft((prev) => prev.filter((r) => r.id !== row.id))}
-                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30"
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[var(--status-danger-bg)] hover:text-[var(--status-danger-fg)]"
                         >
                           <X className="size-3.5" />
                         </button>
@@ -2436,7 +2441,7 @@ function PaymentPanel({
               <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">รอบที่ชำระแล้ว</p>
               {completedRounds.map((r, i) => (
                 <div key={i}
-                  className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30 px-3 py-2">
+                  className="flex items-center justify-between rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2">
                   <div>
                     <p className="text-xs font-medium text-foreground">รอบ {i + 1}</p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">
@@ -2444,7 +2449,7 @@ function PaymentPanel({
                     </p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-xs font-bold tabular-nums text-emerald-700 dark:text-emerald-400">฿{r.subtotal.toLocaleString('th-TH')}</p>
+                    <p className="text-xs font-bold tabular-nums text-[var(--status-success-fg)]">฿{r.subtotal.toLocaleString('th-TH')}</p>
                     <p className="text-[10px] text-muted-foreground">
                       {r.method === 'cash' ? 'เงินสด' : r.method === 'cash_qr' ? 'เงินสด+QR' : 'QR'}
                     </p>
@@ -2459,18 +2464,18 @@ function PaymentPanel({
             <div className="shrink-0 rounded-xl border border-border bg-card p-3 space-y-1.5">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">สรุปการชำระ</p>
               <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                <div className="h-2 w-2 rounded-full bg-[var(--status-success-fg)] shrink-0" />
                 <span className="text-xs text-foreground flex-1">
                   ชำระแล้ว {completedRounds.reduce((s, r) => s + r.items.reduce((a, x) => a + x.qty, 0), 0)} คน
                 </span>
-                <span className="text-xs font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">฿{completedTotal.toLocaleString('th-TH')}</span>
+                <span className="text-xs font-semibold tabular-nums text-[var(--status-success-fg)]">฿{completedTotal.toLocaleString('th-TH')}</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
+                <div className="h-2 w-2 rounded-full bg-[var(--status-warning-fg)] shrink-0" />
                 <span className="text-xs text-foreground flex-1">
                   ยังเหลือ {Object.values(roundRemaining).reduce((a, b) => a + b, 0)} คน
                 </span>
-                <span className="text-xs font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+                <span className="text-xs font-semibold tabular-nums text-[var(--status-warning-fg)]">
                   ฿{[...guestTiles, ...addonTiles]
                       .reduce((s, t) => s + (roundRemaining[t.id] ?? 0) * Number(t.price), 0)
                       .toLocaleString('th-TH')}
@@ -2483,17 +2488,17 @@ function PaymentPanel({
           {completedRounds.length > 0 && (
             <>
               {allDone ? (
-                <div className="shrink-0 rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30 px-4 py-3">
-                  <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">เก็บครบแล้ว {completedRounds.length} รอบ</p>
+                <div className="shrink-0 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-4 py-3">
+                  <p className="text-xs font-medium text-[var(--status-success-fg)]">เก็บครบแล้ว {completedRounds.length} รอบ</p>
                   <p className="mt-0.5 text-2xl font-bold tabular-nums text-foreground">฿{completedTotal.toLocaleString('th-TH')}</p>
                 </div>
               ) : (
-                <div className="shrink-0 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3">
-                  <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                <div className="shrink-0 rounded-xl border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3">
+                  <p className="text-xs font-medium text-[var(--status-warning-fg)]">
                     เก็บแล้ว {completedRounds.length} รอบ · ยังเหลือ {Object.values(roundRemaining).reduce((a, b) => a + b, 0)} คน
                   </p>
                   <p className="mt-0.5 text-xl font-bold tabular-nums text-foreground">฿{completedTotal.toLocaleString('th-TH')}</p>
-                  <p className="text-[10px] text-amber-500 dark:text-amber-400 mt-0.5">ยืนยันจะชำระเฉพาะรอบที่เก็บแล้ว ส่วนที่เหลือจะถูกยกเลิก</p>
+                  <p className="text-[10px] text-[var(--status-warning-fg)] mt-0.5">ยืนยันจะชำระเฉพาะรอบที่เก็บแล้ว ส่วนที่เหลือจะถูกยกเลิก</p>
                 </div>
               )}
               <div className="shrink-0">
@@ -2565,7 +2570,7 @@ function PaymentPanel({
                     ฿{roundCashQrCashNum.toLocaleString('th-TH')}
                   </p>
                   {roundCashQrCashNum > 0 && roundCashQrCashPortion > 0 && (
-                    <p className={`text-sm mt-1 tabular-nums font-semibold ${roundCashQrChange >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    <p className={`text-sm mt-1 tabular-nums font-semibold ${roundCashQrChange >= 0 ? 'text-[var(--status-success-fg)]' : 'text-[var(--status-danger-fg)]'}`}>
                       {roundCashQrChange >= 0 ? `เงินทอน ฿${roundCashQrChange.toLocaleString('th-TH')}` : 'ไม่เพียงพอ'}
                     </p>
                   )}
@@ -2580,7 +2585,7 @@ function PaymentPanel({
                   ฿{Number(roundNumpad).toLocaleString('th-TH')}
                 </p>
                 {roundMethod === 'cash' && roundNumpadNum > 0 && (
-                  <p className={`text-sm mt-2 tabular-nums font-semibold ${roundChange >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>
+                  <p className={`text-sm mt-2 tabular-nums font-semibold ${roundChange >= 0 ? 'text-[var(--status-success-fg)]' : 'text-[var(--status-danger-fg)]'}`}>
                     {roundChange >= 0 ? `เงินทอน ฿${roundChange.toLocaleString('th-TH')}` : 'ไม่เพียงพอ'}
                   </p>
                 )}
@@ -2610,7 +2615,7 @@ function PaymentPanel({
                       className={`rounded-lg text-base font-bold transition-colors active:scale-95 select-none h-10 ${
                         roundMethod === 'qr_promptpay'
                           ? 'bg-muted/30 border border-border text-muted-foreground/30 cursor-not-allowed'
-                          : k === 'C'  ? 'bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 dark:bg-red-950/30 dark:border-red-900 dark:text-red-400' :
+                          : k === 'C'  ? 'bg-[var(--status-danger-bg)] border border-[var(--status-danger-border)] text-[var(--status-danger-fg)] hover:opacity-80' :
                             k === '⌫' ? 'bg-muted border border-border text-foreground hover:bg-muted/70' :
                                          'bg-card border border-border text-foreground hover:bg-muted/50 shadow-sm'
                       }`}
@@ -2677,7 +2682,7 @@ function PaymentPanel({
         <div>
           <p className="text-base font-semibold text-foreground">โต๊ะ {session.table.label}</p>
           {isGroupBill && linkedTableLabels && (
-            <p className="text-xs font-medium text-violet-600 dark:text-violet-400 mt-0.5">
+            <p className="text-xs font-medium text-[var(--status-purple-fg)] mt-0.5">
               บิลกลุ่ม · รวมโต๊ะ {[session.table.label, ...linkedTableLabels].join(', ')}
             </p>
           )}
@@ -2689,7 +2694,7 @@ function PaymentPanel({
             </span>
           )}
           {session.status === 'closing' && (
-            <span className="rounded-full bg-red-100 dark:bg-red-950/40 px-3 py-1 text-xs font-semibold text-red-700 dark:text-red-400">
+            <span className="rounded-full bg-[var(--status-danger-bg)] px-3 py-1 text-xs font-semibold text-[var(--status-danger-fg)]">
               รอเรียกเก็บเงิน
             </span>
           )}
@@ -2756,7 +2761,8 @@ function PaymentPanel({
                 <div className="flex-1 overflow-y-auto p-5">
                   <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">รายการที่เลือก</p>
                   {selectedGuests.length === 0 && selectedAddons.length === 0 ? (
-                    <div className="flex h-40 flex-col items-center justify-center text-center">
+                    <div className="flex h-40 flex-col items-center justify-center text-center gap-2">
+                      <Tag className="size-7 text-muted-foreground/30" />
                       <p className="text-sm text-muted-foreground">แตะ tile เพื่อเพิ่มรายการ</p>
                     </div>
                   ) : (
@@ -2788,7 +2794,7 @@ function PaymentPanel({
                             </div>
                             <div className="flex justify-between mt-1">
                               <span className="text-xs text-muted-foreground">+฿{Number(t.price).toLocaleString('th-TH')}</span>
-                              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">฿{(Number(t.price) * qty).toLocaleString('th-TH')}</span>
+                              <span className="text-xs font-semibold text-[var(--status-success-fg)]">฿{(Number(t.price) * qty).toLocaleString('th-TH')}</span>
                             </div>
                           </button>
                         );
@@ -2809,7 +2815,7 @@ function PaymentPanel({
                       <div className="mt-5 flex items-center justify-center gap-6">
                         <button type="button" aria-label="ลด"
                           onClick={() => handlePosQtyChange(Math.max(0, editingPosQty - 1))}
-                          className="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-2xl font-bold text-foreground hover:bg-red-100 hover:text-red-700 active:scale-95 transition-all"
+                          className="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-2xl font-bold text-foreground hover:bg-[var(--status-danger-bg)] hover:text-[var(--status-danger-fg)] active:scale-95 transition-all"
                         >−</button>
                         <span className="w-12 text-center text-3xl font-bold tabular-nums text-foreground">{editingPosQty}</span>
                         <button type="button" aria-label="เพิ่ม"

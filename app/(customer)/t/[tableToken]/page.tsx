@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { UtensilsCrossed } from 'lucide-react';
 import { getActiveSessionByTable } from '@/lib/actions/orders';
 
 interface Props {
@@ -17,8 +18,8 @@ export default async function TableQrEntryPage({ params }: Props) {
   return (
     <div className="min-h-dvh bg-muted/50 flex items-center justify-center px-6">
       <div className="text-center">
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-3xl">
-          🍲
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--status-warning-bg)] border border-[var(--status-warning-border)]">
+          <UtensilsCrossed className="size-7 text-[var(--status-warning-fg)]" />
         </div>
         <h1 className="text-lg font-semibold text-foreground">ยังไม่มีการเปิดโต๊ะ</h1>
         <p className="mt-2 text-sm text-muted-foreground">

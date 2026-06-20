@@ -7,12 +7,22 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts';
+import { Banknote } from 'lucide-react';
 import { getReportSummary } from '@/lib/actions/dashboard';
 import { getFoodCostReport } from '@/lib/actions/recipes';
 import { getPaymentCollectionReport } from '@/lib/actions/reports/collection';
 import type { ReportSummary } from '@/lib/actions/dashboard';
 import type { FoodCostRow } from '@/lib/actions/recipes';
 import type { PaymentCollectionReport } from '@/lib/actions/reports/collection';
+import { AppShell } from '@/components/ui/app-shell';
+import { PageHeader } from '@/components/ui/page-header';
+import { DataCard } from '@/components/ui/section-card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 
 type Tab = 'revenue' | 'foodcost' | 'collection';
 type SessionType = 'all' | 'primary' | 'secondary';
@@ -94,37 +104,34 @@ function RevenueReport() {
 
       {/* ── Controls ──────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-end justify-between gap-3">
-        {/* Date pickers */}
         <div className="flex flex-wrap items-end gap-2">
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">วันเริ่มต้น</label>
-            <input type="date" value={fromDate} max={today}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring/50 transition-colors" />
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground font-normal">วันเริ่มต้น</Label>
+            <Input type="date" value={fromDate} max={today}
+              onChange={(e) => setFromDate(e.target.value)} className="w-40" />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">วันสิ้นสุด</label>
-            <input type="date" value={toDate} max={today}
-              onChange={(e) => setToDate(e.target.value)}
-              className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring/50 transition-colors" />
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground font-normal">วันสิ้นสุด</Label>
+            <Input type="date" value={toDate} max={today}
+              onChange={(e) => setToDate(e.target.value)} className="w-40" />
           </div>
           {loading && <span className="pb-2 text-xs text-muted-foreground">กำลังโหลด…</span>}
           {!loading && report && (
-            <button type="button" onClick={handleExport}
-              className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground hover:bg-muted/50 transition-colors">
+            <Button type="button" variant="outline" size="sm" onClick={handleExport} className="self-end">
               Export CSV
-            </button>
+            </Button>
           )}
         </div>
         {/* Session type toggle */}
         <div className="flex gap-0.5 rounded-xl bg-muted p-1">
           {(['all', 'primary', 'secondary'] as const).map((t) => (
             <button key={t} type="button" onClick={() => setSessionType(t)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-150 ${
+              className={cn(
+                'rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-150',
                 sessionType === t
                   ? 'bg-card text-foreground shadow-sm ring-1 ring-border'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}>
+                  : 'text-muted-foreground hover:text-foreground',
+              )}>
               {SESSION_TYPE_LABELS[t]}
             </button>
           ))}
@@ -164,19 +171,17 @@ function RevenueReport() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         {/* Chart — takes 2/3 */}
-        <div className="lg:col-span-2 rounded-xl bg-card border border-border p-5 flex flex-col">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-semibold text-foreground">รายได้รายวัน</p>
-            {report && report.rows.length > 0 && (
-              <span className="text-xs text-muted-foreground">{report.rows.length} วัน</span>
-            )}
-          </div>
+        <DataCard
+          title="รายได้รายวัน"
+          subtitle={report && report.rows.length > 0 ? `${report.rows.length} วัน` : undefined}
+          className="lg:col-span-2"
+        >
           {loading ? (
-            <div className="flex flex-1 min-h-[180px] items-center justify-center">
+            <div className="flex min-h-[180px] items-center justify-center">
               <span className="text-sm text-muted-foreground">กำลังโหลด…</span>
             </div>
           ) : !report || report.rows.length === 0 ? (
-            <div className="flex flex-1 min-h-[180px] items-center justify-center">
+            <div className="flex min-h-[180px] items-center justify-center">
               <span className="text-sm text-muted-foreground">ไม่มีข้อมูลในช่วงนี้</span>
             </div>
           ) : (
@@ -204,19 +209,17 @@ function RevenueReport() {
               </BarChart>
             </ResponsiveContainer>
           )}
-        </div>
+        </DataCard>
 
         {/* Breakdowns — takes 1/3 */}
         <div className="flex flex-col gap-4">
 
           {/* Guest type breakdown */}
-          <div className="rounded-xl bg-card border border-border p-5 flex-1">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">ประเภทลูกค้า</p>
-              {totalGuests > 0 && (
-                <span className="text-xs text-muted-foreground">{totalGuests} คน</span>
-              )}
-            </div>
+          <DataCard
+            title="ประเภทลูกค้า"
+            subtitle={totalGuests > 0 ? `${totalGuests} คน` : undefined}
+            className="flex-1"
+          >
             {sortedGuests.length === 0 ? (
               <p className="text-sm text-muted-foreground">ไม่มีข้อมูล</p>
             ) : (
@@ -243,11 +246,10 @@ function RevenueReport() {
                 })}
               </div>
             )}
-          </div>
+          </DataCard>
 
           {/* Payment method breakdown */}
-          <div className="rounded-xl bg-card border border-border p-5 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground mb-4">ช่องทางชำระเงิน</p>
+          <DataCard title="ช่องทางชำระเงิน" className="flex-1">
             {!report || report.paymentBreakdown.length === 0 ? (
               <p className="text-sm text-muted-foreground">ไม่มีข้อมูล</p>
             ) : (
@@ -276,55 +278,54 @@ function RevenueReport() {
                 })}
               </div>
             )}
-          </div>
+          </DataCard>
         </div>
       </div>
 
       {/* ── Daily Table ───────────────────────────────────────────────────── */}
       {report && (
-        <div className="rounded-xl bg-card border border-border overflow-hidden">
-          <div className="px-5 py-3 border-b border-border bg-muted/30">
-            <p className="text-xs font-semibold text-foreground">รายละเอียดรายวัน</p>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <Th>วันที่</Th>
-                <Th align="right">จำนวนโต๊ะ</Th>
-                <Th align="right">จำนวนลูกค้า</Th>
-                <Th align="right">รายได้รวม</Th>
-                <Th align="right">เฉลี่ยต่อโต๊ะ</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {report.rows.length === 0 && (
-                <tr><td colSpan={5} className="py-10 text-center text-muted-foreground text-xs">ไม่มีข้อมูลในช่วงเวลานี้</td></tr>
+        <DataCard noPadding title="รายละเอียดรายวัน">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-[var(--surface-2)]">
+                  <Th>วันที่</Th>
+                  <Th align="right">จำนวนโต๊ะ</Th>
+                  <Th align="right">จำนวนลูกค้า</Th>
+                  <Th align="right">รายได้รวม</Th>
+                  <Th align="right">เฉลี่ยต่อโต๊ะ</Th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {report.rows.length === 0 && (
+                  <tr><td colSpan={5} className="py-10 text-center text-muted-foreground text-xs">ไม่มีข้อมูลในช่วงเวลานี้</td></tr>
+                )}
+                {report.rows.map((r) => (
+                  <tr key={r.date} className="hover:bg-muted/30 transition-colors">
+                    <Td>{r.date}</Td>
+                    <Td align="right">{r.sessions}</Td>
+                    <Td align="right">{r.guests}</Td>
+                    <Td align="right">฿{r.revenue.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</Td>
+                    <Td align="right">฿{Math.round(r.avgPerSession).toLocaleString('th-TH')}</Td>
+                  </tr>
+                ))}
+              </tbody>
+              {report.rows.length > 0 && (
+                <tfoot>
+                  <tr className="border-t-2 border-border bg-[var(--surface-2)] font-semibold">
+                    <Td>รวม</Td>
+                    <Td align="right">{report.totals.sessions}</Td>
+                    <Td align="right">{report.totals.guests}</Td>
+                    <Td align="right">฿{report.totals.revenue.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</Td>
+                    <Td align="right">
+                      ฿{Math.round(report.totals.sessions > 0 ? report.totals.revenue / report.totals.sessions : 0).toLocaleString('th-TH')}
+                    </Td>
+                  </tr>
+                </tfoot>
               )}
-              {report.rows.map((r) => (
-                <tr key={r.date} className="hover:bg-muted/30 transition-colors">
-                  <Td>{r.date}</Td>
-                  <Td align="right">{r.sessions}</Td>
-                  <Td align="right">{r.guests}</Td>
-                  <Td align="right">฿{r.revenue.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</Td>
-                  <Td align="right">฿{Math.round(r.avgPerSession).toLocaleString('th-TH')}</Td>
-                </tr>
-              ))}
-            </tbody>
-            {report.rows.length > 0 && (
-              <tfoot>
-                <tr className="border-t-2 border-border bg-muted/50 font-semibold">
-                  <Td>รวม</Td>
-                  <Td align="right">{report.totals.sessions}</Td>
-                  <Td align="right">{report.totals.guests}</Td>
-                  <Td align="right">฿{report.totals.revenue.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</Td>
-                  <Td align="right">
-                    ฿{Math.round(report.totals.sessions > 0 ? report.totals.revenue / report.totals.sessions : 0).toLocaleString('th-TH')}
-                  </Td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
+            </table>
+          </div>
+        </DataCard>
       )}
     </div>
   );
@@ -363,17 +364,16 @@ function FoodCostReport() {
 
   return (
     <div className="space-y-5">
+
       {/* Controls */}
       <div className="flex flex-wrap items-end gap-2">
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1.5">วันเริ่มต้น</label>
-          <input type="date" value={fromDate} max={today} onChange={(e) => setFromDate(e.target.value)}
-            className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring/50 transition-colors" />
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs text-muted-foreground font-normal">วันเริ่มต้น</Label>
+          <Input type="date" value={fromDate} max={today} onChange={(e) => setFromDate(e.target.value)} className="w-40" />
         </div>
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1.5">วันสิ้นสุด</label>
-          <input type="date" value={toDate} max={today} onChange={(e) => setToDate(e.target.value)}
-            className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring/50 transition-colors" />
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs text-muted-foreground font-normal">วันสิ้นสุด</Label>
+          <Input type="date" value={toDate} max={today} onChange={(e) => setToDate(e.target.value)} className="w-40" />
         </div>
         {loading && <span className="pb-2 text-xs text-muted-foreground">กำลังโหลด…</span>}
       </div>
@@ -381,24 +381,36 @@ function FoodCostReport() {
       {/* KPI cards */}
       {rows !== null && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className={`rounded-xl px-5 py-4 border ${
-            avgFoodCostPct !== null && avgFoodCostPct > 35 ? 'bg-red-50 border-red-200' : 'bg-card border-border'
-          }`}>
+          <div className={cn(
+            'rounded-xl px-5 py-4 border',
+            avgFoodCostPct !== null && avgFoodCostPct > 35
+              ? 'bg-[var(--status-danger-bg)] border-[var(--status-danger-border)]'
+              : 'bg-card border-border',
+          )}>
             <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">% ต้นทุนเฉลี่ยต่อวัน</p>
-            <p className={`mt-1.5 text-2xl font-bold tabular-nums ${
-              avgFoodCostPct !== null ? (avgFoodCostPct > 35 ? 'text-red-600' : 'text-emerald-600') : 'text-foreground'
-            }`}>
+            <p className={cn(
+              'mt-1.5 text-2xl font-bold tabular-nums',
+              avgFoodCostPct !== null
+                ? avgFoodCostPct > 35 ? 'text-[var(--status-danger-fg)]' : 'text-[var(--status-success-fg)]'
+                : 'text-foreground',
+            )}>
               {avgFoodCostPct !== null ? `${avgFoodCostPct.toFixed(1)}%` : '—'}
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">เป้าหมาย ≤ 35%</p>
           </div>
-          <div className={`rounded-xl px-5 py-4 border ${
-            overallPct !== null && overallPct > 35 ? 'bg-red-50 border-red-200' : 'bg-card border-border'
-          }`}>
+          <div className={cn(
+            'rounded-xl px-5 py-4 border',
+            overallPct !== null && overallPct > 35
+              ? 'bg-[var(--status-danger-bg)] border-[var(--status-danger-border)]'
+              : 'bg-card border-border',
+          )}>
             <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">% ต้นทุนรวม</p>
-            <p className={`mt-1.5 text-2xl font-bold tabular-nums ${
-              overallPct !== null ? (overallPct > 35 ? 'text-red-600' : 'text-emerald-600') : 'text-foreground'
-            }`}>
+            <p className={cn(
+              'mt-1.5 text-2xl font-bold tabular-nums',
+              overallPct !== null
+                ? overallPct > 35 ? 'text-[var(--status-danger-fg)]' : 'text-[var(--status-success-fg)]'
+                : 'text-foreground',
+            )}>
               {overallPct !== null ? `${overallPct.toFixed(1)}%` : '—'}
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">ภาพรวม</p>
@@ -412,7 +424,10 @@ function FoodCostReport() {
           </div>
           <div className="rounded-xl bg-card border border-border px-5 py-4">
             <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">ต้นทุนรวม (ทฤษฎี)</p>
-            <p className={`mt-1.5 text-2xl font-bold tabular-nums ${overallPct !== null && overallPct > 35 ? 'text-red-600' : 'text-foreground'}`}>
+            <p className={cn(
+              'mt-1.5 text-2xl font-bold tabular-nums',
+              overallPct !== null && overallPct > 35 ? 'text-[var(--status-danger-fg)]' : 'text-foreground',
+            )}>
               ฿{totalCost.toLocaleString('th-TH', { maximumFractionDigits: 0 })}
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">ช่วงที่เลือก</p>
@@ -421,8 +436,7 @@ function FoodCostReport() {
       )}
 
       {/* Chart */}
-      <div className="rounded-xl bg-card border border-border p-5">
-        <p className="text-sm font-semibold text-foreground mb-4">% ต้นทุนอาหารรายวัน</p>
+      <DataCard title="% ต้นทุนอาหารรายวัน">
         {loading ? (
           <div className="flex min-h-[180px] items-center justify-center">
             <span className="text-sm text-muted-foreground">กำลังโหลด…</span>
@@ -450,43 +464,42 @@ function FoodCostReport() {
             </BarChart>
           </ResponsiveContainer>
         )}
-      </div>
+      </DataCard>
 
       {/* Table */}
       {rows !== null && (
-        <div className="rounded-xl bg-card border border-border overflow-hidden">
-          <div className="px-5 py-3 border-b border-border bg-muted/30">
-            <p className="text-xs font-semibold text-foreground">รายละเอียดรายวัน</p>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <Th>วันที่</Th><Th align="right">รายได้</Th><Th align="right">ต้นทุนทฤษฎี</Th>
-                <Th align="right">% ต้นทุน</Th><Th align="right">เป้าหมาย</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.length === 0 && <tr><td colSpan={5} className="py-10 text-center text-muted-foreground text-xs">ไม่มีข้อมูล</td></tr>}
-              {rows.map((r) => (
-                <tr key={r.date} className="hover:bg-muted/30 transition-colors">
-                  <Td>{r.date}</Td>
-                  <Td align="right">฿{r.revenue.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</Td>
-                  <Td align="right">฿{r.theoreticalCost.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</Td>
-                  <Td align="right">
-                    <span className={`font-medium ${r.foodCostPct > 35 ? 'text-red-600' : 'text-emerald-700'}`}>
-                      {r.revenue > 0 ? `${r.foodCostPct.toFixed(1)}%` : '—'}
-                    </span>
-                  </Td>
-                  <Td align="right">
-                    {r.revenue > 0
-                      ? <span className={r.targetMet ? 'text-emerald-700 font-medium' : 'text-red-600 font-medium'}>{r.targetMet ? 'ผ่าน ✓' : 'เกินเป้า'}</span>
-                      : <span className="text-muted-foreground">—</span>}
-                  </Td>
+        <DataCard noPadding title="รายละเอียดรายวัน">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-[var(--surface-2)]">
+                  <Th>วันที่</Th><Th align="right">รายได้</Th><Th align="right">ต้นทุนทฤษฎี</Th>
+                  <Th align="right">% ต้นทุน</Th><Th align="right">เป้าหมาย</Th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {rows.length === 0 && <tr><td colSpan={5} className="py-10 text-center text-muted-foreground text-xs">ไม่มีข้อมูล</td></tr>}
+                {rows.map((r) => (
+                  <tr key={r.date} className="hover:bg-muted/30 transition-colors">
+                    <Td>{r.date}</Td>
+                    <Td align="right">฿{r.revenue.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</Td>
+                    <Td align="right">฿{r.theoreticalCost.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</Td>
+                    <Td align="right">
+                      <span className={cn('font-medium', r.foodCostPct > 35 ? 'text-[var(--status-danger-fg)]' : 'text-[var(--status-success-fg)]')}>
+                        {r.revenue > 0 ? `${r.foodCostPct.toFixed(1)}%` : '—'}
+                      </span>
+                    </Td>
+                    <Td align="right">
+                      {r.revenue > 0
+                        ? <span className={cn('font-medium', r.targetMet ? 'text-[var(--status-success-fg)]' : 'text-[var(--status-danger-fg)]')}>{r.targetMet ? 'ผ่าน ✓' : 'เกินเป้า'}</span>
+                        : <span className="text-muted-foreground">—</span>}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </DataCard>
       )}
     </div>
   );
@@ -520,17 +533,15 @@ function CollectionReport() {
 
       {/* ── Controls ──────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-end gap-2">
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1.5">วันเริ่มต้น</label>
-          <input type="date" value={fromDate} max={today}
-            onChange={(e) => setFromDate(e.target.value)}
-            className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring/50 transition-colors" />
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs text-muted-foreground font-normal">วันเริ่มต้น</Label>
+          <Input type="date" value={fromDate} max={today}
+            onChange={(e) => setFromDate(e.target.value)} className="w-40" />
         </div>
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1.5">วันสิ้นสุด</label>
-          <input type="date" value={toDate} max={today}
-            onChange={(e) => setToDate(e.target.value)}
-            className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring/50 transition-colors" />
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs text-muted-foreground font-normal">วันสิ้นสุด</Label>
+          <Input type="date" value={toDate} max={today}
+            onChange={(e) => setToDate(e.target.value)} className="w-40" />
         </div>
         {loading && <span className="pb-2 text-xs text-muted-foreground">กำลังโหลด…</span>}
       </div>
@@ -578,97 +589,100 @@ function CollectionReport() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
           {/* Method summary */}
-          <div className="rounded-xl bg-card border border-border overflow-hidden">
-            <div className="px-5 py-3 border-b border-border bg-muted/30">
-              <p className="text-xs font-semibold text-foreground">สรุปตามช่องทางชำระ</p>
-            </div>
+          <DataCard noPadding title="สรุปตามช่องทางชำระ">
             {report.methodSummary.length === 0 ? (
-              <p className="px-5 py-8 text-sm text-muted-foreground">ไม่มีรายการรับเงินในช่วงนี้</p>
+              <EmptyState
+                icon={<Banknote className="size-5" />}
+                title="ไม่มีรายการรับเงิน"
+                description="ไม่มีรายการรับเงินในช่วงนี้"
+              />
             ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border">
-                    <Th>ช่องทาง</Th>
-                    <Th>ประเภท</Th>
-                    <Th align="right">รายการ</Th>
-                    <Th align="right">ยอดรับ</Th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {report.methodSummary.map((m) => (
-                    <tr key={m.methodId} className="hover:bg-muted/30 transition-colors">
-                      <Td>{m.methodName}</Td>
-                      <Td><span className="text-xs text-muted-foreground">{METHOD_TYPE_LABELS[m.methodType] ?? m.methodType}</span></Td>
-                      <Td align="right">{m.rowCount}</Td>
-                      <Td align="right" className="font-semibold">
-                        ฿{m.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-[var(--surface-2)]">
+                      <Th>ช่องทาง</Th>
+                      <Th>ประเภท</Th>
+                      <Th align="right">รายการ</Th>
+                      <Th align="right">ยอดรับ</Th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {report.methodSummary.map((m) => (
+                      <tr key={m.methodId} className="hover:bg-muted/30 transition-colors">
+                        <Td>{m.methodName}</Td>
+                        <Td><span className="text-xs text-muted-foreground">{METHOD_TYPE_LABELS[m.methodType] ?? m.methodType}</span></Td>
+                        <Td align="right">{m.rowCount}</Td>
+                        <Td align="right" className="font-semibold">
+                          ฿{m.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-border bg-[var(--surface-2)] font-semibold">
+                      <Td>รวม</Td><Td>{''}</Td>
+                      <Td align="right">{report.methodSummary.reduce((s, m) => s + m.rowCount, 0)}</Td>
+                      <Td align="right">
+                        ฿{report.methodSummary.reduce((s, m) => s + m.amount, 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
                       </Td>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-border bg-muted/50 font-semibold">
-                    <Td>รวม</Td><Td>{''}</Td>
-                    <Td align="right">{report.methodSummary.reduce((s, m) => s + m.rowCount, 0)}</Td>
-                    <Td align="right">
-                      ฿{report.methodSummary.reduce((s, m) => s + m.amount, 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-                    </Td>
-                  </tr>
-                </tfoot>
-              </table>
+                  </tfoot>
+                </table>
+              </div>
             )}
-          </div>
+          </DataCard>
 
           {/* Account summary */}
-          <div className="rounded-xl bg-card border border-border overflow-hidden">
-            <div className="px-5 py-3 border-b border-border bg-muted/30">
-              <p className="text-xs font-semibold text-foreground">สรุปตามบัญชีรับเงิน</p>
-            </div>
+          <DataCard noPadding title="สรุปตามบัญชีรับเงิน">
             {report.accountSummary.length === 0 ? (
-              <p className="px-5 py-8 text-sm text-muted-foreground">ไม่มีรายการรับเงินในช่วงนี้</p>
+              <EmptyState
+                icon={<Banknote className="size-5" />}
+                title="ไม่มีรายการรับเงิน"
+                description="ไม่มีรายการรับเงินในช่วงนี้"
+              />
             ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border">
-                    <Th>บัญชีรับเงิน</Th>
-                    <Th>ประเภทบัญชี</Th>
-                    <Th align="right">รายการ</Th>
-                    <Th align="right">ยอดรับ</Th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {report.accountSummary.map((a) => (
-                    <tr key={a.accountId} className="hover:bg-muted/30 transition-colors">
-                      <Td>{a.accountName}</Td>
-                      <Td><span className="text-xs text-muted-foreground">{ACCOUNT_TYPE_LABELS[a.accountType] ?? a.accountType}</span></Td>
-                      <Td align="right">{a.rowCount}</Td>
-                      <Td align="right" className="font-semibold">
-                        ฿{a.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-[var(--surface-2)]">
+                      <Th>บัญชีรับเงิน</Th>
+                      <Th>ประเภทบัญชี</Th>
+                      <Th align="right">รายการ</Th>
+                      <Th align="right">ยอดรับ</Th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {report.accountSummary.map((a) => (
+                      <tr key={a.accountId} className="hover:bg-muted/30 transition-colors">
+                        <Td>{a.accountName}</Td>
+                        <Td><span className="text-xs text-muted-foreground">{ACCOUNT_TYPE_LABELS[a.accountType] ?? a.accountType}</span></Td>
+                        <Td align="right">{a.rowCount}</Td>
+                        <Td align="right" className="font-semibold">
+                          ฿{a.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-border bg-[var(--surface-2)] font-semibold">
+                      <Td>รวม</Td><Td>{''}</Td>
+                      <Td align="right">{report.accountSummary.reduce((s, a) => s + a.rowCount, 0)}</Td>
+                      <Td align="right">
+                        ฿{report.accountSummary.reduce((s, a) => s + a.amount, 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
                       </Td>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-border bg-muted/50 font-semibold">
-                    <Td>รวม</Td><Td>{''}</Td>
-                    <Td align="right">{report.accountSummary.reduce((s, a) => s + a.rowCount, 0)}</Td>
-                    <Td align="right">
-                      ฿{report.accountSummary.reduce((s, a) => s + a.amount, 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-                    </Td>
-                  </tr>
-                </tfoot>
-              </table>
+                  </tfoot>
+                </table>
+              </div>
             )}
-          </div>
+          </DataCard>
         </div>
       )}
 
       {/* ── Account × Method matrix ───────────────────────────────────────── */}
       {report && report.matrix.length > 0 && (
-        <div className="rounded-xl bg-card border border-border overflow-hidden">
-          <div className="px-5 py-3 border-b border-border bg-muted/30">
-            <p className="text-xs font-semibold text-foreground">รายละเอียด: บัญชีรับเงิน × ช่องทางชำระ</p>
-          </div>
+        <DataCard noPadding title="รายละเอียด: บัญชีรับเงิน × ช่องทางชำระ">
           <div className="divide-y divide-border">
             {report.matrix.map((matRow) => (
               <div key={matRow.accountId} className="px-5 py-4">
@@ -696,14 +710,16 @@ function CollectionReport() {
               </div>
             ))}
           </div>
-        </div>
+        </DataCard>
       )}
 
       {/* ── Empty state ───────────────────────────────────────────────────── */}
       {!loading && report && report.methodSummary.length === 0 && (
-        <div className="rounded-xl border border-border bg-card py-16 text-center text-sm text-muted-foreground">
-          ยังไม่มีรายการรับเงินในช่วงวันที่นี้
-        </div>
+        <EmptyState
+          icon={<Banknote className="size-5" />}
+          title="ยังไม่มีรายการรับเงิน"
+          description="ยังไม่มีรายการรับเงินในช่วงวันที่นี้"
+        />
       )}
     </div>
   );
@@ -721,27 +737,21 @@ export function ReportsPage() {
   ];
 
   return (
-    <div className="page-shell">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-bold tracking-tight text-foreground">รายงาน</h1>
-        <div className="flex gap-px rounded-lg bg-muted p-1">
+    <AppShell>
+      <PageHeader title="รายงาน" subtitle="สรุปรายได้ · ต้นทุนอาหาร · ยอดรับจริง" />
+      <Tabs value={tab} onValueChange={(v) => { if (v) setTab(v as Tab); }} className="gap-0">
+        <TabsList variant="line" className="w-full justify-start rounded-none border-b border-border px-0 h-auto">
           {TABS.map((t) => (
-            <button key={t.key} type="button" onClick={() => setTab(t.key)}
-              className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors duration-150 ${
-                tab === t.key
-                  ? 'bg-card text-foreground shadow-sm ring-1 ring-border'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}>
+            <TabsTrigger key={t.key} value={t.key} className="px-4 py-2.5 h-auto rounded-none">
               {t.label}
-            </button>
+            </TabsTrigger>
           ))}
-        </div>
-      </div>
-
-      {tab === 'revenue'    && <RevenueReport />}
-      {tab === 'foodcost'   && <FoodCostReport />}
-      {tab === 'collection' && <CollectionReport />}
-    </div>
+        </TabsList>
+        <TabsContent value="revenue" className="mt-6"><RevenueReport /></TabsContent>
+        <TabsContent value="foodcost" className="mt-6"><FoodCostReport /></TabsContent>
+        <TabsContent value="collection" className="mt-6"><CollectionReport /></TabsContent>
+      </Tabs>
+    </AppShell>
   );
 }
 
@@ -757,7 +767,7 @@ function downloadCsv(filename: string, csv: string) {
 
 function Th({ children, align }: { children: React.ReactNode; align?: 'right' }) {
   return (
-    <th className={`px-4 py-3 text-xs font-semibold text-muted-foreground ${align === 'right' ? 'text-right' : 'text-left'}`}>
+    <th className={cn('px-4 py-3 text-xs font-semibold text-muted-foreground text-left', align === 'right' && 'text-right')}>
       {children}
     </th>
   );
@@ -765,7 +775,7 @@ function Th({ children, align }: { children: React.ReactNode; align?: 'right' })
 
 function Td({ children, align, className }: { children: React.ReactNode; align?: 'right'; className?: string }) {
   return (
-    <td className={`px-4 py-3 text-foreground text-sm ${align === 'right' ? 'text-right tabular-nums' : ''} ${className ?? ''}`}>
+    <td className={cn('px-4 py-3 text-foreground text-sm', align === 'right' && 'text-right tabular-nums', className)}>
       {children}
     </td>
   );

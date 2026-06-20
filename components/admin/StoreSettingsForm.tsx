@@ -1,16 +1,22 @@
-﻿'use client';
+'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
-import { ImagePlus, X } from 'lucide-react';
+import { ImagePlus, X, Save } from 'lucide-react';
 import { updateStoreSettings } from '@/lib/actions/store';
 import type { StoreSettingsData } from '@/lib/actions/store';
 import type { BillConfig, BillTypeLabel } from '@/lib/db/schema';
 import { BillLivePreview } from '@/components/admin/BillLivePreview';
+import { AppShell } from '@/components/ui/app-shell';
+import { PageHeader } from '@/components/ui/page-header';
+import { DataCard } from '@/components/ui/section-card';
+import { FormSection, FormRow } from '@/components/ui/form-section';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface Props { initialData: StoreSettingsData; }
 
-// ─── Bill type tabs ───────────────────────────────────────────────────────────
+/* ─── Bill type tabs ─────────────────────────────────────────── */
 
 type BillTab = 'global' | 'preview' | 'main' | 'secondary' | 'taxInvoice';
 
@@ -22,7 +28,7 @@ const BILL_TABS: { key: BillTab; label: string }[] = [
   { key: 'taxInvoice', label: 'ใบกำกับภาษี' },
 ];
 
-// ─── Section toggles ──────────────────────────────────────────────────────────
+/* ─── Section toggles ────────────────────────────────────────── */
 
 type SectionKey =
   | 'logo' | 'shopName' | 'companyName' | 'branch' | 'address' | 'taxId' | 'registerNo'
@@ -50,7 +56,7 @@ const BILL_TYPE_OPTIONS: { value: BillTypeLabel; label: string }[] = [
   { value: 'tax_full',      label: 'ใบกำกับภาษี' },
 ];
 
-// ─── Per-bill config state ────────────────────────────────────────────────────
+/* ─── Per-bill config state ──────────────────────────────────── */
 
 type BillTabState = {
   billTypeLabel: BillTypeLabel;
@@ -84,7 +90,12 @@ function toBillConfig(state: BillTabState, tab: Exclude<BillTab, 'global'>): Bil
   };
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+/* ─── Shared input style ─────────────────────────────────────── */
+
+const FIELD_INPUT =
+  'w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 transition-colors';
+
+/* ─── Component ──────────────────────────────────────────────── */
 
 export function StoreSettingsForm({ initialData }: Props) {
   const [saving, setSaving] = useState(false);
@@ -127,7 +138,7 @@ export function StoreSettingsForm({ initialData }: Props) {
   function toggleSection(tab: string, key: SectionKey) {
     setBillStates(p => {
       const cur = new Set(p[tab].hiddenFields);
-      cur.has(key) ? cur.delete(key) : cur.add(key);
+      if (cur.has(key)) { cur.delete(key); } else { cur.add(key); }
       return { ...p, [tab]: { ...p[tab], hiddenFields: cur } };
     });
   }
@@ -170,7 +181,7 @@ export function StoreSettingsForm({ initialData }: Props) {
     else toast.success('บันทึกแล้ว');
   }
 
-  // ─── Preview props (resolved for current tab) ───────────────────────────────
+  /* ─── Preview props ─── */
 
   const previewTabKey = activeTab === 'global' ? 'preview' : activeTab;
   const previewState = billStates[previewTabKey];
@@ -194,229 +205,363 @@ export function StoreSettingsForm({ initialData }: Props) {
     hiddenFields: [...(previewState?.hiddenFields ?? [])],
   };
 
-  const INPUT = 'w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary transition-colors';
-
   return (
-    <div className="flex gap-6 items-start">
-      {/* ── Left: Form ──────────────────────────────────────────────────── */}
-      <form onSubmit={handleSubmit} className="w-[420px] shrink-0 space-y-4">
-        {/* Tabs */}
-        <div className="flex flex-wrap gap-1 rounded-xl bg-muted/50 p-1">
-          {BILL_TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setActiveTab(t.key)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                activeTab === t.key
-                  ? 'bg-card text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+    <AppShell>
+      <PageHeader
+        title="ตั้งค่าบิล"
+        subtitle="ข้อมูลร้าน กระดาษบิล โลโก้ และการตั้งค่าภาษี"
+        actions={
+          <Button
+            type="submit"
+            form="settings-form"
+            disabled={saving}
+          >
+            <Save className="size-4" />
+            {saving ? 'กำลังบันทึก…' : 'บันทึก'}
+          </Button>
+        }
+      />
 
-        {/* ── Global Tab ──────────────────────────────────────────────── */}
-        {activeTab === 'global' && (
-          <div className="space-y-5">
-            {/* Logo */}
-            <Section title="โลโก้หัวบิล">
-              {logoUrl ? (
-                <div className="flex items-start gap-4">
-                  <img src={logoUrl} alt="โลโก้" style={{ height: logoHeight }} className="max-w-[160px] object-contain rounded border border-border bg-card p-1" />
-                  <div className="space-y-2 flex-1">
+      <div className="flex items-start gap-6">
+
+        {/* ── Left: Form ──────────────────────────────────────────── */}
+        <form
+          id="settings-form"
+          onSubmit={handleSubmit}
+          className="w-[480px] shrink-0 space-y-4"
+        >
+          {/* Tab bar */}
+          <div className="flex flex-wrap gap-px rounded-lg bg-muted p-1">
+            {BILL_TABS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setActiveTab(t.key)}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-150',
+                  activeTab === t.key
+                    ? 'bg-[var(--surface-1)] text-foreground shadow-sm ring-1 ring-border'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Global Tab ────────────────────────────────────────── */}
+          {activeTab === 'global' && (
+            <div className="space-y-4">
+
+              {/* Logo + Paper width */}
+              <DataCard title="โลโก้และกระดาษบิล">
+                <FormSection>
+                  {/* Logo upload */}
+                  {logoUrl ? (
+                    <div className="flex items-start gap-4">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- logo preview uses dynamic inline height; <Image> requires known dimensions */}
+                      <img
+                        src={logoUrl}
+                        alt="โลโก้"
+                        style={{ height: logoHeight }}
+                        className="max-w-[140px] rounded-lg border border-border bg-[var(--surface-2)] object-contain p-1"
+                      />
+                      <div className="flex-1 space-y-2">
+                        <div className="flex gap-2">
+                          <label className={cn(
+                            'cursor-pointer rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40',
+                            isLogoUploading && 'pointer-events-none opacity-50',
+                          )}>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={handleLogoUpload}
+                              disabled={isLogoUploading}
+                            />
+                            {isLogoUploading ? 'กำลังอัปโหลด…' : 'เปลี่ยนรูป'}
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setLogoUrl('')}
+                            className="flex items-center gap-1 rounded-lg border border-[var(--status-danger-border)] px-3 py-1.5 text-xs font-medium text-[var(--status-danger-fg)] transition-colors hover:bg-[var(--status-danger-bg)]"
+                          >
+                            <X className="size-3" />
+                            ลบโลโก้
+                          </button>
+                        </div>
+                        <div>
+                          <p className="mb-1 text-[10px] text-muted-foreground">ความสูงโลโก้: {logoHeight}px</p>
+                          <input
+                            type="range"
+                            min={20}
+                            max={200}
+                            value={logoHeight}
+                            onChange={(e) => setLogoHeight(Number(e.target.value))}
+                            className="w-full accent-primary"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className={cn(
+                      'flex w-full cursor-pointer flex-col items-center gap-2',
+                      isLogoUploading && 'pointer-events-none opacity-50',
+                    )}>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleLogoUpload}
+                        disabled={isLogoUploading}
+                      />
+                      <div className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-[var(--surface-2)] px-4 py-4 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/50">
+                        <ImagePlus className="size-4 shrink-0" />
+                        {isLogoUploading ? 'กำลังอัปโหลด…' : 'เลือกรูปภาพ (PNG / JPG / SVG)'}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">แนะนำขนาดไม่เกิน 200 KB</p>
+                    </label>
+                  )}
+
+                  {/* Paper width */}
+                  <div>
+                    <p className="mb-2 text-xs font-semibold text-foreground">ขนาดกระดาษบิล</p>
                     <div className="flex gap-2">
-                      <label className={`cursor-pointer rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/30 transition-colors ${isLogoUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                        <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={isLogoUploading} />
-                        {isLogoUploading ? 'กำลังอัปโหลด…' : 'เปลี่ยนรูป'}
-                      </label>
-                      <button type="button" onClick={() => setLogoUrl('')}
-                        className="flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 transition-colors">
-                        <X className="size-3" />ลบโลโก้
-                      </button>
+                      {([58, 80] as const).map((w) => (
+                        <button
+                          key={w}
+                          type="button"
+                          onClick={() => { setPaperWidth(w); setPreviewWidth(w); }}
+                          className={cn(
+                            'flex-1 rounded-lg border py-2 text-sm font-semibold transition-colors',
+                            paperWidth === w
+                              ? 'border-primary bg-primary text-primary-foreground'
+                              : 'border-border text-muted-foreground hover:bg-muted/40',
+                          )}
+                        >
+                          {w} mm
+                        </button>
+                      ))}
                     </div>
-                    <div>
-                      <label className="block text-[10px] text-muted-foreground mb-1">ความสูงโลโก้: {logoHeight}px</label>
-                      <input type="range" min={20} max={200} value={logoHeight}
-                        onChange={e => setLogoHeight(Number(e.target.value))}
-                        className="w-full accent-slate-800" />
-                    </div>
+                    <p className="mt-1.5 text-[10px] text-muted-foreground">
+                      58mm — เครื่องพิมพ์ขนาดเล็ก · 80mm — เครื่องพิมพ์มาตรฐาน
+                    </p>
                   </div>
-                </div>
-              ) : (
-                <label className={`flex flex-col items-center gap-2 cursor-pointer group ${isLogoUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                  <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={isLogoUploading} />
-                  <div className="flex items-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3 text-sm font-medium text-muted-foreground group-hover:bg-muted/50 transition-colors w-full justify-center">
-                    <ImagePlus className="size-4 text-muted-foreground" />
-                    {isLogoUploading ? 'กำลังอัปโหลด…' : 'เลือกรูปภาพ (PNG / JPG / SVG)'}
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">แนะนำขนาดไม่เกิน 200 KB</p>
-                </label>
-              )}
-            </Section>
+                </FormSection>
+              </DataCard>
 
-            {/* Paper width */}
-            <Section title="ขนาดกระดาษบิล">
-              <div className="flex gap-2">
+              {/* Store info */}
+              <DataCard title="ข้อมูลร้าน">
+                <div className="grid grid-cols-2 gap-4">
+                  <FormRow label="ชื่อร้าน (ไทย)" required className="col-span-2">
+                    <input
+                      className={FIELD_INPUT}
+                      value={shopNameTh}
+                      onChange={(e) => setShopNameTh(e.target.value)}
+                      placeholder="ร้านชาบู"
+                    />
+                  </FormRow>
+                  <FormRow label="ชื่อร้าน (English)">
+                    <input
+                      className={FIELD_INPUT}
+                      value={shopNameEn}
+                      onChange={(e) => setShopNameEn(e.target.value)}
+                      placeholder="Shabu Buffet"
+                    />
+                  </FormRow>
+                  <FormRow label="สาขา">
+                    <input
+                      className={FIELD_INPUT}
+                      value={branch}
+                      onChange={(e) => setBranch(e.target.value)}
+                      placeholder="สำนักงานใหญ่"
+                    />
+                  </FormRow>
+                  <FormRow label="ชื่อนิติบุคคล / บริษัท" className="col-span-2">
+                    <input
+                      className={FIELD_INPUT}
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      placeholder="หจก. ร้านชาบู"
+                    />
+                  </FormRow>
+                  <FormRow label="ที่อยู่" className="col-span-2">
+                    <textarea
+                      className={FIELD_INPUT}
+                      rows={2}
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="1/1 ถ.xxx ต.xxx"
+                    />
+                  </FormRow>
+                  <FormRow label="โทรศัพท์">
+                    <input
+                      className={FIELD_INPUT}
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="0800000000"
+                    />
+                  </FormRow>
+                  <FormRow label="Register No">
+                    <input
+                      className={FIELD_INPUT}
+                      value={registerNo}
+                      onChange={(e) => setRegisterNo(e.target.value)}
+                      placeholder="00001"
+                    />
+                  </FormRow>
+                  <FormRow label="เลขประจำตัวผู้เสียภาษี" className="col-span-2">
+                    <input
+                      className={FIELD_INPUT}
+                      value={taxId}
+                      onChange={(e) => setTaxId(e.target.value)}
+                      placeholder="0503xxxxxxx"
+                    />
+                  </FormRow>
+                  <FormRow label="ข้อความท้ายบิล" className="col-span-2">
+                    <input
+                      className={FIELD_INPUT}
+                      value={footerNote}
+                      onChange={(e) => setFooterNote(e.target.value)}
+                      placeholder="ขอบคุณและขอให้โชคดี"
+                    />
+                  </FormRow>
+                </div>
+              </DataCard>
+
+              {/* Tax & invoice settings */}
+              <DataCard title="ภาษีและหมายเลขบิล">
+                <div className="grid grid-cols-2 gap-4">
+                  <FormRow label="ภาษีมูลค่าเพิ่ม (%)">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      className={FIELD_INPUT}
+                      value={vatPercent}
+                      onChange={(e) => setVatPercent(Number(e.target.value))}
+                    />
+                  </FormRow>
+                  <FormRow
+                    label={`Prefix เลขที่บิล`}
+                    hint={`เช่น "${taxInvoicePrefix || 'LHK'}" → ${taxInvoicePrefix || 'LHK'}03060001`}
+                  >
+                    <input
+                      className={FIELD_INPUT}
+                      value={taxInvoicePrefix}
+                      onChange={(e) => setTaxInvoicePrefix(e.target.value)}
+                      placeholder="LHK"
+                      maxLength={20}
+                    />
+                  </FormRow>
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  รูปแบบ: {taxInvoicePrefix || 'LHK'}{'{DDMM}'}{'{0001}'} — เลขที่ reset ทุกวัน
+                </p>
+              </DataCard>
+
+            </div>
+          )}
+
+          {/* ── Per-bill tabs ─────────────────────────────────────── */}
+          {activeTab !== 'global' && billState && (
+            <div className="space-y-4">
+
+              {/* Document type */}
+              <DataCard title="ประเภทเอกสาร">
+                <div className="space-y-3">
+                  {BILL_TYPE_OPTIONS.map((opt) => (
+                    <label key={opt.value} className="flex cursor-pointer items-center gap-3">
+                      <input
+                        type="radio"
+                        name={`billType-${activeTab}`}
+                        checked={billState.billTypeLabel === opt.value}
+                        onChange={() => setBillTypeLabel(activeTab, opt.value)}
+                        className="size-4 accent-primary"
+                      />
+                      <span className="text-sm text-foreground">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </DataCard>
+
+              {/* Section show/hide toggles */}
+              <DataCard
+                title="แสดง / ซ่อน ส่วนต่างๆ"
+                subtitle="ปิดสวิตช์ = ซ่อน section นั้นออกจากบิลประเภทนี้"
+              >
+                <div className="divide-y divide-border">
+                  {SECTIONS.map((s) => {
+                    const isHidden = billState.hiddenFields.has(s.key);
+                    return (
+                      <label
+                        key={s.key}
+                        className="flex cursor-pointer items-center justify-between py-2.5"
+                      >
+                        <span className={cn(
+                          'text-sm transition-colors',
+                          isHidden ? 'text-muted-foreground line-through' : 'text-foreground',
+                        )}>
+                          {s.label}
+                        </span>
+                        <div
+                          onClick={() => toggleSection(activeTab, s.key)}
+                          className={cn(
+                            'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
+                            isHidden ? 'bg-muted' : 'bg-primary',
+                          )}
+                        >
+                          <span className={cn(
+                            'inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform',
+                            isHidden ? 'translate-x-1' : 'translate-x-[18px]',
+                          )} />
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </DataCard>
+
+            </div>
+          )}
+
+          {/* Save (bottom) */}
+          <Button type="submit" disabled={saving} className="w-full">
+            {saving ? 'กำลังบันทึก…' : 'บันทึก'}
+          </Button>
+        </form>
+
+        {/* ── Right: Live Preview ──────────────────────────────── */}
+        <div className="flex-1 min-w-0 sticky top-6">
+          <DataCard
+            title="ตัวอย่างบิล"
+            actions={
+              <div className="flex gap-0.5 rounded-lg border border-border bg-[var(--surface-2)] p-0.5">
                 {([58, 80] as const).map((w) => (
-                  <button key={w} type="button" onClick={() => { setPaperWidth(w); setPreviewWidth(w); }}
-                    className={`flex-1 rounded-lg border py-2 text-sm font-semibold transition-colors ${
-                      paperWidth === w ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-muted-foreground hover:bg-muted/30'
-                    }`}>
-                    {w} mm
+                  <button
+                    key={w}
+                    type="button"
+                    onClick={() => setPreviewWidth(w)}
+                    className={cn(
+                      'rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                      previewWidth === w
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {w}mm
                   </button>
                 ))}
               </div>
-              <p className="mt-1.5 text-[10px] text-muted-foreground">58mm — เครื่องพิมพ์ขนาดเล็ก · 80mm — เครื่องพิมพ์มาตรฐาน</p>
-            </Section>
-
-            {/* Info fields */}
-            <Section title="ข้อมูลร้าน">
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="ชื่อร้าน (ไทย) *" span>
-                  <input className={INPUT} value={shopNameTh} onChange={e => setShopNameTh(e.target.value)} placeholder="ร้านชาบู" />
-                </Field>
-                <Field label="ชื่อร้าน (English)">
-                  <input className={INPUT} value={shopNameEn} onChange={e => setShopNameEn(e.target.value)} placeholder="Shabu Buffet" />
-                </Field>
-                <Field label="ชื่อนิติบุคคล / บริษัท" span>
-                  <input className={INPUT} value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="หจก. ร้านชาบู" />
-                </Field>
-                <Field label="ที่อยู่" span>
-                  <textarea className={INPUT} rows={2} value={address} onChange={e => setAddress(e.target.value)} placeholder="1/1 ถ.xxx ต.xxx" />
-                </Field>
-                <Field label="โทรศัพท์">
-                  <input className={INPUT} value={phone} onChange={e => setPhone(e.target.value)} placeholder="0800000000" />
-                </Field>
-                <Field label="เลขประจำตัวผู้เสียภาษี">
-                  <input className={INPUT} value={taxId} onChange={e => setTaxId(e.target.value)} placeholder="0503xxxxxxx" />
-                </Field>
-                <Field label="สาขา">
-                  <input className={INPUT} value={branch} onChange={e => setBranch(e.target.value)} placeholder="สำนักงานใหญ่" />
-                </Field>
-                <Field label="Register No">
-                  <input className={INPUT} value={registerNo} onChange={e => setRegisterNo(e.target.value)} placeholder="00001" />
-                </Field>
-                <Field label="ข้อความท้ายบิล" span>
-                  <input className={INPUT} value={footerNote} onChange={e => setFooterNote(e.target.value)} placeholder="ขอบคุณและขอให้โชคดี" />
-                </Field>
-                <Field label="ภาษีมูลค่าเพิ่ม (%)">
-                  <input type="number" min={0} max={100} className={INPUT} value={vatPercent} onChange={e => setVatPercent(Number(e.target.value))} />
-                </Field>
-              </div>
-            </Section>
-
-            {/* Tax invoice settings */}
-            <Section title="ตั้งค่าใบกำกับภาษี">
-              <Field label={`Prefix เลขที่บิล (เช่น "LHK" → LHK03060001)`} span>
-                <input className={INPUT} value={taxInvoicePrefix} onChange={e => setTaxInvoicePrefix(e.target.value)} placeholder="LHK" maxLength={20} />
-              </Field>
-              <p className="text-[10px] text-muted-foreground mt-1">รูปแบบ: {taxInvoicePrefix || 'LHK'}{'{DDMM}'}{'{0001}'} — เลขที่ reset ทุกวัน เช่น {taxInvoicePrefix || 'LHK'}03060001, {taxInvoicePrefix || 'LHK'}03060002, …</p>
-            </Section>
-          </div>
-        )}
-
-        {/* ── Per-bill tabs ────────────────────────────────────────────── */}
-        {activeTab !== 'global' && billState && (
-          <div className="space-y-4">
-            {/* Document type selector */}
-            <Section title="ประเภทเอกสาร">
-              <div className="flex flex-col gap-2">
-                {BILL_TYPE_OPTIONS.map((opt) => (
-                  <label key={opt.value} className="flex items-center gap-2.5 cursor-pointer">
-                    <input
-                      type="radio"
-                      name={`billType-${activeTab}`}
-                      checked={billState.billTypeLabel === opt.value}
-                      onChange={() => setBillTypeLabel(activeTab, opt.value)}
-                      className="accent-slate-800"
-                    />
-                    <span className="text-sm text-foreground">{opt.label}</span>
-                  </label>
-                ))}
-              </div>
-            </Section>
-
-            {/* Section toggles */}
-            <Section title="แสดง / ซ่อน แต่ละส่วน">
-              <div className="divide-y divide-border">
-                {SECTIONS.map((s) => {
-                  const isHidden = billState.hiddenFields.has(s.key);
-                  return (
-                    <label key={s.key} className="flex items-center justify-between py-2.5 cursor-pointer group">
-                      <span className={`text-sm transition-colors ${isHidden ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
-                        {s.label}
-                      </span>
-                      <div
-                        onClick={() => toggleSection(activeTab, s.key)}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                          isHidden ? 'bg-muted' : 'bg-primary'
-                        }`}
-                      >
-                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-card transition-transform shadow-sm ${
-                          isHidden ? 'translate-x-1' : 'translate-x-4.5'
-                        }`} />
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-              <p className="text-[11px] text-muted-foreground pt-2">ปิดสวิตช์ = ซ่อน section นั้นออกจากบิลประเภทนี้</p>
-            </Section>
-          </div>
-        )}
-
-        <button type="submit" disabled={saving}
-          className="w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50 transition-colors">
-          {saving ? 'กำลังบันทึก…' : 'บันทึก'}
-        </button>
-      </form>
-
-      {/* ── Right: Live Preview ──────────────────────────────────────── */}
-      <div className="flex-1 min-w-0 sticky top-6">
-        <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
-          {/* Paper width toggle for preview */}
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-muted-foreground">ตัวอย่างบิล</p>
-            <div className="flex gap-1 rounded-lg bg-card border border-border p-0.5">
-              {([58, 80] as const).map((w) => (
-                <button key={w} type="button" onClick={() => setPreviewWidth(w)}
-                  className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-                    previewWidth === w ? 'bg-primary text-white' : 'text-muted-foreground hover:text-foreground'
-                  }`}>
-                  {w}mm
-                </button>
-              ))}
+            }
+          >
+            <div className="overflow-auto">
+              <BillLivePreview {...previewProps} paperWidth={previewWidth} />
             </div>
-          </div>
-
-          <div className="overflow-auto">
-            <BillLivePreview {...previewProps} paperWidth={previewWidth} />
-          </div>
+          </DataCard>
         </div>
+
       </div>
-    </div>
-  );
-}
-
-// ─── Helper sub-components ────────────────────────────────────────────────────
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl bg-card p-4 space-y-3 shadow-sm ring-1 ring-border/40">
-      <p className="text-xs font-semibold text-foreground">{title}</p>
-      {children}
-    </div>
-  );
-}
-
-function Field({ label, children, span }: { label: string; children: React.ReactNode; span?: boolean }) {
-  return (
-    <div className={span ? 'col-span-2' : ''}>
-      <label className="block text-xs font-medium text-muted-foreground mb-1">{label}</label>
-      {children}
-    </div>
+    </AppShell>
   );
 }

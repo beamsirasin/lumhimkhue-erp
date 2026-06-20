@@ -1,11 +1,22 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, isToday, addMonths, subMonths } from 'date-fns';
+import {
+  addMonths,
+  eachDayOfInterval,
+  endOfMonth,
+  format,
+  getDay,
+  isToday,
+  startOfMonth,
+  subMonths,
+} from 'date-fns';
 import { th } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, CalendarDays, ChevronDown, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
 import { getHistoryCalendarDates } from '@/lib/actions/history';
+import { cn } from '@/lib/utils';
 
 interface HistoryCalendarProps {
   selectedDate: string; // 'yyyy-MM-dd'
@@ -43,75 +54,79 @@ export function HistoryCalendar({ selectedDate, onSelectDate }: HistoryCalendarP
 
   return (
     <>
-      {/* Trigger button */}
-      <button
+      <Button
         type="button"
+        variant="outline"
+        size="lg"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted/30 transition-colors shadow-sm"
+        className="h-9 min-w-40 justify-between bg-[var(--surface-1)] shadow-[var(--shadow-card)]"
       >
-        <CalendarDays className="size-4 text-muted-foreground" />
-        <span>{selectedLabel}</span>
-        <ChevronDown className={`size-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
+        <span className="flex items-center gap-2">
+          <CalendarDays className="size-4 text-muted-foreground" />
+          <span>{selectedLabel}</span>
+        </span>
+        <ChevronDown className={cn('size-4 text-muted-foreground transition-transform', open && 'rotate-180')} />
+      </Button>
 
-      {/* Full-screen modal overlay */}
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm"
           onClick={() => setOpen(false)}
         >
           <div
-            className="w-full max-w-sm rounded-2xl border border-border bg-card shadow-2xl overflow-hidden"
+            className="w-full max-w-sm overflow-hidden rounded-xl border border-border bg-[var(--surface-raised)] shadow-[var(--shadow-dialog)]"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-border px-6 py-4">
-              <p className="text-base font-semibold text-foreground">เลือกวันที่</p>
-              <button
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div>
+                <p className="text-sm font-semibold text-foreground">เลือกวันที่</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">วันที่มีประวัติจะมีจุดกำกับ</p>
+              </div>
+              <Button
                 type="button"
                 aria-label="ปิด"
+                variant="ghost"
+                size="icon-sm"
                 onClick={() => setOpen(false)}
-                className="rounded-lg p-1.5 hover:bg-muted/50 transition-colors"
               >
-                <X className="size-5 text-muted-foreground" />
-              </button>
+                <X className="size-4" />
+              </Button>
             </div>
 
-            <div className="p-6">
-              {/* Month navigation */}
-              <div className="flex items-center justify-between mb-5">
-                <button
+            <div className="p-5">
+              <div className="mb-5 flex items-center justify-between">
+                <Button
                   type="button"
                   aria-label="เดือนก่อน"
+                  variant="outline"
+                  size="icon-lg"
                   onClick={() => setViewDate((d) => subMonths(d, 1))}
-                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-border hover:bg-muted/50 active:bg-muted transition-colors"
                 >
-                  <ChevronLeft className="size-5 text-foreground" />
-                </button>
-                <p className="text-base font-semibold text-foreground">
+                  <ChevronLeft className="size-5" />
+                </Button>
+                <p className="text-sm font-semibold text-foreground">
                   {format(viewDate, 'MMMM yyyy', { locale: th })}
                 </p>
-                <button
+                <Button
                   type="button"
                   aria-label="เดือนถัดไป"
+                  variant="outline"
+                  size="icon-lg"
                   onClick={() => setViewDate((d) => addMonths(d, 1))}
                   disabled={isNextDisabled}
-                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-border hover:bg-muted/50 active:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
-                  <ChevronRight className="size-5 text-foreground" />
-                </button>
+                  <ChevronRight className="size-5" />
+                </Button>
               </div>
 
-              {/* Day names header */}
-              <div className="grid grid-cols-7 mb-2">
+              <div className="mb-2 grid grid-cols-7">
                 {DAY_NAMES.map((d) => (
-                  <div key={d} className="text-center text-xs font-semibold text-muted-foreground py-1">
+                  <div key={d} className="py-1 text-center text-xs font-semibold text-muted-foreground">
                     {d}
                   </div>
                 ))}
               </div>
 
-              {/* Days grid — large tap targets */}
               <div className="grid grid-cols-7 gap-1">
                 {Array.from({ length: startPad }).map((_, i) => (
                   <div key={`pad-${i}`} />
@@ -131,38 +146,43 @@ export function HistoryCalendar({ selectedDate, onSelectDate }: HistoryCalendarP
                         onSelectDate(dateStr);
                         setOpen(false);
                       }}
-                      className={`relative flex flex-col items-center justify-center rounded-xl aspect-square text-sm font-medium transition-all active:scale-95
-                        ${isFuture ? 'opacity-25 cursor-not-allowed' : 'cursor-pointer'}
-                        ${isSelected
+                      className={cn(
+                        'relative flex aspect-square flex-col items-center justify-center rounded-lg text-sm font-medium transition-all active:scale-95',
+                        isFuture ? 'cursor-not-allowed opacity-25' : 'cursor-pointer',
+                        isSelected
                           ? 'bg-primary text-primary-foreground shadow-sm'
                           : isFuture
                             ? 'text-muted-foreground'
-                            : 'text-foreground hover:bg-muted/60'
-                        }
-                        ${isToday(day) && !isSelected ? 'ring-2 ring-primary/50 ring-offset-1' : ''}
-                      `}
+                            : 'text-foreground hover:bg-muted/60',
+                        isToday(day) && !isSelected && 'ring-2 ring-primary/50 ring-offset-1',
+                      )}
                     >
                       <span className="leading-none">{format(day, 'd')}</span>
                       {count > 0 && (
-                        <span className={`mt-1 h-1.5 w-1.5 rounded-full ${isSelected ? 'bg-primary-foreground/60' : 'bg-primary/60'}`} />
+                        <span
+                          className={cn(
+                            'mt-1 size-1.5 rounded-full',
+                            isSelected ? 'bg-primary-foreground/70' : 'bg-primary/70',
+                          )}
+                        />
                       )}
                     </button>
                   );
                 })}
               </div>
 
-              {/* Today shortcut */}
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                className="mt-5 w-full"
                 onClick={() => {
                   const todayStr = format(today, 'yyyy-MM-dd');
                   onSelectDate(todayStr);
                   setOpen(false);
                 }}
-                className="mt-5 w-full rounded-xl border border-border py-3 text-sm font-medium text-foreground hover:bg-muted/50 active:bg-muted transition-colors"
               >
                 วันนี้
-              </button>
+              </Button>
             </div>
           </div>
         </div>

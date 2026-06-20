@@ -9,18 +9,18 @@ import type { QueueStatusData } from '@/lib/actions/queue';
 const STATUS_CONFIG = {
   waiting: {
     heading: 'กำลังรอคิว',
-    color: 'text-amber-600',
-    bg: 'bg-amber-50 border-amber-200',
+    color: 'text-[var(--status-warning-fg)]',
+    bg: 'bg-[var(--status-warning-bg)] border-[var(--status-warning-border)]',
   },
   called: {
     heading: 'ถึงคิวของคุณแล้ว!',
-    color: 'text-blue-600',
-    bg: 'bg-blue-50 border-blue-300',
+    color: 'text-[var(--status-info-fg)]',
+    bg: 'bg-[var(--status-info-bg)] border-[var(--status-info-border)]',
   },
   seated: {
     heading: 'เข้าที่นั่งแล้ว',
-    color: 'text-green-600',
-    bg: 'bg-green-50 border-green-200',
+    color: 'text-[var(--status-success-fg)]',
+    bg: 'bg-[var(--status-success-bg)] border-[var(--status-success-border)]',
   },
   left: {
     heading: 'ออกจากคิวแล้ว',
@@ -89,15 +89,15 @@ export function QueueStatus({ token, initialData }: QueueStatusProps) {
           </p>
         )}
         {entry.status === 'waiting' && position === 1 && (
-          <p className="text-sm font-medium text-amber-700">คุณเป็นกลุ่มแรก! เตรียมพร้อมได้เลย</p>
+          <p className="text-sm font-medium text-[var(--status-warning-fg)]">คุณเป็นกลุ่มแรก! เตรียมพร้อมได้เลย</p>
         )}
         {entry.status === 'called' && (
-          <p className="text-sm font-semibold text-blue-700">
+          <p className="text-sm font-semibold text-[var(--status-info-fg)]">
             กรุณาแจ้งพนักงานเพื่อรับที่นั่ง
           </p>
         )}
         {entry.status === 'seated' && (
-          <p className="text-sm text-green-700">ขอบคุณที่ใช้บริการ สนุกกับมื้ออาหารนะคะ</p>
+          <p className="text-sm text-[var(--status-success-fg)]">ขอบคุณที่ใช้บริการ สนุกกับมื้ออาหารนะคะ</p>
         )}
         <p className="mt-4 text-xs text-muted-foreground">อัพเดทอัตโนมัติทุก 10 วินาที</p>
       </div>

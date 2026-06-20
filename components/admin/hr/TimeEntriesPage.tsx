@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useTransition } from 'react';
 import { format } from 'date-fns';
@@ -8,8 +8,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { AppShell } from '@/components/ui/app-shell';
+import { PageHeader } from '@/components/ui/page-header';
+import { DataCard } from '@/components/ui/section-card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Plus, MoreHorizontal, Clock, X } from 'lucide-react';
 import { getTimeEntries, createTimeEntry, updateTimeEntry, deleteTimeEntry } from '@/lib/actions/hr';
 import type { Employee, TimeEntry } from '@/lib/db/schema';
 
@@ -118,25 +129,32 @@ export function TimeEntriesPage({ initialEmployees }: Props) {
 
   if (employees.length === 0) {
     return (
-      <div className="page-shell">
-        <h1 className="text-xl font-bold tracking-tight text-foreground mb-2">บันทึกเวลา</h1>
-        <p className="text-sm text-muted-foreground">ไม่มีพนักงานพาร์ทไทม์ active ในระบบ</p>
-      </div>
+      <AppShell>
+        <PageHeader title="บันทึกเวลา (พาร์ทไทม์)" />
+        <EmptyState
+          icon={<Clock className="size-5" />}
+          title="ไม่มีพนักงานพาร์ทไทม์"
+          description="ไม่มีพนักงานพาร์ทไทม์ active ในระบบ"
+        />
+      </AppShell>
     );
   }
 
   return (
-    <div className="page-shell">
-      <div className="flex items-center justify-between gap-3 mb-2">
-        <h1 className="text-xl font-bold tracking-tight text-foreground">บันทึกเวลา (พาร์ทไทม์)</h1>
-        <Button size="sm" onClick={openCreate}>
-          <Plus className="size-4 mr-1.5" />
-          เพิ่มบันทึก
-        </Button>
-      </div>
+    <AppShell>
+      <PageHeader
+        title="บันทึกเวลา (พาร์ทไทม์)"
+        subtitle={selectedEmp ? `${selectedEmp.firstName} ${selectedEmp.lastName}` : undefined}
+        actions={
+          <Button size="sm" onClick={openCreate}>
+            <Plus className="size-4" />
+            เพิ่มบันทึก
+          </Button>
+        }
+      />
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
+      {/* Filter bar */}
+      <div className="flex flex-wrap gap-3 items-center">
         <Select value={selectedEmpId} onValueChange={(v) => { if (v) setSelectedEmpId(v); }}>
           <SelectTrigger className="w-56">
             <SelectValue placeholder="เลือกพนักงาน" />
@@ -149,9 +167,19 @@ export function TimeEntriesPage({ initialEmployees }: Props) {
             ))}
           </SelectContent>
         </Select>
-        <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-40" />
+        <Input
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="w-40"
+        />
         <span className="self-center text-muted-foreground text-sm">–</span>
-        <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-40" />
+        <Input
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className="w-40"
+        />
         <Button variant="outline" onClick={loadEntries} disabled={pending}>
           แสดง
         </Button>
@@ -159,52 +187,65 @@ export function TimeEntriesPage({ initialEmployees }: Props) {
 
       {/* Table */}
       {loaded && (
-        <>
-          <div className="rounded-lg border border-border overflow-hidden mb-3">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/30 text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium">วันที่</th>
-                  <th className="px-4 py-3 text-center font-medium">เข้า</th>
-                  <th className="px-4 py-3 text-center font-medium">ออก</th>
-                  <th className="px-4 py-3 text-center font-medium">พัก (นาที)</th>
-                  <th className="px-4 py-3 text-right font-medium tabular-nums">รวม (ชม.)</th>
-                  <th className="px-4 py-3 w-20" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {entries.length === 0 ? (
+        <DataCard noPadding>
+          {entries.length === 0 ? (
+            <EmptyState
+              icon={<Clock className="size-5" />}
+              title="ไม่มีบันทึกเวลา"
+              description="ไม่พบข้อมูลในช่วงวันที่เลือก"
+              size="sm"
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-[var(--surface-2)] text-muted-foreground">
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-muted-foreground">ไม่มีข้อมูล</td>
+                    <th className="px-4 py-3 text-left font-medium">วันที่</th>
+                    <th className="px-4 py-3 text-center font-medium">เข้า</th>
+                    <th className="px-4 py-3 text-center font-medium">ออก</th>
+                    <th className="px-4 py-3 text-center font-medium">พัก (นาที)</th>
+                    <th className="px-4 py-3 text-right font-medium tabular-nums">รวม (ชม.)</th>
+                    <th className="px-4 py-3 w-12" />
                   </tr>
-                ) : (
-                  entries.map((entry) => (
-                    <tr key={entry.id} className="hover:bg-muted/30">
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {entries.map((entry) => (
+                    <tr key={entry.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3 text-foreground">
                         {format(new Date(entry.workDate + 'T00:00'), 'd MMM yyyy', { locale: th })}
                       </td>
-                      <td className="px-4 py-3 text-center">{entry.clockIn}</td>
-                      <td className="px-4 py-3 text-center">{entry.clockOut}</td>
-                      <td className="px-4 py-3 text-center">{entry.breakMinutes}</td>
-                      <td className="px-4 py-3 text-right tabular-nums font-semibold">
+                      <td className="px-4 py-3 text-center text-muted-foreground">{entry.clockIn}</td>
+                      <td className="px-4 py-3 text-center text-muted-foreground">{entry.clockOut}</td>
+                      <td className="px-4 py-3 text-center text-muted-foreground">{entry.breakMinutes}</td>
+                      <td className="px-4 py-3 text-right tabular-nums font-semibold text-foreground">
                         {Number(entry.totalHours).toFixed(2)}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex gap-1 justify-end">
-                          <Button variant="ghost" size="icon" className="size-8" aria-label="แก้ไข" onClick={() => openEdit(entry)}>
-                            <Pencil className="size-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="size-8 text-red-500" aria-label="ลบ" onClick={() => handleDelete(entry.id)}>
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                            aria-label="เมนูการดำเนินการ"
+                          >
+                            <MoreHorizontal className="size-4" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEdit(entry)}>
+                              แก้ไข
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => handleDelete(entry.id)}
+                            >
+                              ลบ
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-              {entries.length > 0 && (
-                <tfoot className="bg-muted/30">
+                  ))}
+                </tbody>
+                <tfoot className="bg-[var(--surface-2)]">
                   <tr>
                     <td colSpan={4} className="px-4 py-2.5 text-sm font-semibold text-foreground">
                       รวม {entries.length} วัน
@@ -226,29 +267,58 @@ export function TimeEntriesPage({ initialEmployees }: Props) {
                     </tr>
                   )}
                 </tfoot>
-              )}
-            </table>
-          </div>
-        </>
+              </table>
+            </div>
+          )}
+        </DataCard>
       )}
 
-      {/* Add/Edit dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{editingId ? 'แก้ไขบันทึก' : 'เพิ่มบันทึกเวลา'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
+      {/* Add/Edit Sheet */}
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent
+          side="right"
+          showCloseButton={false}
+          className="flex flex-col gap-0 p-0 sm:max-w-[400px]"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <div>
+              <p className="text-base font-semibold text-foreground">
+                {editingId ? 'แก้ไขบันทึก' : 'เพิ่มบันทึกเวลา'}
+              </p>
+              {previewHours > 0 && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  รวม <strong>{previewHours.toFixed(2)} ชม.</strong>
+                </p>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="ปิด"
+              onClick={() => setOpen(false)}
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
             {!editingId && (
               <div className="space-y-1.5">
                 <Label>พนักงาน</Label>
-                <Select value={form.employeeId} onValueChange={(v) => setForm((p) => ({ ...p, employeeId: v ?? '' }))}>
+                <Select
+                  value={form.employeeId}
+                  onValueChange={(v) => setForm((p) => ({ ...p, employeeId: v ?? '' }))}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="เลือกพนักงาน" />
                   </SelectTrigger>
                   <SelectContent>
                     {employees.map((e) => (
-                      <SelectItem key={e.id} value={e.id}>{e.firstName} {e.lastName}</SelectItem>
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.firstName} {e.lastName}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -256,38 +326,58 @@ export function TimeEntriesPage({ initialEmployees }: Props) {
             )}
             <div className="space-y-1.5">
               <Label>วันที่</Label>
-              <Input type="date" value={form.workDate} onChange={(e) => setForm((p) => ({ ...p, workDate: e.target.value }))} />
+              <Input
+                type="date"
+                value={form.workDate}
+                onChange={(e) => setForm((p) => ({ ...p, workDate: e.target.value }))}
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>เวลาเข้า</Label>
-                <Input type="time" value={form.clockIn} onChange={(e) => setForm((p) => ({ ...p, clockIn: e.target.value }))} />
+                <Input
+                  type="time"
+                  value={form.clockIn}
+                  onChange={(e) => setForm((p) => ({ ...p, clockIn: e.target.value }))}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>เวลาออก</Label>
-                <Input type="time" value={form.clockOut} onChange={(e) => setForm((p) => ({ ...p, clockOut: e.target.value }))} />
+                <Input
+                  type="time"
+                  value={form.clockOut}
+                  onChange={(e) => setForm((p) => ({ ...p, clockOut: e.target.value }))}
+                />
               </div>
             </div>
             <div className="space-y-1.5">
               <Label>พักกลางวัน (นาที)</Label>
-              <Input type="number" min="0" value={form.breakMinutes} onChange={(e) => setForm((p) => ({ ...p, breakMinutes: e.target.value }))} />
+              <Input
+                type="number"
+                min="0"
+                value={form.breakMinutes}
+                onChange={(e) => setForm((p) => ({ ...p, breakMinutes: e.target.value }))}
+              />
             </div>
-            {previewHours > 0 && (
-              <p className="text-xs text-muted-foreground">
-                รวม: <strong>{previewHours.toFixed(2)} ชม.</strong>
-              </p>
-            )}
             <div className="space-y-1.5">
               <Label>หมายเหตุ</Label>
-              <Input value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} placeholder="ถ้ามี" />
+              <Input
+                value={form.notes}
+                onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
+                placeholder="ถ้ามี"
+              />
             </div>
           </div>
-          <DialogFooter>
+
+          {/* Footer */}
+          <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
             <Button variant="outline" onClick={() => setOpen(false)}>ยกเลิก</Button>
-            <Button onClick={handleSubmit} disabled={pending}>{editingId ? 'บันทึก' : 'เพิ่ม'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+            <Button onClick={handleSubmit} disabled={pending}>
+              {editingId ? 'บันทึก' : 'เพิ่ม'}
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </AppShell>
   );
 }

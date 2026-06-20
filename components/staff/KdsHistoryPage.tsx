@@ -1,110 +1,136 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
+import { CheckCircle2, CookingPot, ListChecks, XCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { getKdsHistory } from '@/lib/actions/kds';
 import { HistoryCalendar } from '@/components/staff/HistoryCalendar';
+import { AppShell } from '@/components/ui/app-shell';
+import { DataCard } from '@/components/ui/section-card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { PageHeader } from '@/components/ui/page-header';
+import { StatCard, StatCardGrid } from '@/components/ui/stat-card';
+import { StatusBadge, type BadgeVariant } from '@/components/ui/status-badge';
+import { TableSkeleton } from '@/components/ui/loading-skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import type { KdsHistoryRow } from '@/lib/actions/kds';
 
 const STATION_LABEL: Record<string, string> = {
-  meat: 'เนื้อสัตว์', seafood: 'อาหารทะเล', vegetable: 'ผัก',
-  noodle: 'เส้น', dessert: 'ของหวาน', drink: 'เครื่องดื่ม', sauce: 'ซอส',
+  meat: 'เนื้อสัตว์',
+  seafood: 'อาหารทะเล',
+  vegetable: 'ผัก',
+  noodle: 'เส้น',
+  dessert: 'ของหวาน',
+  drink: 'เครื่องดื่ม',
+  sauce: 'ซอส',
 };
 
-const STATION_COLOR: Record<string, string> = {
-  meat:      'bg-red-100 text-red-700',
-  seafood:   'bg-blue-100 text-blue-700',
-  vegetable: 'bg-green-100 text-green-700',
-  noodle:    'bg-yellow-100 text-yellow-700',
-  dessert:   'bg-pink-100 text-pink-700',
-  drink:     'bg-cyan-100 text-cyan-700',
-  sauce:     'bg-orange-100 text-orange-700',
+const STATION_VARIANT: Record<string, BadgeVariant> = {
+  meat: 'danger',
+  seafood: 'info',
+  vegetable: 'success',
+  noodle: 'warning',
+  dessert: 'purple',
+  drink: 'cyan',
+  sauce: 'orange',
 };
-
-/* ─── Summary table ──────────────────────────────────────────────────────── */
 
 function HistoryTable({ rows, date }: { rows: KdsHistoryRow[]; date: string }) {
-  const totalOrdered   = rows.reduce((s, r) => s + r.totalQty,     0);
-  const totalServed    = rows.reduce((s, r) => s + r.servedQty,    0);
+  const totalOrdered = rows.reduce((s, r) => s + r.totalQty, 0);
+  const totalServed = rows.reduce((s, r) => s + r.servedQty, 0);
   const totalCancelled = rows.reduce((s, r) => s + r.cancelledQty, 0);
+  const servedPct = totalOrdered > 0 ? `${Math.round((totalServed / totalOrdered) * 100)}% ของรายการทั้งหมด` : undefined;
 
   const stations = [...new Set(rows.map((r) => r.station))];
 
   if (rows.length === 0) {
     return (
-      <div className="rounded-xl border border-border bg-card py-16 text-center text-sm text-muted-foreground">
-        ไม่มีข้อมูลในวันที่ {format(new Date(date), 'd MMMM yyyy', { locale: th })}
-      </div>
+      <DataCard>
+        <EmptyState
+          icon={<CookingPot className="size-5" />}
+          title="ไม่มีประวัติครัว"
+          description={`ไม่พบข้อมูลในวันที่ ${format(new Date(date), 'd MMMM yyyy', { locale: th })}`}
+          size="lg"
+        />
+      </DataCard>
     );
   }
 
   return (
     <div className="space-y-4">
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">สั่งทั้งหมด</p>
-          <p className="mt-1 text-xl font-bold text-foreground">{totalOrdered} รายการ</p>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">เสิร์ฟแล้ว</p>
-          <p className="mt-1 text-xl font-bold text-green-700">{totalServed} รายการ</p>
-          {totalOrdered > 0 && (
-            <p className="text-xs text-muted-foreground">
-              {Math.round(totalServed / totalOrdered * 100)}%
-            </p>
-          )}
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-xs text-muted-foreground">ยกเลิก</p>
-          <p className="mt-1 text-xl font-bold text-red-600">{totalCancelled} รายการ</p>
-        </div>
-      </div>
+      <StatCardGrid cols={3}>
+        <StatCard label="สั่งทั้งหมด" value={totalOrdered} unit="รายการ" icon={<ListChecks className="size-4" />} />
+        <StatCard
+          label="เสิร์ฟแล้ว"
+          value={totalServed}
+          unit="รายการ"
+          subLabel={servedPct}
+          icon={<CheckCircle2 className="size-4" />}
+          accent="success"
+        />
+        <StatCard
+          label="ยกเลิก"
+          value={totalCancelled}
+          unit="รายการ"
+          icon={<XCircle className="size-4" />}
+          accent="danger"
+        />
+      </StatCardGrid>
 
-      {/* Per-station tables */}
       {stations.map((station) => {
         const stationRows = rows.filter((r) => r.station === station);
         const stTotal = stationRows.reduce((s, r) => s + r.totalQty, 0);
         return (
-          <div key={station} className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATION_COLOR[station] ?? 'bg-muted/50 text-muted-foreground'}`}>
-                {STATION_LABEL[station] ?? station}
-              </span>
-              <span className="text-xs text-muted-foreground">รวม {stTotal} รายการ</span>
-            </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/30">
-                  <th className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground">รายการ</th>
-                  <th className="px-4 py-2 text-right text-xs font-semibold text-muted-foreground">สั่ง</th>
-                  <th className="px-4 py-2 text-right text-xs font-semibold text-green-600">เสิร์ฟ</th>
-                  <th className="px-4 py-2 text-right text-xs font-semibold text-muted-foreground">รอ</th>
-                  <th className="px-4 py-2 text-right text-xs font-semibold text-red-500">ยกเลิก</th>
-                </tr>
-              </thead>
-              <tbody>
+          <DataCard
+            key={station}
+            title={STATION_LABEL[station] ?? station}
+            subtitle={`รวม ${stTotal} รายการ`}
+            actions={(
+              <StatusBadge
+                label={STATION_LABEL[station] ?? station}
+                variant={STATION_VARIANT[station] ?? 'neutral'}
+                dot
+              />
+            )}
+            noPadding
+          >
+            <Table>
+              <TableHeader>
+                <TableRow className="border-border bg-[var(--surface-2)] hover:bg-[var(--surface-2)]">
+                  <TableHead className="px-4 py-3 text-xs font-semibold text-muted-foreground">รายการ</TableHead>
+                  <TableHead className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">สั่ง</TableHead>
+                  <TableHead className="px-4 py-3 text-right text-xs font-semibold text-[var(--status-success-fg)]">เสิร์ฟ</TableHead>
+                  <TableHead className="px-4 py-3 text-right text-xs font-semibold text-muted-foreground">รอ</TableHead>
+                  <TableHead className="px-4 py-3 text-right text-xs font-semibold text-[var(--status-danger-fg)]">ยกเลิก</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {stationRows.map((row, i) => (
-                  <tr key={i} className="border-b border-border/30 last:border-0 hover:bg-muted/30">
-                    <td className="px-4 py-2.5 font-medium text-foreground">{row.itemName}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-foreground">{row.totalQty}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-green-700">{row.servedQty}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{row.pendingQty}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-red-500">{row.cancelledQty || '—'}</td>
-                  </tr>
+                  <TableRow key={`${row.station}-${row.itemName}-${i}`} className="border-border/60 hover:bg-muted/30">
+                    <TableCell className="px-4 py-3 font-medium text-foreground">{row.itemName}</TableCell>
+                    <TableCell className="px-4 py-3 text-right tabular-nums font-semibold text-foreground">{row.totalQty}</TableCell>
+                    <TableCell className="px-4 py-3 text-right tabular-nums text-[var(--status-success-fg)]">{row.servedQty}</TableCell>
+                    <TableCell className="px-4 py-3 text-right tabular-nums text-muted-foreground">{row.pendingQty}</TableCell>
+                    <TableCell className="px-4 py-3 text-right tabular-nums text-[var(--status-danger-fg)]">{row.cancelledQty || '—'}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
+          </DataCard>
         );
       })}
     </div>
   );
 }
-
-/* ─── Main page ──────────────────────────────────────────────────────────── */
 
 export function KdsHistoryPage() {
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -121,28 +147,26 @@ export function KdsHistoryPage() {
   });
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="shrink-0 px-6 pt-6 pb-0">
-        <HistoryCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
-      </div>
-      <div className="flex-1 min-w-0 overflow-y-auto p-6 pt-4 space-y-4">
-        <div>
-          <h2 className="text-base font-bold tracking-tight text-foreground">ประวัติครัว</h2>
-          <p className="text-xs text-muted-foreground">
-            {format(new Date(selectedDate), 'EEEE d MMMM yyyy', { locale: th })}
-          </p>
-        </div>
+    <AppShell className="flex h-full flex-col overflow-hidden space-y-4">
+      <PageHeader
+        title="ประวัติครัว"
+        subtitle={format(new Date(selectedDate), 'EEEE d MMMM yyyy', { locale: th })}
+        actions={<HistoryCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />}
+      />
 
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {isLoading ? (
-          <div className="py-16 text-center text-sm text-muted-foreground">กำลังโหลด…</div>
+          <TableSkeleton rows={6} cols={5} />
         ) : error ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            เกิดข้อผิดพลาด: {(error as Error).message}
-          </div>
+          <DataCard className="border-[var(--status-danger-border)] bg-[var(--status-danger-bg)]">
+            <p className="text-sm text-[var(--status-danger-fg)]">
+              เกิดข้อผิดพลาด: {(error as Error).message}
+            </p>
+          </DataCard>
         ) : (
           <HistoryTable rows={data ?? []} date={selectedDate} />
         )}
       </div>
-    </div>
+    </AppShell>
   );
 }

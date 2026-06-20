@@ -3,18 +3,13 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Building2, CreditCard, Pencil, Plus, Save, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Building2, CreditCard, Pencil, Plus, Save, ToggleLeft, ToggleRight, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { AppShell } from '@/components/ui/app-shell';
 import { PageHeader } from '@/components/ui/page-header';
 import { StatusBadge, type BadgeVariant } from '@/components/ui/status-badge';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -102,6 +97,23 @@ const ACCOUNT_TYPE_VARIANTS: Record<ReceivingAccountType, BadgeVariant> = {
   other:           'neutral',
 };
 
+// ─── Thai label maps ──────────────────────────────────────────────────────────
+
+const METHOD_TYPE_LABELS: Record<PaymentMethodType, string> = {
+  promptpay:    'QR PromptPay',
+  cash:         'เงินสด',
+  welfare:      'สวัสดิการรัฐ',
+  mixed_legacy: 'QR+เงินสด (เดิม)',
+  other:        'อื่น ๆ',
+};
+
+const ACCOUNT_TYPE_LABELS: Record<ReceivingAccountType, string> = {
+  bank_cash_group: 'บัญชีธนาคาร/เงินสด',
+  welfare:         'บัญชีสวัสดิการรัฐ',
+  cash_drawer:     'ลิ้นชักเงินสด',
+  other:           'อื่น ๆ',
+};
+
 // ─── Helpers (unchanged) ─────────────────────────────────────────────────────
 
 function methodToForm(method: PaymentMethod): MethodForm {
@@ -129,10 +141,6 @@ function accountToForm(account: ReceivingAccount): AccountForm {
   };
 }
 
-function typeLabel(value: string) {
-  return value.replaceAll('_', ' ');
-}
-
 function isAllowed(method: PaymentMethod, account: ReceivingAccount) {
   if (method.type === 'welfare') return account.type === 'welfare';
   if (method.type === 'promptpay' || method.type === 'cash') return account.type === 'bank_cash_group';
@@ -144,9 +152,9 @@ function isAllowed(method: PaymentMethod, account: ReceivingAccount) {
 const SELECT_CLS =
   'h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';
 
-// ─── Dialogs ─────────────────────────────────────────────────────────────────
+// ─── Sheets ───────────────────────────────────────────────────────────────────
 
-function MethodDialog({
+function MethodSheet({
   open,
   editing,
   onClose,
@@ -171,68 +179,73 @@ function MethodDialog({
       : await createPaymentMethod(payload);
     setSaving(false);
     if (!result.ok) { toast.error(result.error); return; }
-    toast.success('Saved');
+    toast.success('บันทึกแล้ว');
     onSaved();
     onClose();
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{editing ? 'Edit Payment Method' : 'Add Payment Method'}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
+    <Sheet open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+      <SheetContent side="right" showCloseButton={false} className="flex flex-col gap-0 p-0 sm:max-w-[440px]">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <p className="text-base font-semibold text-foreground">
+            {editing ? 'แก้ไขช่องทางชำระเงิน' : 'เพิ่มช่องทางชำระเงิน'}
+          </p>
+          <Button variant="ghost" size="icon" aria-label="ปิด" onClick={onClose}>
+            <X className="size-4" />
+          </Button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="method-code">Code</Label>
+              <Label htmlFor="method-code">รหัส</Label>
               <Input id="method-code" value={form.code} onChange={(e) => setField('code', e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="method-sort">Sort</Label>
+              <Label htmlFor="method-sort">ลำดับ</Label>
               <Input id="method-sort" type="number" value={form.sortOrder} onChange={(e) => setField('sortOrder', e.target.value)} />
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="method-name">Name</Label>
+            <Label htmlFor="method-name">ชื่อ</Label>
             <Input id="method-name" value={form.name} onChange={(e) => setField('name', e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="method-type">Type</Label>
+            <Label htmlFor="method-type">ประเภท</Label>
             <select
               id="method-type"
               value={form.type}
               onChange={(e) => setField('type', e.target.value as PaymentMethodType)}
               className={SELECT_CLS}
             >
-              {METHOD_TYPES.map((type) => <option key={type} value={type}>{typeLabel(type)}</option>)}
+              {METHOD_TYPES.map((type) => <option key={type} value={type}>{METHOD_TYPE_LABELS[type]}</option>)}
             </select>
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.requiresReference} onChange={(e) => setField('requiresReference', e.target.checked)} />
-            Requires reference
+            ต้องการหมายเลขอ้างอิง
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.allowOverpay} onChange={(e) => setField('allowOverpay', e.target.checked)} />
-            Allows cash over-tender
+            อนุญาตรับเงินเกิน
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.isActive} onChange={(e) => setField('isActive', e.target.checked)} />
-            Active
+            ใช้งาน
           </label>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
+          <Button variant="outline" onClick={onClose}>ยกเลิก</Button>
           <Button onClick={submit} disabled={saving || !form.code || !form.name}>
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? 'กำลังบันทึก...' : 'บันทึก'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
-function AccountDialog({
+function AccountSheet({
   open,
   editing,
   onClose,
@@ -263,70 +276,75 @@ function AccountDialog({
       : await createReceivingAccount(payload);
     setSaving(false);
     if (!result.ok) { toast.error(result.error); return; }
-    toast.success('Saved');
+    toast.success('บันทึกแล้ว');
     onSaved();
     onClose();
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{editing ? 'Edit Receiving Account' : 'Add Receiving Account'}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
+    <Sheet open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+      <SheetContent side="right" showCloseButton={false} className="flex flex-col gap-0 p-0 sm:max-w-[440px]">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <p className="text-base font-semibold text-foreground">
+            {editing ? 'แก้ไขบัญชีรับเงิน' : 'เพิ่มบัญชีรับเงิน'}
+          </p>
+          <Button variant="ghost" size="icon" aria-label="ปิด" onClick={onClose}>
+            <X className="size-4" />
+          </Button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="account-code">Code</Label>
+              <Label htmlFor="account-code">รหัส</Label>
               <Input id="account-code" value={form.code} onChange={(e) => setField('code', e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="account-sort">Sort</Label>
+              <Label htmlFor="account-sort">ลำดับ</Label>
               <Input id="account-sort" type="number" value={form.sortOrder} onChange={(e) => setField('sortOrder', e.target.value)} />
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="account-name">Name</Label>
+            <Label htmlFor="account-name">ชื่อ</Label>
             <Input id="account-name" value={form.name} onChange={(e) => setField('name', e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="account-type">Type</Label>
+            <Label htmlFor="account-type">ประเภทบัญชี</Label>
             <select
               id="account-type"
               value={form.type}
               onChange={(e) => setField('type', e.target.value as ReceivingAccountType)}
               className={SELECT_CLS}
             >
-              {ACCOUNT_TYPES.map((type) => <option key={type} value={type}>{typeLabel(type)}</option>)}
+              {ACCOUNT_TYPES.map((type) => <option key={type} value={type}>{ACCOUNT_TYPE_LABELS[type]}</option>)}
             </select>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="bank-name">Bank</Label>
+            <Label htmlFor="bank-name">ธนาคาร</Label>
             <Input id="bank-name" value={form.bankName} onChange={(e) => setField('bankName', e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="account-label">Account label</Label>
+              <Label htmlFor="account-label">ชื่อบัญชี</Label>
               <Input id="account-label" value={form.accountLabel} onChange={(e) => setField('accountLabel', e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="account-last4">Last 4</Label>
+              <Label htmlFor="account-last4">4 หลักสุดท้าย</Label>
               <Input id="account-last4" maxLength={4} value={form.accountLast4} onChange={(e) => setField('accountLast4', e.target.value)} />
             </div>
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.isActive} onChange={(e) => setField('isActive', e.target.checked)} />
-            Active
+            ใช้งาน
           </label>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
+          <Button variant="outline" onClick={onClose}>ยกเลิก</Button>
           <Button onClick={submit} disabled={saving || !form.code || !form.name}>
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? 'กำลังบันทึก...' : 'บันทึก'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -356,13 +374,13 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
   async function toggleMethod(method: PaymentMethod) {
     const result = await togglePaymentMethodActive(method.id);
     if (!result.ok) toast.error(result.error);
-    else { toast.success(method.isActive ? 'Disabled' : 'Enabled'); refetch(); }
+    else { toast.success(method.isActive ? 'ปิดแล้ว' : 'เปิดแล้ว'); refetch(); }
   }
 
   async function toggleAccount(account: ReceivingAccount) {
     const result = await toggleReceivingAccountActive(account.id);
     if (!result.ok) toast.error(result.error);
-    else { toast.success(account.isActive ? 'Disabled' : 'Enabled'); refetch(); }
+    else { toast.success(account.isActive ? 'ปิดแล้ว' : 'เปิดแล้ว'); refetch(); }
   }
 
   async function saveMapping(account: ReceivingAccount, isActive: boolean, isDefault: boolean) {
@@ -383,7 +401,7 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
     const result = await updateMethodAccountMappings({ paymentMethodId: selectedMethod.id, mappings: nextMappings });
     setSavingMappings(false);
     if (!result.ok) toast.error(result.error);
-    else { toast.success('Mappings saved'); refetch(); }
+    else { toast.success('บันทึก mapping แล้ว'); refetch(); }
   }
 
   async function setDefault(account: ReceivingAccount) {
@@ -392,14 +410,14 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
     const result = await setDefaultReceivingAccount({ paymentMethodId: selectedMethod.id, receivingAccountId: account.id });
     setSavingMappings(false);
     if (!result.ok) toast.error(result.error);
-    else { toast.success('Default updated'); refetch(); }
+    else { toast.success('อัปเดตค่าเริ่มต้นแล้ว'); refetch(); }
   }
 
   return (
-    <div className="page-shell max-w-6xl space-y-5">
+    <AppShell>
       <PageHeader
-        title="Payment Settings"
-        subtitle="Methods, receiving accounts, and POS mappings"
+        title="ตั้งค่าการชำระเงิน"
+        subtitle="ช่องทางชำระเงิน · บัญชีรับเงิน · การจับคู่"
       />
 
       <Tabs
@@ -411,9 +429,9 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
           variant="line"
           className="w-full justify-start rounded-none border-b border-border px-0 h-auto"
         >
-          <TabsTrigger value="methods"  className="px-4 py-2.5 h-auto rounded-none">Payment Methods</TabsTrigger>
-          <TabsTrigger value="accounts" className="px-4 py-2.5 h-auto rounded-none">Receiving Accounts</TabsTrigger>
-          <TabsTrigger value="mappings" className="px-4 py-2.5 h-auto rounded-none">Mappings</TabsTrigger>
+          <TabsTrigger value="methods"  className="px-4 py-2.5 h-auto rounded-none">ช่องทางชำระเงิน</TabsTrigger>
+          <TabsTrigger value="accounts" className="px-4 py-2.5 h-auto rounded-none">บัญชีรับเงิน</TabsTrigger>
+          <TabsTrigger value="mappings" className="px-4 py-2.5 h-auto rounded-none">การจับคู่</TabsTrigger>
         </TabsList>
 
         {/* ── Methods tab ── */}
@@ -421,14 +439,14 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
           <div className="flex justify-end">
             <Button size="sm" onClick={() => setMethodDialog('new')}>
               <Plus className="mr-1.5 size-4" />
-              Add Method
+              เพิ่มช่องทาง
             </Button>
           </div>
           {data.methods.length === 0 ? (
             <EmptyState
               icon={<CreditCard className="size-5" />}
-              title="No payment methods"
-              description="Add your first payment method to get started."
+              title="ยังไม่มีช่องทางชำระเงิน"
+              description="เพิ่มช่องทางชำระเงินแรกเพื่อเริ่มใช้งาน"
             />
           ) : (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -445,14 +463,14 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
                       <p className="font-semibold text-foreground">{method.name}</p>
                       <p className="font-mono text-xs text-muted-foreground">{method.code}</p>
                     </div>
-                    <StatusBadge label={typeLabel(method.type)} variant={METHOD_TYPE_VARIANTS[method.type]} />
+                    <StatusBadge label={METHOD_TYPE_LABELS[method.type]} variant={METHOD_TYPE_VARIANTS[method.type]} />
                   </div>
                   <div className="mt-4 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Sort {method.sortOrder}</span>
+                    <span className="text-xs text-muted-foreground">ลำดับ {method.sortOrder}</span>
                     <div className="flex gap-1">
                       <button
                         type="button"
-                        aria-label="Edit"
+                        aria-label="แก้ไข"
                         onClick={() => setMethodDialog(method)}
                         className="rounded-md p-2 hover:bg-muted"
                       >
@@ -460,7 +478,7 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
                       </button>
                       <button
                         type="button"
-                        aria-label={method.isActive ? 'Disable method' : 'Enable method'}
+                        aria-label={method.isActive ? 'ปิดช่องทาง' : 'เปิดช่องทาง'}
                         onClick={() => void toggleMethod(method)}
                         className="rounded-md p-2 hover:bg-muted"
                       >
@@ -482,14 +500,14 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
           <div className="flex justify-end">
             <Button size="sm" onClick={() => setAccountDialog('new')}>
               <Plus className="mr-1.5 size-4" />
-              Add Account
+              เพิ่มบัญชี
             </Button>
           </div>
           {data.accounts.length === 0 ? (
             <EmptyState
               icon={<Building2 className="size-5" />}
-              title="No receiving accounts"
-              description="Add a receiving account to link with payment methods."
+              title="ยังไม่มีบัญชีรับเงิน"
+              description="เพิ่มบัญชีรับเงินเพื่อเชื่อมกับช่องทางชำระเงิน"
             />
           ) : (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -506,7 +524,7 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
                       <p className="font-semibold text-foreground">{account.name}</p>
                       <p className="font-mono text-xs text-muted-foreground">{account.code}</p>
                     </div>
-                    <StatusBadge label={typeLabel(account.type)} variant={ACCOUNT_TYPE_VARIANTS[account.type]} />
+                    <StatusBadge label={ACCOUNT_TYPE_LABELS[account.type]} variant={ACCOUNT_TYPE_VARIANTS[account.type]} />
                   </div>
                   {(account.bankName || account.accountLabel || account.accountLast4) && (
                     <p className="mt-2 text-xs text-muted-foreground">
@@ -516,11 +534,11 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
                     </p>
                   )}
                   <div className="mt-4 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Sort {account.sortOrder}</span>
+                    <span className="text-xs text-muted-foreground">ลำดับ {account.sortOrder}</span>
                     <div className="flex gap-1">
                       <button
                         type="button"
-                        aria-label="Edit"
+                        aria-label="แก้ไข"
                         onClick={() => setAccountDialog(account)}
                         className="rounded-md p-2 hover:bg-muted"
                       >
@@ -528,7 +546,7 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
                       </button>
                       <button
                         type="button"
-                        aria-label={account.isActive ? 'Disable account' : 'Enable account'}
+                        aria-label={account.isActive ? 'ปิดบัญชี' : 'เปิดบัญชี'}
                         onClick={() => void toggleAccount(account)}
                         className="rounded-md p-2 hover:bg-muted"
                       >
@@ -564,7 +582,7 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
                     )}
                   >
                     <p className="text-sm font-semibold text-foreground">{method.name}</p>
-                    <p className="text-xs text-muted-foreground">{typeLabel(method.type)}</p>
+                    <p className="text-xs text-muted-foreground">{METHOD_TYPE_LABELS[method.type]}</p>
                   </button>
                 ))}
               </div>
@@ -574,15 +592,15 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-base font-semibold text-foreground">{selectedMethod.name}</h2>
-                    <p className="text-sm text-muted-foreground">Allowed receiving accounts</p>
+                    <p className="text-sm text-muted-foreground">บัญชีรับเงินที่เชื่อมได้</p>
                   </div>
                   {savingMappings && <Save className="size-4 animate-pulse text-muted-foreground" />}
                 </div>
                 {data.accounts.filter((a) => isAllowed(selectedMethod, a)).length === 0 ? (
                   <EmptyState
                     icon={<Building2 className="size-5" />}
-                    title="No compatible accounts"
-                    description="No receiving accounts match this payment method type."
+                    title="ไม่มีบัญชีที่เข้ากันได้"
+                    description="ไม่มีบัญชีรับเงินที่ตรงกับประเภทของช่องทางชำระเงินนี้"
                     size="sm"
                   />
                 ) : (
@@ -602,10 +620,10 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <p className="font-semibold text-foreground">{account.name}</p>
-                              <p className="text-xs text-muted-foreground">{typeLabel(account.type)}</p>
+                              <p className="text-xs text-muted-foreground">{ACCOUNT_TYPE_LABELS[account.type]}</p>
                             </div>
                             {isDefault && (
-                              <StatusBadge label="Default" variant="success" dot />
+                              <StatusBadge label="ค่าเริ่มต้น" variant="success" dot />
                             )}
                           </div>
                           <div className="mt-4 flex flex-wrap gap-2">
@@ -616,7 +634,7 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
                               onClick={() => void saveMapping(account, !active, isDefault && !active)}
                               disabled={savingMappings || !account.isActive}
                             >
-                              {active ? 'Mapped' : 'Map'}
+                              {active ? 'เชื่อมแล้ว' : 'เชื่อม'}
                             </Button>
                             <Button
                               type="button"
@@ -625,7 +643,7 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
                               onClick={() => void setDefault(account)}
                               disabled={savingMappings || !account.isActive || !active}
                             >
-                              Set Default
+                              ตั้งค่าเริ่มต้น
                             </Button>
                           </div>
                         </div>
@@ -638,27 +656,27 @@ export function PaymentSettingsPage({ initialData }: { initialData: PaymentSetti
           ) : (
             <EmptyState
               icon={<CreditCard className="size-5" />}
-              title="No payment methods"
-              description="Add a payment method first to configure mappings."
+              title="ยังไม่มีช่องทางชำระเงิน"
+              description="เพิ่มช่องทางชำระเงินก่อนเพื่อตั้งค่า mapping"
             />
           )}
         </TabsContent>
       </Tabs>
 
-      <MethodDialog
+      <MethodSheet
         key={methodDialog === 'new' ? 'new-method' : methodDialog?.id ?? 'method-closed'}
         open={!!methodDialog}
         editing={methodDialog && methodDialog !== 'new' ? methodDialog : null}
         onClose={() => setMethodDialog(null)}
         onSaved={refetch}
       />
-      <AccountDialog
+      <AccountSheet
         key={accountDialog === 'new' ? 'new-account' : accountDialog?.id ?? 'account-closed'}
         open={!!accountDialog}
         editing={accountDialog && accountDialog !== 'new' ? accountDialog : null}
         onClose={() => setAccountDialog(null)}
         onSaved={refetch}
       />
-    </div>
+    </AppShell>
   );
 }

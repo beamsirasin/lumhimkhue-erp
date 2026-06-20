@@ -20,8 +20,16 @@ import {
   ChevronDown,
   ChevronRight,
   PackagePlus,
+  MoreHorizontal,
+  Search,
+  FileText,
+  Send,
+  Ban,
+  Pencil,
+  Eye,
 } from 'lucide-react';
 import type { Resolver } from 'react-hook-form';
+import { cn } from '@/lib/utils';
 import {
   getPurchaseOrderListData,
   createPurchaseOrder,
@@ -44,6 +52,25 @@ import {
   type UpdatePurchaseOrderInput,
   type ReceivePurchaseOrderInput,
 } from '@/lib/validations/inventory';
+import { AppShell } from '@/components/ui/app-shell';
+import { PageHeader } from '@/components/ui/page-header';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { EmptyState } from '@/components/ui/empty-state';
+import { DataCard } from '@/components/ui/section-card';
+import { DataTable } from '@/components/ui/data-table';
+import { StatusBadge, type BadgeVariant } from '@/components/ui/status-badge';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Sheet,
+  SheetContent,
+} from '@/components/ui/sheet';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -58,20 +85,26 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: 'ยกเลิก',
 };
 
-const STATUS_COLOR: Record<string, string> = {
-  draft: 'bg-muted/50 text-muted-foreground',
-  pending_approval: 'bg-amber-100 text-amber-700',
-  ordered: 'bg-blue-100 text-blue-700',
-  partial_received: 'bg-orange-100 text-orange-700',
-  received: 'bg-green-100 text-green-700',
-  cancelled: 'bg-red-100 text-red-600',
-};
 
 const DISCREPANCY_LABEL: Record<string, string> = {
   none: 'ปกติ',
   short: 'ขาด',
   wrong: 'ผิดรายการ',
   spoiled: 'เสียหาย',
+};
+
+const STATUS_FILTERS = ['all', 'draft', 'pending_approval', 'ordered', 'partial_received', 'received', 'cancelled'] as const;
+
+type StatusFilter = typeof STATUS_FILTERS[number];
+type POListItem = POListData['orders'][number];
+
+const STATUS_VARIANT: Record<string, BadgeVariant> = {
+  draft: 'neutral',
+  pending_approval: 'warning',
+  ordered: 'info',
+  partial_received: 'orange',
+  received: 'success',
+  cancelled: 'danger',
 };
 
 function fmt(n: string | number) {
@@ -99,12 +132,13 @@ interface Props {
 
 export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRole }: Props) {
   const [modal, setModal] = useState<Modal | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [supplierFilter, setSupplierFilter] = useState(initialSupplierFilter ?? '');
+  const [search, setSearch] = useState('');
   const [isPending, startTransition] = useTransition();
   const qc = useQueryClient();
 
-  const { data = initialData } = useQuery({
+  const { data = initialData, isFetching } = useQuery({
     queryKey: ['purchase-orders'],
     queryFn: async () => {
       const r = await getPurchaseOrderListData();
@@ -119,13 +153,38 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
 
   const isOwner = userRole === 'owner';
 
+  const statusCounts = useMemo(() => {
+    return data.orders.reduce<Record<string, number>>(
+      (acc, po) => {
+        acc[po.status] = (acc[po.status] ?? 0) + 1;
+        return acc;
+      },
+      { all: data.orders.length },
+    );
+  }, [data.orders]);
+
   const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
     return data.orders.filter((po) => {
-      if (statusFilter !== 'all' && po.status !== statusFilter) return false;
-      if (supplierFilter && po.supplier.id !== supplierFilter) return false;
-      return true;
+      const matchesStatus = statusFilter === 'all' || po.status === statusFilter;
+      const matchesSupplier = !supplierFilter || po.supplier.id === supplierFilter;
+      const matchesSearch = !q || po.poNumber.toLowerCase().includes(q) || po.supplier.name.toLowerCase().includes(q);
+      return matchesStatus && matchesSupplier && matchesSearch;
     });
-  }, [data, statusFilter, supplierFilter]);
+  }, [data.orders, statusFilter, supplierFilter, search]);
+
+  const hasFilters = search.trim() !== '' || statusFilter !== 'all' || supplierFilter !== '';
+  const pendingApprovalCount = statusCounts.pending_approval ?? 0;
+  const awaitingReceiptCount = (statusCounts.ordered ?? 0) + (statusCounts.partial_received ?? 0);
+  const totalValue = data.orders
+    .filter((po) => po.status !== 'cancelled')
+    .reduce((sum, po) => sum + Number(po.total), 0);
+
+  function resetFilters() {
+    setSearch('');
+    setStatusFilter('all');
+    setSupplierFilter('');
+  }
 
   function handleSubmitForApproval(id: string) {
     startTransition(async () => {
@@ -152,214 +211,270 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
     });
   }
 
-  return (
-    <div className="page-shell">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">ใบสั่งซื้อ (PO)</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">{data.orders.length} รายการทั้งหมด</p>
-        </div>
+  const columns = [
+    {
+      key: 'poNumber',
+      header: 'เลข PO',
+      render: (po: POListItem) => (
         <button
           type="button"
-          onClick={() => setModal({ type: 'new' })}
-          className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+          onClick={() => setModal({ type: 'detail', id: po.id })}
+          className="font-mono text-sm font-medium text-foreground underline-offset-2 hover:underline"
         >
-          <Plus className="size-4" />
-          สร้างใบสั่งซื้อ
+          {po.poNumber}
         </button>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <div className="flex gap-1 flex-wrap">
-          {['all', 'draft', 'pending_approval', 'ordered', 'partial_received', 'received', 'cancelled'].map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setStatusFilter(s)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                statusFilter === s ? 'bg-primary text-primary-foreground' : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              {s === 'all' ? 'ทั้งหมด' : STATUS_LABEL[s]}
-            </button>
-          ))}
+      ),
+    },
+    {
+      key: 'supplier',
+      header: 'Supplier',
+      render: (po: POListItem) => (
+        <div className="min-w-[180px]">
+          <p className="font-medium text-foreground">{po.supplier.name}</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            {po.items.length.toLocaleString('th-TH')} รายการ
+          </p>
         </div>
-        <select
-          value={supplierFilter}
-          onChange={(e) => setSupplierFilter(e.target.value)}
-          className="rounded-lg border border-border bg-background text-foreground px-3 py-1.5 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
-        >
-          <option value="">ทุก Supplier</option>
-          {data.suppliers.map((s) => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </select>
+      ),
+    },
+    {
+      key: 'orderDate',
+      header: 'วันที่สั่ง',
+      render: (po: POListItem) => <span className="text-[12px] text-muted-foreground">{fmtDate(po.orderDate)}</span>,
+    },
+    {
+      key: 'status',
+      header: 'สถานะ',
+      align: 'center' as const,
+      render: (po: POListItem) => (
+        <StatusBadge label={STATUS_LABEL[po.status] ?? po.status} variant={STATUS_VARIANT[po.status] ?? 'neutral'} dot />
+      ),
+    },
+    {
+      key: 'total',
+      header: 'ยอดรวม',
+      align: 'right' as const,
+      render: (po: POListItem) => <span className="tabular-nums font-medium text-foreground">฿{fmt(po.total)}</span>,
+    },
+    {
+      key: 'taxInvoice',
+      header: 'ใบกำกับ',
+      align: 'center' as const,
+      render: (po: POListItem) => (
+        <StatusBadge
+          label={po.hasTaxInvoice ? 'มี' : 'ไม่มี'}
+          variant={po.hasTaxInvoice ? 'success' : 'neutral'}
+        />
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right' as const,
+      render: (po: POListItem) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label={`ตัวเลือก ${po.poNumber}`}
+            className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <MoreHorizontal className="size-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem onClick={() => setModal({ type: 'detail', id: po.id })}>
+              <Eye className="size-4" />
+              ดูรายละเอียด
+            </DropdownMenuItem>
+
+            {po.status === 'draft' && (
+              <>
+                <DropdownMenuItem onClick={() => setModal({ type: 'edit', id: po.id })}>
+                  <Pencil className="size-4" />
+                  แก้ไข
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={isPending} onClick={() => handleSubmitForApproval(po.id)}>
+                  <Send className="size-4" />
+                  ส่งอนุมัติ
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem disabled={isPending} variant="destructive" onClick={() => handleCancel(po.id)}>
+                  <Ban className="size-4" />
+                  ยกเลิก
+                </DropdownMenuItem>
+              </>
+            )}
+
+            {po.status === 'pending_approval' && (
+              <>
+                {isOwner && (
+                  <DropdownMenuItem disabled={isPending} onClick={() => handleApprove(po.id)}>
+                    <PackageCheck className="size-4" />
+                    อนุมัติ
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem disabled={isPending} variant="destructive" onClick={() => handleCancel(po.id)}>
+                  <Ban className="size-4" />
+                  ยกเลิก
+                </DropdownMenuItem>
+              </>
+            )}
+
+            {po.status === 'ordered' && (
+              <>
+                <DropdownMenuItem onClick={() => setModal({ type: 'receive', id: po.id })}>
+                  <PackageCheck className="size-4" />
+                  รับของ
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem disabled={isPending} variant="destructive" onClick={() => handleCancel(po.id)}>
+                  <Ban className="size-4" />
+                  ยกเลิก
+                </DropdownMenuItem>
+              </>
+            )}
+
+            {po.status === 'partial_received' && (
+              <DropdownMenuItem onClick={() => setModal({ type: 'receive', id: po.id })}>
+                <PackagePlus className="size-4" />
+                รับของเพิ่ม
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ];
+
+  return (
+    <AppShell>
+      <PageHeader
+        title="ใบสั่งซื้อ (PO)"
+        subtitle={`${data.orders.length.toLocaleString('th-TH')} รายการทั้งหมด · มูลค่ารวม ฿${fmt(totalValue)}`}
+        actions={
+          <Button type="button" onClick={() => setModal({ type: 'new' })}>
+            <Plus className="size-4" />
+            สร้างใบสั่งซื้อ
+          </Button>
+        }
+      />
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl border border-border bg-[var(--surface-1)] p-4 shadow-[var(--shadow-card)]">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground">PO ทั้งหมด</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{data.orders.length.toLocaleString('th-TH')}</p>
+            </div>
+            <div className="flex size-10 items-center justify-center rounded-lg bg-[var(--surface-2)] text-muted-foreground">
+              <FileText className="size-5" />
+            </div>
+          </div>
+        </div>
+        <div className="rounded-xl border border-border bg-[var(--surface-1)] p-4 shadow-[var(--shadow-card)]">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground">รออนุมัติ</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{pendingApprovalCount.toLocaleString('th-TH')}</p>
+            </div>
+            <div className="flex size-10 items-center justify-center rounded-lg bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)] ring-1 ring-[var(--status-warning-border)]">
+              <Send className="size-5" />
+            </div>
+          </div>
+        </div>
+        <div className="rounded-xl border border-border bg-[var(--surface-1)] p-4 shadow-[var(--shadow-card)]">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground">รอรับของ</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">{awaitingReceiptCount.toLocaleString('th-TH')}</p>
+            </div>
+            <div className="flex size-10 items-center justify-center rounded-lg bg-[var(--status-info-bg)] text-[var(--status-info-fg)] ring-1 ring-[var(--status-info-border)]">
+              <PackageCheck className="size-5" />
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Table */}
-      <div className="rounded-xl bg-card overflow-hidden shadow-sm ring-1 ring-border">
-        {filtered.length === 0 ? (
-          <div className="py-16 text-center">
-            <ShoppingBag className="mx-auto size-8 text-muted-foreground/60 mb-2" />
-            <p className="text-sm text-muted-foreground">ไม่มีใบสั่งซื้อ</p>
+      <DataCard title="ค้นหาและตัวกรอง" subtitle="ค้นหาจากเลข PO หรือ Supplier และกรองตามสถานะ/ผู้ขาย">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative w-full lg:max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="ค้นหาเลข PO หรือ Supplier..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="pl-9"
+            />
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/30 text-left">
-                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">เลข PO</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">Supplier</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground">วันที่สั่ง</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground text-center">สถานะ</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground text-right">ยอดรวม</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground text-center">ใบกำกับ</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {filtered.map((po) => (
-                  <tr key={po.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => setModal({ type: 'detail', id: po.id })}
-                        className="font-mono text-sm font-medium text-foreground hover:text-muted-foreground underline-offset-2 hover:underline"
-                      >
-                        {po.poNumber}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3 text-foreground">{po.supplier.name}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{fmtDate(po.orderDate)}</td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLOR[po.status]}`}>
-                        {STATUS_LABEL[po.status]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium text-foreground">
-                      ฿{fmt(po.total)}
-                    </td>
-                    <td className="px-4 py-3 text-center text-base">
-                      {po.hasTaxInvoice ? '✓' : <span className="text-muted-foreground/60">—</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-2">
-                        {po.status === 'draft' && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => setModal({ type: 'edit', id: po.id })}
-                              className="text-xs text-muted-foreground hover:text-foreground"
-                            >
-                              แก้ไข
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isPending}
-                              onClick={() => handleSubmitForApproval(po.id)}
-                              className="text-xs text-amber-600 hover:text-amber-800 font-medium"
-                            >
-                              ส่งอนุมัติ
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isPending}
-                              onClick={() => handleCancel(po.id)}
-                              className="text-xs text-red-400 hover:text-red-600"
-                            >
-                              ยกเลิก
-                            </button>
-                          </>
-                        )}
-                        {po.status === 'pending_approval' && (
-                          <>
-                            {isOwner && (
-                              <button
-                                type="button"
-                                disabled={isPending}
-                                onClick={() => handleApprove(po.id)}
-                                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                              >
-                                อนุมัติ
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              disabled={isPending}
-                              onClick={() => handleCancel(po.id)}
-                              className="text-xs text-red-400 hover:text-red-600"
-                            >
-                              ยกเลิก
-                            </button>
-                          </>
-                        )}
-                        {po.status === 'ordered' && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => setModal({ type: 'receive', id: po.id })}
-                              className="flex items-center gap-1 text-xs text-green-600 hover:text-green-800 font-medium"
-                            >
-                              <PackageCheck className="size-3.5" />
-                              รับของ
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isPending}
-                              onClick={() => handleCancel(po.id)}
-                              className="text-xs text-red-400 hover:text-red-600"
-                            >
-                              ยกเลิก
-                            </button>
-                          </>
-                        )}
-                        {po.status === 'partial_received' && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => setModal({ type: 'receive', id: po.id })}
-                              className="flex items-center gap-1 text-xs text-orange-600 hover:text-orange-800 font-medium"
-                            >
-                              <PackagePlus className="size-3.5" />
-                              รับของเพิ่ม
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setModal({ type: 'detail', id: po.id })}
-                              className="text-xs text-muted-foreground hover:text-foreground"
-                            >
-                              รายละเอียด
-                            </button>
-                          </>
-                        )}
-                        {(po.status === 'received' || po.status === 'cancelled') && (
-                          <button
-                            type="button"
-                            onClick={() => setModal({ type: 'detail', id: po.id })}
-                            className="text-xs text-muted-foreground hover:text-foreground"
-                          >
-                            ดูรายละเอียด
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-px rounded-lg bg-muted p-1">
+              {STATUS_FILTERS.map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setStatusFilter(status)}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-150',
+                    statusFilter === status
+                      ? 'bg-[var(--surface-1)] text-foreground shadow-sm ring-1 ring-border'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {status === 'all' ? `ทั้งหมด ${statusCounts.all}` : `${STATUS_LABEL[status]} ${statusCounts[status] ?? 0}`}
+                </button>
+              ))}
+            </div>
+            <select
+              value={supplierFilter}
+              onChange={(event) => setSupplierFilter(event.target.value)}
+              className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            >
+              <option value="">ทุก Supplier</option>
+              {data.suppliers.map((supplier) => (
+                <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+              ))}
+            </select>
+            {hasFilters && (
+              <Button type="button" variant="outline" onClick={resetFilters}>
+                ล้างตัวกรอง
+              </Button>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      </DataCard>
 
-      {/* Modals */}
-      {modal && (
-        <div
-          className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 px-4 py-8 overflow-y-auto"
-          onClick={() => setModal(null)}
-        >
-          <div onClick={(e) => e.stopPropagation()} className="my-auto">
+      <DataCard
+        title="รายการใบสั่งซื้อ"
+        subtitle={`${filtered.length.toLocaleString('th-TH')} รายการที่แสดง`}
+        noPadding
+      >
+        <DataTable
+          columns={columns}
+          rows={filtered}
+          keyFn={(po) => po.id}
+          loading={isFetching && data.orders.length === 0}
+          emptyState={
+            <EmptyState
+              icon={<ShoppingBag className="size-6" />}
+              title={hasFilters ? 'ไม่พบใบสั่งซื้อที่ตรงกับตัวกรอง' : 'ยังไม่มีใบสั่งซื้อ'}
+              description={hasFilters ? 'ลองล้างตัวกรองหรือค้นหาด้วยคำอื่น' : 'เริ่มสร้างใบสั่งซื้อแรกเพื่อส่งต่อไปยังขั้นตอนอนุมัติและรับของ'}
+              action={hasFilters ? <Button type="button" variant="outline" onClick={resetFilters}>ล้างตัวกรอง</Button> : undefined}
+            />
+          }
+          className="rounded-none border-0"
+        />
+      </DataCard>
+
+      <Sheet open={modal !== null} onOpenChange={(open) => { if (!open) setModal(null); }}>
+        {modal && (
+          <SheetContent
+            showCloseButton={false}
+            className={cn(
+              'w-full p-0 sm:max-w-[760px]',
+              modal.type === 'receive' && 'sm:max-w-[680px]',
+              modal.type === 'detail' && 'sm:max-w-[680px]',
+            )}
+          >
             {modal.type === 'new' && (
               <POForm
                 suppliers={data.suppliers}
@@ -389,10 +504,10 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
                 onReceive={(id) => setModal({ type: 'receive', id })}
               />
             )}
-          </div>
-        </div>
-      )}
-    </div>
+          </SheetContent>
+        )}
+      </Sheet>
+    </AppShell>
   );
 }
 
@@ -522,7 +637,7 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
   }
 
   return (
-    <div className="w-[700px] max-h-[90vh] overflow-y-auto rounded-xl bg-card p-6 shadow-xl">
+    <div className="h-full overflow-y-auto bg-[var(--surface-1)] p-6">
       <div className="mb-5 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-foreground">
           {schemaType === 'edit' ? 'แก้ไขใบสั่งซื้อ' : 'สร้างใบสั่งซื้อ'}
@@ -635,7 +750,11 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
                                 checked={importPanel.selected.has(item.ingredientId)}
                                 onChange={(e) => {
                                   const s = new Set(importPanel.selected);
-                                  e.target.checked ? s.add(item.ingredientId) : s.delete(item.ingredientId);
+                                  if (e.target.checked) {
+                                    s.add(item.ingredientId);
+                                  } else {
+                                    s.delete(item.ingredientId);
+                                  }
                                   setImportPanel((prev) => prev ? { ...prev, selected: s } : null);
                                 }}
                                 className="rounded border-border"
@@ -816,7 +935,7 @@ function POFormEdit({ id, suppliers, onClose, onSaved }: { id: string; suppliers
 
   if (isLoading || !data) {
     return (
-      <div className="w-[700px] rounded-xl bg-card p-10 shadow-xl flex items-center justify-center gap-2 text-muted-foreground">
+      <div className="flex h-full items-center justify-center gap-2 p-10 text-muted-foreground">
         <Loader2 className="size-5 animate-spin" /> กำลังโหลด…
       </div>
     );
@@ -865,7 +984,7 @@ function ReceiveForm({ id, onClose, onSaved }: { id: string; onClose: () => void
 
   if (isLoading || !data) {
     return (
-      <div className="w-[620px] rounded-xl bg-card p-10 shadow-xl flex items-center justify-center gap-2 text-muted-foreground">
+      <div className="flex h-full items-center justify-center gap-2 p-10 text-muted-foreground">
         <Loader2 className="size-5 animate-spin" /> กำลังโหลด…
       </div>
     );
@@ -915,7 +1034,7 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
   }
 
   return (
-    <div className="w-[620px] max-h-[90vh] overflow-y-auto rounded-xl bg-card p-6 shadow-xl">
+    <div className="h-full overflow-y-auto bg-[var(--surface-1)] p-6">
       <div className="mb-5 flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-foreground">
@@ -1068,7 +1187,7 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
 
   if (isLoading || !data) {
     return (
-      <div className="w-[600px] rounded-xl bg-card p-10 shadow-xl flex items-center justify-center gap-2 text-muted-foreground">
+      <div className="flex h-full items-center justify-center gap-2 p-10 text-muted-foreground">
         <Loader2 className="size-5 animate-spin" /> กำลังโหลด…
       </div>
     );
@@ -1153,13 +1272,13 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
   const receipts = po.goodsReceipts ?? [];
 
   return (
-    <div className="w-[600px] max-h-[90vh] overflow-y-auto rounded-xl bg-card p-6 shadow-xl">
+    <div className="h-full overflow-y-auto bg-[var(--surface-1)] p-6">
       <div className="mb-5 flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-foreground font-mono">{po.poNumber}</h2>
-          <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[po.status]}`}>
-            {STATUS_LABEL[po.status]}
-          </span>
+          <div className="mt-1">
+            <StatusBadge label={STATUS_LABEL[po.status] ?? po.status} variant={STATUS_VARIANT[po.status] ?? 'neutral'} dot />
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -1339,3 +1458,5 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
     </div>
   );
 }
+
+

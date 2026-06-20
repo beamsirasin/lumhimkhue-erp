@@ -1,24 +1,30 @@
-﻿'use client';
+'use client';
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { AppShell } from '@/components/ui/app-shell';
+import { PageHeader } from '@/components/ui/page-header';
+import { DataCard } from '@/components/ui/section-card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, MoreHorizontal, Users, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { createEmployee, updateEmployee, deleteEmployee } from '@/lib/actions/hr';
 import type { Employee } from '@/lib/db/schema';
+import { cn } from '@/lib/utils';
 
 const THAI_BANKS = [
   'กสิกรไทย',
@@ -201,60 +207,63 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
   const isOwner = userRole === 'owner';
 
   return (
-    <div className="page-shell">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3 mb-2">
-        <h1 className="text-xl font-bold tracking-tight text-foreground">ข้อมูลพนักงาน</h1>
-        <Button onClick={openCreate} size="sm">
-          <Plus className="size-4 mr-1.5" />
-          เพิ่มพนักงาน
-        </Button>
-      </div>
-
-      {/* Filter */}
-      <div className="flex gap-3 mb-6">
-        <Select value={filterStatus} onValueChange={(v) => { if (v) setFilterStatus(v as typeof filterStatus); }}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">ทุกสถานะ</SelectItem>
-            <SelectItem value="active">ทำงานอยู่</SelectItem>
-            <SelectItem value="inactive">ไม่ active</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+    <AppShell>
+      <PageHeader
+        title="ข้อมูลพนักงาน"
+        subtitle={`พนักงานทั้งหมด ${employees.length} คน`}
+        actions={
+          <div className="flex items-center gap-3">
+            <Select
+              value={filterStatus}
+              onValueChange={(v) => { if (v) setFilterStatus(v as typeof filterStatus); }}
+            >
+              <SelectTrigger className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">ทุกสถานะ</SelectItem>
+                <SelectItem value="active">ทำงานอยู่</SelectItem>
+                <SelectItem value="inactive">ไม่ active</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button onClick={openCreate} size="sm">
+              <Plus className="size-4" />
+              เพิ่มพนักงาน
+            </Button>
+          </div>
+        }
+      />
 
       {/* Full-time section */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="h-5 w-1 rounded-full bg-primary" />
-          <h3 className="text-sm font-semibold text-foreground">พนักงานประจำ</h3>
-          <span className="text-xs text-muted-foreground tabular-nums">{fullTime.length} คน</span>
-        </div>
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/30 text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium">ชื่อ-สกุล</th>
-                <th className="px-4 py-3 text-left font-medium">เบอร์</th>
-                <th className="px-4 py-3 text-right font-medium tabular-nums">เงินเดือน/รอบ</th>
-                <th className="px-4 py-3 text-right font-medium tabular-nums">Incentive/วัน</th>
-                <th className="px-4 py-3 text-center font-medium">ประกันสังคม</th>
-                <th className="px-4 py-3 text-center font-medium">สถานะ</th>
-                <th className="px-4 py-3 w-20" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {fullTime.length === 0 ? (
+      <DataCard
+        noPadding
+        title="พนักงานประจำ"
+        subtitle={`${fullTime.length} คน`}
+      >
+        {fullTime.length === 0 ? (
+          <EmptyState
+            icon={<Users className="size-5" />}
+            title="ไม่มีพนักงานประจำ"
+            description={filterStatus !== 'all' ? 'ลองเปลี่ยนตัวกรองสถานะ' : 'เพิ่มพนักงานประจำใหม่ด้วยปุ่มด้านบน'}
+            size="sm"
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-[var(--surface-2)] text-muted-foreground">
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-muted-foreground text-sm">
-                    ไม่มีพนักงานประจำ
-                  </td>
+                  <th className="px-4 py-3 text-left font-medium">ชื่อ-สกุล</th>
+                  <th className="px-4 py-3 text-left font-medium">เบอร์</th>
+                  <th className="px-4 py-3 text-right font-medium tabular-nums">เงินเดือน/รอบ</th>
+                  <th className="px-4 py-3 text-right font-medium tabular-nums">Incentive/วัน</th>
+                  <th className="px-4 py-3 text-center font-medium">ประกันสังคม</th>
+                  <th className="px-4 py-3 text-center font-medium">สถานะ</th>
+                  <th className="px-4 py-3 w-12" />
                 </tr>
-              ) : (
-                fullTime.map((emp) => (
-                  <tr key={emp.id} className="hover:bg-muted/30">
+              </thead>
+              <tbody className="divide-y divide-border">
+                {fullTime.map((emp) => (
+                  <tr key={emp.id} className="hover:bg-muted/30 transition-colors">
                     <td className="px-4 py-3 font-medium text-foreground">
                       {emp.firstName} {emp.lastName}
                     </td>
@@ -266,62 +275,78 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
                       ฿{Number(emp.incentivePerDay ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 0 })}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`text-xs ${emp.ssfRegistered ? 'text-green-700' : 'text-muted-foreground'}`}>
-                        {emp.ssfRegistered ? 'สมัครแล้ว' : 'ไม่ได้สมัคร'}
-                      </span>
+                      <StatusBadge
+                        label={emp.ssfRegistered ? 'สมัครแล้ว' : 'ไม่ได้สมัคร'}
+                        variant={emp.ssfRegistered ? 'success' : 'neutral'}
+                        dot
+                      />
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <Badge variant={emp.status === 'active' ? 'default' : 'outline'}>
-                        {emp.status === 'active' ? 'ทำงาน' : 'inactive'}
-                      </Badge>
+                      <StatusBadge
+                        label={emp.status === 'active' ? 'ทำงาน' : 'inactive'}
+                        variant={emp.status === 'active' ? 'success' : 'neutral'}
+                        dot
+                      />
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-1 justify-end">
-                        <Button variant="ghost" size="icon" className="size-8" aria-label="แก้ไข" onClick={() => openEdit(emp)}>
-                          <Pencil className="size-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="size-8 text-red-500 hover:text-red-600" aria-label="ลบ" onClick={() => handleDelete(emp)}>
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                          aria-label="เมนูการดำเนินการ"
+                        >
+                          <MoreHorizontal className="size-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(emp)}>
+                            แก้ไข
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => handleDelete(emp)}
+                          >
+                            ลบ
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </DataCard>
 
       {/* Part-time section */}
-      <div>
-        <div className="flex items-center gap-3 mb-3">
-          <div className="h-5 w-1 rounded-full bg-muted" />
-          <h3 className="text-sm font-semibold text-foreground">พาร์ทไทม์</h3>
-          <span className="text-xs text-muted-foreground tabular-nums">{partTime.length} คน</span>
-        </div>
-        <div className="rounded-lg border border-border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/30 text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium">ชื่อ-สกุล</th>
-                <th className="px-4 py-3 text-left font-medium">เบอร์</th>
-                <th className="px-4 py-3 text-right font-medium tabular-nums">เรท/ชม.</th>
-                <th className="px-4 py-3 text-center font-medium">ประกันสังคม</th>
-                <th className="px-4 py-3 text-center font-medium">สถานะ</th>
-                <th className="px-4 py-3 w-20" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {partTime.length === 0 ? (
+      <DataCard
+        noPadding
+        title="พาร์ทไทม์"
+        subtitle={`${partTime.length} คน`}
+      >
+        {partTime.length === 0 ? (
+          <EmptyState
+            icon={<Users className="size-5" />}
+            title="ไม่มีพนักงานพาร์ทไทม์"
+            description={filterStatus !== 'all' ? 'ลองเปลี่ยนตัวกรองสถานะ' : 'เพิ่มพนักงานพาร์ทไทม์ใหม่ด้วยปุ่มด้านบน'}
+            size="sm"
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-[var(--surface-2)] text-muted-foreground">
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground text-sm">
-                    ไม่มีพนักงานพาร์ทไทม์
-                  </td>
+                  <th className="px-4 py-3 text-left font-medium">ชื่อ-สกุล</th>
+                  <th className="px-4 py-3 text-left font-medium">เบอร์</th>
+                  <th className="px-4 py-3 text-right font-medium tabular-nums">เรท/ชม.</th>
+                  <th className="px-4 py-3 text-center font-medium">ประกันสังคม</th>
+                  <th className="px-4 py-3 text-center font-medium">สถานะ</th>
+                  <th className="px-4 py-3 w-12" />
                 </tr>
-              ) : (
-                partTime.map((emp) => (
-                  <tr key={emp.id} className="hover:bg-muted/30">
+              </thead>
+              <tbody className="divide-y divide-border">
+                {partTime.map((emp) => (
+                  <tr key={emp.id} className="hover:bg-muted/30 transition-colors">
                     <td className="px-4 py-3 font-medium text-foreground">
                       {emp.firstName} {emp.lastName}
                     </td>
@@ -330,41 +355,78 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
                       ฿{Number(emp.hourlyRate ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 0 })}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`text-xs ${emp.ssfRegistered ? 'text-green-700' : 'text-muted-foreground'}`}>
-                        {emp.ssfRegistered ? 'สมัครแล้ว' : 'ไม่ได้สมัคร'}
-                      </span>
+                      <StatusBadge
+                        label={emp.ssfRegistered ? 'สมัครแล้ว' : 'ไม่ได้สมัคร'}
+                        variant={emp.ssfRegistered ? 'success' : 'neutral'}
+                        dot
+                      />
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <Badge variant={emp.status === 'active' ? 'default' : 'outline'}>
-                        {emp.status === 'active' ? 'ทำงาน' : 'inactive'}
-                      </Badge>
+                      <StatusBadge
+                        label={emp.status === 'active' ? 'ทำงาน' : 'inactive'}
+                        variant={emp.status === 'active' ? 'success' : 'neutral'}
+                        dot
+                      />
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-1 justify-end">
-                        <Button variant="ghost" size="icon" className="size-8" aria-label="แก้ไข" onClick={() => openEdit(emp)}>
-                          <Pencil className="size-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="size-8 text-red-500 hover:text-red-600" aria-label="ลบ" onClick={() => handleDelete(emp)}>
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                          aria-label="เมนูการดำเนินการ"
+                        >
+                          <MoreHorizontal className="size-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(emp)}>
+                            แก้ไข
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => handleDelete(emp)}
+                          >
+                            ลบ
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </DataCard>
 
-      {/* Modal */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingId ? 'แก้ไขพนักงาน' : 'เพิ่มพนักงาน'}</DialogTitle>
-          </DialogHeader>
+      {/* Sheet form */}
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent
+          side="right"
+          showCloseButton={false}
+          className="flex flex-col gap-0 p-0 sm:max-w-[540px]"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <div>
+              <p className="text-base font-semibold text-foreground">
+                {editingId ? 'แก้ไขพนักงาน' : 'เพิ่มพนักงาน'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {editingId ? 'แก้ไขข้อมูลพนักงาน' : 'กรอกข้อมูลพนักงานใหม่'}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="ปิด"
+              onClick={() => setOpen(false)}
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
 
-          <div className="space-y-6 py-2">
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
             {/* ข้อมูลส่วนตัว */}
             <section className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">ข้อมูลส่วนตัว</p>
@@ -496,11 +558,12 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
                 {(['full_time', 'part_time'] as const).map((t) => (
                   <label
                     key={t}
-                    className={`flex flex-1 items-center justify-center gap-2 rounded-lg border py-2.5 cursor-pointer text-sm font-medium transition-colors ${
+                    className={cn(
+                      'flex flex-1 items-center justify-center gap-2 rounded-lg border py-2.5 cursor-pointer text-sm font-medium transition-colors',
                       form.type === t
                         ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-border text-muted-foreground hover:border-border'
-                    }`}
+                        : 'border-border text-muted-foreground hover:border-border',
+                    )}
                   >
                     <input
                       type="radio"
@@ -578,16 +641,17 @@ export function EmployeesPage({ initialEmployees, userRole }: Props) {
             </section>
           </div>
 
-          <DialogFooter>
+          {/* Footer */}
+          <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
             <Button variant="outline" onClick={() => setOpen(false)}>
               ยกเลิก
             </Button>
             <Button onClick={handleSubmit} disabled={pending}>
               {pending ? 'กำลังบันทึก...' : editingId ? 'บันทึก' : 'เพิ่มพนักงาน'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </AppShell>
   );
 }

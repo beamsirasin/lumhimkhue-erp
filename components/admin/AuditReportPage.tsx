@@ -13,6 +13,7 @@ import {
   type AuditReportRow,
   type ShiftReportRow,
 } from '@/lib/actions/history';
+import { AppShell } from '@/components/ui/app-shell';
 import { PageHeader } from '@/components/ui/page-header';
 import { DataCard } from '@/components/ui/section-card';
 import { StatusBadge, type BadgeVariant } from '@/components/ui/status-badge';
@@ -181,7 +182,7 @@ function AuditTable({ rows }: { rows: AuditReportRow[] }) {
   return (
     <Table>
       <TableHeader>
-        <TableRow className="bg-muted/40 hover:bg-muted/40">
+        <TableRow className="bg-[var(--surface-2)] hover:bg-[var(--surface-2)]">
           <TableHead className="text-xs text-muted-foreground font-medium">เวลา</TableHead>
           <TableHead className="text-xs text-muted-foreground font-medium">ผู้ใช้</TableHead>
           <TableHead className="text-xs text-muted-foreground font-medium">การกระทำ</TableHead>
@@ -223,7 +224,7 @@ function ShiftTable({ rows }: { rows: ShiftReportRow[] }) {
   return (
     <Table>
       <TableHeader>
-        <TableRow className="bg-muted/40 hover:bg-muted/40">
+        <TableRow className="bg-[var(--surface-2)] hover:bg-[var(--surface-2)]">
           <TableHead className="text-xs text-muted-foreground font-medium">เปิดรอบ</TableHead>
           <TableHead className="text-xs text-muted-foreground font-medium">แคชเชียร์</TableHead>
           <TableHead className="text-xs text-muted-foreground font-medium">ปิดรอบ</TableHead>
@@ -282,7 +283,7 @@ function AdjustmentsTable({ rows }: { rows: AdjRow[] }) {
   return (
     <Table>
       <TableHeader>
-        <TableRow className="bg-muted/40 hover:bg-muted/40">
+        <TableRow className="bg-[var(--surface-2)] hover:bg-[var(--surface-2)]">
           <TableHead className="w-8" />
           <TableHead className="text-xs text-muted-foreground font-medium">เวลา</TableHead>
           <TableHead className="text-xs text-muted-foreground font-medium">ผู้ขอ</TableHead>
@@ -473,7 +474,7 @@ export function AuditReportPage() {
   });
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <AppShell>
       <PageHeader
         title="รายงานตรวจสอบ"
         subtitle="บันทึกการกระทำ · รอบแคชเชียร์ · การปรับปรุงชำระเงิน"
@@ -526,6 +527,6 @@ export function AuditReportPage() {
           </DataCard>
         </TabsContent>
       </Tabs>
-    </div>
+    </AppShell>
   );
 }

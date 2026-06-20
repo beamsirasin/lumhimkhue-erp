@@ -13,10 +13,6 @@ export default async function Settings() {
   const result = await getStoreSettings();
   const settings = result.ok ? result.data : null;
 
-  return (
-    <div className="page-shell max-w-3xl">
-      <h1 className="text-xl font-bold tracking-tight text-foreground">ตั้งค่าบิล</h1>
-      {settings && <StoreSettingsForm initialData={settings} />}
-    </div>
-  );
+  if (!settings) return null;
+  return <StoreSettingsForm initialData={settings} />;
 }

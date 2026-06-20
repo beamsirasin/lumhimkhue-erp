@@ -5,18 +5,17 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
-  // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Temp/agent worktree files
+    // Claude Code agent worktree artifacts
     ".claude/**",
-    "verify_bill_temp.mjs",
-    "verify_render_temp.ts",
-    "C\\357\\200\\272UsersUserAppDataLocalTempverify_tables.mjs",
+    // Archive directories — not part of the app
+    "scripts/archive/**",
+    "docs/archive/**",
   ]),
 ]);
 

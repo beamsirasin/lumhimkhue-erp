@@ -1,10 +1,13 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { format } from 'date-fns';
+import { th } from 'date-fns/locale';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { HistoryCalendar } from '@/components/staff/HistoryCalendar';
 import { ShiftHistoryTable } from '@/components/staff/ShiftHistoryTable';
+import { AppShell } from '@/components/ui/app-shell';
+import { DataCard } from '@/components/ui/section-card';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { listShifts } from '@/lib/actions/shifts';
@@ -55,22 +58,21 @@ export function ShiftsHistoryClient({ canReview }: Props) {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="shrink-0 px-6 pt-6 pb-4 space-y-4">
-        <PageHeader
-          title="รอบแคชเชียร์"
-          subtitle="ประวัติและตรวจสอบรอบการรับเงิน"
-          noBorder
-        />
-        <HistoryCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+    <AppShell className="flex h-full flex-col overflow-hidden space-y-4">
+      <PageHeader
+        title="รอบแคชเชียร์"
+        subtitle={format(new Date(selectedDate), 'EEEE d MMMM yyyy', { locale: th })}
+        actions={<HistoryCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />}
+      />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <DataCard title="ประวัติและตรวจสอบรอบการรับเงิน" subtitle={`${rows.length} รอบ`} noPadding>
+          {isLoading ? (
+            <ShiftTableSkeleton />
+          ) : (
+            <ShiftHistoryTable rows={rows} canReview={canReview} onRefresh={refresh} />
+          )}
+        </DataCard>
       </div>
-      <div className="flex-1 min-w-0 overflow-hidden overflow-y-auto">
-        {isLoading ? (
-          <ShiftTableSkeleton />
-        ) : (
-          <ShiftHistoryTable rows={rows} canReview={canReview} onRefresh={refresh} />
-        )}
-      </div>
-    </div>
+    </AppShell>
   );
 }
