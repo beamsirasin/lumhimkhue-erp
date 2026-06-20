@@ -1,5 +1,6 @@
 ﻿import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import { ChevronLeft } from 'lucide-react';
 import { getSessionData, getSessionOrders } from '@/lib/actions/orders';
 import { OrderList } from '@/components/customer/OrderList';
 
@@ -22,10 +23,10 @@ export default async function MyOrdersPage({ params }: Props) {
       <header className="sticky top-0 z-10 bg-card border-b border-border px-4 py-3 flex items-center gap-3">
         <Link
           href={`/t/${tableToken}/s/${sessionToken}`}
-          className="text-muted-foreground hover:text-foreground text-sm"
+          className="text-muted-foreground hover:text-foreground transition-colors"
           aria-label="กลับไปสั่งอาหาร"
         >
-          ←
+          <ChevronLeft className="size-4" />
         </Link>
         <h1 className="text-base font-medium text-foreground">รายการที่สั่ง</h1>
       </header>
