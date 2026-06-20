@@ -7,6 +7,16 @@ import { toast } from 'sonner';
 import { Loader2, Clock, AlertTriangle } from 'lucide-react';
 import { getActiveShift, openShift, closeShift, getShiftCashPreview } from '@/lib/actions/shifts';
 import type { ShiftCashPreview } from '@/lib/actions/shifts';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 export function ShiftWidget() {
   const queryClient = useQueryClient();
@@ -83,16 +93,19 @@ export function ShiftWidget() {
     <>
       {/* ── Shift banner ───────────────────────────────────────────────────── */}
       {shift ? (
-        <div className="mb-4 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 dark:border-emerald-800 dark:bg-emerald-950/30">
-          <div className="flex items-center gap-2 text-sm text-emerald-800 dark:text-emerald-200">
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-4 py-2.5">
+          <div className="flex items-center gap-2 text-sm text-[var(--status-success-fg)]">
             <Clock className="h-4 w-4 shrink-0" />
             <span className="font-medium">รอบเปิด</span>
-            <span className="text-emerald-600 dark:text-emerald-400">
+            <span className="opacity-80">
               {format(new Date(shift.openedAt), 'HH:mm')} · เงินทอนตั้งต้น ฿{Number(shift.openingFloat).toLocaleString('th-TH')}
             </span>
           </div>
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant="ghost"
+            className="text-[var(--status-success-fg)] hover:bg-[var(--status-success-border)]/30 hover:text-[var(--status-success-fg)]"
             onClick={() => {
               setActualCash('');
               setDiffReason('');
@@ -102,82 +115,64 @@ export function ShiftWidget() {
               setModal('close');
               fetchPreview(shift.id);
             }}
-            className="rounded-md px-3 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 dark:text-emerald-200 dark:hover:bg-emerald-900/50 transition-colors"
           >
             ปิดรอบ
-          </button>
+          </Button>
         </div>
       ) : (
-        <div className="mb-4 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 dark:border-amber-800 dark:bg-amber-950/30">
-          <div className="flex items-center gap-2 text-sm text-amber-800 dark:text-amber-200">
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-2.5">
+          <div className="flex items-center gap-2 text-sm text-[var(--status-warning-fg)]">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <span>ยังไม่ได้เปิดรอบแคชเชียร์</span>
           </div>
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant="ghost"
+            className="text-[var(--status-warning-fg)] hover:bg-[var(--status-warning-border)]/30 hover:text-[var(--status-warning-fg)]"
             onClick={() => { setOpeningFloat('0'); setModal('open'); }}
-            className="rounded-md px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-900/50 transition-colors"
           >
             เปิดรอบ
-          </button>
+          </Button>
         </div>
       )}
 
-      {/* ── Open-shift modal ───────────────────────────────────────────────── */}
-      {modal === 'open' && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-          onClick={() => setModal(null)}
-        >
-          <div
-            className="w-full max-w-sm rounded-2xl bg-card border border-border p-6 shadow-2xl space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="text-base font-semibold text-foreground">เปิดรอบแคชเชียร์</p>
-            <div className="space-y-1.5">
-              <label className="text-sm text-muted-foreground">เงินทอนตั้งต้นในลิ้นชัก (บาท)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={openingFloat}
-                onChange={(e) => setOpeningFloat(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                autoFocus
-              />
-            </div>
-            <div className="flex gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setModal(null)}
-                className="flex-1 rounded-xl border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
-              >
-                ยกเลิก
-              </button>
-              <button
-                type="button"
-                onClick={handleOpen}
-                disabled={openLoading}
-                className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 transition-colors"
-              >
-                {openLoading ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'เปิดรอบ'}
-              </button>
-            </div>
+      {/* ── Open-shift dialog ─────────────────────────────────────────────── */}
+      <Dialog open={modal === 'open'} onOpenChange={(next) => { if (!next) setModal(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>เปิดรอบแคชเชียร์</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="shift-opening-float">เงินทอนตั้งต้นในลิ้นชัก (บาท)</Label>
+            <Input
+              id="shift-opening-float"
+              type="number"
+              min="0"
+              step="0.01"
+              value={openingFloat}
+              onChange={(e) => setOpeningFloat(e.target.value)}
+              autoFocus
+            />
           </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModal(null)}>ยกเลิก</Button>
+            <Button onClick={handleOpen} disabled={openLoading}>
+              {openLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'เปิดรอบ'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* ── Close-shift modal ──────────────────────────────────────────────── */}
-      {modal === 'close' && shift && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-          onClick={() => setModal(null)}
-        >
-          <div
-            className="w-full max-w-sm rounded-2xl bg-card border border-border p-6 shadow-2xl space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="text-base font-semibold text-foreground">ปิดรอบแคชเชียร์</p>
+      {/* ── Close-shift dialog ────────────────────────────────────────────── */}
+      {shift && (
+        <Dialog open={modal === 'close'} onOpenChange={(next) => { if (!next) setModal(null); }}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>ปิดรอบแคชเชียร์</DialogTitle>
+            </DialogHeader>
+
+            {/* Shift summary */}
             <div className="rounded-lg bg-muted/50 p-3 text-sm space-y-1">
               <div className="flex justify-between text-muted-foreground">
                 <span>เวลาเปิดรอบ</span>
@@ -188,7 +183,8 @@ export function ShiftWidget() {
                 <span>฿{Number(shift.openingFloat).toLocaleString('th-TH')}</span>
               </div>
             </div>
-            {/* ── Collection preview ───────────────────────────────── */}
+
+            {/* Collection preview */}
             {previewLoading && (
               <div className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
@@ -196,7 +192,7 @@ export function ShiftWidget() {
               </div>
             )}
             {previewError && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              <div className="rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-3 py-2 text-xs text-[var(--status-warning-fg)]">
                 โหลดสรุปยอดไม่ได้: {previewError}
               </div>
             )}
@@ -226,7 +222,7 @@ export function ShiftWidget() {
                   </div>
                 )}
                 {preview.legacyTotal > 0 && (
-                  <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-700">
+                  <div className="rounded border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-2 py-1.5 text-xs text-[var(--status-warning-fg)]">
                     มีรายการประวัติ QR+เงินสด ฿{preview.legacyTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })} ซึ่งไม่สามารถแยกเงินสด/QR ได้
                   </div>
                 )}
@@ -242,50 +238,43 @@ export function ShiftWidget() {
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <label className="text-sm text-muted-foreground">เงินสดที่นับได้จริง (บาท)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={actualCash}
-                onChange={(e) => setActualCash(e.target.value)}
-                placeholder="0.00"
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                autoFocus
-              />
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="shift-actual-cash">เงินสดที่นับได้จริง (บาท)</Label>
+                <Input
+                  id="shift-actual-cash"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={actualCash}
+                  onChange={(e) => setActualCash(e.target.value)}
+                  placeholder="0.00"
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="shift-diff-reason">
+                  เหตุผล{' '}
+                  <span className="text-xs text-muted-foreground font-normal">(ต้องระบุถ้ายอดไม่ตรง)</span>
+                </Label>
+                <Input
+                  id="shift-diff-reason"
+                  type="text"
+                  value={diffReason}
+                  onChange={(e) => setDiffReason(e.target.value)}
+                  placeholder="เช่น ทอนเงินผิด, เงินขาด"
+                />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm text-muted-foreground">
-                เหตุผล <span className="text-xs text-muted-foreground/70">(ต้องระบุถ้ายอดไม่ตรง)</span>
-              </label>
-              <input
-                type="text"
-                value={diffReason}
-                onChange={(e) => setDiffReason(e.target.value)}
-                placeholder="เช่น ทอนเงินผิด, เงินขาด"
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            <div className="flex gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setModal(null)}
-                className="flex-1 rounded-xl border border-border py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
-              >
-                ยกเลิก
-              </button>
-              <button
-                type="button"
-                onClick={handleClose}
-                disabled={closeLoading || !actualCash}
-                className="flex-1 rounded-xl bg-slate-800 py-2.5 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-60 transition-colors"
-              >
-                {closeLoading ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'ปิดรอบ'}
-              </button>
-            </div>
-          </div>
-        </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setModal(null)}>ยกเลิก</Button>
+              <Button onClick={handleClose} disabled={closeLoading || !actualCash}>
+                {closeLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'ปิดรอบ'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </>
   );
