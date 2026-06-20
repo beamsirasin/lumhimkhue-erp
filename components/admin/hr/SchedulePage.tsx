@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -8,11 +8,16 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Printer, ChevronDown, Eye } from 'lucide-react';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { AppShell } from '@/components/ui/app-shell';
+import { PageHeader } from '@/components/ui/page-header';
+import { DataCard } from '@/components/ui/section-card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Plus, Printer, Eye, CalendarDays, X } from 'lucide-react';
 import {
   createScheduleCycle,
   setScheduleEntry,
@@ -20,6 +25,7 @@ import {
   publishSchedule,
 } from '@/lib/actions/hr';
 import type { ScheduleCycle, ScheduleEntry, Employee, HrSettings } from '@/lib/db/schema';
+import { cn } from '@/lib/utils';
 
 type EntryMap = Record<string, ScheduleEntry>;
 type GridData = { cycle: ScheduleCycle; employees: Employee[]; entryMap: EntryMap } | null;
@@ -196,47 +202,65 @@ export function SchedulePage({ initialCycles, settings, initialEmployees }: Prop
     : [];
 
   return (
-    <div className="page-shell">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3 mb-2 print:hidden">
-        <h1 className="text-xl font-bold tracking-tight text-foreground">ตารางงาน</h1>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handlePrint}>
-            <Printer className="size-4 mr-1.5" />
-            พิมพ์ A4
-          </Button>
-          {selectedCycle?.status === 'draft' && (
-            <Button variant="outline" size="sm" onClick={handlePublish} disabled={pending}>
-              <Eye className="size-4 mr-1.5" />
-              เผยแพร่
-            </Button>
-          )}
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="size-4 mr-1.5" />
-            สร้างรอบใหม่
-          </Button>
-        </div>
+    <AppShell>
+      {/* Screen header (hidden in print) */}
+      <div className="print:hidden">
+        <PageHeader
+          title="ตารางงาน"
+          subtitle={
+            selectedCycle
+              ? `${selectedCycle.name} · ${selectedCycle.startDate} ถึง ${selectedCycle.endDate}`
+              : 'เลือกหรือสร้างรอบตารางงาน'
+          }
+          actions={
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handlePrint}>
+                <Printer className="size-4" />
+                พิมพ์ A4
+              </Button>
+              {selectedCycle?.status === 'draft' && (
+                <Button variant="outline" size="sm" onClick={handlePublish} disabled={pending}>
+                  <Eye className="size-4" />
+                  เผยแพร่
+                </Button>
+              )}
+              <Button size="sm" onClick={() => setCreateOpen(true)}>
+                <Plus className="size-4" />
+                สร้างรอบใหม่
+              </Button>
+            </div>
+          }
+        />
       </div>
 
-      {/* Cycle selector */}
-      <div className="mb-4 print:hidden">
-        <Select value={selectedCycleId ?? ''} onValueChange={(v) => { if (v) handleCycleChange(v); }}>
+      {/* Cycle selector row (hidden in print) */}
+      <div className="flex items-center gap-3 print:hidden">
+        <Select
+          value={selectedCycleId ?? ''}
+          onValueChange={(v) => { if (v) handleCycleChange(v); }}
+        >
           <SelectTrigger className="w-72">
             <SelectValue placeholder="เลือกรอบตารางงาน" />
           </SelectTrigger>
           <SelectContent>
             {cycles.map((c) => (
               <SelectItem key={c.id} value={c.id}>
-                {c.name}
-                {c.status === 'published' && ' ✓'}
+                {c.name}{c.status === 'published' && ' ✓'}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {selectedCycle && (
+          <StatusBadge
+            label={selectedCycle.status === 'published' ? 'เผยแพร่แล้ว' : 'ร่าง'}
+            variant={selectedCycle.status === 'published' ? 'success' : 'neutral'}
+            dot
+          />
+        )}
       </div>
 
-      {/* Print header */}
-      <div className="hidden print:block mb-4">
+      {/* Print header (shown only when printing) */}
+      <div className="hidden print:block">
         <h1 className="text-xl font-bold">ตารางงาน</h1>
         {selectedCycle && (
           <p className="text-sm text-muted-foreground">
@@ -247,158 +271,177 @@ export function SchedulePage({ initialCycles, settings, initialEmployees }: Prop
 
       {/* Grid */}
       {loadingGrid ? (
-        <div className="py-12 text-center text-muted-foreground">กำลังโหลด...</div>
+        <DataCard>
+          <div className="space-y-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className={cn('h-10 w-full rounded-lg', i === 0 && 'h-8')} />
+            ))}
+          </div>
+        </DataCard>
       ) : !grid ? (
-        <div className="py-12 text-center text-muted-foreground">เลือกรอบตารางงานหรือสร้างรอบใหม่</div>
+        <DataCard>
+          <EmptyState
+            icon={<CalendarDays className="size-5" />}
+            title="เลือกรอบตารางงาน"
+            description="เลือกรอบจากรายการด้านบน หรือสร้างรอบใหม่"
+          />
+        </DataCard>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="border-collapse text-xs w-full print:text-[10px]">
-            <thead>
-              <tr className="bg-muted/30">
-                <th className="border border-border px-3 py-2 text-left font-semibold text-foreground sticky left-0 bg-muted/30 z-10 min-w-[120px]">
-                  พนักงาน
-                </th>
-                {days.map((day) => (
-                  <th
-                    key={day.toISOString()}
-                    className="border border-border px-1 py-2 font-medium text-muted-foreground min-w-[56px] text-center"
-                  >
-                    <div>{format(day, 'd', { locale: th })}</div>
-                    <div className="text-[10px] text-muted-foreground">{format(day, 'EEE', { locale: th })}</div>
+        <div className="rounded-xl border border-border bg-[var(--surface-1)] shadow-[var(--shadow-card)] overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="border-collapse text-xs w-full print:text-[10px]">
+              <thead>
+                <tr className="bg-[var(--surface-2)]">
+                  <th className="border border-border px-3 py-2 text-left font-semibold text-foreground sticky left-0 bg-[var(--surface-2)] z-10 min-w-[120px]">
+                    พนักงาน
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {grid.employees.map((emp) => (
-                <tr key={emp.id} className="hover:bg-muted/30/50">
-                  <td className="border border-border px-3 py-2 font-medium text-foreground sticky left-0 bg-card z-10">
-                    {emp.firstName} {emp.lastName}
-                    <span className="ml-1 text-[10px] text-muted-foreground">
-                      {emp.type === 'part_time' ? '(PT)' : ''}
-                    </span>
-                  </td>
-                  {days.map((day) => {
-                    const dateStr = format(day, 'yyyy-MM-dd');
-                    const key = entryKey(emp.id, dateStr);
-                    const entry = grid.entryMap[key];
-                    const bg = entry
-                      ? entry.status === 'leave'
-                        ? SHIFT_COLORS.leave
-                        : entry.status === 'day_off'
-                        ? SHIFT_COLORS.day_off
-                        : SHIFT_COLORS[entry.shiftType ?? 'morning']
-                      : '';
-
-                    return (
-                      <td
-                        key={dateStr}
-                        className="border border-border p-0"
-                      >
-                        <Popover
-                          open={popoverKey === key}
-                          onOpenChange={(o) => {
-                            if (o) openPopover(emp.id, dateStr);
-                            else setPopoverKey(null);
-                          }}
-                        >
-                          <PopoverTrigger
-                            className={`w-full h-full min-h-[44px] flex items-center justify-center rounded transition-colors hover:opacity-80 print:pointer-events-none ${bg || 'hover:bg-muted/50'}`}
-                          >
-                            <CellDisplay entry={entry} />
-                          </PopoverTrigger>
-                          <PopoverContent className="w-64 p-3 print:hidden" side="right">
-                            <p className="text-xs font-semibold mb-2">
-                              {emp.firstName} — {format(day, 'd MMM', { locale: th })}
-                            </p>
-                            {/* Status select */}
-                            <div className="flex gap-1 mb-3">
-                              {(['working', 'day_off', 'leave'] as const).map((s) => (
-                                <button
-                                  key={s}
-                                  onClick={() => setEntryForm((prev) => ({ ...prev, status: s }))}
-                                  className={`flex-1 rounded py-1 text-xs font-medium border transition-colors ${
-                                    entryForm.status === s
-                                      ? 'bg-primary text-white border-primary'
-                                      : 'border-border text-muted-foreground hover:border-border'
-                                  }`}
-                                >
-                                  {s === 'working' ? 'ทำงาน' : s === 'day_off' ? 'หยุด' : 'ลา'}
-                                </button>
-                              ))}
-                            </div>
-
-                            {entryForm.status === 'working' && (
-                              <div className="space-y-2">
-                                <div className="flex gap-1">
-                                  {(['morning', 'afternoon', 'custom'] as const).map((t) => (
-                                    <button
-                                      key={t}
-                                      onClick={() => handleShiftChange(t)}
-                                      className={`flex-1 rounded py-1 text-xs border transition-colors ${
-                                        entryForm.shiftType === t
-                                          ? t === 'morning' ? 'bg-sky-100 border-sky-300 text-sky-800'
-                                            : t === 'afternoon' ? 'bg-violet-100 border-violet-300 text-violet-800'
-                                            : 'bg-emerald-100 border-emerald-300 text-emerald-800'
-                                          : 'border-border text-muted-foreground'
-                                      }`}
-                                    >
-                                      {t === 'morning' ? 'เช้า' : t === 'afternoon' ? 'บ่าย' : 'กำหนด'}
-                                    </button>
-                                  ))}
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div>
-                                    <Label className="text-xs">เริ่ม</Label>
-                                    <Input
-                                      type="time"
-                                      value={entryForm.startTime}
-                                      onChange={(e) => setEntryForm((p) => ({ ...p, startTime: e.target.value }))}
-                                      className="h-7 text-xs"
-                                    />
-                                  </div>
-                                  <div>
-                                    <Label className="text-xs">สิ้นสุด</Label>
-                                    <Input
-                                      type="time"
-                                      value={entryForm.endTime}
-                                      onChange={(e) => setEntryForm((p) => ({ ...p, endTime: e.target.value }))}
-                                      className="h-7 text-xs"
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {entryForm.status === 'leave' && (
-                              <div>
-                                <Label className="text-xs">เหตุผลลา</Label>
-                                <Input
-                                  value={entryForm.leaveReason}
-                                  onChange={(e) => setEntryForm((p) => ({ ...p, leaveReason: e.target.value }))}
-                                  placeholder="เหตุผล"
-                                  className="h-7 text-xs"
-                                />
-                              </div>
-                            )}
-
-                            <Button
-                              size="sm"
-                              className="w-full mt-3 h-7 text-xs"
-                              onClick={() => saveEntry(emp.id, dateStr)}
-                              disabled={pending}
-                            >
-                              บันทึก
-                            </Button>
-                          </PopoverContent>
-                        </Popover>
-                      </td>
-                    );
-                  })}
+                  {days.map((day) => (
+                    <th
+                      key={day.toISOString()}
+                      className="border border-border px-1 py-2 font-medium text-muted-foreground min-w-[56px] text-center"
+                    >
+                      <div>{format(day, 'd', { locale: th })}</div>
+                      <div className="text-[10px] text-muted-foreground">{format(day, 'EEE', { locale: th })}</div>
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {grid.employees.map((emp) => (
+                  <tr key={emp.id} className="hover:bg-muted/20">
+                    <td className="border border-border px-3 py-2 font-medium text-foreground sticky left-0 bg-[var(--surface-1)] z-10">
+                      {emp.firstName} {emp.lastName}
+                      <span className="ml-1 text-[10px] text-muted-foreground">
+                        {emp.type === 'part_time' ? '(PT)' : ''}
+                      </span>
+                    </td>
+                    {days.map((day) => {
+                      const dateStr = format(day, 'yyyy-MM-dd');
+                      const key = entryKey(emp.id, dateStr);
+                      const entry = grid.entryMap[key];
+                      const bg = entry
+                        ? entry.status === 'leave'
+                          ? SHIFT_COLORS.leave
+                          : entry.status === 'day_off'
+                          ? SHIFT_COLORS.day_off
+                          : SHIFT_COLORS[entry.shiftType ?? 'morning']
+                        : '';
+
+                      return (
+                        <td
+                          key={dateStr}
+                          className="border border-border p-0"
+                        >
+                          <Popover
+                            open={popoverKey === key}
+                            onOpenChange={(o) => {
+                              if (o) openPopover(emp.id, dateStr);
+                              else setPopoverKey(null);
+                            }}
+                          >
+                            <PopoverTrigger
+                              className={cn(
+                                'w-full h-full min-h-[44px] flex items-center justify-center rounded transition-colors print:pointer-events-none',
+                                bg || 'hover:bg-muted/50',
+                              )}
+                            >
+                              <CellDisplay entry={entry} />
+                            </PopoverTrigger>
+                            <PopoverContent className="w-64 p-3 print:hidden" side="right">
+                              <p className="text-xs font-semibold mb-2">
+                                {emp.firstName} — {format(day, 'd MMM', { locale: th })}
+                              </p>
+                              {/* Status select */}
+                              <div className="flex gap-1 mb-3">
+                                {(['working', 'day_off', 'leave'] as const).map((s) => (
+                                  <button
+                                    key={s}
+                                    onClick={() => setEntryForm((prev) => ({ ...prev, status: s }))}
+                                    className={cn(
+                                      'flex-1 rounded py-1 text-xs font-medium border transition-colors',
+                                      entryForm.status === s
+                                        ? 'bg-primary text-white border-primary'
+                                        : 'border-border text-muted-foreground hover:border-border',
+                                    )}
+                                  >
+                                    {s === 'working' ? 'ทำงาน' : s === 'day_off' ? 'หยุด' : 'ลา'}
+                                  </button>
+                                ))}
+                              </div>
+
+                              {entryForm.status === 'working' && (
+                                <div className="space-y-2">
+                                  <div className="flex gap-1">
+                                    {(['morning', 'afternoon', 'custom'] as const).map((t) => (
+                                      <button
+                                        key={t}
+                                        onClick={() => handleShiftChange(t)}
+                                        className={cn(
+                                          'flex-1 rounded py-1 text-xs border transition-colors',
+                                          entryForm.shiftType === t
+                                            ? t === 'morning' ? 'bg-sky-100 border-sky-300 text-sky-800'
+                                              : t === 'afternoon' ? 'bg-violet-100 border-violet-300 text-violet-800'
+                                              : 'bg-emerald-100 border-emerald-300 text-emerald-800'
+                                            : 'border-border text-muted-foreground',
+                                        )}
+                                      >
+                                        {t === 'morning' ? 'เช้า' : t === 'afternoon' ? 'บ่าย' : 'กำหนด'}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <Label className="text-xs">เริ่ม</Label>
+                                      <Input
+                                        type="time"
+                                        value={entryForm.startTime}
+                                        onChange={(e) => setEntryForm((p) => ({ ...p, startTime: e.target.value }))}
+                                        className="h-7 text-xs"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs">สิ้นสุด</Label>
+                                      <Input
+                                        type="time"
+                                        value={entryForm.endTime}
+                                        onChange={(e) => setEntryForm((p) => ({ ...p, endTime: e.target.value }))}
+                                        className="h-7 text-xs"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {entryForm.status === 'leave' && (
+                                <div>
+                                  <Label className="text-xs">เหตุผลลา</Label>
+                                  <Input
+                                    value={entryForm.leaveReason}
+                                    onChange={(e) => setEntryForm((p) => ({ ...p, leaveReason: e.target.value }))}
+                                    placeholder="เหตุผล"
+                                    className="h-7 text-xs"
+                                  />
+                                </div>
+                              )}
+
+                              <Button
+                                size="sm"
+                                className="w-full mt-3 h-7 text-xs"
+                                onClick={() => saveEntry(emp.id, dateStr)}
+                                disabled={pending}
+                              >
+                                บันทึก
+                              </Button>
+                            </PopoverContent>
+                          </Popover>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -412,13 +455,31 @@ export function SchedulePage({ initialCycles, settings, initialEmployees }: Prop
         <span className="ml-auto">พิมพ์: {new Date().toLocaleDateString('th-TH')}</span>
       </div>
 
-      {/* Create cycle dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>สร้างรอบตารางงานใหม่</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
+      {/* Create cycle Sheet */}
+      <Sheet open={createOpen} onOpenChange={setCreateOpen}>
+        <SheetContent
+          side="right"
+          showCloseButton={false}
+          className="flex flex-col gap-0 p-0 sm:max-w-[420px]"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <div>
+              <p className="text-base font-semibold text-foreground">สร้างรอบตารางงานใหม่</p>
+              <p className="text-xs text-muted-foreground mt-0.5">กำหนดชื่อและช่วงวันของรอบ</p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="ปิด"
+              onClick={() => setCreateOpen(false)}
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
             <div className="space-y-1.5">
               <Label>ชื่อรอบ *</Label>
               <Input
@@ -430,24 +491,38 @@ export function SchedulePage({ initialCycles, settings, initialEmployees }: Prop
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>วันเริ่ม *</Label>
-                <Input type="date" value={cycleForm.startDate} onChange={(e) => setCycleForm((p) => ({ ...p, startDate: e.target.value }))} />
+                <Input
+                  type="date"
+                  value={cycleForm.startDate}
+                  onChange={(e) => setCycleForm((p) => ({ ...p, startDate: e.target.value }))}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>วันสิ้นสุด *</Label>
-                <Input type="date" value={cycleForm.endDate} onChange={(e) => setCycleForm((p) => ({ ...p, endDate: e.target.value }))} />
+                <Input
+                  type="date"
+                  value={cycleForm.endDate}
+                  onChange={(e) => setCycleForm((p) => ({ ...p, endDate: e.target.value }))}
+                />
               </div>
             </div>
             <div className="space-y-1.5">
               <Label>หมายเหตุ</Label>
-              <Input value={cycleForm.notes} onChange={(e) => setCycleForm((p) => ({ ...p, notes: e.target.value }))} placeholder="หมายเหตุ (ถ้ามี)" />
+              <Input
+                value={cycleForm.notes}
+                onChange={(e) => setCycleForm((p) => ({ ...p, notes: e.target.value }))}
+                placeholder="หมายเหตุ (ถ้ามี)"
+              />
             </div>
           </div>
-          <DialogFooter>
+
+          {/* Footer */}
+          <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
             <Button variant="outline" onClick={() => setCreateOpen(false)}>ยกเลิก</Button>
             <Button onClick={createCycle} disabled={pending}>สร้างรอบ</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </AppShell>
   );
 }
