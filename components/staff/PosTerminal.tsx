@@ -2441,7 +2441,7 @@ function PaymentPanel({
               <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">รอบที่ชำระแล้ว</p>
               {completedRounds.map((r, i) => (
                 <div key={i}
-                  className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30 px-3 py-2">
+                  className="flex items-center justify-between rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2">
                   <div>
                     <p className="text-xs font-medium text-foreground">รอบ {i + 1}</p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">
@@ -2449,7 +2449,7 @@ function PaymentPanel({
                     </p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-xs font-bold tabular-nums text-emerald-700 dark:text-emerald-400">฿{r.subtotal.toLocaleString('th-TH')}</p>
+                    <p className="text-xs font-bold tabular-nums text-[var(--status-success-fg)]">฿{r.subtotal.toLocaleString('th-TH')}</p>
                     <p className="text-[10px] text-muted-foreground">
                       {r.method === 'cash' ? 'เงินสด' : r.method === 'cash_qr' ? 'เงินสด+QR' : 'QR'}
                     </p>
@@ -2464,18 +2464,18 @@ function PaymentPanel({
             <div className="shrink-0 rounded-xl border border-border bg-card p-3 space-y-1.5">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">สรุปการชำระ</p>
               <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                <div className="h-2 w-2 rounded-full bg-[var(--status-success-fg)] shrink-0" />
                 <span className="text-xs text-foreground flex-1">
                   ชำระแล้ว {completedRounds.reduce((s, r) => s + r.items.reduce((a, x) => a + x.qty, 0), 0)} คน
                 </span>
-                <span className="text-xs font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">฿{completedTotal.toLocaleString('th-TH')}</span>
+                <span className="text-xs font-semibold tabular-nums text-[var(--status-success-fg)]">฿{completedTotal.toLocaleString('th-TH')}</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-amber-400 shrink-0" />
+                <div className="h-2 w-2 rounded-full bg-[var(--status-warning-fg)] shrink-0" />
                 <span className="text-xs text-foreground flex-1">
                   ยังเหลือ {Object.values(roundRemaining).reduce((a, b) => a + b, 0)} คน
                 </span>
-                <span className="text-xs font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+                <span className="text-xs font-semibold tabular-nums text-[var(--status-warning-fg)]">
                   ฿{[...guestTiles, ...addonTiles]
                       .reduce((s, t) => s + (roundRemaining[t.id] ?? 0) * Number(t.price), 0)
                       .toLocaleString('th-TH')}
@@ -2488,17 +2488,17 @@ function PaymentPanel({
           {completedRounds.length > 0 && (
             <>
               {allDone ? (
-                <div className="shrink-0 rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30 px-4 py-3">
-                  <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">เก็บครบแล้ว {completedRounds.length} รอบ</p>
+                <div className="shrink-0 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-4 py-3">
+                  <p className="text-xs font-medium text-[var(--status-success-fg)]">เก็บครบแล้ว {completedRounds.length} รอบ</p>
                   <p className="mt-0.5 text-2xl font-bold tabular-nums text-foreground">฿{completedTotal.toLocaleString('th-TH')}</p>
                 </div>
               ) : (
-                <div className="shrink-0 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3">
-                  <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                <div className="shrink-0 rounded-xl border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3">
+                  <p className="text-xs font-medium text-[var(--status-warning-fg)]">
                     เก็บแล้ว {completedRounds.length} รอบ · ยังเหลือ {Object.values(roundRemaining).reduce((a, b) => a + b, 0)} คน
                   </p>
                   <p className="mt-0.5 text-xl font-bold tabular-nums text-foreground">฿{completedTotal.toLocaleString('th-TH')}</p>
-                  <p className="text-[10px] text-amber-500 dark:text-amber-400 mt-0.5">ยืนยันจะชำระเฉพาะรอบที่เก็บแล้ว ส่วนที่เหลือจะถูกยกเลิก</p>
+                  <p className="text-[10px] text-[var(--status-warning-fg)] mt-0.5">ยืนยันจะชำระเฉพาะรอบที่เก็บแล้ว ส่วนที่เหลือจะถูกยกเลิก</p>
                 </div>
               )}
               <div className="shrink-0">
@@ -2570,7 +2570,7 @@ function PaymentPanel({
                     ฿{roundCashQrCashNum.toLocaleString('th-TH')}
                   </p>
                   {roundCashQrCashNum > 0 && roundCashQrCashPortion > 0 && (
-                    <p className={`text-sm mt-1 tabular-nums font-semibold ${roundCashQrChange >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    <p className={`text-sm mt-1 tabular-nums font-semibold ${roundCashQrChange >= 0 ? 'text-[var(--status-success-fg)]' : 'text-[var(--status-danger-fg)]'}`}>
                       {roundCashQrChange >= 0 ? `เงินทอน ฿${roundCashQrChange.toLocaleString('th-TH')}` : 'ไม่เพียงพอ'}
                     </p>
                   )}
@@ -2585,7 +2585,7 @@ function PaymentPanel({
                   ฿{Number(roundNumpad).toLocaleString('th-TH')}
                 </p>
                 {roundMethod === 'cash' && roundNumpadNum > 0 && (
-                  <p className={`text-sm mt-2 tabular-nums font-semibold ${roundChange >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'}`}>
+                  <p className={`text-sm mt-2 tabular-nums font-semibold ${roundChange >= 0 ? 'text-[var(--status-success-fg)]' : 'text-[var(--status-danger-fg)]'}`}>
                     {roundChange >= 0 ? `เงินทอน ฿${roundChange.toLocaleString('th-TH')}` : 'ไม่เพียงพอ'}
                   </p>
                 )}
@@ -2615,7 +2615,7 @@ function PaymentPanel({
                       className={`rounded-lg text-base font-bold transition-colors active:scale-95 select-none h-10 ${
                         roundMethod === 'qr_promptpay'
                           ? 'bg-muted/30 border border-border text-muted-foreground/30 cursor-not-allowed'
-                          : k === 'C'  ? 'bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 dark:bg-red-950/30 dark:border-red-900 dark:text-red-400' :
+                          : k === 'C'  ? 'bg-[var(--status-danger-bg)] border border-[var(--status-danger-border)] text-[var(--status-danger-fg)] hover:opacity-80' :
                             k === '⌫' ? 'bg-muted border border-border text-foreground hover:bg-muted/70' :
                                          'bg-card border border-border text-foreground hover:bg-muted/50 shadow-sm'
                       }`}
