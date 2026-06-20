@@ -1300,9 +1300,9 @@ function PaymentPanel({
 
     return (
       <div className="p-6 space-y-6">
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30 p-8 text-center space-y-3">
-          <CheckCircle2 className="mx-auto size-12 text-emerald-500" />
-          <h2 className="text-xl font-bold text-emerald-800 dark:text-emerald-300">ชำระเงินสำเร็จ</h2>
+        <div className="rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-8 text-center space-y-3">
+          <CheckCircle2 className="mx-auto size-12 text-[var(--status-success-fg)]" />
+          <h2 className="text-xl font-bold text-[var(--status-success-fg)]">ชำระเงินสำเร็จ</h2>
           <p className="text-3xl font-bold tabular-nums text-foreground">฿{lastReceipt.total.toLocaleString('th-TH')}</p>
           {lastReceipt.changeAmount > 0 && <p className="text-base text-muted-foreground">เงินทอน ฿{lastReceipt.changeAmount.toLocaleString('th-TH')}</p>}
           <p className="text-sm text-muted-foreground">โต๊ะ {lastReceipt.tableNumber} · ชำระด้วย {lastReceipt.paymentMethod}</p>
@@ -1314,7 +1314,7 @@ function PaymentPanel({
             <Printer className="size-4" />พิมพ์ซ้ำ
           </button>
           <button type="button" onClick={handleForceClose} disabled={submitting}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-red-300 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--status-danger-border)] py-3 text-sm font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors">
             {submitting && <Loader2 className="size-3.5 animate-spin" />}
             {submitting ? 'กำลังปิด…' : 'บังคับปิดโต๊ะ'}
           </button>
@@ -1621,7 +1621,7 @@ function PaymentPanel({
             </button>
             <h2 className="text-sm font-semibold text-foreground">ชำระเงิน — โต๊ะ {session.table.label}</h2>
             {isGroupBill && linkedTableLabels && (
-              <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
+              <span className="rounded-full bg-[var(--status-purple-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--status-purple-fg)]">
                 กลุ่ม {[session.table.label, ...linkedTableLabels].join(', ')}
               </span>
             )}
@@ -1655,16 +1655,16 @@ function PaymentPanel({
           </div>
 
           {lastReceipt && (
-            <div className="shrink-0 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-800 dark:bg-emerald-950/30">
+            <div className="shrink-0 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">ชำระเงินสำเร็จ</p>
+                  <p className="text-xs font-semibold text-[var(--status-success-fg)]">ชำระเงินสำเร็จ</p>
                   <p className="text-sm font-bold tabular-nums text-foreground">฿{lastReceipt.total.toLocaleString('th-TH')}</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => void (lastPaymentId ? printPaymentEventReceipt(lastPaymentId, lastReceipt) : printReceipt({ type: 'receipt', payment: lastReceipt }))}
-                  className="shrink-0 rounded-lg border border-emerald-300 bg-background px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/50"
+                  className="shrink-0 rounded-lg border border-[var(--status-success-border)] bg-background px-3 py-2 text-xs font-semibold text-[var(--status-success-fg)] hover:bg-[var(--status-success-bg)]"
                 >
                   พิมพ์ใบล่าสุด
                 </button>
@@ -1696,11 +1696,11 @@ function PaymentPanel({
               </div>
               <div className="rounded-lg bg-muted/50 px-2 py-2">
                 <p className="text-[11px] text-muted-foreground">ชำระแล้ว</p>
-                <p className="text-base font-bold tabular-nums text-emerald-600">฿{paidBeforeSettlement.toLocaleString('th-TH')}</p>
+                <p className="text-base font-bold tabular-nums text-[var(--status-success-fg)]">฿{paidBeforeSettlement.toLocaleString('th-TH')}</p>
               </div>
               <div className="rounded-lg bg-muted/50 px-2 py-2">
                 <p className="text-[11px] text-muted-foreground">คงเหลือ</p>
-                <p className="text-base font-bold tabular-nums text-red-500">฿{remainingBeforePayment.toLocaleString('th-TH')}</p>
+                <p className="text-base font-bold tabular-nums text-[var(--status-danger-fg)]">฿{remainingBeforePayment.toLocaleString('th-TH')}</p>
               </div>
             </div>
 
@@ -1797,13 +1797,13 @@ function PaymentPanel({
                 </div>
 
                 {selectedHeadTotal === 0 ? (
-                  <p className="text-center text-xs text-amber-600 dark:text-amber-400">กรุณาเลือกรายการที่ต้องการรับชำระ</p>
+                  <p className="text-center text-xs text-[var(--status-warning-fg)]">กรุณาเลือกรายการที่ต้องการรับชำระ</p>
                 ) : canFinalHeadSettlement ? (
-                  <p className="text-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                  <p className="text-center text-xs font-semibold text-[var(--status-success-fg)]">
                     เลือกรายการคงเหลือครบแล้ว สามารถปิดบิลได้
                   </p>
                 ) : allRemainingHeadsSelected ? (
-                  <p className="text-center text-xs text-amber-600 dark:text-amber-400">
+                  <p className="text-center text-xs text-[var(--status-warning-fg)]">
                     เลือกรายการครบแล้ว แต่ยอดยังไม่ตรงกับยอดคงเหลือ ระบบจะรับเป็นบางส่วน
                   </p>
                 ) : (
@@ -1948,7 +1948,7 @@ function PaymentPanel({
           <button type="button"
             onClick={() => { setTaxForm(taxInvoice ?? { companyName: '', phone: '', taxId: '', address: '' }); setTaxInvoiceOpen(true); }}
             className={`shrink-0 w-full rounded-xl border py-2.5 text-xs font-medium transition-colors ${
-              taxInvoice ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-400' : 'border-border text-foreground hover:bg-muted/50'
+              taxInvoice ? 'border-[var(--status-info-border)] bg-[var(--status-info-bg)] text-[var(--status-info-fg)]' : 'border-border text-foreground hover:bg-muted/50'
             }`}>
             {taxInvoice ? `📄 ${taxInvoice.companyName}` : '+ ออกใบกำกับภาษี'}
           </button>
@@ -1958,11 +1958,11 @@ function PaymentPanel({
           </div>
           {/* Helper text */}
           {paymentOptions.length === 0 ? (
-            <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
+            <p className="shrink-0 text-center text-xs text-[var(--status-warning-fg)]">
               ไม่สามารถโหลดช่องทางชำระได้ — กรุณาลองรีเฟรชหน้า
             </p>
           ) : checkoutMode === 'head' && paymentMode === 'items' && selectedHeadTotal === 0 ? (
-            <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
+            <p className="shrink-0 text-center text-xs text-[var(--status-warning-fg)]">
               กรุณาเลือกรายการที่ต้องการรับชำระ
             </p>
           ) : paymentRowsDraft.length === 0 ? (
@@ -1970,15 +1970,15 @@ function PaymentPanel({
               เลือกช่องทางและเพิ่มรายการชำระก่อนยืนยัน
             </p>
           ) : checkoutMode === 'head' && selectedHeadAmountCents > remainingBeforeCents ? (
-            <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
+            <p className="shrink-0 text-center text-xs text-[var(--status-warning-fg)]">
               ยอดรายการที่เลือกมากกว่ายอดคงเหลือ
             </p>
           ) : checkoutMode === 'head' && !isDraftComplete ? (
-            <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
+            <p className="shrink-0 text-center text-xs text-[var(--status-warning-fg)]">
               ยอดรับชำระไม่ตรงกับรายการที่เลือก
             </p>
           ) : checkoutMode === 'manual' && settlementMode === 'partial' && isDraftComplete ? (
-            <p className="shrink-0 text-center text-xs text-amber-600 dark:text-amber-400">
+            <p className="shrink-0 text-center text-xs text-[var(--status-warning-fg)]">
               ยอดนี้ครบคงเหลือแล้ว กรุณาใช้โหมดปิดบิลทั้งหมด
             </p>
           ) : null}
@@ -2013,30 +2013,30 @@ function PaymentPanel({
                 </div>
                 <div className="flex items-end justify-between gap-3 rounded-lg bg-primary/10 px-3 py-1.5">
                   <span className="text-sm font-semibold text-primary">ต้องรับรอบนี้</span>
-                  <span className={`tabular-nums text-xl font-bold leading-none ${remainingForDraft > 0 ? 'text-primary' : 'text-emerald-600'}`}>
+                  <span className={`tabular-nums text-xl font-bold leading-none ${remainingForDraft > 0 ? 'text-primary' : 'text-[var(--status-success-fg)]'}`}>
                     ฿{remainingForDraft.toLocaleString('th-TH')}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">คงเหลือของทั้งบิลหลังเลือกรอบนี้</span>
-                  <span className={`tabular-nums font-semibold ${remainingAfterSelection > 0 ? 'text-muted-foreground' : 'text-emerald-600'}`}>
+                  <span className={`tabular-nums font-semibold ${remainingAfterSelection > 0 ? 'text-muted-foreground' : 'text-[var(--status-success-fg)]'}`}>
                     ฿{remainingAfterSelection.toLocaleString('th-TH')}
                   </span>
                 </div>
                 {paymentRowsDraft.length > 0 && draftRowsTotalCents !== paymentTargetCents && (
-                  <p className="text-center text-xs font-medium text-amber-600 dark:text-amber-400">
+                  <p className="text-center text-xs font-medium text-[var(--status-warning-fg)]">
                     ยอดรับเงินต้องเท่ากับ ฿{paymentTargetAmount.toLocaleString('th-TH')}
                   </p>
                 )}
                 {isCashMethod && draftChange > 0 && (
-                  <div className="flex justify-between text-sm font-semibold text-emerald-600 pt-0.5">
+                  <div className="flex justify-between text-sm font-semibold text-[var(--status-success-fg)] pt-0.5">
                     <span>เงินทอน</span>
                     <span className="tabular-nums">฿{draftChange.toLocaleString('th-TH')}</span>
                   </div>
                 )}
               </div>              {isDraftComplete && (
-                <div className="shrink-0 rounded-xl bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800 px-3 py-2 text-center">
-                  <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">ครบยอดแล้ว — กดยืนยันชำระได้เลย</p>
+                <div className="shrink-0 rounded-xl bg-[var(--status-success-bg)] border border-[var(--status-success-border)] px-3 py-2 text-center">
+                  <p className="text-sm font-semibold text-[var(--status-success-fg)]">ครบยอดแล้ว — กดยืนยันชำระได้เลย</p>
                 </div>
               )}
 
@@ -2108,7 +2108,7 @@ function PaymentPanel({
                         <span className="mt-1 block truncate text-lg font-bold tabular-nums leading-none">฿{draftTenderedNum.toLocaleString('th-TH')}</span>
                       </button>
                     </div>
-                    <div className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1 text-sm font-semibold ${draftChange < 0 ? 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400'}`}>
+                    <div className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1 text-sm font-semibold ${draftChange < 0 ? 'bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]' : 'bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'}`}>
                       <span>{draftChange === 0 ? 'พอดี' : draftChange < 0 ? 'ขาดเงินสด' : 'เงินทอน'}</span>
                       <span className="tabular-nums">{draftChange === 0 ? '฿0' : `฿${Math.abs(draftChange).toLocaleString('th-TH')}`}</span>
                     </div>
@@ -2132,7 +2132,7 @@ function PaymentPanel({
                     type="button"
                     onClick={() => handleNumpadPress(k)}
                     className={`rounded-lg text-base font-bold transition-colors active:scale-95 select-none h-10 ${
-                      k === 'C'  ? 'bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 dark:bg-red-950/30 dark:border-red-900 dark:text-red-400' :
+                      k === 'C'  ? 'bg-[var(--status-danger-bg)] border border-[var(--status-danger-border)] text-[var(--status-danger-fg)] hover:opacity-80' :
                       k === '⌫' ? 'bg-muted border border-border text-foreground hover:bg-muted/70' :
                                    'bg-card border border-border text-foreground hover:bg-muted/50 shadow-sm'
                     }`}
@@ -2192,7 +2192,7 @@ function PaymentPanel({
                           type="button"
                           aria-label={`ลบรายการ ${idx + 1}`}
                           onClick={() => setPaymentRowsDraft((prev) => prev.filter((r) => r.id !== row.id))}
-                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30"
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[var(--status-danger-bg)] hover:text-[var(--status-danger-fg)]"
                         >
                           <X className="size-3.5" />
                         </button>
