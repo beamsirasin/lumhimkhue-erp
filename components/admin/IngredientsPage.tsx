@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { Search, Plus, Package, MapPin } from 'lucide-react';
 import type { Resolver } from 'react-hook-form';
+import { cn } from '@/lib/utils';
 import {
   getIngredientPageData,
   createIngredient,
@@ -21,11 +22,34 @@ import {
   type CreateIngredientInput,
   type UpdateIngredientInput,
 } from '@/lib/validations/inventory';
+import { PageHeader } from '@/components/ui/page-header';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { EmptyState } from '@/components/ui/empty-state';
+import { DataCard } from '@/components/ui/section-card';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 const COMMON_UNITS = ['กก.', 'กรัม', 'ลิตร', 'มล.', 'ชิ้น', 'แพ็ค', 'ขวด', 'ลัง', 'ถุง'];
 
-const INPUT = 'w-full rounded-lg border border-border bg-background text-foreground px-3 py-2 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50';
-const BTN_PRIMARY = 'w-full rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50';
+// Native select consistent with Input component styling
+const SELECT_CLS = 'h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50';
 
 type Modal =
   | { type: 'add' }
@@ -82,41 +106,37 @@ export function IngredientsPage({ initialData }: Props) {
 
   return (
     <div className="page-shell">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">วัตถุดิบ</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">{data.ingredients.length} รายการ</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setModal({ type: 'add' })}
-          className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="size-4" />
-          เพิ่มวัตถุดิบ
-        </button>
-      </div>
+      <PageHeader
+        title="วัตถุดิบ"
+        subtitle={`${data.ingredients.length} รายการ`}
+        actions={
+          <Button onClick={() => setModal({ type: 'add' })}>
+            <Plus className="size-4" />
+            เพิ่มวัตถุดิบ
+          </Button>
+        }
+      />
 
       {/* Filters */}
       <div className="space-y-2.5">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <input
+        <div className="relative max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
             type="text"
             placeholder="ค้นหาวัตถุดิบ…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background text-foreground pl-9 pr-3 py-2 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50 max-w-sm"
+            className="pl-9"
           />
         </div>
         <div className="flex flex-wrap gap-1.5">
           <button
             type="button"
             onClick={() => setCatFilter(null)}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-              !catFilter ? 'bg-primary text-primary-foreground' : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-            }`}
+            className={cn(
+              'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+              !catFilter ? 'bg-primary text-primary-foreground' : 'bg-muted/50 text-muted-foreground hover:bg-muted',
+            )}
           >
             ทั้งหมด ({data.ingredients.length})
           </button>
@@ -127,11 +147,12 @@ export function IngredientsPage({ initialData }: Props) {
                 key={cat.id}
                 type="button"
                 onClick={() => setCatFilter(cat.id === catFilter ? null : cat.id)}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                className={cn(
+                  'rounded-full px-3 py-1 text-xs font-medium transition-colors',
                   catFilter === cat.id
                     ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-                }`}
+                    : 'bg-muted/50 text-muted-foreground hover:bg-muted',
+                )}
               >
                 {cat.name} ({count})
               </button>
@@ -143,125 +164,122 @@ export function IngredientsPage({ initialData }: Props) {
       {/* Grouped tables */}
       <div className="space-y-4">
         {grouped.length === 0 ? (
-          <div className="rounded-xl bg-card py-16 text-center shadow-sm ring-1 ring-border">
-            <Package className="mx-auto size-8 text-muted-foreground/60 mb-2" />
-            <p className="text-sm text-muted-foreground">ไม่พบวัตถุดิบที่ตรงกัน</p>
-          </div>
+          <EmptyState
+            icon={<Package className="size-5" />}
+            title="ไม่พบวัตถุดิบที่ตรงกัน"
+            description="ลองเปลี่ยนคำค้นหาหรือตัวกรองหมวด"
+          />
         ) : (
           grouped.map(({ category, items }) => (
-            <div key={category.id} className="rounded-xl bg-card overflow-hidden shadow-sm ring-1 ring-border">
-              <div className="flex items-center gap-2 bg-muted/30 border-b border-border px-4 py-2.5">
-                <span className="text-xs font-semibold text-foreground">{category.name}</span>
-                <span className="text-xs text-muted-foreground">{items.length} รายการ</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[800px]">
-                  <thead>
-                    <tr className="border-b border-border text-left">
-                      <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground">ชื่อ / ความถี่</th>
-                      <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground">หน่วย</th>
-                      <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground text-right">ราคาล่าสุด</th>
-                      <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground text-right">จุดสั่งซื้อ</th>
-                      <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground text-right">ระดับเป้าหมาย</th>
-                      <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground">Supplier หลัก</th>
-                      <th className="px-4 py-2.5 text-xs font-medium text-muted-foreground text-center">สถานะ</th>
-                      <th className="px-4 py-2.5" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {items.map((ing) => {
-                      const yieldPct = Number(ing.yieldPercent ?? 100);
-                      const isWeekly = ing.countFrequency === 'weekly';
-                      return (
-                        <tr
-                          key={ing.id}
-                          className={`transition-colors hover:bg-muted/30 ${!ing.isActive ? 'opacity-50' : ''}`}
-                        >
-                          <td className="px-4 py-3">
-                            <p className="font-medium text-foreground">{ing.name}</p>
-                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                              <span
-                                className={`rounded-full px-1.5 py-0.5 text-xs font-medium ${
-                                  isWeekly
-                                    ? 'bg-purple-100 text-purple-700'
-                                    : 'bg-blue-100 text-blue-700'
-                                }`}
-                              >
-                                {isWeekly ? 'รายสัปดาห์' : 'รายวัน'}
-                              </span>
-                              {yieldPct < 100 && (
-                                <span className="rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-xs text-amber-700">
-                                  yield {yieldPct}%
-                                </span>
-                              )}
-                              {ing.storageLocation && (
-                                <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-                                  <MapPin className="size-3" />{ing.storageLocation}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">
-                            {ing.unit}
-                            {ing.orderUnit && ing.orderUnit !== ing.unit && (
-                              <p className="text-xs text-muted-foreground mt-0.5">
-                                สั่ง: {ing.orderUnit} (×{ing.orderUnitConversion})
-                              </p>
+            <DataCard
+              key={category.id}
+              noPadding
+              title={category.name}
+              actions={<span className="text-xs text-muted-foreground">{items.length} รายการ</span>}
+            >
+              <Table className="min-w-[800px]">
+                <TableHeader>
+                  <TableRow className="border-border">
+                    <TableHead className="px-4 py-2.5 text-xs font-medium text-muted-foreground">ชื่อ / ความถี่</TableHead>
+                    <TableHead className="px-4 py-2.5 text-xs font-medium text-muted-foreground">หน่วย</TableHead>
+                    <TableHead className="px-4 py-2.5 text-xs font-medium text-muted-foreground text-right">ราคาล่าสุด</TableHead>
+                    <TableHead className="px-4 py-2.5 text-xs font-medium text-muted-foreground text-right">จุดสั่งซื้อ</TableHead>
+                    <TableHead className="px-4 py-2.5 text-xs font-medium text-muted-foreground text-right">ระดับเป้าหมาย</TableHead>
+                    <TableHead className="px-4 py-2.5 text-xs font-medium text-muted-foreground">Supplier หลัก</TableHead>
+                    <TableHead className="px-4 py-2.5 text-xs font-medium text-muted-foreground text-center">สถานะ</TableHead>
+                    <TableHead className="px-4 py-2.5" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((ing) => {
+                    const yieldPct = Number(ing.yieldPercent ?? 100);
+                    const isWeekly = ing.countFrequency === 'weekly';
+                    return (
+                      <TableRow
+                        key={ing.id}
+                        className={cn('border-border hover:bg-muted/30', !ing.isActive && 'opacity-50')}
+                      >
+                        <TableCell className="px-4 py-3">
+                          <p className="font-medium text-foreground">{ing.name}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <StatusBadge
+                              label={isWeekly ? 'รายสัปดาห์' : 'รายวัน'}
+                              variant={isWeekly ? 'purple' : 'info'}
+                            />
+                            {yieldPct < 100 && (
+                              <StatusBadge label={`yield ${yieldPct}%`} variant="warning" />
                             )}
-                          </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-foreground">
-                            {Number(ing.lastCost) > 0 ? `฿${fmt(ing.lastCost)}` : '—'}
-                          </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                            {Number(ing.minStock) > 0 ? `${fmt(ing.minStock, 0)} ${ing.unit}` : '—'}
-                          </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                            {Number(ing.parLevel) > 0 ? `${fmt(ing.parLevel, 0)} ${ing.unit}` : '—'}
-                          </td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground">
-                            {ing.defaultSupplier?.name ?? '—'}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <button
-                              type="button"
-                              disabled={isToggling && toggleVar === ing.id}
-                              onClick={() => doToggle(ing.id)}
-                              className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors disabled:opacity-50 ${
-                                ing.isActive
-                                  ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                                  : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-                              }`}
-                            >
-                              {isToggling && toggleVar === ing.id ? '…' : ing.isActive ? 'เปิด' : 'ปิด'}
-                            </button>
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <button
-                              type="button"
-                              onClick={() => setModal({ type: 'edit', ingredient: ing })}
-                              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                              แก้ไข
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                            {ing.storageLocation && (
+                              <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                                <MapPin className="size-3" />{ing.storageLocation}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-muted-foreground">
+                          {ing.unit}
+                          {ing.orderUnit && ing.orderUnit !== ing.unit && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              สั่ง: {ing.orderUnit} (×{ing.orderUnitConversion})
+                            </p>
+                          )}
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-right tabular-nums text-foreground">
+                          {Number(ing.lastCost) > 0 ? `฿${fmt(ing.lastCost)}` : '—'}
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-right tabular-nums text-muted-foreground">
+                          {Number(ing.minStock) > 0 ? `${fmt(ing.minStock, 0)} ${ing.unit}` : '—'}
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-right tabular-nums text-muted-foreground">
+                          {Number(ing.parLevel) > 0 ? `${fmt(ing.parLevel, 0)} ${ing.unit}` : '—'}
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-xs text-muted-foreground">
+                          {ing.defaultSupplier?.name ?? '—'}
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-center">
+                          <button
+                            type="button"
+                            disabled={isToggling && toggleVar === ing.id}
+                            onClick={() => doToggle(ing.id)}
+                            className={cn(
+                              'rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors disabled:opacity-50',
+                              ing.isActive
+                                ? 'bg-[var(--status-success-bg)] text-[var(--status-success-fg)] hover:bg-[var(--status-success-border)]'
+                                : 'bg-muted/50 text-muted-foreground hover:bg-muted',
+                            )}
+                          >
+                            {isToggling && toggleVar === ing.id ? '…' : ing.isActive ? 'เปิด' : 'ปิด'}
+                          </button>
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-right">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setModal({ type: 'edit', ingredient: ing })}
+                          >
+                            แก้ไข
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </DataCard>
           ))
         )}
       </div>
 
-      {/* Modal */}
-      {modal && (
-        <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4 py-8 overflow-y-auto"
-          onClick={() => setModal(null)}
-        >
-          <div onClick={(e) => e.stopPropagation()} className="my-auto">
+      {/* Ingredient dialog */}
+      <Dialog open={!!modal} onOpenChange={(next) => { if (!next) setModal(null); }}>
+        <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {modal?.type === 'edit' ? 'แก้ไขวัตถุดิบ' : 'เพิ่มวัตถุดิบ'}
+            </DialogTitle>
+          </DialogHeader>
+          {modal && (
             <IngredientForm
               initial={modal.type === 'edit' ? modal.ingredient : undefined}
               categories={data.categories}
@@ -269,9 +287,9 @@ export function IngredientsPage({ initialData }: Props) {
               onClose={() => setModal(null)}
               onSaved={() => { invalidate(); setModal(null); }}
             />
-          </div>
-        </div>
-      )}
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -339,186 +357,175 @@ function IngredientForm({
   }
 
   return (
-    <div className="w-[540px] max-h-[92vh] overflow-y-auto rounded-xl bg-card p-6 shadow-xl">
-      <div className="mb-5 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-foreground">
-          {initial ? 'แก้ไขวัตถุดิบ' : 'เพิ่มวัตถุดิบ'}
-        </h2>
-        <button type="button" aria-label="ปิด" onClick={onClose} className="text-muted-foreground hover:text-foreground text-lg leading-none">×</button>
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      {initial && (
+        <input type="hidden" {...register('id' as keyof (CreateIngredientInput | UpdateIngredientInput))} />
+      )}
+
+      {/* Name */}
+      <div className="space-y-1.5">
+        <Label htmlFor="ing-name" className="text-xs text-muted-foreground">
+          ชื่อวัตถุดิบ <span className="text-destructive">*</span>
+        </Label>
+        <Input id="ing-name" {...register('name')} placeholder="เช่น เนื้อวัวสไลซ์" />
+        {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        {initial && (
-          <input type="hidden" {...register('id' as keyof (CreateIngredientInput | UpdateIngredientInput))} />
-        )}
-
-        {/* Name */}
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">
-            ชื่อวัตถุดิบ <span className="text-red-500">*</span>
-          </label>
-          <input {...register('name')} placeholder="เช่น เนื้อวัวสไลซ์" className={INPUT} />
-          {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name.message}</p>}
-        </div>
-
-        {/* Category + Unit */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">
-              หมวด <span className="text-red-500">*</span>
-            </label>
-            <select {...register('categoryId')} className={INPUT}>
-              <option value="">เลือกหมวด</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
-            {errors.categoryId && <p className="mt-1 text-xs text-red-600">{errors.categoryId.message}</p>}
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">
-              หน่วยนับ (สต็อก) <span className="text-red-500">*</span>
-            </label>
-            <input
-              {...register('unit')}
-              list="unit-suggestions"
-              placeholder="เช่น กก., ขวด"
-              className={INPUT}
-            />
-            <datalist id="unit-suggestions">
-              {COMMON_UNITS.map((u) => <option key={u} value={u} />)}
-            </datalist>
-            {errors.unit && <p className="mt-1 text-xs text-red-600">{errors.unit.message}</p>}
-          </div>
-        </div>
-
-        {/* Stock levels + cost */}
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">จุดสั่งซื้อ</label>
-            <input
-              {...register('minStock', { valueAsNumber: true })}
-              type="number" step="0.01" min="0" placeholder="0"
-              className={INPUT}
-            />
-            {errors.minStock && <p className="mt-1 text-xs text-red-600">{errors.minStock.message}</p>}
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">ระดับที่ควรมี</label>
-            <input
-              {...register('parLevel', { valueAsNumber: true })}
-              type="number" step="0.01" min="0" placeholder="0"
-              className={INPUT}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">ราคาล่าสุด (฿)</label>
-            <input
-              {...register('lastCost', { valueAsNumber: true })}
-              type="number" step="0.01" min="0" placeholder="0.00"
-              className={INPUT}
-            />
-          </div>
-        </div>
-
-        {/* ABC classification + yield */}
-        <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
-          <p className="text-xs font-semibold text-foreground">การจัดการสต็อก</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">ความถี่การนับ</label>
-              <select {...register('countFrequency' as keyof FormValues)} className={INPUT}>
-                <option value="daily">รายวัน (A/B — สด / ราคาสูง)</option>
-                <option value="weekly">รายสัปดาห์ (C — ของแห้ง)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Yield (%) <span className="text-muted-foreground font-normal">— สูญเสียจากการเตรียม</span>
-              </label>
-              <input
-                {...register('yieldPercent', { valueAsNumber: true })}
-                type="number" step="1" min="0" max="100" placeholder="100"
-                className={INPUT}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">100% = ไม่มีสูญเสีย, 80% = เตรียมแล้วเหลือ 80%</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Order unit */}
-        <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
-          <p className="text-xs font-semibold text-foreground">หน่วยสั่งซื้อ <span className="font-normal text-muted-foreground">(ถ้าต่างจากหน่วยนับสต็อก)</span></p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">หน่วยสั่งซื้อ</label>
-              <input
-                {...register('orderUnit' as keyof FormValues)}
-                placeholder="เช่น ลัง, ถุง 5กก."
-                className={INPUT}
-              />
-            </div>
-            {watchedOrderUnit && (
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">
-                  จำนวน (หน่วยสต็อก) ต่อ 1 หน่วยสั่งซื้อ
-                </label>
-                <input
-                  {...register('orderUnitConversion', { valueAsNumber: true })}
-                  type="number" step="0.001" min="0.001" placeholder="1"
-                  className={INPUT}
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  เช่น 1 ลัง = 12 ขวด → ใส่ 12
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Storage location */}
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">
-            ที่จัดเก็บ <span className="text-muted-foreground font-normal">(ถ้ามี)</span>
-          </label>
-          <input
-            {...register('storageLocation' as keyof FormValues)}
-            placeholder="เช่น ตู้เย็น A, ชั้น 2, คลังแห้ง"
-            className={INPUT}
-          />
-        </div>
-
-        {/* Supplier */}
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Supplier หลัก</label>
-          <select {...register('defaultSupplierId')} className={INPUT}>
-            <option value="">— ไม่ระบุ —</option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
+      {/* Category + Unit */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="ing-category" className="text-xs text-muted-foreground">
+            หมวด <span className="text-destructive">*</span>
+          </Label>
+          <select id="ing-category" {...register('categoryId')} className={SELECT_CLS}>
+            <option value="">เลือกหมวด</option>
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.id}>{cat.name}</option>
             ))}
           </select>
+          {errors.categoryId && <p className="text-xs text-destructive">{errors.categoryId.message}</p>}
         </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="ing-unit" className="text-xs text-muted-foreground">
+            หน่วยนับ (สต็อก) <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            id="ing-unit"
+            {...register('unit')}
+            list="ing-unit-suggestions"
+            placeholder="เช่น กก., ขวด"
+          />
+          <datalist id="ing-unit-suggestions">
+            {COMMON_UNITS.map((u) => <option key={u} value={u} />)}
+          </datalist>
+          {errors.unit && <p className="text-xs text-destructive">{errors.unit.message}</p>}
+        </div>
+      </div>
 
-        {/* Notes */}
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">หมายเหตุ</label>
-          <textarea
-            {...register('notes')}
-            rows={2}
-            placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
-            className={`${INPUT} resize-none`}
+      {/* Stock levels + cost */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="ing-minstock" className="text-xs text-muted-foreground">จุดสั่งซื้อ</Label>
+          <Input
+            id="ing-minstock"
+            {...register('minStock', { valueAsNumber: true })}
+            type="number" step="0.01" min="0" placeholder="0"
+          />
+          {errors.minStock && <p className="text-xs text-destructive">{errors.minStock.message}</p>}
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="ing-parlevel" className="text-xs text-muted-foreground">ระดับที่ควรมี</Label>
+          <Input
+            id="ing-parlevel"
+            {...register('parLevel', { valueAsNumber: true })}
+            type="number" step="0.01" min="0" placeholder="0"
           />
         </div>
-
-        <div className="flex gap-3 pt-1">
-          <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-border py-2 text-sm font-medium text-foreground hover:bg-muted/30">
-            ยกเลิก
-          </button>
-          <button type="submit" disabled={isSubmitting} className="flex-1 rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-            {isSubmitting ? 'กำลังบันทึก…' : 'บันทึก'}
-          </button>
+        <div className="space-y-1.5">
+          <Label htmlFor="ing-lastcost" className="text-xs text-muted-foreground">ราคาล่าสุด (฿)</Label>
+          <Input
+            id="ing-lastcost"
+            {...register('lastCost', { valueAsNumber: true })}
+            type="number" step="0.01" min="0" placeholder="0.00"
+          />
         </div>
-      </form>
-    </div>
+      </div>
+
+      {/* Stock management */}
+      <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+        <p className="text-xs font-semibold text-foreground">การจัดการสต็อก</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="ing-freq" className="text-xs text-muted-foreground">ความถี่การนับ</Label>
+            <select id="ing-freq" {...register('countFrequency' as keyof FormValues)} className={SELECT_CLS}>
+              <option value="daily">รายวัน (A/B — สด / ราคาสูง)</option>
+              <option value="weekly">รายสัปดาห์ (C — ของแห้ง)</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ing-yield" className="text-xs text-muted-foreground">
+              Yield (%) <span className="font-normal text-muted-foreground/70">— สูญเสียจากการเตรียม</span>
+            </Label>
+            <Input
+              id="ing-yield"
+              {...register('yieldPercent', { valueAsNumber: true })}
+              type="number" step="1" min="0" max="100" placeholder="100"
+            />
+            <p className="text-xs text-muted-foreground">100% = ไม่มีสูญเสีย, 80% = เตรียมแล้วเหลือ 80%</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Order unit */}
+      <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+        <p className="text-xs font-semibold text-foreground">
+          หน่วยสั่งซื้อ <span className="font-normal text-muted-foreground">(ถ้าต่างจากหน่วยนับสต็อก)</span>
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="ing-orderunit" className="text-xs text-muted-foreground">หน่วยสั่งซื้อ</Label>
+            <Input
+              id="ing-orderunit"
+              {...register('orderUnit' as keyof FormValues)}
+              placeholder="เช่น ลัง, ถุง 5กก."
+            />
+          </div>
+          {watchedOrderUnit && (
+            <div className="space-y-1.5">
+              <Label htmlFor="ing-orderconv" className="text-xs text-muted-foreground">
+                จำนวน (หน่วยสต็อก) ต่อ 1 หน่วยสั่งซื้อ
+              </Label>
+              <Input
+                id="ing-orderconv"
+                {...register('orderUnitConversion', { valueAsNumber: true })}
+                type="number" step="0.001" min="0.001" placeholder="1"
+              />
+              <p className="text-xs text-muted-foreground">เช่น 1 ลัง = 12 ขวด → ใส่ 12</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Storage location */}
+      <div className="space-y-1.5">
+        <Label htmlFor="ing-storage" className="text-xs text-muted-foreground">
+          ที่จัดเก็บ <span className="font-normal text-muted-foreground/70">(ถ้ามี)</span>
+        </Label>
+        <Input
+          id="ing-storage"
+          {...register('storageLocation' as keyof FormValues)}
+          placeholder="เช่น ตู้เย็น A, ชั้น 2, คลังแห้ง"
+        />
+      </div>
+
+      {/* Default supplier */}
+      <div className="space-y-1.5">
+        <Label htmlFor="ing-supplier" className="text-xs text-muted-foreground">Supplier หลัก</Label>
+        <select id="ing-supplier" {...register('defaultSupplierId')} className={SELECT_CLS}>
+          <option value="">— ไม่ระบุ —</option>
+          {suppliers.map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Notes */}
+      <div className="space-y-1.5">
+        <Label htmlFor="ing-notes" className="text-xs text-muted-foreground">หมายเหตุ</Label>
+        <Textarea
+          id="ing-notes"
+          {...register('notes')}
+          placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
+          className="resize-none"
+        />
+      </div>
+
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onClose}>ยกเลิก</Button>
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? 'กำลังบันทึก…' : 'บันทึก'}
+        </Button>
+      </DialogFooter>
+    </form>
   );
 }
