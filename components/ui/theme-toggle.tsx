@@ -1,16 +1,24 @@
 'use client';
 
-import { useTheme } from 'next-themes';
 import { Sun, Moon } from 'lucide-react';
+import { useTheme } from '@/components/shared/ThemeProvider';
 
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
 
-  // resolvedTheme is undefined until next-themes mounts; render a stable placeholder
-  // to avoid hydration mismatch between server and first client render.
+  // resolvedTheme is undefined until ThemeProvider mounts after hydration.
+  // Render the same disabled <button> on server, first hydration, and unmounted state
+  // so the DOM element type never changes across the hydration boundary.
   if (!resolvedTheme) {
     return (
-      <div className="flex size-8 items-center justify-center rounded-lg" aria-hidden="true" />
+      <button
+        type="button"
+        disabled
+        aria-label="กำลังโหลดธีม"
+        className="flex size-8 items-center justify-center rounded-lg text-muted-foreground/40"
+      >
+        <Moon className="size-4" />
+      </button>
     );
   }
 
