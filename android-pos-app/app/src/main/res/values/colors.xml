@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher icon background — navy blue matching the POS admin theme -->
+    <color name="launcher_background">#1E3A5F</color>
+</resources>

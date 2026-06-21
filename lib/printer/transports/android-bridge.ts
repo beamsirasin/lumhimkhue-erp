@@ -72,6 +72,7 @@ export function sendAndroidBridge(
     ...(target === 'network' && host ? { host, port: port ?? 9100 } : {}),
   };
 
-  // window.AndroidPrinter is guaranteed non-null by isAndroidBridgeAvailable() above
-  window.AndroidPrinter!.print(payload);
+  // Android @JavascriptInterface only accepts primitive types — must stringify.
+  // Passing the object directly would deliver "[object Object]" to the Java method.
+  window.AndroidPrinter!.print(JSON.stringify(payload));
 }

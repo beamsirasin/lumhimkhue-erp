@@ -1,0 +1,13 @@
+# Android build outputs
+.gradle/
+build/
+app/build/
+local.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# gradle-wrapper.jar IS committed — it is required to run ./gradlew without
+# a pre-installed Gradle. Do NOT add it to this ignore list.

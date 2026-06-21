@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Match any USB device that reports Printer class (0x07).
+        When the tablet detects a matching device via OTG, Android will
+        prompt the user to open this app and may grant permanent USB access,
+        eliminating the need for a runtime permission dialog on first print.
+    -->
+    <usb-device class="7" />
+</resources>

@@ -210,7 +210,11 @@ export type AndroidPrintPayload = {
  * Only present when the webapp runs inside the Android POS App's WebView.
  */
 export interface AndroidPrinterBridge {
-  print(payload: AndroidPrintPayload): void;
+  /**
+   * Android @JavascriptInterface only accepts primitive types.
+   * The webapp must pass JSON.stringify(payload) — a raw object becomes "[object Object]".
+   */
+  print(payloadJson: string): void;
 }
 
 declare global {
