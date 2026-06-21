@@ -624,12 +624,11 @@ function TableMapPickerModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const containerRef                    = useRef<HTMLDivElement>(null);
-  const [containerW, setContainerW]    = useState(0);
-  const [containerH, setContainerH]    = useState(0);
+  const containerRef                       = useRef<HTMLDivElement>(null);
+  const [containerW, setContainerW]       = useState(0);
   // Tracks explicit user toggle overrides (id → true=on / false=off)
   const [manualToggles, setManualToggles] = useState<Map<string, boolean>>(new Map());
-  const [submitting, setSubmitting]    = useState(false);
+  const [submitting, setSubmitting]       = useState(false);
 
   const { data: layout = [], isLoading } = useQuery({
     queryKey: ['tables-layout'],
@@ -652,14 +651,11 @@ function TableMapPickerModal({
     return result;
   }, [parsedBase, manualToggles]);
 
-  // Measure container for scale-to-fit
+  // Measure scroll container width for scale calculation
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const measure = () => {
-      setContainerW(el.clientWidth);
-      setContainerH(el.clientHeight);
-    };
+    const measure = () => setContainerW(el.clientWidth);
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -673,9 +669,10 @@ function TableMapPickerModal({
   const canvasH = layout.length
     ? Math.max(300, ...layout.map(t => t.positionY + t.height + PAD))
     : 300;
-  const scale = (containerW > 0 && containerH > 0)
-    ? Math.min(containerW / canvasW, containerH / canvasH, 1)
-    : 1;
+  // Fit canvas to container width only; never upscale.
+  // Height is NOT used for scaling — the map area scrolls vertically if needed.
+  // This keeps tables at a usable tap size on tablet instead of over-shrinking.
+  const scale = containerW > 0 ? Math.min(containerW / canvasW, 1) : 1;
 
   function toggle(id: string) {
     const willBeOn = !selected.has(id);
@@ -710,62 +707,64 @@ function TableMapPickerModal({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-end justify-center bg-foreground/30 backdrop-blur-[2px] sm:items-center"
+      className="fixed inset-0 z-40 flex items-end justify-center bg-foreground/30 backdrop-blur-[2px] md:items-center"
       onClick={onClose}
     >
+      {/*
+        Mobile  : full-width bottom sheet, up to 90dvh tall
+        Tablet+ : large centered dialog — 92vw wide, 84dvh tall
+        flex-col so map area can grow to fill remaining height
+      */}
       <div
-        className="w-full max-w-lg overflow-hidden rounded-t-2xl border border-border bg-[var(--surface-1)] shadow-[var(--shadow-dialog)] sm:rounded-2xl"
+        className="flex w-full max-h-[90dvh] flex-col overflow-hidden rounded-t-2xl border border-border bg-[var(--surface-1)] shadow-[var(--shadow-dialog)] md:h-[84dvh] md:w-[92vw] md:max-h-none md:max-w-[1100px] md:rounded-2xl"
         onClick={e => e.stopPropagation()}
       >
-        {/* Handle bar (mobile) */}
-        <div className="flex justify-center pt-2.5 sm:hidden">
+        {/* Handle bar — mobile only */}
+        <div className="flex shrink-0 justify-center pt-2.5 md:hidden">
           <div className="h-1 w-10 rounded-full bg-muted-foreground/20" />
         </div>
 
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
-          <div>
-            <h2 className="text-base font-bold text-foreground">เลือกโต๊ะ — คิว {entry.queueNumber}</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              ผ{entry.adultCount}/ด{entry.childCount} · เลือกได้มากกว่า 1 โต๊ะ · ข้อมูลนี้ใช้สำหรับวางแผนเท่านั้น
-            </p>
+        {/* Header — compact single row */}
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <h2 className="shrink-0 text-base font-bold text-foreground">
+              เลือกโต๊ะ — คิว {entry.queueNumber}
+            </h2>
+            <span className="truncate text-xs text-muted-foreground">
+              ผ{entry.adultCount}/ด{entry.childCount} · เลือกได้มากกว่า 1 · วางแผนเท่านั้น
+            </span>
           </div>
-          <button type="button" aria-label="ปิด" onClick={onClose}
-            className="flex size-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted">
+          <button
+            type="button"
+            aria-label="ปิด"
+            onClick={onClose}
+            className="ml-3 flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+          >
             <X className="size-5" />
           </button>
         </div>
 
-        {/* Map area */}
-        <div className="px-4 pb-4 pt-3">
-          {/* Legend */}
-          <div className="mb-2 flex items-center gap-4 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block size-2.5 rounded-sm border border-dashed border-muted-foreground/40 bg-[var(--surface-2)]" />
-              ยังไม่เลือก
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block size-2.5 rounded-sm border border-primary bg-primary" />
-              เลือกแล้ว
-            </span>
+        {/* Map area — flex-1, scrollable; this is the dominant section */}
+        {isLoading ? (
+          <div className="flex flex-1 items-center justify-center bg-[var(--surface-2)]">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
           </div>
-
-          {/* Floor plan canvas */}
-          {isLoading ? (
-            <div className="flex h-[280px] items-center justify-center rounded-xl border border-border bg-[var(--surface-2)]">
-              <Loader2 className="size-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : layout.length === 0 ? (
-            <div className="flex h-[280px] flex-col items-center justify-center gap-2 rounded-xl border border-border bg-[var(--surface-2)] text-sm text-muted-foreground">
-              <MapPin className="size-5 opacity-40" />
-              ยังไม่มีโต๊ะในระบบ
-            </div>
-          ) : (
+        ) : layout.length === 0 ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-[var(--surface-2)] text-sm text-muted-foreground">
+            <MapPin className="size-6 opacity-40" />
+            ยังไม่มีโต๊ะในระบบ
+          </div>
+        ) : (
+          /* Scroll container: measures width for scale; scrolls vertically if canvas overflows */
+          <div
+            ref={containerRef}
+            className="flex-1 overflow-auto bg-[var(--surface-2)]"
+          >
+            {/* Wrapper at exact rendered canvas dimensions; dot-grid fills this area */}
             <div
-              ref={containerRef}
-              className="relative h-[280px] overflow-hidden rounded-xl border border-border bg-[var(--surface-2)]"
+              className="relative"
+              style={{ width: canvasW * scale, height: canvasH * scale }}
             >
-              {/* Dot-grid background */}
               <svg
                 className="pointer-events-none absolute inset-0 h-full w-full"
                 xmlns="http://www.w3.org/2000/svg"
@@ -779,72 +778,94 @@ function TableMapPickerModal({
                 <rect width="100%" height="100%" fill="url(#dots-q)" />
               </svg>
 
-              {/* Scaled canvas — mirrors LinkedTablePicker pattern */}
+              {/* Scaled canvas — table buttons at their DB pixel positions */}
               <div
-                className="absolute origin-top-left"
+                className="absolute left-0 top-0 origin-top-left"
                 style={{ width: canvasW, height: canvasH, transform: `scale(${scale})` }}
               >
                 {layout.map(t => {
-                  const isSelected  = selected.has(t.id);
-                  const shapeClass  = t.shape === 'rectangle' ? 'rounded-md' : 'rounded-xl';
+                  const isSelected = selected.has(t.id);
+                  const shape      = t.shape === 'rectangle' ? 'rounded-md' : 'rounded-xl';
                   return (
                     <button
                       key={t.id}
                       type="button"
                       onClick={() => toggle(t.id)}
-                      style={{ position: 'absolute', left: t.positionX, top: t.positionY, width: t.width, height: t.height }}
+                      style={{
+                        position: 'absolute',
+                        left:     t.positionX,
+                        top:      t.positionY,
+                        width:    t.width,
+                        height:   t.height,
+                      }}
                       className={cn(
                         'flex flex-col items-center justify-center border-2 font-semibold transition-all active:scale-95 select-none',
-                        shapeClass,
+                        shape,
                         isSelected
-                          ? 'border-primary bg-primary text-primary-foreground shadow-md'
+                          ? 'border-primary bg-primary text-primary-foreground shadow-md ring-2 ring-primary/25 ring-offset-1'
                           : 'border-border/60 bg-[var(--surface-1)] text-foreground hover:border-primary/50 hover:bg-[var(--surface-primary-subtle)]',
                       )}
                     >
                       <span className="text-base font-bold leading-tight tabular-nums">{t.label}</span>
-                      {isSelected && <span className="text-[10px] font-normal opacity-80">✓</span>}
+                      {isSelected && <Check className="mt-0.5 size-3.5 opacity-80" />}
                     </button>
                   );
                 })}
               </div>
             </div>
-          )}
-
-          {/* Selected note preview */}
-          <div className="mt-3">
-            {notePreview ? (
-              <div className="flex items-center gap-2 rounded-xl border border-[var(--status-info-border)] bg-[var(--status-info-bg)] px-3 py-2.5">
-                <MapPin className="size-3.5 shrink-0 text-[var(--status-info-fg)]" />
-                <span className="text-sm font-semibold text-[var(--status-info-fg)]">{notePreview}</span>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-border bg-[var(--surface-2)] px-3 py-2.5 text-sm text-muted-foreground">
-                แตะโต๊ะบนแผนผังเพื่อเลือก (เลือกได้มากกว่า 1)
-              </div>
-            )}
           </div>
+        )}
 
-          {/* Action buttons */}
-          <div className="mt-3 flex gap-2">
-            {hasExisting && (
+        {/* Footer — always visible; selection summary + action buttons */}
+        <div className="shrink-0 border-t border-border bg-[var(--surface-1)] px-4 py-3">
+          <div className="flex items-center gap-3">
+            {/* Selection summary */}
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              {selected.size > 0 ? (
+                <>
+                  <MapPin className="size-3.5 shrink-0 text-[var(--status-info-fg)]" />
+                  <span className="truncate text-sm font-semibold text-[var(--status-info-fg)]">
+                    {notePreview}
+                  </span>
+                  <span className="shrink-0 rounded-full border border-[var(--status-info-border)] bg-[var(--status-info-bg)] px-2 py-0.5 text-xs font-semibold text-[var(--status-info-fg)]">
+                    {selected.size} โต๊ะ
+                  </span>
+                </>
+              ) : (
+                <span className="text-sm text-muted-foreground">แตะโต๊ะบนแผนผังเพื่อเลือก</span>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex shrink-0 items-center gap-2">
+              {hasExisting && (
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  disabled={submitting}
+                  className="flex min-h-11 items-center justify-center rounded-xl border border-border bg-[var(--surface-2)] px-4 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-60"
+                >
+                  ล้าง
+                </button>
+              )}
               <button
                 type="button"
-                onClick={handleClear}
+                onClick={onClose}
                 disabled={submitting}
-                className="flex min-h-10 items-center justify-center rounded-xl border border-border bg-[var(--surface-2)] px-4 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-60"
+                className="flex min-h-11 items-center justify-center rounded-xl border border-border bg-[var(--surface-2)] px-4 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-60"
               >
-                ล้าง
+                ยกเลิก
               </button>
-            )}
-            <button
-              type="button"
-              onClick={handleConfirm}
-              disabled={submitting || selected.size === 0}
-              className="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:opacity-60"
-            >
-              {submitting && <Loader2 className="size-4 animate-spin" />}
-              ยืนยัน
-            </button>
+              <button
+                type="button"
+                onClick={handleConfirm}
+                disabled={submitting || selected.size === 0}
+                className="flex min-h-11 min-w-[5.5rem] items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:opacity-60"
+              >
+                {submitting && <Loader2 className="size-4 animate-spin" />}
+                ยืนยัน
+              </button>
+            </div>
           </div>
         </div>
       </div>
