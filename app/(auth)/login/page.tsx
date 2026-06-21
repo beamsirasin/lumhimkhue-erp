@@ -1,17 +1,21 @@
 import Image from 'next/image';
 import { LoginForm } from '@/components/auth/LoginForm';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 export const metadata = { title: 'เข้าสู่ระบบ — ลำฮิมคือ ชาบู บุฟเฟต์' };
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
       <div className="flex w-full max-w-3xl overflow-hidden rounded-2xl border border-border shadow-xl">
 
         {/* Left brand panel */}
         <div
           className="hidden lg:flex flex-col justify-between w-[340px] shrink-0 p-10"
-          style={{ background: 'oklch(0.135 0.025 248)' }}
+          style={{ background: 'var(--sidebar-header)' }}
         >
           <div className="space-y-8">
             {/* Logo */}

@@ -251,8 +251,8 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                             <div>
                               <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                                 payment.settlementType === 'partial'
-                                  ? 'bg-amber-100 text-amber-700'
-                                  : 'bg-emerald-100 text-emerald-700'
+                                  ? 'bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]'
+                                  : 'bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'
                               }`}>
                                 {SETTLEMENT_LABEL[payment.settlementType] ?? payment.settlementType}
                               </span>
@@ -278,7 +278,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                             <div className="space-y-2 pt-0.5">
                               <span className="text-xs text-muted-foreground">ช่องทางรับเงิน</span>
                               {payment.rows.map((pr) => (
-                                <div key={pr.id} className="rounded border border-green-200 bg-white/60 px-2.5 py-2 space-y-1">
+                                <div key={pr.id} className="rounded border border-[var(--status-success-border)] bg-[var(--surface-1)] px-2.5 py-2 space-y-1">
                                   <div className="flex justify-between text-xs font-medium text-foreground">
                                     <span>{pr.paymentMethod?.name ?? '—'} / {pr.receivingAccount?.name ?? '—'}</span>
                                     <span className="tabular-nums">{fmtThb(pr.amount)}</span>
@@ -337,7 +337,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                               <button
                                 type="button"
                                 onClick={() => { setSelectedMutationPaymentId(payment.id); setMutationReason(''); setDelConfirm(true); setEditConfirm(false); }}
-                                className="flex items-center justify-center gap-1.5 rounded-lg border border-red-200 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                                className="flex items-center justify-center gap-1.5 rounded-lg border border-[var(--status-danger-border)] px-4 py-2.5 text-sm font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] transition-colors"
                               >
                                 <Trash2 className="size-4" />ลบ
                               </button>
@@ -345,34 +345,34 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                           )}
 
                           {isSelected && editConfirm && (
-                            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
-                              <p className="text-sm font-semibold text-amber-800">ยืนยันแก้ไขการชำระเงิน?</p>
-                              <p className="text-xs text-amber-600">
+                            <div className="mt-2 rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] p-3 space-y-2">
+                              <p className="text-sm font-semibold text-[var(--status-warning-fg)]">ยืนยันแก้ไขการชำระเงิน?</p>
+                              <p className="text-xs text-[var(--status-warning-fg)]">
                                 การชำระเงินเดิมจะถูกยกเลิก บิลจะกลับสู่หน้า POS เพื่อชำระใหม่
                               </p>
                               {shiftStatus === 'reviewed' && (
-                                <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-700">
+                                <div className="flex items-start gap-2 rounded-md border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-2.5 py-2 text-xs text-[var(--status-danger-fg)]">
                                   <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                                   <span>รอบแคชเชียร์นี้ตรวจสอบแล้ว ไม่สามารถแก้ไขได้</span>
                                 </div>
                               )}
                               {shiftStatus === 'closed' && (
-                                <div className="flex items-start gap-2 rounded-md border border-orange-200 bg-orange-50 px-2.5 py-2 text-xs text-orange-700">
+                                <div className="flex items-start gap-2 rounded-md border border-[var(--status-orange-border)] bg-[var(--status-orange-bg)] px-2.5 py-2 text-xs text-[var(--status-orange-fg)]">
                                   <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                                   <span>รอบแคชเชียร์ปิดแล้ว — การแก้ไขจะทำให้ยอดรอบนี้ไม่ตรง ต้องระบุเหตุผล</span>
                                 </div>
                               )}
                               <div className="space-y-1">
-                                <label className="text-xs text-amber-700">
+                                <label className="text-xs text-[var(--status-warning-fg)]">
                                   เหตุผลในการแก้ไข
-                                  {shiftStatus === 'closed' && <span className="ml-1 text-red-600">*</span>}
+                                  {shiftStatus === 'closed' && <span className="ml-1 text-[var(--status-danger-fg)]">*</span>}
                                 </label>
                                 <textarea
                                   value={mutationReason}
                                   onChange={(e) => setMutationReason(e.target.value)}
                                   placeholder="เช่น ลูกค้าจ่ายผิด / เงินผิดจำนวนเงิน / ลงรายการผิดพลาด"
                                   rows={2}
-                                  className="w-full rounded-lg border border-amber-200 bg-white/70 px-3 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                  className="w-full rounded-lg border border-[var(--status-warning-border)] bg-[var(--surface-1)] px-3 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-[var(--status-warning-border)]"
                                 />
                               </div>
                               <div className="flex gap-2">
@@ -388,7 +388,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                                   type="button"
                                   onClick={handleReopen}
                                   disabled={submitting || shiftStatus === 'reviewed' || (shiftStatus === 'closed' && !mutationReason.trim())}
-                                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--status-warning-fg)] py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
                                 >
                                   {submitting && <Loader2 className="size-3 animate-spin" />}
                                   ยืนยัน → ไปหน้า POS
@@ -398,34 +398,34 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                           )}
 
                           {isSelected && delConfirm && (
-                            <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 space-y-2">
-                              <p className="text-sm font-semibold text-red-700">ยืนยันลบประวัติการชำระเงิน?</p>
-                              <p className="text-xs text-red-500">
+                            <div className="mt-2 rounded-lg border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] p-3 space-y-2">
+                              <p className="text-sm font-semibold text-[var(--status-danger-fg)]">ยืนยันลบประวัติการชำระเงิน?</p>
+                              <p className="text-xs text-[var(--status-danger-fg)]">
                                 ประวัติการรับเงินครั้งนี้จะถูกลบถาวร และระบบจะปรับสถานะบิลตามยอดคงเหลือ
                               </p>
                               {shiftStatus === 'reviewed' && (
-                                <div className="flex items-start gap-2 rounded-md border border-red-300 bg-red-100 px-2.5 py-2 text-xs text-red-800">
+                                <div className="flex items-start gap-2 rounded-md border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-2.5 py-2 text-xs text-[var(--status-danger-fg)]">
                                   <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                                   <span>รอบแคชเชียร์นี้ตรวจสอบแล้ว ไม่สามารถลบได้</span>
                                 </div>
                               )}
                               {shiftStatus === 'closed' && (
-                                <div className="flex items-start gap-2 rounded-md border border-orange-200 bg-orange-50 px-2.5 py-2 text-xs text-orange-700">
+                                <div className="flex items-start gap-2 rounded-md border border-[var(--status-orange-border)] bg-[var(--status-orange-bg)] px-2.5 py-2 text-xs text-[var(--status-orange-fg)]">
                                   <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                                   <span>รอบแคชเชียร์ปิดแล้ว — การลบจะทำให้ยอดรอบนี้ไม่ตรง ต้องระบุเหตุผล</span>
                                 </div>
                               )}
                               <div className="space-y-1">
-                                <label className="text-xs text-red-700">
+                                <label className="text-xs text-[var(--status-danger-fg)]">
                                   เหตุผลในการลบ
-                                  {shiftStatus === 'closed' && <span className="ml-1 text-red-600">*</span>}
+                                  {shiftStatus === 'closed' && <span className="ml-1 text-[var(--status-danger-fg)]">*</span>}
                                 </label>
                                 <textarea
                                   value={mutationReason}
                                   onChange={(e) => setMutationReason(e.target.value)}
                                   placeholder="เช่น ลูกค้าจ่ายผิด / เงินผิดจำนวนเงิน / ลงรายการผิดพลาด"
                                   rows={2}
-                                  className="w-full rounded-lg border border-red-200 bg-white/70 px-3 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-red-400"
+                                  className="w-full rounded-lg border border-[var(--status-danger-border)] bg-[var(--surface-1)] px-3 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-[var(--status-danger-border)]"
                                 />
                               </div>
                               <div className="flex gap-2">
@@ -441,7 +441,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                                   type="button"
                                   onClick={handleDelete}
                                   disabled={submitting || shiftStatus === 'reviewed' || (shiftStatus === 'closed' && !mutationReason.trim())}
-                                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-600 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-destructive py-2.5 text-sm font-semibold text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
                                 >
                                   {submitting && <Loader2 className="size-3 animate-spin" />}
                                   ยืนยันลบ
@@ -470,12 +470,12 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                         <span>
                           {item.menuItem?.name ?? (item as typeof item & { itemName?: string | null }).itemName ?? '-'}
                           {item.notes && <span className="ml-1 text-muted-foreground">({item.notes})</span>}
-                          {item.status === 'cancelled' && <span className="ml-1 text-red-400">[ยกเลิก]</span>}
+                          {item.status === 'cancelled' && <span className="ml-1 text-[var(--status-danger-fg)]">[ยกเลิก]</span>}
                         </span>
                         <div className="flex gap-2 shrink-0">
                           <span className="tabular-nums text-muted-foreground">×{item.quantity}</span>
                           {!item.menuItem?.isBuffet && (
-                            <span className="tabular-nums text-red-600">
+                            <span className="tabular-nums text-[var(--status-danger-fg)]">
                               +฿{(Number(item.menuItem?.extraPrice ?? 0) * item.quantity).toLocaleString('th-TH')}
                             </span>
                           )}

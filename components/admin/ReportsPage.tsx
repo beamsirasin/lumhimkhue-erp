@@ -187,25 +187,25 @@ function RevenueReport() {
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={report.rows} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.90 0.006 248)" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                 <XAxis
                   dataKey="date"
-                  tick={{ fontSize: 11, fill: 'oklch(0.52 0.01 248)' }}
+                  tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
                   tickFormatter={(v: string) => v.slice(5)}
                   axisLine={false} tickLine={false}
                 />
                 <YAxis
-                  tick={{ fontSize: 11, fill: 'oklch(0.52 0.01 248)' }}
+                  tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
                   tickFormatter={(v: number) => v >= 1000 ? `฿${(v / 1000).toFixed(0)}K` : `฿${v}`}
                   axisLine={false} tickLine={false} width={50}
                 />
                 <Tooltip
-                  cursor={{ fill: 'oklch(0.94 0.005 248 / 50%)' }}
-                  contentStyle={{ borderRadius: 8, border: '1px solid oklch(0.90 0.006 248)', fontSize: 12 }}
+                  cursor={{ fill: 'var(--muted)' }}
+                  contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }}
                   formatter={(v) => [`฿${Number(v).toLocaleString('th-TH')}`, 'รายได้']}
                   labelFormatter={(l) => `วันที่ ${l}`}
                 />
-                <Bar dataKey="revenue" fill="oklch(0.30 0.11 248)" radius={[4, 4, 0, 0]} maxBarSize={60} />
+                <Bar dataKey="revenue" fill="var(--chart-1)" radius={[4, 4, 0, 0]} maxBarSize={60} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -448,18 +448,18 @@ function FoodCostReport() {
         ) : (
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.90 0.006 248)" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'oklch(0.52 0.01 248)' }} tickFormatter={(v: string) => v.slice(5)} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: 'oklch(0.52 0.01 248)' }} unit="%" domain={[0, 'auto']} axisLine={false} tickLine={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickFormatter={(v: string) => v.slice(5)} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} unit="%" domain={[0, 'auto']} axisLine={false} tickLine={false} />
               <Tooltip
-                cursor={{ fill: 'oklch(0.94 0.005 248 / 50%)' }}
-                contentStyle={{ borderRadius: 8, border: '1px solid oklch(0.90 0.006 248)', fontSize: 12 }}
+                cursor={{ fill: 'var(--muted)' }}
+                contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }}
                 formatter={(v) => [`${Number(v ?? 0).toFixed(1)}%`, '% ต้นทุนอาหาร']}
                 labelFormatter={(l) => `วันที่ ${l}`}
               />
-              <ReferenceLine y={35} stroke="#ef4444" strokeDasharray="4 4" label={{ value: '35%', fill: '#ef4444', fontSize: 11 }} />
+              <ReferenceLine y={35} stroke="var(--status-danger-fg)" strokeDasharray="4 4" label={{ value: '35%', fill: 'var(--status-danger-fg)', fontSize: 11 }} />
               <Bar dataKey="foodCostPct" radius={[4, 4, 0, 0]} maxBarSize={60}>
-                {rows.map((row) => <Cell key={row.date} fill={row.foodCostPct > 35 ? '#ef4444' : '#22c55e'} />)}
+                {rows.map((row) => <Cell key={row.date} fill={row.foodCostPct > 35 ? 'var(--status-danger-fg)' : 'var(--status-success-fg)'} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>

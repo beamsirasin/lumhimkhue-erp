@@ -381,7 +381,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
           </ul>
           <Link
             href="/inventory/orders"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
           >
             <ShoppingCart className="size-4" />
             สร้างใบสั่งซื้อ
@@ -433,7 +433,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
                       key={ing.id}
                       className={cn(
                         'transition-colors hover:bg-muted/20',
-                        isLow && 'bg-red-50/20',
+                        isLow && 'bg-[var(--status-danger-bg)]',
                       )}
                     >
                       {/* ชื่อ */}
@@ -493,8 +493,8 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
                             className={cn(
                               'w-24 rounded-lg border px-2 py-1.5 text-right text-sm tabular-nums outline-none transition-colors',
                               isLow
-                                ? 'border-red-300 bg-red-50 text-red-700 focus:border-red-400'
-                                : 'border-emerald-300 bg-card text-emerald-800 focus:border-emerald-500',
+                                ? 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)] focus:border-[var(--status-danger-border)]'
+                                : 'border-[var(--status-success-border)] bg-card text-[var(--status-success-fg)] focus:border-[var(--status-success-border)]',
                             )}
                           />
                         )}
@@ -651,7 +651,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
                     className={cn(
                       'flex-1 rounded-lg border py-2 text-xs font-medium transition-colors',
                       adjType === 'waste'
-                        ? 'border-orange-600 bg-orange-600 text-white'
+                        ? 'border-[var(--status-orange-fg)] bg-[var(--status-orange-fg)] text-white'
                         : 'border-border text-muted-foreground hover:bg-muted/30',
                     )}
                   >
@@ -719,7 +719,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
               <Button
                 type="button"
                 disabled={isAdjPending}
-                className={cn(adjType === 'waste' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-amber-600 hover:bg-amber-700')}
+                className={cn(adjType === 'waste' ? 'bg-[var(--status-orange-fg)] hover:opacity-90' : 'bg-[var(--status-warning-fg)] hover:opacity-90')}
                 onClick={handleAdjustmentSubmit}
               >
                 {isAdjPending ? <><Loader2 className="size-4 animate-spin" /> กำลังบันทึก…</> : 'บันทึกปรับปรุง'}

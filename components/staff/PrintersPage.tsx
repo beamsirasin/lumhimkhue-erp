@@ -426,7 +426,7 @@ function StepType({
               <p className="text-sm font-medium text-foreground">{title}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
               {disabled && (
-                <p className="text-xs text-red-500 mt-0.5">Browser ของคุณไม่รองรับ WebUSB</p>
+                <p className="text-xs text-[var(--status-danger-fg)] mt-0.5">Browser ของคุณไม่รองรับ WebUSB</p>
               )}
             </div>
           </button>
@@ -471,13 +471,13 @@ function StepUsb({
   return (
     <div className="space-y-4 py-1">
       {usbLabel ? (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+        <div className="rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-3 text-sm text-[var(--status-success-fg)]">
           ✓ {usbLabel}
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">กด &ldquo;เลือกอุปกรณ์ USB&rdquo; แล้วเลือก printer ในรายการที่ปรากฏ</p>
       )}
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-[var(--status-danger-fg)]">{error}</p>}
       <button
         type="button"
         onClick={pick}
@@ -510,7 +510,7 @@ function StepNetwork({
   return (
     <div className="space-y-4 py-1">
       {!onLocalhost && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 leading-relaxed">
+        <div className="rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] p-3 text-xs text-[var(--status-warning-fg)] leading-relaxed">
           ⚠️ <strong>Network printer ใช้งานได้เฉพาะ dev mode (localhost)</strong><br />
           ใน production (Vercel) server อยู่บน cloud ไม่สามารถเข้าถึง IP ใน LAN ของร้านได้
           กรุณาใช้ USB แทน
@@ -524,7 +524,7 @@ function StepNetwork({
           placeholder="192.168.1.100"
           className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
         />
-        {ip && !ipValid && <p className="mt-1 text-xs text-red-600">รูปแบบ IP ไม่ถูกต้อง</p>}
+        {ip && !ipValid && <p className="mt-1 text-xs text-[var(--status-danger-fg)]">รูปแบบ IP ไม่ถูกต้อง</p>}
       </div>
       <div>
         <label className="block text-xs font-medium text-foreground mb-1">Port</label>
@@ -663,16 +663,16 @@ function StepGeneral({
         </p>
       </div>
 
-      <label className="flex items-start gap-2 cursor-pointer rounded-lg border border-amber-200 bg-amber-50 p-3">
+      <label className="flex items-start gap-2 cursor-pointer rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] p-3">
         <input
           type="checkbox"
           checked={thaiImageMode}
           onChange={(e) => onThaiImageModeChange(e.target.checked)}
-          className="mt-0.5 rounded accent-amber-600"
+          className="mt-0.5 rounded accent-[var(--status-warning-fg)]"
         />
         <div>
-          <span className="text-sm font-medium text-amber-800">พิมพ์ไทยแบบ Bitmap (แก้ปัญหาสระ-วรรณยุกต์)</span>
-          <p className="mt-0.5 text-[11px] text-amber-700 leading-relaxed">
+          <span className="text-sm font-medium text-[var(--status-warning-fg)]">พิมพ์ไทยแบบ Bitmap (แก้ปัญหาสระ-วรรณยุกต์)</span>
+          <p className="mt-0.5 text-[11px] text-[var(--status-warning-fg)] leading-relaxed">
             เปิดเมื่อ printer ไม่มี Thai Glyph Shaping — render ข้อความเป็นรูปภาพในบราวเซอร์ก่อนส่งปริ้น สระและวรรณยุกต์จะซ้อนบน/ล่างถูกต้อง
           </p>
         </div>

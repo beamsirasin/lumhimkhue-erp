@@ -194,7 +194,7 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
                   formatter={(v) => [`฿${Number(v).toLocaleString('th-TH')}`, 'รายได้']}
                   labelFormatter={(v) => format(new Date(v + 'T00:00:00'), 'd MMMM', { locale: th })}
                 />
-                <Bar dataKey="revenue" fill="oklch(0.30 0.11 248)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="revenue" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ChartContainer>
           </DataCard>
@@ -314,8 +314,8 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
               valueClassName={
                 kpis?.foodCostPct.available
                   ? kpis.foodCostPct.value > 35
-                    ? 'text-red-600 dark:text-red-400'
-                    : 'text-emerald-600 dark:text-emerald-400'
+                    ? 'text-[var(--status-danger-fg)]'
+                    : 'text-[var(--status-success-fg)]'
                   : undefined
               }
               icon={<Percent className="size-4" />}

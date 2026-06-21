@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { logoutAction } from '@/lib/actions/auth';
 import type { Role } from '@/lib/auth/permissions';
 import {
@@ -197,7 +198,7 @@ const ACTIVE_BORDER = 'border-l-2 border-l-sidebar-primary';
 function NavBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white tabular-nums">
+    <span className="ml-auto flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground tabular-nums">
       {count > 99 ? '99+' : count}
     </span>
   );
@@ -767,6 +768,8 @@ export function StandardSidebarLayout({
               </h1>
             )}
           </div>
+
+          <ThemeToggle />
 
           {/* User avatar — visible on small screens where sidebar is hidden */}
           <div
