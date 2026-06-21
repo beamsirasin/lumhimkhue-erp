@@ -165,6 +165,10 @@ export type TableQrData = {
 export type QueueQrData = {
   queueNumber: string;
   partySize: number;
+  adultCount?: number;
+  childCount?: number;
+  customerType?: string;
+  soupSummary?: string;
   url: string;
   createdAt: string;
 };

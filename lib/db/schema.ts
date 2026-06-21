@@ -68,6 +68,10 @@ export const queueStatusEnum = pgEnum('queue_status', [
   'called',
   'seated',
   'left',
+  'waiting_suitable_table',
+  'admitted',
+  'skipped',
+  'cancelled',
 ]);
 
 export const paymentMethodEnum = pgEnum('payment_method', [
@@ -497,12 +501,21 @@ export const queueEntries = pgTable(
     customerName: varchar('customer_name', { length: 255 }).notNull(),
     phone: varchar('phone', { length: 20 }),
     partySize: integer('party_size').notNull(),
+    adultCount: integer('adult_count').notNull().default(1),
+    childCount: integer('child_count').notNull().default(0),
+    customerType: varchar('customer_type', { length: 20 }).notNull().default('normal'),
+    soupPots: jsonb('soup_pots').$type<Array<{ soups: string[] }>>(),
+    seatingFit: varchar('seating_fit', { length: 50 }),
+    plannedTableNote: varchar('planned_table_note', { length: 255 }),
+    skipReason: varchar('skip_reason', { length: 255 }),
+    billIssued: boolean('bill_issued').notNull().default(false),
     preferredZone: varchar('preferred_zone', { length: 100 }),
     status: queueStatusEnum('status').notNull().default('waiting'),
     publicToken: varchar('public_token', { length: 20 }).notNull().unique(),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     calledAt: timestamp('called_at'),
     seatedAt: timestamp('seated_at'),
+    admittedAt: timestamp('admitted_at'),
   },
   (t) => [
     index('queue_entries_public_token_idx').on(t.publicToken),

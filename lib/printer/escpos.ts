@@ -230,21 +230,31 @@ export function buildTableQr(data: TableQrData, paperWidth: 58 | 80, thaiCodepag
 
 export function buildQueueQr(data: QueueQrData, paperWidth: 58 | 80, thaiCodepage = 21): Uint8Array {
   const cols = COLS[paperWidth];
-  return makeEncoder(paperWidth, thaiCodepage)
+  const adultLine = data.adultCount !== undefined && data.childCount !== undefined
+    ? `ผู้ใหญ่ ${data.adultCount} / เด็ก ${data.childCount} ท่าน`
+    : `จำนวน ${data.partySize} ท่าน`;
+  let enc = makeEncoder(paperWidth, thaiCodepage)
     .initialize()
     .codepage(getThaiCpName(thaiCodepage))
     .align('center')
-    .bold(true).line('ตั๋วคิว').bold(false)
+    .bold(true).line('ตั๋วคิว — ลำฮิมคือ ชาบู บุฟเฟต์').bold(false)
     .size(2, 2).bold(true).line(data.queueNumber).bold(false).size(1, 1)
-    .line(`จำนวน ${data.partySize} ท่าน`)
+    .line(adultLine);
+  if (data.soupSummary) {
+    enc = enc.line(data.soupSummary);
+  }
+  enc = enc
     .line(sep(cols))
     .qrcode(data.url, 2, 5, 'm')
-    .line('สแกนเพื่อติดตามคิว')
+    .line('สแกนเพื่อติดตามคิวและยกเลิกคิว')
     .line(sep(cols))
     .line(`เวลา: ${data.createdAt}`)
+    .align('left')
+    .line('หมายเหตุ: การเรียกคิวขึ้นอยู่กับลำดับ')
+    .line('และขนาดโต๊ะที่ว่าง')
     .newline(3)
-    .cut('partial')
-    .encode();
+    .cut('partial');
+  return enc.encode();
 }
 
 /* ─── Kitchen Order ──────────────────────────────────────────────────────── */

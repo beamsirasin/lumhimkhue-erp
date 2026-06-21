@@ -169,17 +169,23 @@ ${data.durationMinutes != null ? `<div>${row('บุฟเฟ่ต์', `${data
 
 export async function renderQueueQrHTML(data: QueueQrData): Promise<string> {
   const qr = await qrImg(data.url);
+  const countLine = data.adultCount !== undefined && data.childCount !== undefined
+    ? `ผู้ใหญ่ ${data.adultCount} / เด็ก ${data.childCount} ท่าน`
+    : `จำนวน ${data.partySize} ท่าน`;
+  const soupLine = data.soupSummary ? `<div>${esc(data.soupSummary)}</div>` : '';
   return `
 <div class="center">
-  <div class="bold">ตั๋วคิว</div>
+  <div class="bold">ตั๋วคิว — ลำฮิมคือ ชาบู บุฟเฟต์</div>
   <div class="xl">${esc(data.queueNumber)}</div>
-  <div>จำนวน ${data.partySize} ท่าน</div>
+  <div>${countLine}</div>
+  ${soupLine}
 </div>
 ${hr()}
 ${qr}
-<div class="center">สแกนเพื่อติดตามคิว</div>
+<div class="center">สแกนเพื่อติดตามคิวและยกเลิกคิว</div>
 ${hr()}
 <div>เวลา: ${esc(data.createdAt)}</div>
+<div style="font-size:10px;margin-top:4px;">การเรียกคิวขึ้นอยู่กับลำดับและขนาดโต๊ะที่ว่าง</div>
 `.trim();
 }
 

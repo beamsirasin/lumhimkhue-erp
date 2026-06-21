@@ -427,16 +427,28 @@ export async function buildBitmapKitchenOrder(data: KitchenOrderData, paperWidth
 /* ─── Queue QR ───────────────────────────────────────────────────────────── */
 
 export async function buildBitmapQueueQr(data: QueueQrData, paperWidth: 58 | 80): Promise<Uint8Array> {
-  return render([
-    { t: 'text', s: 'ตั๋วคิว',           a: 'c', bold: true },
-    { t: 'text', s: data.queueNumber,     a: 'c', bold: true, big: true },
-    { t: 'text', s: `จำนวน ${data.partySize} ท่าน`, a: 'c' },
+  const countLine = data.adultCount !== undefined && data.childCount !== undefined
+    ? `ผู้ใหญ่ ${data.adultCount} / เด็ก ${data.childCount} ท่าน`
+    : `จำนวน ${data.partySize} ท่าน`;
+  const lines: Ln[] = [
+    { t: 'text', s: 'ตั๋วคิว — ลำฮิมคือ ชาบู บุฟเฟต์', a: 'c', bold: true },
+    { t: 'text', s: data.queueNumber,  a: 'c', bold: true, big: true },
+    { t: 'text', s: countLine,         a: 'c' },
+  ];
+  if (data.soupSummary) {
+    lines.push({ t: 'text', s: data.soupSummary, a: 'c' });
+  }
+  lines.push(
     { t: 'hr' },
-    { t: 'qr',   url: data.url },
+    { t: 'qr',  url: data.url },
+    { t: 'text', s: 'สแกนเพื่อติดตามคิวและยกเลิกคิว', a: 'c' },
     { t: 'hr' },
     { t: 'text', s: `เวลา: ${data.createdAt}`, a: 'c' },
+    { t: 'text', s: 'หมายเหตุ: การเรียกคิวขึ้นอยู่กับลำดับ', a: 'l' },
+    { t: 'text', s: 'และขนาดโต๊ะที่ว่าง', a: 'l' },
     { t: 'sp' },
-  ], paperWidth);
+  );
+  return render(lines, paperWidth);
 }
 
 /* ─── Table QR ───────────────────────────────────────────────────────────── */
