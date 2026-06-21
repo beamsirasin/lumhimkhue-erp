@@ -665,66 +665,96 @@ function CollectionReport() {
 
   return (
     <div className="space-y-5">
-
       {/* ── Controls ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="flex flex-col gap-1.5">
-          <Label className="text-xs text-muted-foreground font-normal">วันเริ่มต้น</Label>
-          <Input type="date" value={fromDate} max={today}
-            onChange={(e) => setFromDate(e.target.value)} className="w-40" />
+      <DataCard
+        title="ตัวกรองรายงานยอดรับจริง"
+        subtitle="ช่วงวันที่ยังใช้เงื่อนไขเดิมของรายงาน payment_rows"
+      >
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs font-medium text-muted-foreground">วันเริ่มต้น</Label>
+            <Input type="date" value={fromDate} max={today}
+              onChange={(e) => setFromDate(e.target.value)} className="h-10 w-40" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs font-medium text-muted-foreground">วันสิ้นสุด</Label>
+            <Input type="date" value={toDate} max={today}
+              onChange={(e) => setToDate(e.target.value)} className="h-10 w-40" />
+          </div>
+          {loading && <span className="pb-2 text-xs text-muted-foreground">กำลังโหลด…</span>}
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label className="text-xs text-muted-foreground font-normal">วันสิ้นสุด</Label>
-          <Input type="date" value={toDate} max={today}
-            onChange={(e) => setToDate(e.target.value)} className="w-40" />
-        </div>
-        {loading && <span className="pb-2 text-xs text-muted-foreground">กำลังโหลด…</span>}
-      </div>
+      </DataCard>
 
       {/* ── KPI Cards ─────────────────────────────────────────────────────── */}
       {report && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            <div className="col-span-2 sm:col-span-1 rounded-xl bg-primary px-5 py-4 text-primary-foreground">
-              <p className="text-[11px] text-primary-foreground/60 font-semibold uppercase tracking-wider">ยอดรับจริงรวม</p>
-              <p className="mt-1.5 text-2xl font-bold tabular-nums">
-                ฿{report.totalCollected.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-              </p>
-              <p className="mt-0.5 text-xs text-primary-foreground/60">
-                {fromDate === toDate ? fromDate : `${fromDate} – ${toDate}`}
-              </p>
-            </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+            <ReportStatCard
+              label="ยอดรับจริงรวม"
+              value={`฿${report.totalCollected.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`}
+              detail={fromDate === toDate ? fromDate : `${fromDate} – ${toDate}`}
+              icon={<WalletCards className="size-5" />}
+              tone="primary"
+            />
+            <ReportStatCard
+              label="ช่องทางชำระ"
+              value={report.methodSummary.length.toLocaleString('th-TH')}
+              detail="วิธีที่มีรายการ"
+              icon={<Banknote className="size-5" />}
+              tone="info"
+            />
+            <ReportStatCard
+              label="บัญชีรับเงิน"
+              value={report.accountSummary.length.toLocaleString('th-TH')}
+              detail="บัญชีที่มีรายการ"
+              icon={<ReceiptText className="size-5" />}
+              tone="success"
+            />
             {([
-              { label: 'เงินสด',          value: report.cashTotal       },
-              { label: 'QR PromptPay',     value: report.promptpayTotal  },
-              { label: 'สวัสดิการรัฐ',     value: report.welfareTotal    },
-              { label: 'ประวัติ QR+เงินสด', value: report.legacyTotal    },
-            ] as const).map(({ label, value }) => (
-              <div key={label} className="rounded-xl bg-card border border-border px-5 py-4">
-                <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
-                <p className="mt-1.5 text-xl font-bold tabular-nums text-foreground">
-                  ฿{value.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-                </p>
-                {report.totalCollected > 0 && (
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {((value / report.totalCollected) * 100).toFixed(1)}%
-                  </p>
-                )}
-              </div>
+              { label: 'เงินสด', value: report.cashTotal, tone: 'neutral' as const, icon: Banknote },
+              { label: 'QR PromptPay', value: report.promptpayTotal, tone: 'info' as const, icon: WalletCards },
+              { label: 'สวัสดิการรัฐ', value: report.welfareTotal, tone: 'success' as const, icon: ShieldCheck },
+            ] as const).map(({ label, value, tone, icon: Icon }) => (
+              <ReportStatCard
+                key={label}
+                label={label}
+                value={`฿${value.toLocaleString('th-TH', { minimumFractionDigits: 2 })}`}
+                detail={report.totalCollected > 0 ? `${((value / report.totalCollected) * 100).toFixed(1)}%` : undefined}
+                icon={<Icon className="size-5" />}
+                tone={tone}
+              />
             ))}
           </div>
-          <p className="text-xs text-muted-foreground">
-            อ้างอิงจาก payment_rows ตามบัญชีรับเงินจริง — ไม่ใช่ยอดขาย VAT
-          </p>
+          <DataCard className="bg-[var(--surface-1)]" title="หมายเหตุยอดรับจริง" subtitle="อ้างอิงจาก payment_rows ตามบัญชีรับเงินจริง — ไม่ใช่ยอดขาย VAT">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border border-border bg-[var(--surface-2)] p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Legacy mixed</p>
+                <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">
+                  ฿{report.legacyTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border bg-[var(--surface-2)] p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Method rows</p>
+                <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">
+                  {report.methodSummary.reduce((s, m) => s + m.rowCount, 0).toLocaleString('th-TH')} รายการ
+                </p>
+              </div>
+              <div className="rounded-lg border border-border bg-[var(--surface-2)] p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Account rows</p>
+                <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">
+                  {report.accountSummary.reduce((s, a) => s + a.rowCount, 0).toLocaleString('th-TH')} รายการ
+                </p>
+              </div>
+            </div>
+          </DataCard>
         </>
       )}
 
-      {/* ── Method + Account summaries ────────────────────────────────────── */}
+      {/* ── Method + Account summaries ───────────────────────────────────── */}
       {report && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           {/* Method summary */}
-          <DataCard noPadding title="สรุปตามช่องทางชำระ">
+          <DataCard noPadding title="สรุปตามช่องทางชำระ" subtitle="ชื่อช่องทาง ประเภท จำนวนรายการ และยอดรับจาก methodSummary เดิม">
             {report.methodSummary.length === 0 ? (
               <EmptyState
                 icon={<Banknote className="size-5" />}
@@ -744,9 +774,14 @@ function CollectionReport() {
                   </thead>
                   <tbody className="divide-y divide-border">
                     {report.methodSummary.map((m) => (
-                      <tr key={m.methodId} className="hover:bg-muted/30 transition-colors">
-                        <Td>{m.methodName}</Td>
-                        <Td><span className="text-xs text-muted-foreground">{METHOD_TYPE_LABELS[m.methodType] ?? m.methodType}</span></Td>
+                      <tr key={m.methodId} className="transition-colors hover:bg-[var(--surface-2)]/70">
+                        <Td>
+                          <div className="flex flex-col gap-0.5">
+                            <span>{m.methodName}</span>
+                            <span className="text-[11px] text-muted-foreground">{m.methodCode}</span>
+                          </div>
+                        </Td>
+                        <Td><span className="rounded-full border border-border bg-[var(--surface-2)] px-2 py-0.5 text-xs text-muted-foreground">{METHOD_TYPE_LABELS[m.methodType] ?? m.methodType}</span></Td>
                         <Td align="right">{m.rowCount}</Td>
                         <Td align="right" className="font-semibold">
                           ฿{m.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
@@ -769,7 +804,7 @@ function CollectionReport() {
           </DataCard>
 
           {/* Account summary */}
-          <DataCard noPadding title="สรุปตามบัญชีรับเงิน">
+          <DataCard noPadding title="สรุปตามบัญชีรับเงิน" subtitle="บัญชีรับเงิน ประเภทบัญชี จำนวนรายการ และยอดรับจาก accountSummary เดิม">
             {report.accountSummary.length === 0 ? (
               <EmptyState
                 icon={<Banknote className="size-5" />}
@@ -789,9 +824,14 @@ function CollectionReport() {
                   </thead>
                   <tbody className="divide-y divide-border">
                     {report.accountSummary.map((a) => (
-                      <tr key={a.accountId} className="hover:bg-muted/30 transition-colors">
-                        <Td>{a.accountName}</Td>
-                        <Td><span className="text-xs text-muted-foreground">{ACCOUNT_TYPE_LABELS[a.accountType] ?? a.accountType}</span></Td>
+                      <tr key={a.accountId} className="transition-colors hover:bg-[var(--surface-2)]/70">
+                        <Td>
+                          <div className="flex flex-col gap-0.5">
+                            <span>{a.accountName}</span>
+                            <span className="text-[11px] text-muted-foreground">{a.accountCode}</span>
+                          </div>
+                        </Td>
+                        <Td><span className="rounded-full border border-border bg-[var(--surface-2)] px-2 py-0.5 text-xs text-muted-foreground">{ACCOUNT_TYPE_LABELS[a.accountType] ?? a.accountType}</span></Td>
                         <Td align="right">{a.rowCount}</Td>
                         <Td align="right" className="font-semibold">
                           ฿{a.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
@@ -815,30 +855,36 @@ function CollectionReport() {
         </div>
       )}
 
-      {/* ── Account × Method matrix ───────────────────────────────────────── */}
+      {/* ── Account × Method matrix ─────────────────────────────────────── */}
       {report && report.matrix.length > 0 && (
-        <DataCard noPadding title="รายละเอียด: บัญชีรับเงิน × ช่องทางชำระ">
+        <DataCard noPadding title="รายละเอียด: บัญชีรับเงิน × ช่องทางชำระ" subtitle="แสดง matrix ตามลำดับและค่าที่ server action ส่งกลับ">
           <div className="divide-y divide-border">
             {report.matrix.map((matRow) => (
-              <div key={matRow.accountId} className="px-5 py-4">
-                <div className="flex items-center justify-between mb-2">
+              <div key={matRow.accountId} className="px-5 py-4 transition-colors hover:bg-[var(--surface-2)]/50">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <span className="text-sm font-semibold text-foreground">{matRow.accountName}</span>
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      {ACCOUNT_TYPE_LABELS[matRow.accountType] ?? matRow.accountType}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground">{matRow.accountName}</span>
+                      <span className="rounded-full border border-border bg-[var(--surface-2)] px-2 py-0.5 text-xs text-muted-foreground">
+                        {ACCOUNT_TYPE_LABELS[matRow.accountType] ?? matRow.accountType}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">{matRow.accountCode}</p>
                   </div>
-                  <span className="text-sm font-bold tabular-nums text-foreground">
+                  <span className="rounded-lg border border-border bg-[var(--surface-2)] px-3 py-2 text-sm font-bold tabular-nums text-foreground">
                     ฿{matRow.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
-                <div className="space-y-1 pl-3 border-l-2 border-border">
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                   {matRow.methods.map((m) => (
-                    <div key={m.methodId} className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">{m.methodName}</span>
-                      <span className="tabular-nums font-medium text-foreground">
-                        ฿{m.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-                      </span>
+                    <div key={m.methodId} className="rounded-lg border border-border bg-[var(--surface-1)] px-3 py-2">
+                      <div className="flex items-center justify-between gap-3 text-xs">
+                        <span className="truncate text-muted-foreground">{m.methodName}</span>
+                        <span className="tabular-nums font-semibold text-foreground">
+                          ฿{m.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[10px] text-muted-foreground">{METHOD_TYPE_LABELS[m.methodType] ?? m.methodType}</p>
                     </div>
                   ))}
                 </div>
