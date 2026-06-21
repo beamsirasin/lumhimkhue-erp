@@ -652,12 +652,12 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
 
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-3 sm:col-span-1">
-            <label className="block text-xs font-medium text-muted-foreground mb-1">Supplier <span className="text-red-500">*</span></label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Supplier <span className="text-[var(--status-danger-fg)]">*</span></label>
             <select {...register('supplierId')} className={INPUT}>
               <option value="">เลือก Supplier</option>
               {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-            {errors.supplierId && <p className="mt-1 text-xs text-red-600">{errors.supplierId.message}</p>}
+            {errors.supplierId && <p className="mt-1 text-xs text-[var(--status-danger-fg)]">{errors.supplierId.message}</p>}
           </div>
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">วันที่สั่ง</label>
@@ -677,7 +677,7 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
               <button
                 type="button"
                 onClick={openImportPanel}
-                className="flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                className="flex items-center gap-1 rounded-lg border border-[var(--status-info-border)] bg-[var(--status-info-bg)] px-2.5 py-1 text-xs font-medium text-[var(--status-info-fg)] hover:opacity-90"
               >
                 <ClipboardList className="size-3.5" /> นำเข้าจากผลนับสต็อก
               </button>
@@ -692,38 +692,38 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
           </div>
 
           {importPanel && (
-            <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+            <div className="mb-3 rounded-xl border border-[var(--status-info-border)] bg-[var(--status-info-bg)] p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-blue-800">
+                <p className="text-xs font-semibold text-[var(--status-info-fg)]">
                   นำเข้าจากผลนับสต็อก
                   {importPanel.countDate && (
-                    <span className="ml-1.5 font-normal text-blue-600">
+                    <span className="ml-1.5 font-normal text-[var(--status-info-fg)] opacity-80">
                       (วันที่ {format(new Date(importPanel.countDate + 'T00:00:00'), 'd MMM yyyy', { locale: th })})
                     </span>
                   )}
                 </p>
-                <button type="button" onClick={() => setImportPanel(null)} className="text-blue-400 hover:text-blue-600" aria-label="ปิด">
+                <button type="button" onClick={() => setImportPanel(null)} className="text-[var(--status-info-fg)] opacity-60 hover:opacity-100" aria-label="ปิด">
                   <X className="size-4" />
                 </button>
               </div>
 
               {importPanel.loading ? (
                 <div className="flex items-center gap-2 py-4 justify-center">
-                  <Loader2 className="size-4 animate-spin text-blue-500" />
-                  <span className="text-xs text-blue-600">กำลังโหลด…</span>
+                  <Loader2 className="size-4 animate-spin text-[var(--status-info-fg)]" />
+                  <span className="text-xs text-[var(--status-info-fg)]">กำลังโหลด…</span>
                 </div>
               ) : importPanel.items.length === 0 ? (
-                <p className="text-xs text-blue-600 py-3 text-center">
+                <p className="text-xs text-[var(--status-info-fg)] py-3 text-center">
                   {importPanel.countDate
                     ? 'ไม่มีรายการที่ต้องสั่งเพิ่ม — สต็อกอยู่ในระดับปกติ'
                     : 'ยังไม่มีผลการนับที่ผ่านการยืนยัน — กรุณากดยืนยันในหน้าผลการนับสต็อกก่อน'}
                 </p>
               ) : (
                 <>
-                  <div className="rounded-lg overflow-hidden border border-blue-200 bg-card">
+                  <div className="rounded-lg overflow-hidden border border-[var(--status-info-border)] bg-card">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="border-b border-blue-100 bg-blue-50/60">
+                        <tr className="border-b border-[var(--status-info-border)] bg-[var(--status-info-bg)]">
                           <th className="w-8 px-3 py-2">
                             <input
                               type="checkbox"
@@ -737,7 +737,7 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
                           </th>
                           <th className="px-3 py-2 text-left font-medium text-muted-foreground">วัตถุดิบ</th>
                           <th className="px-3 py-2 text-right font-medium text-muted-foreground">คงเหลือ</th>
-                          <th className="px-3 py-2 text-right font-medium text-orange-600">ต้องสั่ง</th>
+                          <th className="px-3 py-2 text-right font-medium text-[var(--status-orange-fg)]">ต้องสั่ง</th>
                           <th className="px-3 py-2 text-right font-medium text-muted-foreground">Supplier</th>
                         </tr>
                       </thead>
@@ -774,7 +774,7 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
                                   const v = parseFloat(e.target.value) || item.reorderQty;
                                   setImportPanel((prev) => prev ? { ...prev, qtys: { ...prev.qtys, [item.ingredientId]: v } } : null);
                                 }}
-                                className="w-20 rounded border border-orange-200 px-2 py-0.5 text-right text-orange-700 outline-none focus:border-orange-400"
+                                className="w-20 rounded border border-[var(--status-orange-border)] px-2 py-0.5 text-right text-[var(--status-orange-fg)] outline-none focus:border-[var(--status-orange-border)]"
                               />
                               <span className="ml-1 text-muted-foreground">{item.unit}</span>
                             </td>
@@ -787,12 +787,12 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
                     </table>
                   </div>
                   <div className="flex items-center justify-between pt-1">
-                    <p className="text-xs text-blue-600">เลือก {importPanel.selected.size} / {importPanel.items.length} รายการ</p>
+                    <p className="text-xs text-[var(--status-info-fg)]">เลือก {importPanel.selected.size} / {importPanel.items.length} รายการ</p>
                     <button
                       type="button"
                       onClick={handleImportConfirm}
                       disabled={importPanel.selected.size === 0}
-                      className="rounded-lg bg-blue-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-blue-800 disabled:opacity-50"
+                      className="rounded-lg bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                     >
                       นำเข้ารายการที่เลือก
                     </button>
@@ -856,7 +856,7 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
                   </div>
                   <div className="col-span-1 flex items-center justify-center pt-1.5">
                     {fields.length > 1 && (
-                      <button type="button" onClick={() => remove(idx)} aria-label="ลบรายการ" className="text-muted-foreground hover:text-red-500">
+                      <button type="button" onClick={() => remove(idx)} aria-label="ลบรายการ" className="text-muted-foreground hover:text-[var(--status-danger-fg)]">
                         <Trash2 className="size-3.5" />
                       </button>
                     )}
@@ -1071,10 +1071,10 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
                     <p className="text-xs text-muted-foreground">
                       สั่ง {fmt(item.quantity)} {item.unit}
                       {alreadyReceived > 0 && (
-                        <span className="ml-2 text-green-600">• รับแล้ว {fmt(alreadyReceived)}</span>
+                        <span className="ml-2 text-[var(--status-success-fg)]">• รับแล้ว {fmt(alreadyReceived)}</span>
                       )}
                       {remaining > 0 && alreadyReceived > 0 && (
-                        <span className="ml-2 text-orange-600">• ค้าง {fmt(remaining)}</span>
+                        <span className="ml-2 text-[var(--status-orange-fg)]">• ค้าง {fmt(remaining)}</span>
                       )}
                     </p>
                   </div>
@@ -1109,7 +1109,7 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
                         {...register(`items.${idx}.discrepancyNotes`)}
                         type="text"
                         placeholder="ระบุรายละเอียด"
-                        className="w-full rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs outline-none focus:border-amber-400"
+                        className="w-full rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-2 py-1.5 text-xs outline-none focus:border-[var(--status-warning-border)]"
                       />
                     </div>
                   )}
@@ -1126,7 +1126,7 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
             <span className="text-sm text-foreground font-medium">รับของบางส่วน (ยังไม่ครบ)</span>
           </label>
           {isPartialChecked && (
-            <p className="text-xs text-orange-600 pl-6">PO จะเปลี่ยนเป็นสถานะ &ldquo;รับบางส่วน&rdquo; — สามารถรับเพิ่มได้ในภายหลัง</p>
+            <p className="text-xs text-[var(--status-orange-fg)] pl-6">PO จะเปลี่ยนเป็นสถานะ &ldquo;รับบางส่วน&rdquo; — สามารถรับเพิ่มได้ในภายหลัง</p>
           )}
           {!isPartialChecked && (
             <p className="text-xs text-muted-foreground pl-6">PO จะเปลี่ยนเป็นสถานะ &ldquo;รับของแล้ว&rdquo; และอัปเดตราคาวัตถุดิบ</p>
@@ -1158,7 +1158,7 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
           <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-border py-2 text-sm font-medium text-foreground hover:bg-muted/30">
             ยกเลิก
           </button>
-          <button type="submit" disabled={isSubmitting} className={`flex-1 rounded-lg py-2 text-sm font-medium text-white disabled:opacity-50 ${isPartialChecked ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-700 hover:bg-green-800'}`}>
+          <button type="submit" disabled={isSubmitting} className={`flex-1 rounded-lg py-2 text-sm font-medium text-white disabled:opacity-50 ${isPartialChecked ? 'bg-[var(--status-orange-fg)] hover:opacity-90' : 'bg-[var(--status-success-fg)] hover:opacity-90'}`}>
             {isSubmitting ? (
               <span className="flex items-center justify-center gap-2"><Loader2 className="size-4 animate-spin" /> กำลังบันทึก…</span>
             ) : isPartialChecked ? 'บันทึกรับบางส่วน' : 'ยืนยันรับของครบ'}
@@ -1284,7 +1284,7 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
           <button
             type="button"
             onClick={handleLineCopy}
-            className="flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
+            className="flex items-center gap-1.5 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-1.5 text-xs font-medium text-[var(--status-success-fg)] hover:opacity-90"
           >
             <Copy className="size-3.5" /> คัดลอกสำหรับ LINE
           </button>
@@ -1319,7 +1319,7 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
             {po.receivedDate && (
               <>
                 <p className="text-xs text-muted-foreground mt-1">รับแล้ว</p>
-                <p className="font-medium text-green-700">{fmtDate(po.receivedDate)}</p>
+                <p className="font-medium text-[var(--status-success-fg)]">{fmtDate(po.receivedDate)}</p>
               </>
             )}
           </div>
@@ -1332,7 +1332,7 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
               <tr className="bg-muted/30 border-b border-border">
                 <th className="px-3 py-2 text-left font-medium text-muted-foreground">รายการ</th>
                 <th className="px-3 py-2 text-right font-medium text-muted-foreground">สั่ง</th>
-                {showReceived && <th className="px-3 py-2 text-right font-medium text-green-600">รับรวม</th>}
+                {showReceived && <th className="px-3 py-2 text-right font-medium text-[var(--status-success-fg)]">รับรวม</th>}
                 <th className="px-3 py-2 text-right font-medium text-muted-foreground">ราคา/หน่วย</th>
                 <th className="px-3 py-2 text-right font-medium text-muted-foreground">รวม</th>
               </tr>
@@ -1347,9 +1347,9 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
                     <td className="px-3 py-2 font-medium text-foreground">{item.ingredient.name}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{fmt(item.quantity)} {item.unit}</td>
                     {showReceived && (
-                      <td className={`px-3 py-2 text-right tabular-nums ${isShort ? 'text-orange-600' : 'text-green-700'}`}>
+                      <td className={`px-3 py-2 text-right tabular-nums ${isShort ? 'text-[var(--status-orange-fg)]' : 'text-[var(--status-success-fg)]'}`}>
                         {fmt(received)} {item.unit}
-                        {isShort && <span className="ml-1 text-orange-400">(ขาด {fmt(ordered - received)})</span>}
+                        {isShort && <span className="ml-1 text-[var(--status-orange-fg)] opacity-70">(ขาด {fmt(ordered - received)})</span>}
                       </td>
                     )}
                     <td className="px-3 py-2 text-right tabular-nums">฿{fmt(item.unitCost)}</td>
@@ -1379,7 +1379,7 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
 
         {/* Tax invoice */}
         {po.hasTaxInvoice && (
-          <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-2.5 text-xs text-green-700">
+          <div className="rounded-lg bg-[var(--status-success-bg)] border border-[var(--status-success-border)] px-4 py-2.5 text-xs text-[var(--status-success-fg)]">
             ✓ มีใบกำกับภาษี{po.taxInvoiceNumber ? ` — เลขที่: ${po.taxInvoiceNumber}` : ''}
           </div>
         )}
@@ -1422,7 +1422,7 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
                                 {fmt(ri.receivedQuantity)} {poItem?.unit}
                               </span>
                               {ri.discrepancyType !== 'none' && (
-                                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-amber-700 font-medium">
+                                <span className="rounded-full bg-[var(--status-warning-bg)] px-1.5 py-0.5 text-[var(--status-warning-fg)] font-medium">
                                   {DISCREPANCY_LABEL[ri.discrepancyType]}
                                   {ri.discrepancyNotes && `: ${ri.discrepancyNotes}`}
                                 </span>
@@ -1447,7 +1447,7 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
           <button
             type="button"
             onClick={() => { onClose(); onReceive(po.id); }}
-            className="w-full flex items-center justify-center gap-2 rounded-lg bg-orange-600 py-2.5 text-sm font-medium text-white hover:bg-orange-700"
+            className="w-full flex items-center justify-center gap-2 rounded-lg bg-[var(--status-orange-fg)] py-2.5 text-sm font-medium text-white hover:opacity-90"
           >
             <PackagePlus className="size-4" /> รับของเพิ่ม
           </button>

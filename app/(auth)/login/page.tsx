@@ -15,7 +15,7 @@ export default function LoginPage() {
         {/* Left brand panel */}
         <div
           className="hidden lg:flex flex-col justify-between w-[340px] shrink-0 p-10"
-          style={{ background: 'oklch(0.135 0.025 248)' }}
+          style={{ background: 'var(--sidebar-header)' }}
         >
           <div className="space-y-8">
             {/* Logo */}
