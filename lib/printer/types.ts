@@ -1,6 +1,19 @@
 /* ─── Printer Configuration ─────────────────────────────────────────────── */
 
-export type PrinterType = 'usb' | 'network' | 'browser';
+/**
+ * android_bridge: Routes ESC/POS bytes to window.AndroidPrinter.print().
+ * The native Android POS wrapper app handles actual transmission over USB OTG
+ * or LAN/WiFi locally — Vercel cannot reach private LAN printer IPs, making
+ * this the production-safe method for one-tablet Android POS setups.
+ * USB/OTG (WebUSB) and Network remain supported for other environments.
+ */
+export type PrinterType = 'usb' | 'network' | 'browser' | 'android_bridge';
+
+/**
+ * For android_bridge printers: whether the Android app should connect to the
+ * printer via USB OTG cable or over LAN/WiFi.
+ */
+export type AndroidBridgeTarget = 'usb_otg' | 'network';
 
 export type PrinterConfig = {
   id: string;
@@ -17,6 +30,11 @@ export type PrinterConfig = {
   thaiImageMode?: boolean;
   isDefault: boolean;
   testedAt?: string;
+  /**
+   * android_bridge only: whether the Android app connects to the printer
+   * via USB OTG or over LAN/WiFi. Defaults to 'usb_otg'.
+   */
+  androidTarget?: AndroidBridgeTarget;
 };
 
 /* ─── Print Jobs ────────────────────────────────────────────────────────── */
@@ -161,3 +179,50 @@ export type KitchenOrderData = {
     notes?: string;
   }>;
 };
+
+/* ─── Android POS App / Local Bridge ────────────────────────────────────── */
+
+/**
+ * Payload sent to window.AndroidPrinter.print().
+ *
+ * The Android POS wrapper app receives this and transmits the ESC/POS bytes
+ * to the physical printer over USB OTG or LAN/WiFi — entirely on-device,
+ * so Vercel's cloud server is never involved in reaching the printer.
+ */
+export type AndroidPrintPayload = {
+  printerId: string;
+  printerName: string;
+  method: 'android_bridge';
+  /** How the Android app connects to the physical printer */
+  target: AndroidBridgeTarget;
+  /** Required when target === 'network' */
+  host?: string;
+  /** Required when target === 'network'; defaults to 9100 */
+  port?: number;
+  paperWidth: 58 | 80;
+  jobType: 'receipt' | 'kitchen_order' | 'table_qr' | 'queue_qr' | 'test';
+  /** Base64-encoded ESC/POS bytes ready to send to the printer */
+  escposBase64: string;
+};
+
+/**
+ * Interface injected by the native Android POS wrapper app as window.AndroidPrinter.
+ * Only present when the webapp runs inside the Android POS App's WebView.
+ */
+export interface AndroidPrinterBridge {
+  print(payload: AndroidPrintPayload): void;
+}
+
+declare global {
+  interface Window {
+    /**
+     * Injected by the Android POS wrapper app.
+     * Present only when the webapp runs inside the Android POS App WebView.
+     *
+     * NOTE: USB/OTG (WebUSB) and Network (TCP relay) remain supported and
+     * must not be removed — other setups depend on them.
+     * This bridge is the production-safe path when Vercel cannot reach LAN printers.
+     */
+    AndroidPrinter?: AndroidPrinterBridge;
+  }
+}
