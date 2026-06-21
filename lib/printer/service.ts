@@ -26,6 +26,7 @@ import {
 import { findPairedDevice, sendUSB } from './transports/usb';
 import { sendNetwork } from './transports/network';
 import { printBrowser } from './transports/browser';
+import { sendAndroidBridge, isAndroidBridgeAvailable } from './transports/android-bridge';
 import {
   renderReceiptHTML,
   renderTableQrHTML,
@@ -72,11 +73,37 @@ export async function print(
     }
 
     if (config.type === 'network') {
+      // NOTE: Vercel cannot access private LAN printer IPs.
+      // This transport only works on localhost/dev or with a local relay agent.
+      // For production Android tablet POS, use android_bridge instead.
       if (!config.ipAddress) throw new Error('ไม่พบ IP address ของ printer');
       const bytes = config.thaiImageMode
         ? await buildBitmapBytes(job, config)
         : buildBytes(job, config);
       await sendNetwork(config.ipAddress, config.port ?? 9100, bytes);
+      return { ok: true };
+    }
+
+    if (config.type === 'android_bridge') {
+      // The Android POS App injects window.AndroidPrinter into the WebView.
+      // ESC/POS bytes are sent to the app, which forwards them to the printer
+      // over USB OTG or LAN/WiFi locally — no Vercel server involved.
+      if (!isAndroidBridgeAvailable()) {
+        throw new Error('ต้องเปิดผ่าน Android POS App เพื่อพิมพ์ด้วยวิธีนี้');
+      }
+      const bytes = config.thaiImageMode
+        ? await buildBitmapBytes(job, config)
+        : buildBytes(job, config);
+      sendAndroidBridge(
+        config.id,
+        config.name,
+        config.androidTarget ?? 'usb_otg',
+        bytes,
+        job.type,
+        config.paperWidth,
+        config.ipAddress,
+        config.port,
+      );
       return { ok: true };
     }
 
@@ -147,6 +174,13 @@ export async function testThaiCodepage(config: PrinterConfig): Promise<PrintResu
       const device = await findPairedDevice(config.usbVendorId, config.usbProductId);
       if (!device) throw new Error('ไม่พบ printer USB');
       await sendUSB(device, bytes);
+    } else if (config.type === 'android_bridge') {
+      sendAndroidBridge(
+        config.id, config.name,
+        config.androidTarget ?? 'usb_otg',
+        bytes, 'test', config.paperWidth,
+        config.ipAddress, config.port,
+      );
     } else {
       const { sendNetwork } = await import('./transports/network');
       if (!config.ipAddress) throw new Error('ไม่พบ IP address');
@@ -166,7 +200,7 @@ export async function testThaiCodepage(config: PrinterConfig): Promise<PrintResu
  */
 export async function printByteMap(config: PrinterConfig): Promise<PrintResult> {
   if (config.type === 'browser') {
-    return { ok: false, error: 'Byte map ใช้ได้เฉพาะ USB / Network' };
+    return { ok: false, error: 'Byte map ใช้ได้เฉพาะ USB / Network / Android Bridge' };
   }
 
   try {
@@ -219,6 +253,13 @@ export async function printByteMap(config: PrinterConfig): Promise<PrintResult> 
       const device = await findPairedDevice(config.usbVendorId, config.usbProductId);
       if (!device) throw new Error('ไม่พบ printer USB');
       await sendUSB(device, bytes);
+    } else if (config.type === 'android_bridge') {
+      sendAndroidBridge(
+        config.id, config.name,
+        config.androidTarget ?? 'usb_otg',
+        bytes, 'test', config.paperWidth,
+        config.ipAddress, config.port,
+      );
     } else {
       const { sendNetwork } = await import('./transports/network');
       if (!config.ipAddress) throw new Error('ไม่พบ IP address');
@@ -311,6 +352,13 @@ export async function testPrint(config: PrinterConfig): Promise<PrintResult> {
       const device = await findPairedDevice(config.usbVendorId, config.usbProductId);
       if (!device) throw new Error('ไม่พบ printer USB');
       await sendUSB(device, bytes);
+    } else if (config.type === 'android_bridge') {
+      sendAndroidBridge(
+        config.id, config.name,
+        config.androidTarget ?? 'usb_otg',
+        bytes, 'test', config.paperWidth,
+        config.ipAddress, config.port,
+      );
     } else {
       if (!config.ipAddress) throw new Error('ไม่พบ IP address');
       await sendNetwork(config.ipAddress, config.port ?? 9100, bytes);

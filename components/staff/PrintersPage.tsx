@@ -5,7 +5,7 @@ import { useConfirm } from '@/components/shared/ConfirmDialog';
 import { nanoid } from 'nanoid';
 import { toast } from 'sonner';
 import {
-  Printer, Star, StarOff, Usb, Wifi, Monitor,
+  Printer, Star, StarOff, Usb, Wifi, Monitor, Smartphone,
   Trash2, Pencil, FlaskConical, Plus, ChevronLeft,
 } from 'lucide-react';
 import {
@@ -21,21 +21,24 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { getAllPrinters, savePrinter, deletePrinter, setDefaultPrinter } from '@/lib/printer/store';
 import { getCapabilities, isLocalhost } from '@/lib/printer/capabilities';
 import { requestUSBDevice } from '@/lib/printer/transports/usb';
+import { isAndroidBridgeAvailable } from '@/lib/printer/transports/android-bridge';
 import { testPrint } from '@/lib/printer/service';
-import type { PrinterConfig, PrinterType } from '@/lib/printer/types';
+import type { PrinterConfig, PrinterType, AndroidBridgeTarget } from '@/lib/printer/types';
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
 
 const TYPE_LABEL: Record<PrinterType, string> = {
-  usb:     'USB',
-  network: 'Network',
-  browser: 'Browser',
+  usb:            'USB',
+  network:        'Network',
+  browser:        'Browser',
+  android_bridge: 'Android POS App',
 };
 
 const TYPE_BADGE_VARIANT: Record<PrinterType, BadgeVariant> = {
-  usb:     'info',
-  network: 'success',
-  browser: 'neutral',
+  usb:            'info',
+  network:        'success',
+  browser:        'neutral',
+  android_bridge: 'purple',
 };
 
 /* ─── Form state ─────────────────────────────────────────────────────────── */
@@ -53,6 +56,10 @@ interface FormState {
   /* step 2 — Network */
   ipAddress: string;
   port: string;
+  /* step 2 — Android POS App bridge */
+  androidTarget: AndroidBridgeTarget;
+  androidIpAddress: string;  // used when androidTarget === 'network'
+  androidPort: string;
   /* step 3 */
   name: string;
   paperWidth: 58 | 80;
@@ -73,8 +80,11 @@ function defaultForm(mode: 'add' | 'edit', existing?: PrinterConfig): FormState 
       usbLabel: existing.usbVendorId
         ? `${existing.name} (${existing.usbVendorId.toString(16)}:${existing.usbProductId?.toString(16)})`
         : '',
-      ipAddress: existing.ipAddress ?? '',
-      port: String(existing.port ?? 9100),
+      ipAddress: existing.type === 'network' ? (existing.ipAddress ?? '') : '',
+      port: existing.type === 'network' ? String(existing.port ?? 9100) : '9100',
+      androidTarget: existing.androidTarget ?? 'usb_otg',
+      androidIpAddress: existing.type === 'android_bridge' ? (existing.ipAddress ?? '') : '',
+      androidPort: existing.type === 'android_bridge' ? String(existing.port ?? 9100) : '9100',
       name: existing.name,
       paperWidth: existing.paperWidth,
       thaiCodepage: existing.thaiCodepage ?? 21,
@@ -86,6 +96,7 @@ function defaultForm(mode: 'add' | 'edit', existing?: PrinterConfig): FormState 
     mode: 'add', step: 1, type: null,
     usbVendorId: null, usbProductId: null, usbLabel: '',
     ipAddress: '', port: '9100',
+    androidTarget: 'usb_otg', androidIpAddress: '', androidPort: '9100',
     name: '', paperWidth: 80, thaiCodepage: 21, thaiImageMode: false, isDefault: false,
   };
 }
@@ -138,6 +149,11 @@ export function PrintersPage() {
   }
 
   async function handleTest(p: PrinterConfig) {
+    // For Android bridge, check if the bridge is available before attempting
+    if (p.type === 'android_bridge' && !isAndroidBridgeAvailable()) {
+      toast.warning('ต้องเปิดผ่าน Android POS App เพื่อพิมพ์ด้วยวิธีนี้');
+      return;
+    }
     setTesting(p.id);
     const result = await testPrint(p);
     setTesting(null);
@@ -169,6 +185,14 @@ export function PrintersPage() {
         : {}),
       ...(type === 'network'
         ? { ipAddress: form.ipAddress, port: parseInt(form.port, 10) || 9100 }
+        : {}),
+      ...(type === 'android_bridge'
+        ? {
+            androidTarget: form.androidTarget,
+            ...(form.androidTarget === 'network' && form.androidIpAddress
+              ? { ipAddress: form.androidIpAddress, port: parseInt(form.androidPort, 10) || 9100 }
+              : {}),
+          }
         : {}),
     };
 
@@ -351,6 +375,18 @@ export function PrintersPage() {
             <StepBrowser onNext={() => setForm((f) => ({ ...f, step: 3 }))} />
           )}
 
+          {form.step === 2 && form.type === 'android_bridge' && (
+            <StepAndroidBridge
+              androidTarget={form.androidTarget}
+              androidIpAddress={form.androidIpAddress}
+              androidPort={form.androidPort}
+              onAndroidTargetChange={(v) => setForm((f) => ({ ...f, androidTarget: v }))}
+              onAndroidIpChange={(v) => setForm((f) => ({ ...f, androidIpAddress: v }))}
+              onAndroidPortChange={(v) => setForm((f) => ({ ...f, androidPort: v }))}
+              onNext={() => setForm((f) => ({ ...f, step: 3 }))}
+            />
+          )}
+
           {form.step === 3 && (
             <StepGeneral
               name={form.name}
@@ -385,18 +421,20 @@ function StepType({
   selected: PrinterType | null;
   onSelect: (t: PrinterType) => void;
 }) {
-  const options: { type: PrinterType; icon: React.ReactNode; title: string; desc: string }[] = [
+  const options: { type: PrinterType; icon: React.ReactNode; title: string; desc: string; note?: string }[] = [
     {
       type: 'usb',
       icon: <Usb className="size-5" />,
       title: 'USB / OTG',
-      desc: 'เชื่อมต่อด้วยสาย USB หรือ OTG (แนะนำ)',
+      desc: 'เชื่อมต่อด้วยสาย USB หรือ OTG (แนะนำสำหรับ Chrome บน PC/Android)',
     },
     {
       type: 'network',
       icon: <Wifi className="size-5" />,
       title: 'Network',
-      desc: 'Printer ใน WiFi/LAN เดียวกัน (dev mode เท่านั้น)',
+      // Clarify that direct network printing is localhost/dev only — not Vercel production
+      desc: 'Printer ใน WiFi/LAN เดียวกัน',
+      note: 'ใช้ได้เฉพาะ localhost/dev เท่านั้น — Vercel ไม่สามารถเข้าถึง IP ใน LAN ของร้าน',
     },
     {
       type: 'browser',
@@ -404,12 +442,23 @@ function StepType({
       title: 'Browser',
       desc: 'ใช้ระบบพิมพ์ของอุปกรณ์ (ทำงานได้ทุกที่)',
     },
+    {
+      type: 'android_bridge',
+      icon: <Smartphone className="size-5" />,
+      title: 'Android POS App',
+      // Production-safe method for one-tablet Android POS: app receives ESC/POS bytes
+      // and forwards them to the printer over USB OTG or LAN/WiFi on-device.
+      desc: 'ปริ้นผ่านแอป POS บน Android เครื่องนี้',
+      note: caps.androidBridge
+        ? undefined
+        : 'ตรวจพบว่าไม่ได้เปิดจาก Android POS App — ตั้งค่าไว้ก่อนได้ แต่พิมพ์ได้เฉพาะในแอป',
+    },
   ];
 
   return (
     <div className="space-y-2.5 py-1">
       <p className="text-sm text-muted-foreground">เลือกวิธีเชื่อมต่อเครื่องพิมพ์</p>
-      {options.map(({ type, icon, title, desc }) => {
+      {options.map(({ type, icon, title, desc, note }) => {
         const disabled = type === 'usb' && !caps.usb;
         return (
           <button
@@ -425,6 +474,9 @@ function StepType({
             <div>
               <p className="text-sm font-medium text-foreground">{title}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+              {note && (
+                <p className="text-xs text-[var(--status-warning-fg)] mt-0.5">{note}</p>
+              )}
               {disabled && (
                 <p className="text-xs text-[var(--status-danger-fg)] mt-0.5">Browser ของคุณไม่รองรับ WebUSB</p>
               )}
@@ -511,9 +563,9 @@ function StepNetwork({
     <div className="space-y-4 py-1">
       {!onLocalhost && (
         <div className="rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] p-3 text-xs text-[var(--status-warning-fg)] leading-relaxed">
-          ⚠️ <strong>Network printer ใช้งานได้เฉพาะ dev mode (localhost)</strong><br />
-          ใน production (Vercel) server อยู่บน cloud ไม่สามารถเข้าถึง IP ใน LAN ของร้านได้
-          กรุณาใช้ USB แทน
+          ⚠️ <strong>Network printer ใช้งานได้เฉพาะ localhost / dev / local-agent เท่านั้น</strong><br />
+          ใน production (Vercel) server อยู่บน cloud ไม่สามารถเข้าถึง IP ใน LAN ของร้านได้<br />
+          สำหรับ Android tablet POS จริง — ใช้วิธี <strong>Android POS App</strong> แทน
         </div>
       )}
       <div>
@@ -566,6 +618,124 @@ function StepBrowser({ onNext }: { onNext: () => void }) {
         type="button"
         onClick={onNext}
         className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary/90"
+      >
+        ถัดไป
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Step 2 for android_bridge printers.
+ *
+ * The user chooses whether the Android POS App should connect to the physical
+ * printer via USB OTG (cable attached to the tablet) or over LAN/WiFi.
+ * If LAN/WiFi is chosen, the IP and port of the printer are collected here.
+ *
+ * This is the production-safe printing method for one-tablet Android POS:
+ * - Vercel server cannot reach private LAN printer IPs.
+ * - USB/OTG (WebUSB) remains supported for direct Chrome connections.
+ * - This bridge lets the Android wrapper app handle the physical connection.
+ */
+function StepAndroidBridge({
+  androidTarget,
+  androidIpAddress,
+  androidPort,
+  onAndroidTargetChange,
+  onAndroidIpChange,
+  onAndroidPortChange,
+  onNext,
+}: {
+  androidTarget: AndroidBridgeTarget;
+  androidIpAddress: string;
+  androidPort: string;
+  onAndroidTargetChange: (v: AndroidBridgeTarget) => void;
+  onAndroidIpChange: (v: string) => void;
+  onAndroidPortChange: (v: string) => void;
+  onNext: () => void;
+}) {
+  const bridgeAvailable = isAndroidBridgeAvailable();
+  const ipValid = /^(\d{1,3}\.){3}\d{1,3}$/.test(androidIpAddress);
+  const canProceed = androidTarget === 'usb_otg' || ipValid;
+
+  return (
+    <div className="space-y-4 py-1">
+      {/* Explain how the bridge works */}
+      <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground leading-relaxed">
+        <p className="font-medium text-foreground mb-1.5">📱 Android POS App</p>
+        <ul className="space-y-1 list-disc list-inside">
+          <li>เว็บแอปส่ง ESC/POS bytes ไปยัง Android POS App</li>
+          <li>แอป Android จัดการส่งข้อมูลถึง printer โดยตรงบนเครื่อง</li>
+          <li>ปลอดภัยสำหรับ production — Vercel ไม่ต้องเข้าถึง IP ใน LAN</li>
+        </ul>
+      </div>
+
+      {/* Warning if not currently inside the Android app */}
+      {!bridgeAvailable && (
+        <div className="rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] p-3 text-xs text-[var(--status-warning-fg)] leading-relaxed">
+          ⚠️ ขณะนี้ไม่ได้เปิดจาก Android POS App — ตั้งค่าไว้ล่วงหน้าได้ แต่จะพิมพ์จริงได้เฉพาะในแอป
+        </div>
+      )}
+
+      {/* Target selection */}
+      <div>
+        <p className="text-xs font-medium text-foreground mb-2">Printer เชื่อมต่อกับ Android ด้วยวิธีใด?</p>
+        <div className="space-y-2">
+          {([
+            { value: 'usb_otg' as AndroidBridgeTarget, label: 'USB / OTG', desc: 'ต่อสาย OTG จาก tablet ไปที่ printer' },
+            { value: 'network' as AndroidBridgeTarget, label: 'Network LAN / WiFi', desc: 'Printer อยู่ใน WiFi/LAN เดียวกับ tablet' },
+          ] as const).map(({ value, label, desc }) => (
+            <label key={value} className="flex items-start gap-2.5 cursor-pointer rounded-lg border border-border p-3 hover:bg-muted/30">
+              <input
+                type="radio"
+                checked={androidTarget === value}
+                onChange={() => onAndroidTargetChange(value)}
+                className="mt-0.5 accent-slate-800"
+              />
+              <div>
+                <p className="text-sm font-medium text-foreground">{label}</p>
+                <p className="text-xs text-muted-foreground">{desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Network target: collect IP and port */}
+      {androidTarget === 'network' && (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-foreground mb-1">IP Address ของ Printer</label>
+            <input
+              value={androidIpAddress}
+              onChange={(e) => onAndroidIpChange(e.target.value)}
+              placeholder="192.168.1.100"
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
+            />
+            {androidIpAddress && !ipValid && (
+              <p className="mt-1 text-xs text-[var(--status-danger-fg)]">รูปแบบ IP ไม่ถูกต้อง</p>
+            )}
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-foreground mb-1">Port</label>
+            <input
+              value={androidPort}
+              onChange={(e) => onAndroidPortChange(e.target.value)}
+              placeholder="9100"
+              type="number"
+              min={1}
+              max={65535}
+              className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
+            />
+          </div>
+        </div>
+      )}
+
+      <button
+        type="button"
+        disabled={!canProceed}
+        onClick={onNext}
+        className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
       >
         ถัดไป
       </button>

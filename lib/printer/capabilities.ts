@@ -10,18 +10,25 @@ export type PrinterCapabilities = {
   network: boolean;
   /** window.print() always available in browsers */
   browser: boolean;
+  /**
+   * window.AndroidPrinter is injected by the Android POS App WebView.
+   * True only when running inside that wrapper — false in a regular browser.
+   * USB/OTG and Network remain supported independently of this flag.
+   */
+  androidBridge: boolean;
 };
 
 export function getCapabilities(): PrinterCapabilities {
   if (typeof navigator === 'undefined') {
-    // SSR: USB not available server-side
-    return { usb: false, network: true, browser: true };
+    // SSR: no browser APIs available
+    return { usb: false, network: true, browser: true, androidBridge: false };
   }
 
   return {
     usb: 'usb' in navigator,
     network: true,
     browser: true,
+    androidBridge: typeof window !== 'undefined' && !!window.AndroidPrinter,
   };
 }
 
