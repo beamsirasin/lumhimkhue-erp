@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import {
@@ -134,6 +134,79 @@ const REPORT_COMMAND_POINTS = [
   },
 ];
 
+type ReportStatTone = 'primary' | 'info' | 'success' | 'warning' | 'danger' | 'neutral';
+
+const REPORT_STAT_TONE_CLASSES: Record<ReportStatTone, { card: string; icon: string; label: string; value: string }> = {
+  primary: {
+    card: 'border-primary/30 bg-primary text-primary-foreground shadow-[var(--shadow-card)]',
+    icon: 'border-primary-foreground/25 bg-primary-foreground/15 text-primary-foreground',
+    label: 'text-primary-foreground/70',
+    value: 'text-primary-foreground',
+  },
+  info: {
+    card: 'border-[var(--status-info-border)] bg-[var(--status-info-bg)]',
+    icon: 'border-[var(--status-info-border)] bg-[var(--surface-1)] text-[var(--status-info-fg)]',
+    label: 'text-[var(--status-info-fg)]/80',
+    value: 'text-[var(--status-info-fg)]',
+  },
+  success: {
+    card: 'border-[var(--status-success-border)] bg-[var(--status-success-bg)]',
+    icon: 'border-[var(--status-success-border)] bg-[var(--surface-1)] text-[var(--status-success-fg)]',
+    label: 'text-[var(--status-success-fg)]/80',
+    value: 'text-[var(--status-success-fg)]',
+  },
+  warning: {
+    card: 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)]',
+    icon: 'border-[var(--status-warning-border)] bg-[var(--surface-1)] text-[var(--status-warning-fg)]',
+    label: 'text-[var(--status-warning-fg)]/80',
+    value: 'text-[var(--status-warning-fg)]',
+  },
+  danger: {
+    card: 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)]',
+    icon: 'border-[var(--status-danger-border)] bg-[var(--surface-1)] text-[var(--status-danger-fg)]',
+    label: 'text-[var(--status-danger-fg)]/80',
+    value: 'text-[var(--status-danger-fg)]',
+  },
+  neutral: {
+    card: 'border-border bg-[var(--surface-1)] shadow-[var(--shadow-card)]',
+    icon: 'border-border bg-[var(--surface-2)] text-muted-foreground',
+    label: 'text-muted-foreground',
+    value: 'text-foreground',
+  },
+};
+
+function ReportStatCard({
+  label,
+  value,
+  detail,
+  icon,
+  tone = 'neutral',
+  valueClassName,
+}: {
+  label: string;
+  value: ReactNode;
+  detail?: ReactNode;
+  icon: ReactNode;
+  tone?: ReportStatTone;
+  valueClassName?: string;
+}) {
+  const style = REPORT_STAT_TONE_CLASSES[tone];
+  return (
+    <div className={cn('rounded-lg border p-4', style.card)}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className={cn('text-[11px] font-semibold uppercase tracking-wider', style.label)}>{label}</p>
+          <p className={cn('mt-2 text-2xl font-bold tabular-nums leading-none', style.value, valueClassName)}>{value}</p>
+        </div>
+        <span className={cn('flex size-10 shrink-0 items-center justify-center rounded-lg border', style.icon)}>
+          {icon}
+        </span>
+      </div>
+      {detail && <p className={cn('mt-3 text-xs leading-5', tone === 'primary' ? 'text-primary-foreground/70' : 'text-muted-foreground')}>{detail}</p>}
+    </div>
+  );
+}
+
 // ─── Revenue Report ────────────────────────────────────────────────────────────
 
 function RevenueReport() {
@@ -180,69 +253,71 @@ function RevenueReport() {
   return (
     <div className="space-y-5">
 
-      {/* ── Controls ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground font-normal">วันเริ่มต้น</Label>
-            <Input type="date" value={fromDate} max={today}
-              onChange={(e) => setFromDate(e.target.value)} className="w-40" />
+      {/* ── Controls ─────────────────────────────────────────────────────── */}
+      <DataCard
+        title="ตัวกรองรายงานรายได้"
+        subtitle="เลือกช่วงวันที่และบัญชีรับเงิน โดยคงเงื่อนไขรายงานเดิม"
+        actions={(!loading && report) ? (
+          <Button type="button" variant="outline" size="sm" onClick={handleExport} className="gap-2">
+            <Download className="size-4" />
+            Export CSV
+          </Button>
+        ) : undefined}
+      >
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">วันเริ่มต้น</Label>
+              <Input type="date" value={fromDate} max={today}
+                onChange={(e) => setFromDate(e.target.value)} className="h-10 w-40" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">วันสิ้นสุด</Label>
+              <Input type="date" value={toDate} max={today}
+                onChange={(e) => setToDate(e.target.value)} className="h-10 w-40" />
+            </div>
+            {loading && <span className="pb-2 text-xs text-muted-foreground">กำลังโหลด…</span>}
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground font-normal">วันสิ้นสุด</Label>
-            <Input type="date" value={toDate} max={today}
-              onChange={(e) => setToDate(e.target.value)} className="w-40" />
+          {/* Session type toggle */}
+          <div className="flex gap-0.5 rounded-lg border border-border bg-muted p-1">
+            {(['all', 'primary', 'secondary'] as const).map((t) => (
+              <button key={t} type="button" onClick={() => setSessionType(t)}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                  sessionType === t
+                    ? 'bg-[var(--surface-1)] text-foreground shadow-sm ring-1 ring-border'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}>
+                {SESSION_TYPE_LABELS[t]}
+              </button>
+            ))}
           </div>
-          {loading && <span className="pb-2 text-xs text-muted-foreground">กำลังโหลด…</span>}
-          {!loading && report && (
-            <Button type="button" variant="outline" size="sm" onClick={handleExport} className="self-end">
-              Export CSV
-            </Button>
-          )}
         </div>
-        {/* Session type toggle */}
-        <div className="flex gap-0.5 rounded-xl bg-muted p-1">
-          {(['all', 'primary', 'secondary'] as const).map((t) => (
-            <button key={t} type="button" onClick={() => setSessionType(t)}
-              className={cn(
-                'rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-150',
-                sessionType === t
-                  ? 'bg-card text-foreground shadow-sm ring-1 ring-border'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}>
-              {SESSION_TYPE_LABELS[t]}
-            </button>
-          ))}
-        </div>
-      </div>
+      </DataCard>
 
       {/* ── KPI Cards ─────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="rounded-xl bg-primary px-5 py-4 text-primary-foreground">
-          <p className="text-[11px] text-primary-foreground/60 font-semibold uppercase tracking-wider">รายได้รวม</p>
-          <p className="mt-1.5 text-2xl font-bold tabular-nums">
-            ฿{(totals?.revenue ?? 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
-          </p>
-          <p className="mt-0.5 text-xs text-primary-foreground/60">
-            {fromDate === toDate ? fromDate : `${fromDate} – ${toDate}`}
-          </p>
-        </div>
-        <div className="rounded-xl bg-card border border-border px-5 py-4">
-          <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">จำนวนโต๊ะ</p>
-          <p className="mt-1.5 text-2xl font-bold tabular-nums text-foreground">
-            {(totals?.sessions ?? 0).toLocaleString('th-TH')}
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">โต๊ะ</p>
-        </div>
-        <div className="rounded-xl bg-card border border-border px-5 py-4">
-          <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">เฉลี่ยต่อโต๊ะ</p>
-          <p className="mt-1.5 text-2xl font-bold tabular-nums text-foreground">
-            ฿{Math.round(avgPerSession).toLocaleString('th-TH')}
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {totalGuests > 0 ? `฿${Math.round((totals?.revenue ?? 0) / totalGuests).toLocaleString('th-TH')} / คน` : '—'}
-          </p>
-        </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <ReportStatCard
+          label="รายได้รวม"
+          value={`฿${(totals?.revenue ?? 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })}`}
+          detail={fromDate === toDate ? fromDate : `${fromDate} – ${toDate}`}
+          icon={<Banknote className="size-5" />}
+          tone="primary"
+        />
+        <ReportStatCard
+          label="จำนวนโต๊ะ"
+          value={(totals?.sessions ?? 0).toLocaleString('th-TH')}
+          detail="โต๊ะ"
+          icon={<ReceiptText className="size-5" />}
+          tone="neutral"
+        />
+        <ReportStatCard
+          label="เฉลี่ยต่อโต๊ะ"
+          value={`฿${Math.round(avgPerSession).toLocaleString('th-TH')}`}
+          detail={totalGuests > 0 ? `฿${Math.round((totals?.revenue ?? 0) / totalGuests).toLocaleString('th-TH')} / คน` : '—'}
+          icon={<BarChart3 className="size-5" />}
+          tone="info"
+        />
       </div>
 
       {/* ── Chart + Breakdowns ───────────────────────────────────────────── */}
@@ -251,7 +326,7 @@ function RevenueReport() {
         {/* Chart — takes 2/3 */}
         <DataCard
           title="รายได้รายวัน"
-          subtitle={report && report.rows.length > 0 ? `${report.rows.length} วัน` : undefined}
+          subtitle={report && report.rows.length > 0 ? `${report.rows.length} วัน · ใช้ข้อมูลรายวันเดิม` : undefined}
           className="lg:col-span-2"
         >
           {loading ? (
@@ -260,7 +335,7 @@ function RevenueReport() {
             </div>
           ) : !report || report.rows.length === 0 ? (
             <div className="flex min-h-[180px] items-center justify-center">
-              <span className="text-sm text-muted-foreground">ไม่มีข้อมูลในช่วงนี้</span>
+              <EmptyState icon={<BarChart3 className="size-5" />} title="ยังไม่มีรายได้ในช่วงนี้" description="กราฟจะปรากฏเมื่อมีข้อมูลการชำระเงินสำเร็จในช่วงวันที่เลือก" size="sm" />
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
@@ -279,7 +354,7 @@ function RevenueReport() {
                 />
                 <Tooltip
                   cursor={{ fill: 'var(--muted)' }}
-                  contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }}
+                  contentStyle={{ backgroundColor: 'var(--surface-1)', borderRadius: 8, border: '1px solid var(--border)', color: 'var(--foreground)', fontSize: 12, boxShadow: 'var(--shadow-card)' }}
                   formatter={(v) => [`฿${Number(v).toLocaleString('th-TH')}`, 'รายได้']}
                   labelFormatter={(l) => `วันที่ ${l}`}
                 />
@@ -315,7 +390,7 @@ function RevenueReport() {
                       </div>
                       <div className="h-1.5 w-full rounded-full bg-muted">
                         <div
-                          className="h-1.5 rounded-full bg-primary/70 transition-all"
+                          className="h-1.5 rounded-full bg-[var(--chart-2)] transition-all"
                           style={{ width: `${pct}%` }}
                         />
                       </div>
@@ -347,7 +422,7 @@ function RevenueReport() {
                       </div>
                       <div className="h-1.5 w-full rounded-full bg-muted">
                         <div
-                          className="h-1.5 rounded-full bg-primary/50 transition-all"
+                          className="h-1.5 rounded-full bg-[var(--chart-3)] transition-all"
                           style={{ width: `${pct}%` }}
                         />
                       </div>
@@ -362,7 +437,7 @@ function RevenueReport() {
 
       {/* ── Daily Table ───────────────────────────────────────────────────── */}
       {report && (
-        <DataCard noPadding title="รายละเอียดรายวัน">
+        <DataCard noPadding title="รายละเอียดรายวัน" subtitle="แถวและค่าที่ใช้ export ยังคงอิง report.rows เดิม">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -379,7 +454,7 @@ function RevenueReport() {
                   <tr><td colSpan={5} className="py-10 text-center text-muted-foreground text-xs">ไม่มีข้อมูลในช่วงเวลานี้</td></tr>
                 )}
                 {report.rows.map((r) => (
-                  <tr key={r.date} className="hover:bg-muted/30 transition-colors">
+                  <tr key={r.date} className="transition-colors hover:bg-[var(--surface-2)]/70">
                     <Td>{r.date}</Td>
                     <Td align="right">{r.sessions}</Td>
                     <Td align="right">{r.guests}</Td>
@@ -444,84 +519,66 @@ function FoodCostReport() {
     <div className="space-y-5">
 
       {/* Controls */}
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="flex flex-col gap-1.5">
-          <Label className="text-xs text-muted-foreground font-normal">วันเริ่มต้น</Label>
-          <Input type="date" value={fromDate} max={today} onChange={(e) => setFromDate(e.target.value)} className="w-40" />
+      <DataCard
+        title="ตัวกรองรายงานต้นทุนอาหาร"
+        subtitle="ช่วงวันที่ยังใช้เงื่อนไขเดิมของรายงานต้นทุน"
+      >
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs font-medium text-muted-foreground">วันเริ่มต้น</Label>
+            <Input type="date" value={fromDate} max={today} onChange={(e) => setFromDate(e.target.value)} className="h-10 w-40" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs font-medium text-muted-foreground">วันสิ้นสุด</Label>
+            <Input type="date" value={toDate} max={today} onChange={(e) => setToDate(e.target.value)} className="h-10 w-40" />
+          </div>
+          {loading && <span className="pb-2 text-xs text-muted-foreground">กำลังโหลด…</span>}
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label className="text-xs text-muted-foreground font-normal">วันสิ้นสุด</Label>
-          <Input type="date" value={toDate} max={today} onChange={(e) => setToDate(e.target.value)} className="w-40" />
-        </div>
-        {loading && <span className="pb-2 text-xs text-muted-foreground">กำลังโหลด…</span>}
-      </div>
+      </DataCard>
 
       {/* KPI cards */}
       {rows !== null && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className={cn(
-            'rounded-xl px-5 py-4 border',
-            avgFoodCostPct !== null && avgFoodCostPct > 35
-              ? 'bg-[var(--status-danger-bg)] border-[var(--status-danger-border)]'
-              : 'bg-card border-border',
-          )}>
-            <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">% ต้นทุนเฉลี่ยต่อวัน</p>
-            <p className={cn(
-              'mt-1.5 text-2xl font-bold tabular-nums',
-              avgFoodCostPct !== null
-                ? avgFoodCostPct > 35 ? 'text-[var(--status-danger-fg)]' : 'text-[var(--status-success-fg)]'
-                : 'text-foreground',
-            )}>
-              {avgFoodCostPct !== null ? `${avgFoodCostPct.toFixed(1)}%` : '—'}
-            </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">เป้าหมาย ≤ 35%</p>
-          </div>
-          <div className={cn(
-            'rounded-xl px-5 py-4 border',
-            overallPct !== null && overallPct > 35
-              ? 'bg-[var(--status-danger-bg)] border-[var(--status-danger-border)]'
-              : 'bg-card border-border',
-          )}>
-            <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">% ต้นทุนรวม</p>
-            <p className={cn(
-              'mt-1.5 text-2xl font-bold tabular-nums',
-              overallPct !== null
-                ? overallPct > 35 ? 'text-[var(--status-danger-fg)]' : 'text-[var(--status-success-fg)]'
-                : 'text-foreground',
-            )}>
-              {overallPct !== null ? `${overallPct.toFixed(1)}%` : '—'}
-            </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">ภาพรวม</p>
-          </div>
-          <div className="rounded-xl bg-card border border-border px-5 py-4">
-            <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">รายได้รวม</p>
-            <p className="mt-1.5 text-2xl font-bold tabular-nums text-foreground">
-              ฿{totalRevenue.toLocaleString('th-TH', { maximumFractionDigits: 0 })}
-            </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">ช่วงที่เลือก</p>
-          </div>
-          <div className="rounded-xl bg-card border border-border px-5 py-4">
-            <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">ต้นทุนรวม (ทฤษฎี)</p>
-            <p className={cn(
-              'mt-1.5 text-2xl font-bold tabular-nums',
-              overallPct !== null && overallPct > 35 ? 'text-[var(--status-danger-fg)]' : 'text-foreground',
-            )}>
-              ฿{totalCost.toLocaleString('th-TH', { maximumFractionDigits: 0 })}
-            </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">ช่วงที่เลือก</p>
-          </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <ReportStatCard
+            label="% ต้นทุนเฉลี่ยต่อวัน"
+            value={avgFoodCostPct !== null ? `${avgFoodCostPct.toFixed(1)}%` : '—'}
+            detail="เป้าหมาย ≤ 35%"
+            icon={<BadgePercent className="size-5" />}
+            tone={avgFoodCostPct !== null && avgFoodCostPct > 35 ? 'danger' : avgFoodCostPct !== null ? 'success' : 'neutral'}
+          />
+          <ReportStatCard
+            label="% ต้นทุนรวม"
+            value={overallPct !== null ? `${overallPct.toFixed(1)}%` : '—'}
+            detail="ภาพรวม"
+            icon={<BarChart3 className="size-5" />}
+            tone={overallPct !== null && overallPct > 35 ? 'danger' : overallPct !== null ? 'success' : 'neutral'}
+          />
+          <ReportStatCard
+            label="รายได้รวม"
+            value={`฿${totalRevenue.toLocaleString('th-TH', { maximumFractionDigits: 0 })}`}
+            detail="ช่วงที่เลือก"
+            icon={<Banknote className="size-5" />}
+            tone="neutral"
+          />
+          <ReportStatCard
+            label="ต้นทุนรวม (ทฤษฎี)"
+            value={`฿${totalCost.toLocaleString('th-TH', { maximumFractionDigits: 0 })}`}
+            detail="ช่วงที่เลือก"
+            icon={<ReceiptText className="size-5" />}
+            tone={overallPct !== null && overallPct > 35 ? 'danger' : 'neutral'}
+          />
         </div>
       )}
 
       {/* Chart */}
-      <DataCard title="% ต้นทุนอาหารรายวัน">
+      <DataCard title="% ต้นทุนอาหารรายวัน" subtitle="เส้นอ้างอิง 35% และสีแท่งยังอิงค่า foodCostPct เดิม">
         {loading ? (
           <div className="flex min-h-[180px] items-center justify-center">
             <span className="text-sm text-muted-foreground">กำลังโหลด…</span>
           </div>
         ) : !rows || rows.length === 0 ? (
           <div className="flex min-h-[180px] items-center justify-center">
-            <span className="text-sm text-muted-foreground">ไม่มีข้อมูลในช่วงนี้</span>
+            <EmptyState icon={<BadgePercent className="size-5" />} title="ยังไม่มีข้อมูลต้นทุนอาหาร" description="กราฟจะปรากฏเมื่อมีรายงานต้นทุนในช่วงวันที่เลือก" size="sm" />
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={200}>
@@ -531,7 +588,7 @@ function FoodCostReport() {
               <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} unit="%" domain={[0, 'auto']} axisLine={false} tickLine={false} />
               <Tooltip
                 cursor={{ fill: 'var(--muted)' }}
-                contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', fontSize: 12 }}
+                contentStyle={{ backgroundColor: 'var(--surface-1)', borderRadius: 8, border: '1px solid var(--border)', color: 'var(--foreground)', fontSize: 12, boxShadow: 'var(--shadow-card)' }}
                 formatter={(v) => [`${Number(v ?? 0).toFixed(1)}%`, '% ต้นทุนอาหาร']}
                 labelFormatter={(l) => `วันที่ ${l}`}
               />
@@ -546,7 +603,7 @@ function FoodCostReport() {
 
       {/* Table */}
       {rows !== null && (
-        <DataCard noPadding title="รายละเอียดรายวัน">
+        <DataCard noPadding title="รายละเอียดรายวัน" subtitle="ค่ารายได้ ต้นทุน และสถานะเป้าหมายมาจาก rows เดิม">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -558,7 +615,7 @@ function FoodCostReport() {
               <tbody className="divide-y divide-border">
                 {rows.length === 0 && <tr><td colSpan={5} className="py-10 text-center text-muted-foreground text-xs">ไม่มีข้อมูล</td></tr>}
                 {rows.map((r) => (
-                  <tr key={r.date} className="hover:bg-muted/30 transition-colors">
+                  <tr key={r.date} className="transition-colors hover:bg-[var(--surface-2)]/70">
                     <Td>{r.date}</Td>
                     <Td align="right">฿{r.revenue.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</Td>
                     <Td align="right">฿{r.theoreticalCost.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</Td>
