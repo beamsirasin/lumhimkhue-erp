@@ -4,7 +4,18 @@ import { useState, Fragment } from 'react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp, ClipboardList, Clock, AlertCircle } from 'lucide-react';
+import {
+  AlertCircle,
+  CalendarRange,
+  ChevronDown,
+  ChevronUp,
+  ClipboardList,
+  Clock,
+  Filter,
+  ShieldCheck,
+  UserRound,
+  WalletCards,
+} from 'lucide-react';
 import {
   getAuditReport,
   getShiftReport,
@@ -30,6 +41,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
 type Tab = 'audit' | 'shifts' | 'adjustments';
 
@@ -72,11 +84,36 @@ const STATUS_BADGE_MAP: Record<string, { label: string; variant: BadgeVariant }>
   approved: { label: 'อนุมัติ',       variant: 'success' },
   rejected: { label: 'ปฏิเสธ',       variant: 'danger'  },
 };
+const AUDIT_ACTION_VARIANTS: Partial<Record<AuditAction, BadgeVariant>> = {
+  delete_payment: 'danger',
+  void_payment: 'danger',
+  reopen_session: 'warning',
+  process_payment: 'success',
+  shift_open: 'info',
+  shift_close: 'neutral',
+  shift_review: 'purple',
+  discount_request: 'warning',
+  discount_approve: 'success',
+  discount_reject: 'danger',
+  cancel_order: 'orange',
+};
 
 function AuditStatusBadge({ status }: { status: string }) {
   const cfg = STATUS_BADGE_MAP[status];
   if (!cfg) return <StatusBadge label={status} variant="neutral" />;
-  return <StatusBadge label={cfg.label} variant={cfg.variant} />;
+  return <StatusBadge label={cfg.label} variant={cfg.variant} dot />;
+}
+
+function AuditActionBadge({ action }: { action: string }) {
+  const auditAction = action as AuditAction;
+  return (
+    <StatusBadge
+      label={AUDIT_ACTION_LABELS[auditAction] ?? action}
+      variant={AUDIT_ACTION_VARIANTS[auditAction] ?? 'neutral'}
+      size="md"
+      className="whitespace-nowrap"
+    />
+  );
 }
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
@@ -129,39 +166,54 @@ interface Filters {
 
 function FilterBar({ filters, onChange }: { filters: Filters; onChange: (f: Filters) => void }) {
   return (
-    <div className="flex flex-wrap gap-4 items-end">
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs text-muted-foreground font-normal">ตั้งแต่</Label>
-        <Input
-          type="date"
-          value={filters.dateFrom}
-          onChange={(e) => onChange({ ...filters, dateFrom: e.target.value })}
-          className="w-40"
-        />
+    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(10rem,12rem)_minmax(10rem,12rem)_minmax(14rem,1fr)]">
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs font-medium text-muted-foreground">ตั้งแต่</Label>
+          <div className="relative">
+            <CalendarRange className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="date"
+              value={filters.dateFrom}
+              onChange={(e) => onChange({ ...filters, dateFrom: e.target.value })}
+              className="h-10 w-full pl-9"
+            />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs font-medium text-muted-foreground">ถึง</Label>
+          <div className="relative">
+            <CalendarRange className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="date"
+              value={filters.dateTo}
+              onChange={(e) => onChange({ ...filters, dateTo: e.target.value })}
+              className="h-10 w-full pl-9"
+            />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5 sm:col-span-2 lg:col-span-1">
+          <Label className="text-xs font-medium text-muted-foreground">ประเภทการกระทำ</Label>
+          <div className="relative">
+            <Filter className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <select
+              value={filters.action ?? ''}
+              onChange={(e) =>
+                onChange({ ...filters, action: (e.target.value as AuditAction) || undefined })
+              }
+              className="h-10 w-full rounded-lg border border-input bg-[var(--surface-1)] pl-9 pr-3 text-sm text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            >
+              <option value="">ทั้งหมด</option>
+              {(Object.entries(AUDIT_ACTION_LABELS) as [AuditAction, string][]).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs text-muted-foreground font-normal">ถึง</Label>
-        <Input
-          type="date"
-          value={filters.dateTo}
-          onChange={(e) => onChange({ ...filters, dateTo: e.target.value })}
-          className="w-40"
-        />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs text-muted-foreground font-normal">ประเภทการกระทำ</Label>
-        <select
-          value={filters.action ?? ''}
-          onChange={(e) =>
-            onChange({ ...filters, action: (e.target.value as AuditAction) || undefined })
-          }
-          className="h-8 w-56 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        >
-          <option value="">ทั้งหมด</option>
-          {(Object.entries(AUDIT_ACTION_LABELS) as [AuditAction, string][]).map(([k, v]) => (
-            <option key={k} value={k}>{v}</option>
-          ))}
-        </select>
+      <div className="rounded-lg border border-border bg-[var(--surface-2)] px-3 py-2 text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">ช่วงวันที่:</span>{' '}
+        <span className="tabular-nums">{filters.dateFrom || '—'} - {filters.dateTo || '—'}</span>
       </div>
     </div>
   );
@@ -192,10 +244,10 @@ function AuditTable({ rows }: { rows: AuditReportRow[] }) {
       </TableHeader>
       <TableBody>
         {rows.map((r) => (
-          <TableRow key={r.id}>
+          <TableRow key={r.id} className="hover:bg-[var(--surface-2)]/70">
             <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(r.createdAt)}</TableCell>
             <TableCell className="whitespace-nowrap">{r.userName ?? r.userId?.slice(0, 8)}</TableCell>
-            <TableCell className="whitespace-nowrap">{AUDIT_ACTION_LABELS[r.action as AuditAction] ?? r.action}</TableCell>
+            <TableCell className="whitespace-nowrap"><AuditActionBadge action={r.action} /></TableCell>
             <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
               {r.entity} / {r.entityId?.slice(0, 8)}…
             </TableCell>
@@ -238,7 +290,7 @@ function ShiftTable({ rows }: { rows: ShiftReportRow[] }) {
       </TableHeader>
       <TableBody>
         {rows.map((r) => (
-          <TableRow key={r.id}>
+          <TableRow key={r.id} className="hover:bg-[var(--surface-2)]/70">
             <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(r.openedAt)}</TableCell>
             <TableCell className="whitespace-nowrap">{r.cashierName ?? r.cashierId?.slice(0, 8)}</TableCell>
             <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(r.closedAt)}</TableCell>
@@ -266,6 +318,18 @@ function mutationActionLabel(row: AdjRow): string {
     case 'reopen_session': return 'แก้ไข → POS';
     default: return ADJ_TYPE_LABELS[row.type] ?? row.type;
   }
+}
+
+function AdjustmentActionBadge({ row }: { row: AdjRow }) {
+  const variant: BadgeVariant = row.mutationAction === 'delete_payment'
+    ? 'danger'
+    : row.mutationAction === 'reopen_payment' || row.mutationAction === 'reopen_session'
+      ? 'warning'
+      : row.type === 'refund'
+        ? 'orange'
+        : 'info';
+
+  return <StatusBadge label={mutationActionLabel(row)} variant={variant} size="md" className="whitespace-nowrap" />;
 }
 
 function AdjustmentsTable({ rows }: { rows: AdjRow[] }) {
@@ -298,14 +362,14 @@ function AdjustmentsTable({ rows }: { rows: AdjRow[] }) {
       <TableBody>
         {rows.map((r) => (
           <Fragment key={r.id}>
-            <TableRow>
+            <TableRow className="hover:bg-[var(--surface-2)]/70">
               <TableCell className="pr-1">
                 <button
                   type="button"
                   aria-label="ดูรายละเอียด"
                   aria-expanded={expandedId === r.id}
                   onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
-                  className="rounded p-0.5 hover:bg-muted text-muted-foreground"
+                  className="rounded-md border border-border bg-[var(--surface-1)] p-1 text-muted-foreground transition-colors hover:bg-[var(--surface-2)]"
                 >
                   {expandedId === r.id
                     ? <ChevronUp className="size-3.5" />
@@ -315,7 +379,7 @@ function AdjustmentsTable({ rows }: { rows: AdjRow[] }) {
               </TableCell>
               <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(r.createdAt)}</TableCell>
               <TableCell className="whitespace-nowrap">{r.requesterName ?? r.requestedBy?.slice(0, 8)}</TableCell>
-              <TableCell className="whitespace-nowrap">{mutationActionLabel(r)}</TableCell>
+              <TableCell className="whitespace-nowrap"><AdjustmentActionBadge row={r} /></TableCell>
               <TableCell>
                 {r.shiftStatusAtMutation
                   ? <AuditStatusBadge status={r.shiftStatusAtMutation} />
@@ -338,15 +402,15 @@ function AdjustmentsTable({ rows }: { rows: AdjRow[] }) {
               </TableCell>
             </TableRow>
             {expandedId === r.id && (
-              <TableRow className="bg-muted/20 hover:bg-muted/20">
+              <TableRow className="bg-[var(--surface-2)]/60 hover:bg-[var(--surface-2)]/60">
                 <TableCell colSpan={9} className="px-6 py-3">
-                  <div className="space-y-3 text-xs">
+                  <div className="space-y-4 rounded-lg border border-border bg-[var(--surface-1)] p-4 text-xs shadow-[var(--shadow-card)]">
                     {/* Action context */}
                     <div className="space-y-1.5">
                       <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
                         บริบทการกระทำ
                       </p>
-                      <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-0.5 text-muted-foreground">
+                      <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 rounded-lg border border-border bg-[var(--surface-2)] p-3 text-muted-foreground">
                         <span>ประเภท</span>
                         <span className="text-foreground">{mutationActionLabel(r)}</span>
                         <span>Payment ID</span>
@@ -381,7 +445,7 @@ function AdjustmentsTable({ rows }: { rows: AdjRow[] }) {
                       {r.paymentRowsBefore.length === 0 ? (
                         <p className="text-muted-foreground">ไม่มีรายละเอียด payment_rows ใน snapshot นี้</p>
                       ) : (
-                        <table className="w-full border-collapse">
+                        <table className="w-full border-collapse rounded-lg bg-[var(--surface-1)] text-xs">
                           <thead>
                             <tr className="border-b text-muted-foreground">
                               <th className="py-1 pr-3 text-left font-medium">#</th>
@@ -428,11 +492,35 @@ function AdjustmentsTable({ rows }: { rows: AdjRow[] }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-const TAB_CONFIG: { id: Tab; label: string }[] = [
-  { id: 'audit',       label: 'บันทึกการกระทำ'    },
-  { id: 'shifts',      label: 'รอบแคชเชียร์'      },
-  { id: 'adjustments', label: 'การปรับปรุงชำระเงิน' },
-];
+const TAB_CONFIG = [
+  {
+    id: 'audit',
+    label: 'บันทึกการกระทำ',
+    description: 'ดูเหตุการณ์สำคัญ ผู้ใช้ และ entity ที่ได้รับผลกระทบ',
+    icon: ClipboardList,
+    variant: 'info',
+  },
+  {
+    id: 'shifts',
+    label: 'รอบแคชเชียร์',
+    description: 'ตรวจยอดเปิดรอบ ปิดรอบ ผลต่าง และสถานะการตรวจสอบ',
+    icon: Clock,
+    variant: 'success',
+  },
+  {
+    id: 'adjustments',
+    label: 'การปรับปรุงชำระเงิน',
+    description: 'ติดตามการแก้ไข ลบ คืนเงิน และ snapshot ก่อนปรับปรุง',
+    icon: WalletCards,
+    variant: 'warning',
+  },
+] satisfies Array<{
+  id: Tab;
+  label: string;
+  description: string;
+  icon: typeof ClipboardList;
+  variant: BadgeVariant;
+}>;
 
 export function AuditReportPage() {
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -477,56 +565,142 @@ export function AuditReportPage() {
     <AppShell>
       <PageHeader
         title="รายงานตรวจสอบ"
-        subtitle="บันทึกการกระทำ · รอบแคชเชียร์ · การปรับปรุงชำระเงิน"
-      />
+        subtitle="ตรวจสอบ audit trail รอบแคชเชียร์ และการปรับปรุงการชำระเงินในที่เดียว"
+        className="rounded-lg border border-border bg-[var(--surface-1)] px-5 py-4 shadow-[var(--shadow-card)]"
+        noBorder
+        actions={(
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-[var(--surface-2)] px-3 py-2 text-xs text-muted-foreground">
+            <ShieldCheck className="size-4 text-[var(--status-info-fg)]" />
+            <span className="font-medium text-foreground">Owner / Manager</span>
+          </div>
+        )}
+      >
+        <div className="flex flex-wrap gap-2 pt-1">
+          <span className="rounded-full border border-[var(--status-info-border)] bg-[var(--status-info-bg)] px-3 py-1 text-xs font-medium text-[var(--status-info-fg)]">
+            Audit trail
+          </span>
+          <span className="rounded-full border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-1 text-xs font-medium text-[var(--status-success-fg)]">
+            Cashier shifts
+          </span>
+          <span className="rounded-full border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-medium text-[var(--status-warning-fg)]">
+            Payment adjustments
+          </span>
+        </div>
+      </PageHeader>
 
-      <DataCard>
+      <DataCard
+        title="ตัวกรองรายงาน"
+        subtitle="ช่วงวันที่และประเภทการกระทำยังใช้เงื่อนไขเดิมทุกประการ"
+        className="mt-6"
+        actions={(
+          <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
+            <UserRound className="size-4" />
+            <span>ผู้ใช้แสดงจากข้อมูล audit เดิม</span>
+          </div>
+        )}
+      >
         <FilterBar filters={filters} onChange={setFilters} />
       </DataCard>
 
-      <Tabs
-        value={tab}
-        onValueChange={(v) => { if (typeof v === 'string' && v) setTab(v as Tab); }}
-        className="gap-0"
-      >
-        <TabsList
-          variant="line"
-          className="w-full justify-start rounded-none border-b border-border px-0 h-auto"
+      <section className="mt-6 space-y-4">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Audit report</p>
+            <h2 className="text-lg font-semibold text-foreground">เลือกส่วนรายงานที่ต้องการตรวจสอบ</h2>
+          </div>
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            ตารางด้านล่างแสดงข้อมูลจาก server action เดิม โดยคงค่า วันที่ สถานะ ยอดเงิน และ snapshot ไว้เหมือนเดิม
+          </p>
+        </div>
+
+        <Tabs
+          value={tab}
+          onValueChange={(v) => { if (typeof v === 'string' && v) setTab(v as Tab); }}
+          className="space-y-5"
         >
-          {TAB_CONFIG.map((t) => (
-            <TabsTrigger key={t.id} value={t.id} className="px-4 py-2.5 h-auto rounded-none">
-              {t.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+          <TabsList className="grid h-auto w-full gap-2 rounded-lg border border-border bg-muted p-1 lg:grid-cols-3">
+            {TAB_CONFIG.map((t) => {
+              const Icon = t.icon;
+              const isLoading = t.id === 'audit'
+                ? auditQuery.isLoading
+                : t.id === 'shifts'
+                  ? shiftQuery.isLoading
+                  : adjQuery.isLoading;
+              const count = t.id === 'audit'
+                ? auditQuery.data?.length ?? 0
+                : t.id === 'shifts'
+                  ? shiftQuery.data?.length ?? 0
+                  : adjQuery.data?.length ?? 0;
 
-        <TabsContent value="audit" className="mt-4">
-          <DataCard noPadding>
-            {auditQuery.isLoading
-              ? <TableLoadingSkeleton cols={5} />
-              : <AuditTable rows={auditQuery.data ?? []} />
-            }
-          </DataCard>
-        </TabsContent>
+              return (
+                <TabsTrigger
+                  key={t.id}
+                  value={t.id}
+                  className="h-auto items-start justify-start gap-3 rounded-md px-3 py-3 text-left data-[state=active]:bg-[var(--surface-1)] data-[state=active]:shadow-sm"
+                >
+                  <span className={cn(
+                    'flex size-10 shrink-0 items-center justify-center rounded-lg border',
+                    t.variant === 'info' && 'border-[var(--status-info-border)] bg-[var(--status-info-bg)] text-[var(--status-info-fg)]',
+                    t.variant === 'success' && 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-fg)]',
+                    t.variant === 'warning' && 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]',
+                  )}>
+                    <Icon className="size-5" />
+                  </span>
+                  <span className="min-w-0 flex-1 space-y-1">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold text-foreground">{t.label}</span>
+                      <StatusBadge
+                        label={isLoading ? 'โหลดอยู่' : `${count.toLocaleString('th-TH')} รายการ`}
+                        variant={isLoading ? 'neutral' : t.variant}
+                      />
+                    </span>
+                    <span className="block text-xs font-normal leading-5 text-muted-foreground">{t.description}</span>
+                  </span>
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
 
-        <TabsContent value="shifts" className="mt-4">
-          <DataCard noPadding>
-            {shiftQuery.isLoading
-              ? <TableLoadingSkeleton cols={9} />
-              : <ShiftTable rows={shiftQuery.data ?? []} />
-            }
-          </DataCard>
-        </TabsContent>
+          <TabsContent value="audit" className="mt-0">
+            <DataCard
+              title="บันทึกการกระทำ"
+              subtitle="เวลา ผู้ใช้ การกระทำ entity และ metadata จาก audit log"
+              noPadding
+            >
+              {auditQuery.isLoading
+                ? <TableLoadingSkeleton cols={5} />
+                : <AuditTable rows={auditQuery.data ?? []} />
+              }
+            </DataCard>
+          </TabsContent>
 
-        <TabsContent value="adjustments" className="mt-4">
-          <DataCard noPadding>
-            {adjQuery.isLoading
-              ? <TableLoadingSkeleton cols={8} />
-              : <AdjustmentsTable rows={adjQuery.data ?? []} />
-            }
-          </DataCard>
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="shifts" className="mt-0">
+            <DataCard
+              title="รอบแคชเชียร์"
+              subtitle="ยอดเปิดรอบ ยอดคาดหวัง ยอดนับจริง ผลต่าง และสถานะรอบ"
+              noPadding
+            >
+              {shiftQuery.isLoading
+                ? <TableLoadingSkeleton cols={9} />
+                : <ShiftTable rows={shiftQuery.data ?? []} />
+              }
+            </DataCard>
+          </TabsContent>
+
+          <TabsContent value="adjustments" className="mt-0">
+            <DataCard
+              title="การปรับปรุงชำระเงิน"
+              subtitle="การแก้ไขหลังปิดรอบ เหตุผล และ snapshot payment rows ก่อนการกระทำ"
+              noPadding
+            >
+              {adjQuery.isLoading
+                ? <TableLoadingSkeleton cols={8} />
+                : <AdjustmentsTable rows={adjQuery.data ?? []} />
+              }
+            </DataCard>
+          </TabsContent>
+        </Tabs>
+      </section>
     </AppShell>
   );
 }
