@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNowStrict, format } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -47,28 +47,29 @@ import type { AddQueueInput } from '@/lib/validations/queue';
 import type { QueueEntry } from '@/lib/actions/queue';
 import { print as printQueueQr } from '@/lib/printer/service';
 import type { QueueQrData } from '@/lib/printer/types';
+import { getTablesLayout, type TableLayoutItem } from '@/lib/actions/tables';
 import { cn } from '@/lib/utils';
 
-/* ─── Restaurant table layout (queue-only planning) ─────────────── */
+/* ─── Table note helpers (queue-only, no real table/session state) ─── */
 
-const QUEUE_TABLES = [
-  { id: 'big_1',   label: 'ใหญ่ 1', fullLabel: 'โต๊ะใหญ่ 1', type: 'big'   as const, cap: '6–8 คน' },
-  { id: 'big_2',   label: 'ใหญ่ 2', fullLabel: 'โต๊ะใหญ่ 2', type: 'big'   as const, cap: '6–8 คน' },
-  { id: 'big_3',   label: 'ใหญ่ 3', fullLabel: 'โต๊ะใหญ่ 3', type: 'big'   as const, cap: '6–8 คน' },
-  { id: 'big_4',   label: 'ใหญ่ 4', fullLabel: 'โต๊ะใหญ่ 4', type: 'big'   as const, cap: '6–8 คน' },
-  { id: 'small_1', label: 'เล็ก 1', fullLabel: 'โต๊ะเล็ก 1', type: 'small' as const, cap: '2–4 คน' },
-  { id: 'small_2', label: 'เล็ก 2', fullLabel: 'โต๊ะเล็ก 2', type: 'small' as const, cap: '2–4 คน' },
-] as const;
+function formatTableNote(ids: Set<string>, layout: TableLayoutItem[]): string {
+  return layout.filter(t => ids.has(t.id)).map(t => `โต๊ะ ${t.label}`).join(' + ');
+}
 
-type QueueTableId = typeof QUEUE_TABLES[number]['id'];
-
-function formatTableNote(ids: readonly QueueTableId[]): string {
-  if (!ids.length) return '';
-  return ids.map(id => QUEUE_TABLES.find(t => t.id === id)?.fullLabel ?? '').filter(Boolean).join(' + ');
+function parseTableNote(note: string | null | undefined, layout: TableLayoutItem[]): Set<string> {
+  if (!note || note === '-') return new Set();
+  const parts = note.split(' + ');
+  const ids = new Set<string>();
+  for (const part of parts) {
+    const label = part.replace(/^โต๊ะ\s*/u, '').trim();
+    const found = layout.find(t => t.label === label);
+    if (found) ids.add(found.id);
+  }
+  return ids;
 }
 
 function shortTableNote(note: string | null | undefined): string {
-  if (!note) return '';
+  if (!note || note === '-') return '';
   return note.replace(/โต๊ะ/g, '').replace(/ \+ /g, '+');
 }
 
@@ -221,9 +222,10 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
   const queryClient = useQueryClient();
   const todayStr = format(new Date(), 'yyyy-MM-dd');
 
+  // Active queue list: waiting + waiting_suitable_table + called + admitted(not billed)
   const { data: entries = [] } = useQuery({
     queryKey: ['queue-list'],
-    queryFn: () => getQueueList().then(r => r.ok ? r.data : []),
+    queryFn:  () => getQueueList().then(r => r.ok ? r.data : []),
     initialData: initialEntries,
     refetchInterval: 5_000,
     staleTime: 2_000,
@@ -231,19 +233,14 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
 
   const { data: todayHistory = [] } = useQuery({
     queryKey: ['queue-history', todayStr],
-    queryFn: () => getQueueHistory(todayStr).then(r => r.ok ? r.data : []),
+    queryFn:  () => getQueueHistory(todayStr).then(r => r.ok ? r.data : []),
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
 
-  // Board sections
-  const WAITING_SET = new Set(['waiting', 'waiting_suitable_table', 'called']);
-  const waitingEntries  = entries.filter(e => WAITING_SET.has(e.status));
-  const admittedEntries = entries.filter(e => e.status === 'admitted' && !e.billIssued);
-
-  // Status counters
-  const waitingCount   = waitingEntries.length;
-  const admittedCount  = admittedEntries.length;
+  // Counter computations — entries only contains active (server-filtered)
+  const waitingCount   = entries.filter(e => e.status !== 'admitted').length;
+  const admittedCount  = entries.filter(e => e.status === 'admitted').length;
   const billedToday    = todayHistory.filter(e => e.status === 'admitted' && e.billIssued).length;
   const skippedToday   = todayHistory.filter(e => e.status === 'skipped').length;
   const cancelledToday = todayHistory.filter(e => e.status === 'cancelled').length;
@@ -266,12 +263,8 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
 
   async function handleFormSuccess(
     data: {
-      queueNumber: string;
-      publicToken: string;
-      partySize: number;
-      adultCount: number;
-      childCount: number;
-      soupPots: Array<{ soups: SoupOption[] }>;
+      queueNumber: string; publicToken: string; partySize: number;
+      adultCount: number; childCount: number; soupPots: Array<{ soups: SoupOption[] }>;
     } | null,
   ) {
     invalidate();
@@ -294,8 +287,6 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
     };
   }
 
-  const isEmpty = waitingEntries.length === 0 && admittedEntries.length === 0;
-
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[var(--surface-0)]">
 
@@ -306,11 +297,11 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
           <span className="text-lg font-bold text-foreground">คิว</span>
 
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-xs">
-            <Counter label="รอ"       count={waitingCount}   cls="text-[var(--status-warning-fg)] bg-[var(--status-warning-bg)] border-[var(--status-warning-border)]" />
-            <Counter label="รับเข้า" count={admittedCount}  cls="text-[var(--status-success-fg)] bg-[var(--status-success-bg)] border-[var(--status-success-border)]" />
-            <Counter label="ออกบิล" count={billedToday}    cls="text-[var(--status-info-fg)] bg-[var(--status-info-bg)] border-[var(--status-info-border)]" />
-            <Counter label="ข้าม"    count={skippedToday}   cls="text-muted-foreground bg-muted/30 border-border" />
-            <Counter label="ยกเลิก"  count={cancelledToday} cls="text-muted-foreground bg-muted/30 border-border" />
+            <Counter label="รอ"        count={waitingCount}   cls="text-[var(--status-warning-fg)] bg-[var(--status-warning-bg)] border-[var(--status-warning-border)]" />
+            <Counter label="รับเข้า"  count={admittedCount}  cls="text-[var(--status-success-fg)] bg-[var(--status-success-bg)] border-[var(--status-success-border)]" />
+            <Counter label="ออกบิล"   count={billedToday}    cls="text-[var(--status-info-fg)] bg-[var(--status-info-bg)] border-[var(--status-info-border)]" />
+            <Counter label="ข้าม"     count={skippedToday}   cls="text-muted-foreground bg-muted/30 border-border" />
+            <Counter label="ยกเลิก"   count={cancelledToday} cls="text-muted-foreground bg-muted/30 border-border" />
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
@@ -357,9 +348,9 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
         </div>
       )}
 
-      {/* ── Board ──────────────────────────────────────────────── */}
+      {/* ── Single-sequence board ──────────────────────────────── */}
       <main className="flex-1 overflow-y-auto">
-        {isEmpty ? (
+        {entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
             <div className="flex size-14 items-center justify-center rounded-full bg-[var(--surface-2)]">
               <ClipboardList className="size-6 text-muted-foreground/60" />
@@ -378,59 +369,27 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
             </button>
           </div>
         ) : (
-          <div className="space-y-0 px-3 pb-3 pt-2">
-
-            {/* Section 1 — Waiting */}
-            {waitingEntries.length > 0 && (
-              <div>
-                <SectionLabel label="รอเข้า" count={waitingEntries.length} />
-                <div className="space-y-2">
-                  {waitingEntries.map(entry => (
-                    <QueueRow
-                      key={entry.id}
-                      entry={entry}
-                      onEdit={() => { setEditingEntry(entry); setFormMode('edit'); }}
-                      onPickTable={() => setTableTarget(entry)}
-                      onAdmit={() => setAdmitTarget(entry)}
-                      onSkip={() => setSkipTarget(entry)}
-                      onCancel={() => setCancelTarget(entry)}
-                      onPrint={getPrintHandler(entry)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Section 2 — Admitted, not billed */}
-            {admittedEntries.length > 0 && (
-              <div className={waitingEntries.length > 0 ? 'mt-4' : ''}>
-                <SectionLabel
-                  label="รับเข้าแล้ว / รอออกบิล"
-                  count={admittedEntries.length}
-                  cls="text-[var(--status-success-fg)]"
-                />
-                <div className="space-y-2">
-                  {admittedEntries.map(entry => (
-                    <AdmittedRow
-                      key={entry.id}
-                      entry={entry}
-                      onEdit={() => { setEditingEntry(entry); setFormMode('edit'); }}
-                      onPickTable={() => setTableTarget(entry)}
-                      onBillIssued={() => doToggleBill({ id: entry.id, issued: true })}
-                      onCancel={() => setCancelTarget(entry)}
-                      onPrint={getPrintHandler(entry)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+          <div className="space-y-2 px-3 pb-4 pt-2">
+            {entries.map(entry => (
+              <ActiveQueueRow
+                key={entry.id}
+                entry={entry}
+                onEdit={() => { setEditingEntry(entry); setFormMode('edit'); }}
+                onPickTable={() => setTableTarget(entry)}
+                onAdmit={() => setAdmitTarget(entry)}
+                onSkip={() => setSkipTarget(entry)}
+                onBillIssued={() => doToggleBill({ id: entry.id, issued: true })}
+                onCancel={() => setCancelTarget(entry)}
+                onPrint={getPrintHandler(entry)}
+              />
+            ))}
           </div>
         )}
       </main>
 
       {/* ── Overlays ───────────────────────────────────────────── */}
       {tableTarget && (
-        <TablePickerModal
+        <TableMapPickerModal
           entry={tableTarget}
           onClose={() => setTableTarget(null)}
           onSaved={() => { setTableTarget(null); invalidate(); }}
@@ -482,54 +441,62 @@ function Counter({ label, count, cls }: { label: string; count: number; cls: str
   );
 }
 
-/* ─── SectionLabel ───────────────────────────────────────────────── */
+/* ─── ActiveQueueRow — unified row for all active statuses ──────── */
 
-function SectionLabel({
-  label, count, cls = 'text-muted-foreground',
-}: {
-  label: string; count: number; cls?: string;
-}) {
-  return (
-    <div className="mb-2 flex items-center gap-2">
-      <span className={cn('text-xs font-bold uppercase tracking-wide', cls)}>{label}</span>
-      <span className="rounded-full border border-border bg-[var(--surface-2)] px-1.5 py-0.5 text-xs font-semibold text-muted-foreground">
-        {count}
-      </span>
-      <div className="h-px flex-1 bg-border/60" />
-    </div>
-  );
-}
-
-/* ─── QueueRow — waiting/called ──────────────────────────────────── */
-
-interface QueueRowProps {
+interface ActiveQueueRowProps {
   entry: QueueEntry;
   onEdit: () => void;
   onPickTable: () => void;
   onAdmit: () => void;
   onSkip: () => void;
+  onBillIssued: () => void;
   onCancel: () => void;
   onPrint: () => void;
 }
 
-function QueueRow({ entry, onEdit, onPickTable, onAdmit, onSkip, onCancel, onPrint }: QueueRowProps) {
+function ActiveQueueRow({
+  entry, onEdit, onPickTable, onAdmit, onSkip, onBillIssued, onCancel, onPrint,
+}: ActiveQueueRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const isAdmitted = entry.status === 'admitted';
   const tone       = ROW_TONE[entry.status as DisplayStatus] ?? ROW_TONE.waiting;
   const seating    = seatingDisplayLabel(entry.seatingFit);
   const isNonNormal = entry.customerType && entry.customerType !== 'normal';
-  const tableNote  = entry.plannedTableNote;
+  const tableNote  = (entry.plannedTableNote && entry.plannedTableNote !== '-')
+    ? entry.plannedTableNote : null;
+  const timeRef    = (isAdmitted && entry.admittedAt) ? entry.admittedAt : entry.createdAt;
+
+  // Card surface changes subtly for admitted state
+  const cardCls = isAdmitted
+    ? 'border-[var(--status-success-border)]/50 bg-[var(--status-success-bg)]/15'
+    : 'border-border/60 bg-[var(--surface-1)]';
+
+  // Table chip color: success for admitted, info for waiting
+  const tableChipCls = tableNote
+    ? (isAdmitted
+      ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'
+      : 'border-[var(--status-info-border)] bg-[var(--status-info-bg)] text-[var(--status-info-fg)]')
+    : 'border-border bg-[var(--surface-2)] text-muted-foreground hover:border-primary/40 hover:text-foreground';
+
+  const tableButtonActiveCls = tableNote
+    ? (isAdmitted
+      ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'
+      : 'border-[var(--status-info-border)] bg-[var(--status-info-bg)] text-[var(--status-info-fg)]')
+    : 'border-border bg-[var(--surface-2)] text-muted-foreground hover:border-primary/40 hover:text-foreground';
 
   return (
-    <div className="relative flex items-stretch overflow-hidden rounded-xl border border-border/60 bg-[var(--surface-1)] shadow-[var(--shadow-card)]">
+    <div className={cn('relative flex items-stretch overflow-hidden rounded-xl border shadow-[var(--shadow-card)] transition-colors', cardCls)}>
+      {/* Accent bar */}
       <div className="w-[3px] shrink-0" style={{ backgroundColor: tone.accentColor }} aria-hidden="true" />
 
-      {/* Tappable info area */}
+      {/* Tappable info area → opens edit */}
       <button
         type="button"
         onClick={onEdit}
-        className="flex flex-1 flex-col justify-center gap-1 px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-2)]/50"
+        className="flex flex-1 flex-col justify-center gap-1 px-3 py-2.5 text-left transition-colors hover:bg-foreground/[0.02]"
       >
-        {/* Line 1 */}
+        {/* Line 1: number · status badge · time */}
         <div className="flex items-center gap-2">
           <span className="w-[3.5rem] shrink-0 text-xl font-black tabular-nums leading-none text-foreground">
             {entry.queueNumber}
@@ -539,16 +506,19 @@ function QueueRow({ entry, onEdit, onPickTable, onAdmit, onSkip, onCancel, onPri
           </span>
           <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
             <Clock className="size-3 shrink-0" />
-            {formatDistanceToNowStrict(new Date(entry.createdAt), { locale: th, addSuffix: true })}
+            {formatDistanceToNowStrict(new Date(timeRef as string | Date), { locale: th, addSuffix: true })}
           </span>
         </div>
-        {/* Line 2 */}
+
+        {/* Line 2: count · soup chips · seating · table chip · type chip */}
         <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
-          <span className="shrink-0 font-semibold text-foreground/80">ผ{entry.adultCount}/ด{entry.childCount}</span>
+          <span className="shrink-0 font-semibold text-foreground/80">
+            ผ{entry.adultCount}/ด{entry.childCount}
+          </span>
           <SoupChips pots={entry.soupPots as Array<{ soups: string[] }> | null} />
           {seating && <span className="shrink-0 text-muted-foreground">{seating}</span>}
           {tableNote && (
-            <span className="inline-flex shrink-0 items-center gap-0.5 rounded border border-[var(--status-info-border)] bg-[var(--status-info-bg)] px-1.5 py-0.5 font-semibold text-[var(--status-info-fg)]">
+            <span className={cn('inline-flex shrink-0 items-center gap-0.5 rounded border px-1.5 py-0.5 font-semibold', tableChipCls)}>
               <MapPin className="size-2.5" />
               {tableNote}
             </span>
@@ -561,45 +531,57 @@ function QueueRow({ entry, onEdit, onPickTable, onAdmit, onSkip, onCancel, onPri
         </div>
       </button>
 
-      {/* Actions — stop propagation */}
+      {/* Actions — stop propagation so taps don't trigger edit */}
       <div className="flex shrink-0 items-center gap-1.5 pr-2.5" onClick={e => e.stopPropagation()}>
-        {/* เลือกโต๊ะ — neutral when empty, info tint when table set */}
+
+        {/* เลือกโต๊ะ — always shown */}
         <button
           type="button"
           onClick={onPickTable}
           aria-label="เลือกโต๊ะ"
           className={cn(
             'flex min-h-9 items-center gap-1 rounded-lg border px-2 text-xs font-semibold transition-colors active:scale-95',
-            tableNote
-              ? 'border-[var(--status-info-border)] bg-[var(--status-info-bg)] text-[var(--status-info-fg)]'
-              : 'border-border bg-[var(--surface-2)] text-muted-foreground hover:border-primary/40 hover:text-foreground',
+            tableButtonActiveCls,
           )}
         >
           <MapPin className="size-3.5 shrink-0" />
           {tableNote ? shortTableNote(tableNote) : 'โต๊ะ'}
         </button>
 
-        {/* รับเข้า */}
-        <button
-          type="button"
-          onClick={onAdmit}
-          className="flex min-h-9 items-center gap-1 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-2.5 text-xs font-semibold text-[var(--status-success-fg)] transition-colors hover:border-[var(--status-success-fg)] active:scale-95"
-        >
-          <UserCheck className="size-3.5 shrink-0" />
-          รับเข้า
-        </button>
+        {/* Status-conditional primary action */}
+        {isAdmitted ? (
+          <button
+            type="button"
+            onClick={onBillIssued}
+            className="flex min-h-9 items-center gap-1 rounded-lg border border-primary bg-primary px-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95"
+          >
+            <Check className="size-3.5 shrink-0" />
+            ออกบิล
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onAdmit}
+              className="flex min-h-9 items-center gap-1 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-2.5 text-xs font-semibold text-[var(--status-success-fg)] transition-colors hover:border-[var(--status-success-fg)] active:scale-95"
+            >
+              <UserCheck className="size-3.5 shrink-0" />
+              รับเข้า
+            </button>
 
-        {/* ข้าม — icon only */}
-        <button
-          type="button"
-          onClick={onSkip}
-          aria-label="ข้ามคิว"
-          className="flex size-9 items-center justify-center rounded-lg border border-[var(--status-warning-border)] text-[var(--status-warning-fg)] transition-colors hover:bg-[var(--status-warning-bg)] active:scale-95"
-        >
-          <SkipForward className="size-4" />
-        </button>
+            {/* ข้าม — icon only */}
+            <button
+              type="button"
+              onClick={onSkip}
+              aria-label="ข้ามคิว"
+              className="flex size-9 items-center justify-center rounded-lg border border-[var(--status-warning-border)] text-[var(--status-warning-fg)] transition-colors hover:bg-[var(--status-warning-bg)] active:scale-95"
+            >
+              <SkipForward className="size-4" />
+            </button>
+          </>
+        )}
 
-        {/* Overflow */}
+        {/* Overflow menu */}
         <div className="relative">
           <button
             type="button"
@@ -631,124 +613,9 @@ function QueueRow({ entry, onEdit, onPickTable, onAdmit, onSkip, onCancel, onPri
   );
 }
 
-/* ─── AdmittedRow — รับเข้าแล้ว / รอออกบิล ─────────────────────── */
+/* ─── TableMapPickerModal — real restaurant floor plan picker ────── */
 
-interface AdmittedRowProps {
-  entry: QueueEntry;
-  onEdit: () => void;
-  onPickTable: () => void;
-  onBillIssued: () => void;
-  onCancel: () => void;
-  onPrint: () => void;
-}
-
-function AdmittedRow({ entry, onEdit, onPickTable, onBillIssued, onCancel, onPrint }: AdmittedRowProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const tone     = ROW_TONE.admitted;
-  const seating  = seatingDisplayLabel(entry.seatingFit);
-  const tableNote = entry.plannedTableNote;
-  const timeRef   = (entry.admittedAt ?? entry.createdAt) as Date | string;
-
-  return (
-    <div className="relative flex items-stretch overflow-hidden rounded-xl border border-[var(--status-success-border)]/40 bg-[var(--status-success-bg)]/20 shadow-[var(--shadow-card)]">
-      <div className="w-[3px] shrink-0" style={{ backgroundColor: tone.accentColor }} aria-hidden="true" />
-
-      {/* Tappable info area */}
-      <button
-        type="button"
-        onClick={onEdit}
-        className="flex flex-1 flex-col justify-center gap-1 px-3 py-2.5 text-left transition-colors hover:bg-[var(--status-success-bg)]/20"
-      >
-        {/* Line 1 */}
-        <div className="flex items-center gap-2">
-          <span className="w-[3.5rem] shrink-0 text-xl font-black tabular-nums leading-none text-foreground">
-            {entry.queueNumber}
-          </span>
-          <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold leading-none', tone.badge)}>
-            {tone.label}
-          </span>
-          <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-            <Clock className="size-3 shrink-0" />
-            {formatDistanceToNowStrict(new Date(timeRef), { locale: th, addSuffix: true })}
-          </span>
-        </div>
-        {/* Line 2 */}
-        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
-          <span className="shrink-0 font-semibold text-foreground/80">ผ{entry.adultCount}/ด{entry.childCount}</span>
-          <SoupChips pots={entry.soupPots as Array<{ soups: string[] }> | null} />
-          {seating && <span className="shrink-0 text-muted-foreground">{seating}</span>}
-          {tableNote && (
-            <span className="inline-flex shrink-0 items-center gap-0.5 rounded border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-1.5 py-0.5 font-semibold text-[var(--status-success-fg)]">
-              <MapPin className="size-2.5" />
-              {tableNote}
-            </span>
-          )}
-        </div>
-      </button>
-
-      {/* Actions */}
-      <div className="flex shrink-0 items-center gap-1.5 pr-2.5" onClick={e => e.stopPropagation()}>
-        {/* เลือกโต๊ะ */}
-        <button
-          type="button"
-          onClick={onPickTable}
-          aria-label="เลือกโต๊ะ"
-          className={cn(
-            'flex min-h-9 items-center gap-1 rounded-lg border px-2 text-xs font-semibold transition-colors active:scale-95',
-            tableNote
-              ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'
-              : 'border-border bg-[var(--surface-2)] text-muted-foreground hover:border-primary/40 hover:text-foreground',
-          )}
-        >
-          <MapPin className="size-3.5 shrink-0" />
-          {tableNote ? shortTableNote(tableNote) : 'โต๊ะ'}
-        </button>
-
-        {/* ออกบิลแล้ว — primary action for admitted row */}
-        <button
-          type="button"
-          onClick={onBillIssued}
-          className="flex min-h-9 items-center gap-1 rounded-lg border border-primary bg-primary px-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95"
-        >
-          <Check className="size-3.5 shrink-0" />
-          ออกบิล
-        </button>
-
-        {/* Overflow */}
-        <div className="relative">
-          <button
-            type="button"
-            aria-label="เมนูเพิ่มเติม"
-            onClick={() => setMenuOpen(v => !v)}
-            className="flex size-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted"
-          >
-            <MoreVertical className="size-4" />
-          </button>
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-xl border border-border bg-[var(--surface-raised)] shadow-[var(--shadow-raised)]">
-                <button type="button" onClick={() => { setMenuOpen(false); onPrint(); }}
-                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-muted">
-                  <Printer className="size-3.5 text-muted-foreground" />พิมพ์ตั๋วซ้ำ
-                </button>
-                <div className="border-t border-border" />
-                <button type="button" onClick={() => { setMenuOpen(false); onCancel(); }}
-                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)]">
-                  <Trash2 className="size-3.5" />ยกเลิกคิว
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─── TablePickerModal ───────────────────────────────────────────── */
-
-function TablePickerModal({
+function TableMapPickerModal({
   entry,
   onClose,
   onSaved,
@@ -757,24 +624,78 @@ function TablePickerModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [selected, setSelected] = useState<Set<QueueTableId>>(new Set());
-  const [submitting, setSubmitting] = useState(false);
+  const containerRef                    = useRef<HTMLDivElement>(null);
+  const [containerW, setContainerW]    = useState(0);
+  const [containerH, setContainerH]    = useState(0);
+  // Tracks explicit user toggle overrides (id → true=on / false=off)
+  const [manualToggles, setManualToggles] = useState<Map<string, boolean>>(new Map());
+  const [submitting, setSubmitting]    = useState(false);
 
-  function toggle(id: QueueTableId) {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+  const { data: layout = [], isLoading } = useQuery({
+    queryKey: ['tables-layout'],
+    queryFn:  () => getTablesLayout().then(r => r.ok ? r.data : []),
+    staleTime: 60_000,
+  });
+
+  // Base selection derived from note string + real layout (no setState-in-effect needed)
+  const parsedBase = useMemo(
+    () => parseTableNote(entry.plannedTableNote, layout),
+    [entry.plannedTableNote, layout],
+  );
+
+  // Effective selection = parsed base merged with manual overrides
+  const selected = useMemo(() => {
+    const result = new Set(parsedBase);
+    for (const [id, on] of manualToggles) {
+      if (on) result.add(id); else result.delete(id);
+    }
+    return result;
+  }, [parsedBase, manualToggles]);
+
+  // Measure container for scale-to-fit
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => {
+      setContainerW(el.clientWidth);
+      setContainerH(el.clientHeight);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const PAD     = 24;
+  const canvasW = layout.length
+    ? Math.max(400, ...layout.map(t => t.positionX + t.width  + PAD))
+    : 400;
+  const canvasH = layout.length
+    ? Math.max(300, ...layout.map(t => t.positionY + t.height + PAD))
+    : 300;
+  const scale = (containerW > 0 && containerH > 0)
+    ? Math.min(containerW / canvasW, containerH / canvasH, 1)
+    : 1;
+
+  function toggle(id: string) {
+    const willBeOn = !selected.has(id);
+    setManualToggles(prev => {
+      const next = new Map(prev);
+      next.set(id, willBeOn);
       return next;
     });
   }
 
+  const notePreview = formatTableNote(selected, layout);
+  const hasExisting = entry.plannedTableNote && entry.plannedTableNote !== '-';
+
   async function handleConfirm() {
-    const note = formatTableNote([...selected] as QueueTableId[]);
+    const note = notePreview || '-';
     setSubmitting(true);
-    const result = await updatePlannedTable({ id: entry.id, plannedTableNote: note || '-' });
+    const result = await updatePlannedTable({ id: entry.id, plannedTableNote: note });
     setSubmitting(false);
     if (!result.ok) { toast.error(result.error); return; }
-    toast.success(note ? `บันทึก ${note}` : 'ล้างการจองโต๊ะ');
+    toast.success(notePreview ? `บันทึก ${notePreview}` : 'ล้างการเลือกโต๊ะ');
     onSaved();
   }
 
@@ -787,27 +708,27 @@ function TablePickerModal({
     onSaved();
   }
 
-  const bigTables   = QUEUE_TABLES.filter(t => t.type === 'big');
-  const smallTables = QUEUE_TABLES.filter(t => t.type === 'small');
-  const notePreview = formatTableNote([...selected] as QueueTableId[]);
-
   return (
     <div
       className="fixed inset-0 z-40 flex items-end justify-center bg-foreground/30 backdrop-blur-[2px] sm:items-center"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-t-2xl border border-border bg-[var(--surface-1)] shadow-[var(--shadow-dialog)] sm:rounded-2xl"
+        className="w-full max-w-lg overflow-hidden rounded-t-2xl border border-border bg-[var(--surface-1)] shadow-[var(--shadow-dialog)] sm:rounded-2xl"
         onClick={e => e.stopPropagation()}
       >
+        {/* Handle bar (mobile) */}
         <div className="flex justify-center pt-2.5 sm:hidden">
           <div className="h-1 w-10 rounded-full bg-muted-foreground/20" />
         </div>
 
+        {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
           <div>
-            <h2 className="text-base font-bold text-foreground">เลือกโต๊ะ — {entry.queueNumber}</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">ผ{entry.adultCount}/ด{entry.childCount} · ข้อมูลนี้ใช้สำหรับวางแผนเท่านั้น</p>
+            <h2 className="text-base font-bold text-foreground">เลือกโต๊ะ — คิว {entry.queueNumber}</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              ผ{entry.adultCount}/ด{entry.childCount} · เลือกได้มากกว่า 1 โต๊ะ · ข้อมูลนี้ใช้สำหรับวางแผนเท่านั้น
+            </p>
           </div>
           <button type="button" aria-label="ปิด" onClick={onClose}
             className="flex size-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted">
@@ -815,73 +736,103 @@ function TablePickerModal({
           </button>
         </div>
 
-        <div className="px-5 pb-5 pt-4">
-          {/* Large tables */}
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            โต๊ะใหญ่
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {bigTables.map(t => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => toggle(t.id)}
-                className={cn(
-                  'flex h-[72px] flex-col items-center justify-center gap-0.5 rounded-xl border-2 text-sm font-bold transition-all active:scale-95',
-                  selected.has(t.id)
-                    ? 'border-primary bg-primary text-primary-foreground shadow-md'
-                    : 'border-border bg-[var(--surface-2)] text-foreground hover:border-primary/40 hover:bg-[var(--surface-primary-subtle)]',
-                )}
-              >
-                <span>{t.label}</span>
-                <span className={cn('text-xs font-normal', selected.has(t.id) ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
-                  {t.cap}
-                </span>
-              </button>
-            ))}
+        {/* Map area */}
+        <div className="px-4 pb-4 pt-3">
+          {/* Legend */}
+          <div className="mb-2 flex items-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block size-2.5 rounded-sm border border-dashed border-muted-foreground/40 bg-[var(--surface-2)]" />
+              ยังไม่เลือก
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block size-2.5 rounded-sm border border-primary bg-primary" />
+              เลือกแล้ว
+            </span>
           </div>
 
-          {/* Small tables */}
-          <p className="mb-2 mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            โต๊ะเล็ก
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {smallTables.map(t => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => toggle(t.id)}
-                className={cn(
-                  'flex h-[52px] flex-col items-center justify-center gap-0.5 rounded-xl border-2 text-sm font-bold transition-all active:scale-95',
-                  selected.has(t.id)
-                    ? 'border-primary bg-primary text-primary-foreground shadow-md'
-                    : 'border-border bg-[var(--surface-2)] text-foreground hover:border-primary/40 hover:bg-[var(--surface-primary-subtle)]',
-                )}
-              >
-                <span>{t.label}</span>
-                <span className={cn('text-xs font-normal', selected.has(t.id) ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
-                  {t.cap}
-                </span>
-              </button>
-            ))}
-          </div>
-
-          {/* Preview + actions */}
-          {notePreview ? (
-            <div className="mt-3 rounded-xl border border-[var(--status-info-border)] bg-[var(--status-info-bg)] px-3 py-2.5 text-sm font-semibold text-[var(--status-info-fg)]">
-              <MapPin className="mr-1.5 inline size-3.5" />
-              {notePreview}
+          {/* Floor plan canvas */}
+          {isLoading ? (
+            <div className="flex h-[280px] items-center justify-center rounded-xl border border-border bg-[var(--surface-2)]">
+              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : layout.length === 0 ? (
+            <div className="flex h-[280px] flex-col items-center justify-center gap-2 rounded-xl border border-border bg-[var(--surface-2)] text-sm text-muted-foreground">
+              <MapPin className="size-5 opacity-40" />
+              ยังไม่มีโต๊ะในระบบ
             </div>
           ) : (
-            <div className="mt-3 rounded-xl border border-border bg-[var(--surface-2)] px-3 py-2.5 text-sm text-muted-foreground">
-              เลือกโต๊ะด้านบน (เลือกได้มากกว่า 1)
+            <div
+              ref={containerRef}
+              className="relative h-[280px] overflow-hidden rounded-xl border border-border bg-[var(--surface-2)]"
+            >
+              {/* Dot-grid background */}
+              <svg
+                className="pointer-events-none absolute inset-0 h-full w-full"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <defs>
+                  <pattern id="dots-q" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+                    <circle cx="2" cy="2" r="1" fill="currentColor" className="text-muted-foreground/15" />
+                  </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#dots-q)" />
+              </svg>
+
+              {/* Scaled canvas — mirrors LinkedTablePicker pattern */}
+              <div
+                className="absolute origin-top-left"
+                style={{ width: canvasW, height: canvasH, transform: `scale(${scale})` }}
+              >
+                {layout.map(t => {
+                  const isSelected  = selected.has(t.id);
+                  const shapeClass  = t.shape === 'rectangle' ? 'rounded-md' : 'rounded-xl';
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => toggle(t.id)}
+                      style={{ position: 'absolute', left: t.positionX, top: t.positionY, width: t.width, height: t.height }}
+                      className={cn(
+                        'flex flex-col items-center justify-center border-2 font-semibold transition-all active:scale-95 select-none',
+                        shapeClass,
+                        isSelected
+                          ? 'border-primary bg-primary text-primary-foreground shadow-md'
+                          : 'border-border/60 bg-[var(--surface-1)] text-foreground hover:border-primary/50 hover:bg-[var(--surface-primary-subtle)]',
+                      )}
+                    >
+                      <span className="text-base font-bold leading-tight tabular-nums">{t.label}</span>
+                      {isSelected && <span className="text-[10px] font-normal opacity-80">✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
+          {/* Selected note preview */}
+          <div className="mt-3">
+            {notePreview ? (
+              <div className="flex items-center gap-2 rounded-xl border border-[var(--status-info-border)] bg-[var(--status-info-bg)] px-3 py-2.5">
+                <MapPin className="size-3.5 shrink-0 text-[var(--status-info-fg)]" />
+                <span className="text-sm font-semibold text-[var(--status-info-fg)]">{notePreview}</span>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border bg-[var(--surface-2)] px-3 py-2.5 text-sm text-muted-foreground">
+                แตะโต๊ะบนแผนผังเพื่อเลือก (เลือกได้มากกว่า 1)
+              </div>
+            )}
+          </div>
+
+          {/* Action buttons */}
           <div className="mt-3 flex gap-2">
-            {entry.plannedTableNote && entry.plannedTableNote !== '-' && (
-              <button type="button" onClick={handleClear} disabled={submitting}
-                className="flex min-h-10 items-center justify-center rounded-xl border border-border bg-[var(--surface-2)] px-4 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-60">
+            {hasExisting && (
+              <button
+                type="button"
+                onClick={handleClear}
+                disabled={submitting}
+                className="flex min-h-10 items-center justify-center rounded-xl border border-border bg-[var(--surface-2)] px-4 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-60"
+              >
                 ล้าง
               </button>
             )}
@@ -1000,8 +951,8 @@ interface QueueFormModalProps {
 }
 
 function QueueFormModal({ mode, entry, onClose, onSuccess }: QueueFormModalProps) {
-  const [adultCount, setAdultCount]   = useState(entry?.adultCount ?? 1);
-  const [childCount, setChildCount]   = useState(entry?.childCount ?? 0);
+  const [adultCount, setAdultCount]     = useState(entry?.adultCount ?? 1);
+  const [childCount, setChildCount]     = useState(entry?.childCount ?? 0);
   const [customerType, setCustomerType] = useState<CustomerType>(
     (entry?.customerType as CustomerType) ?? 'normal',
   );
@@ -1023,8 +974,8 @@ function QueueFormModal({ mode, entry, onClose, onSuccess }: QueueFormModalProps
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (total === 0)                              { setError('กรุณากรอกจำนวนคน'); return; }
-    if (soupPots.some(p => p.soups.length === 0)) { setError('กรุณาเลือกน้ำซุปอย่างน้อย 1 อย่างต่อหม้อ'); return; }
+    if (total === 0)                               { setError('กรุณากรอกจำนวนคน'); return; }
+    if (soupPots.some(p => p.soups.length === 0))  { setError('กรุณาเลือกน้ำซุปอย่างน้อย 1 อย่างต่อหม้อ'); return; }
     const payload: AddQueueInput = { adultCount, childCount, customerType, soupPots, seatingFit };
     setSubmitting(true); setError('');
     try {
@@ -1066,7 +1017,7 @@ function QueueFormModal({ mode, entry, onClose, onSuccess }: QueueFormModalProps
             <div className="flex gap-4 rounded-xl border border-border bg-[var(--surface-2)] px-4 py-3">
               <Stepper label="ผู้ใหญ่" value={adultCount} onChange={v => { setAdultCount(v); suggestSeating(v, childCount); }} />
               <div className="w-px bg-border" />
-              <Stepper label="เด็ก" value={childCount} onChange={v => { setChildCount(v); suggestSeating(adultCount, v); }} />
+              <Stepper label="เด็ก"    value={childCount}  onChange={v => { setChildCount(v); suggestSeating(adultCount, v); }} />
             </div>
           </div>
           <div>
@@ -1105,7 +1056,11 @@ function QueueFormModal({ mode, entry, onClose, onSuccess }: QueueFormModalProps
               ))}
             </div>
           </div>
-          {error && <p className="rounded-lg bg-[var(--status-danger-bg)] px-3 py-2.5 text-sm font-medium text-[var(--status-danger-fg)]">{error}</p>}
+          {error && (
+            <p className="rounded-lg bg-[var(--status-danger-bg)] px-3 py-2.5 text-sm font-medium text-[var(--status-danger-fg)]">
+              {error}
+            </p>
+          )}
           <button type="submit" disabled={submitting}
             className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary text-base font-bold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:opacity-60">
             {submitting && <Loader2 className="size-4 animate-spin" />}
@@ -1125,6 +1080,8 @@ function AdmitDialog({ entry, onClose, onSuccess }: {
   const [submitting, setSubmitting] = useState(false);
   const total = entry.adultCount + entry.childCount || entry.partySize;
   const soup  = soupSummary(entry.soupPots as Array<{ soups: string[] }> | null);
+  const tableNote = (entry.plannedTableNote && entry.plannedTableNote !== '-')
+    ? entry.plannedTableNote : null;
 
   async function handleAdmit() {
     setSubmitting(true);
@@ -1136,13 +1093,13 @@ function AdmitDialog({ entry, onClose, onSuccess }: {
   }
 
   return (
-    <ModalShell title={`รับเข้า — ${entry.queueNumber}`} onClose={onClose}>
+    <ModalShell title={`รับเข้า — คิว ${entry.queueNumber}`} onClose={onClose}>
       <div className="mb-4 rounded-xl border border-border bg-[var(--surface-2)] px-4 py-3 text-sm">
         <p className="font-semibold text-foreground">{total} คน (ผ{entry.adultCount}/ด{entry.childCount})</p>
         {soup && <p className="mt-0.5 text-muted-foreground">{soup}</p>}
-        {entry.plannedTableNote && entry.plannedTableNote !== '-' && (
+        {tableNote && (
           <p className="mt-1 flex items-center gap-1 font-semibold text-[var(--status-info-fg)]">
-            <MapPin className="size-3" />{entry.plannedTableNote}
+            <MapPin className="size-3" />{tableNote}
           </p>
         )}
         {entry.seatingFit && (
@@ -1257,8 +1214,8 @@ function HistoryModal({ todayStr, onClose }: { todayStr: string; onClose: () => 
     staleTime: 15_000,
   });
 
-  // Show in history: skipped, cancelled, admitted+billed, seated, left
-  // Exclude: still-active (waiting/called/waiting_suitable_table) and admitted-not-billed
+  // Completed = skipped, cancelled, admitted+billIssued, seated, left
+  // Exclude: waiting/called/waiting_suitable_table and admitted-not-billed
   const completed = [...history]
     .filter(e => {
       if (['waiting', 'waiting_suitable_table', 'called'].includes(e.status)) return false;
@@ -1292,7 +1249,9 @@ function HistoryModal({ todayStr, onClose }: { todayStr: string; onClose: () => 
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-3">
           {isLoading ? (
-            <div className="flex justify-center py-8"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
+            <div className="flex justify-center py-8">
+              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+            </div>
           ) : completed.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-10 text-center text-muted-foreground">
               <ClipboardList className="size-7 opacity-40" />
@@ -1302,21 +1261,25 @@ function HistoryModal({ todayStr, onClose }: { todayStr: string; onClose: () => 
             <div className="space-y-2">
               {completed.map(e => {
                 const statusCls   = HIST_CLS[e.status] ?? HIST_CLS.cancelled;
-                const statusLabel = e.status === 'admitted' && e.billIssued
+                const statusLabel = (e.status === 'admitted' && e.billIssued)
                   ? 'ออกบิลแล้ว'
                   : (HIST_LABEL[e.status] ?? e.status);
                 const total = e.adultCount + e.childCount || e.partySize;
+                const tableNote = (e.plannedTableNote && e.plannedTableNote !== '-')
+                  ? e.plannedTableNote : null;
                 return (
                   <div key={e.id} className="flex items-center gap-3 rounded-xl border border-border bg-[var(--surface-2)] px-3 py-2.5">
                     <span className="w-10 shrink-0 text-lg font-bold tabular-nums text-foreground">{e.queueNumber}</span>
                     <div className="min-w-0 flex-1 text-sm">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className={cn('rounded-full border px-2 py-0.5 text-xs font-semibold', statusCls)}>{statusLabel}</span>
+                        <span className={cn('rounded-full border px-2 py-0.5 text-xs font-semibold', statusCls)}>
+                          {statusLabel}
+                        </span>
                         <span className="text-muted-foreground">ผ{e.adultCount}/ด{e.childCount} ({total} คน)</span>
                         <SoupChips pots={e.soupPots as Array<{ soups: string[] }> | null} />
-                        {e.plannedTableNote && e.plannedTableNote !== '-' && (
+                        {tableNote && (
                           <span className="inline-flex items-center gap-0.5 rounded border border-border bg-[var(--surface-2)] px-1.5 py-0.5 text-xs text-muted-foreground">
-                            <MapPin className="size-2.5" />{e.plannedTableNote}
+                            <MapPin className="size-2.5" />{tableNote}
                           </span>
                         )}
                       </div>

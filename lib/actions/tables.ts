@@ -285,6 +285,36 @@ export async function softDeleteTable(input: { tableId: string }) {
   }
 }
 
+/* ─── Queue-only layout query (no session/status data) ─────────────── */
+
+export async function getTablesLayout() {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  try {
+    const rows = await db
+      .select({
+        id:        tables.id,
+        label:     tables.label,
+        positionX: tables.positionX,
+        positionY: tables.positionY,
+        width:     tables.width,
+        height:    tables.height,
+        shape:     tables.shape,
+      })
+      .from(tables)
+      .where(isNull(tables.deletedAt))
+      .orderBy(asc(tables.label));
+    return { ok: true as const, data: rows };
+  } catch (e) {
+    console.error('[getTablesLayout]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}
+
+export type TableLayoutItem = NonNullable<
+  Extract<Awaited<ReturnType<typeof getTablesLayout>>, { ok: true }>['data']
+>[number];
+
 export async function setTableReserved(input: { tableId: string }) {
   const authSession = await auth();
   if (!authSession?.user) return { ok: false as const, error: 'เธเธฃเธธเธ“เธฒเน€เธเนเธฒเธชเธนเนเธฃเธฐเธเธ' };
