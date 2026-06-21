@@ -28,6 +28,12 @@ android {
         }
     }
 
+    buildFeatures {
+        // AGP 8+ disables BuildConfig by default; enable it so MainActivity
+        // can check BuildConfig.DEBUG to gate WebView remote debugging.
+        buildConfig = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

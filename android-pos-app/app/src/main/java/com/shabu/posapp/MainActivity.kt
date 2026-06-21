@@ -39,7 +39,6 @@ class MainActivity : AppCompatActivity() {
         webView.settings.apply {
             javaScriptEnabled = true     // required — the POS webapp is a React SPA
             domStorageEnabled = true     // localStorage + IndexedDB (printer config)
-            databaseEnabled = true
             allowFileAccess = false      // no local file access needed
             useWideViewPort = true       // respect the webapp's viewport meta tag
             loadWithOverviewMode = true
