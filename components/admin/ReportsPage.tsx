@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -7,7 +8,17 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts';
-import { Banknote } from 'lucide-react';
+import {
+  ArrowRight,
+  BadgePercent,
+  Banknote,
+  BarChart3,
+  ClipboardCheck,
+  Download,
+  ReceiptText,
+  ShieldCheck,
+  WalletCards,
+} from 'lucide-react';
 import { getReportSummary } from '@/lib/actions/dashboard';
 import { getFoodCostReport } from '@/lib/actions/recipes';
 import { getPaymentCollectionReport } from '@/lib/actions/reports/collection';
@@ -55,6 +66,73 @@ const ACCOUNT_TYPE_LABELS: Record<string, string> = {
   cash_drawer: 'ลิ้นชักเงินสด',
   other: 'อื่น ๆ',
 };
+
+const REPORT_TONE_CLASSES = {
+  info: 'border-[var(--status-info-border)] bg-[var(--status-info-bg)] text-[var(--status-info-fg)]',
+  success: 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-fg)]',
+  warning: 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]',
+  danger: 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]',
+};
+
+const REPORT_HUB_CARDS = [
+  {
+    kind: 'tab',
+    tab: 'revenue' as Tab,
+    title: 'รายได้และลูกค้า',
+    description: 'ดูรายได้รายวัน จำนวนโต๊ะ ลูกค้า เฉลี่ยต่อโต๊ะ และแยกตามช่องทางชำระเงิน',
+    badge: 'รายงานหลัก',
+    icon: BarChart3,
+    tone: 'info' as const,
+  },
+  {
+    kind: 'tab',
+    tab: 'foodcost' as Tab,
+    title: 'ต้นทุนอาหาร',
+    description: 'ติดตามต้นทุนทฤษฎี เทียบยอดขาย และเปอร์เซ็นต์ต้นทุนอาหารรายวัน',
+    badge: 'ควบคุมต้นทุน',
+    icon: BadgePercent,
+    tone: 'warning' as const,
+  },
+  {
+    kind: 'tab',
+    tab: 'collection' as Tab,
+    title: 'ยอดรับจริง',
+    description: 'ตรวจยอดรับตามวิธีชำระเงิน บัญชีรับเงิน และตาราง matrix สำหรับปิดยอด',
+    badge: 'ปิดยอดเงิน',
+    icon: WalletCards,
+    tone: 'success' as const,
+  },
+  {
+    kind: 'link',
+    href: '/reports/audit',
+    title: 'รายงานตรวจสอบ',
+    description: 'เปิดหน้าตรวจสอบประวัติการแก้ไข ลบ และกิจกรรมสำคัญของระบบ',
+    badge: 'Audit trail',
+    icon: ShieldCheck,
+    tone: 'danger' as const,
+  },
+] as const;
+
+const REPORT_COMMAND_POINTS = [
+  {
+    label: 'Data source',
+    value: 'ใช้ action เดิม',
+    detail: 'ทุกแท็บยังโหลดข้อมูลจาก server action ชุดเดิม',
+    icon: ClipboardCheck,
+  },
+  {
+    label: 'Export',
+    value: 'CSV รายได้',
+    detail: 'ปุ่ม export ยังอิงตารางรายวันเดิมเท่านั้น',
+    icon: Download,
+  },
+  {
+    label: 'Routes',
+    value: '/reports/audit',
+    detail: 'ลิงก์เสริมชี้ไปยัง route รายงานที่มีอยู่แล้ว',
+    icon: ReceiptText,
+  },
+];
 
 // ─── Revenue Report ────────────────────────────────────────────────────────────
 
@@ -730,27 +808,148 @@ function CollectionReport() {
 export function ReportsPage() {
   const [tab, setTab] = useState<Tab>('revenue');
 
-  const TABS: { key: Tab; label: string }[] = [
-    { key: 'revenue',    label: 'รายได้' },
-    { key: 'foodcost',   label: 'ต้นทุนอาหาร' },
-    { key: 'collection', label: 'ยอดรับจริง' },
+  const TABS: { key: Tab; label: string; description: string }[] = [
+    { key: 'revenue', label: 'รายได้', description: 'ยอดขาย โต๊ะ ลูกค้า และช่องทางชำระเงิน' },
+    { key: 'foodcost', label: 'ต้นทุนอาหาร', description: 'ต้นทุนทฤษฎีและเปอร์เซ็นต์ต้นทุน' },
+    { key: 'collection', label: 'ยอดรับจริง', description: 'สรุปยอดรับตามวิธีและบัญชี' },
   ];
 
   return (
     <AppShell>
-      <PageHeader title="รายงาน" subtitle="สรุปรายได้ · ต้นทุนอาหาร · ยอดรับจริง" />
-      <Tabs value={tab} onValueChange={(v) => { if (v) setTab(v as Tab); }} className="gap-0">
-        <TabsList variant="line" className="w-full justify-start rounded-none border-b border-border px-0 h-auto">
-          {TABS.map((t) => (
-            <TabsTrigger key={t.key} value={t.key} className="px-4 py-2.5 h-auto rounded-none">
-              {t.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        <TabsContent value="revenue" className="mt-6"><RevenueReport /></TabsContent>
-        <TabsContent value="foodcost" className="mt-6"><FoodCostReport /></TabsContent>
-        <TabsContent value="collection" className="mt-6"><CollectionReport /></TabsContent>
-      </Tabs>
+      <PageHeader
+        title="รายงาน"
+        subtitle="ศูนย์รายงานสำหรับติดตามรายได้ ต้นทุนอาหาร และยอดรับจริงของร้าน"
+        className="rounded-lg border border-border bg-[var(--surface-1)] px-5 py-4 shadow-[var(--shadow-card)]"
+        noBorder
+        actions={(
+          <Link
+            href="/reports/audit"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-[var(--surface-1)] px-3 text-sm font-medium text-foreground shadow-[var(--shadow-card)] transition-colors hover:bg-[var(--surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ShieldCheck className="size-4" />
+            ตรวจสอบ
+          </Link>
+        )}
+      >
+        <div className="flex flex-wrap gap-2 pt-1">
+          <span className="rounded-full border border-[var(--status-info-border)] bg-[var(--status-info-bg)] px-3 py-1 text-xs font-medium text-[var(--status-info-fg)]">
+            UI-only premium pass
+          </span>
+          <span className="rounded-full border border-border bg-[var(--surface-2)] px-3 py-1 text-xs font-medium text-muted-foreground">
+            ไม่เปลี่ยนสูตรคำนวณ
+          </span>
+          <span className="rounded-full border border-border bg-[var(--surface-2)] px-3 py-1 text-xs font-medium text-muted-foreground">
+            Dark-mode safe
+          </span>
+        </div>
+      </PageHeader>
+
+      <section className="mt-6 space-y-3">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Reports hub</p>
+            <h2 className="text-lg font-semibold text-foreground">เลือกมุมมองรายงาน</h2>
+          </div>
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            ทางลัดด้านล่างใช้ข้อมูลและ route เดิมทั้งหมด เพื่อให้เข้าถึงรายงานสำคัญเร็วขึ้นโดยไม่กระทบ logic รายงาน
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {REPORT_HUB_CARDS.map((card) => {
+            const Icon = card.icon;
+            const isActive = card.kind === 'tab' && tab === card.tab;
+            const cardClassName = cn(
+              'group flex min-h-44 flex-col justify-between rounded-lg border bg-[var(--surface-1)] p-4 text-left shadow-[var(--shadow-card)] transition-colors hover:border-primary/40 hover:bg-[var(--surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              isActive ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border',
+            );
+            const content = (
+              <>
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className={cn('flex size-10 shrink-0 items-center justify-center rounded-lg border', REPORT_TONE_CLASSES[card.tone])}>
+                      <Icon className="size-5" />
+                    </span>
+                    <span className={cn('rounded-full border px-2.5 py-1 text-[11px] font-semibold', REPORT_TONE_CLASSES[card.tone])}>
+                      {card.badge}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-semibold text-foreground">{card.title}</h3>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">{card.description}</p>
+                  </div>
+                </div>
+                <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-primary">
+                  {card.kind === 'link' ? 'เปิดหน้า' : 'ดูรายงาน'}
+                  <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+                </span>
+              </>
+            );
+
+            if (card.kind === 'link') {
+              return (
+                <Link key={card.title} href={card.href} className={cardClassName}>
+                  {content}
+                </Link>
+              );
+            }
+
+            return (
+              <button key={card.tab} type="button" onClick={() => setTab(card.tab)} className={cardClassName}>
+                {content}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="mt-6 grid gap-3 md:grid-cols-3">
+        {REPORT_COMMAND_POINTS.map((item) => {
+          const Icon = item.icon;
+          return (
+            <div key={item.label} className="rounded-lg border border-border bg-[var(--surface-1)] p-4 shadow-[var(--shadow-card)]">
+              <div className="flex items-start gap-3">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-[var(--surface-2)] text-muted-foreground">
+                  <Icon className="size-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{item.label}</p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">{item.value}</p>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.detail}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="mt-6 space-y-4">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Report detail</p>
+            <h2 className="text-lg font-semibold text-foreground">รายละเอียดรายงาน</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">ตัวกรอง กราฟ ตาราง และ export ยังคงใช้ implementation เดิม</p>
+        </div>
+
+        <Tabs value={tab} onValueChange={(v) => { if (v) setTab(v as Tab); }} className="space-y-6">
+          <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-lg border border-border bg-muted p-1">
+            {TABS.map((t) => (
+              <TabsTrigger
+                key={t.key}
+                value={t.key}
+                className="h-auto min-h-11 flex-col items-start gap-0.5 rounded-md px-3 py-2 text-left data-[state=active]:bg-[var(--surface-1)] data-[state=active]:shadow-sm sm:min-w-44"
+              >
+                <span className="text-sm font-semibold">{t.label}</span>
+                <span className="hidden text-[11px] font-normal text-muted-foreground sm:block">{t.description}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <TabsContent value="revenue" className="mt-0"><RevenueReport /></TabsContent>
+          <TabsContent value="foodcost" className="mt-0"><FoodCostReport /></TabsContent>
+          <TabsContent value="collection" className="mt-0"><CollectionReport /></TabsContent>
+        </Tabs>
+      </section>
     </AppShell>
   );
 }
