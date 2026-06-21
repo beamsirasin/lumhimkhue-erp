@@ -23,7 +23,7 @@ const ThemeContext = createContext<ThemeContextValue>({
   setTheme: () => {},
 });
 
-const STORAGE_KEY = 'lumhimkhue-theme';
+const STORAGE_KEY = 'lumhimkhue-admin-theme';
 
 type Snapshot = { theme: Theme; resolved: 'light' | 'dark' | undefined };
 
@@ -90,6 +90,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // No setState here — just a DOM side effect.
   useEffect(() => {
     if (snap.resolved) applyTheme(snap.resolved);
+    return () => {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.style.colorScheme = 'light';
+    };
   }, [snap.resolved]);
 
   const setTheme = useCallback((t: Theme) => {
