@@ -2,6 +2,10 @@
 
 Read this file at the start of every session. It is the authoritative reference for this codebase.
 
+## Shared Agent Instructions
+
+Codex and other coding agents should also read `AGENTS.md`. Keep `CLAUDE.md` and `AGENTS.md` aligned around the shared V2 UI Development Contract, theme-zone rules, and business-logic safety rules.
+
 ---
 
 ## Project Overview
