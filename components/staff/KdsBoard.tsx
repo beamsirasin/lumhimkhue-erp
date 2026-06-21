@@ -71,14 +71,14 @@ const CARD_TONE = {
     card: 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)]',
     header: 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)]',
     accent: 'text-[var(--status-warning-fg)]',
-    media: 'border-[var(--status-warning-border)] bg-[var(--surface-2)]',
+    media: 'border-[var(--status-warning-border)] bg-card',
     divide: 'divide-[var(--status-warning-border)]/45',
   },
   late: {
     card: 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)]',
     header: 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)]',
     accent: 'text-[var(--status-danger-fg)]',
-    media: 'border-[var(--status-danger-border)] bg-[var(--surface-2)]',
+    media: 'border-[var(--status-danger-border)] bg-card',
     divide: 'divide-[var(--status-danger-border)]/45',
   },
 } as const;
@@ -251,16 +251,16 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
   );
 
   return (
-    <div className="flex h-screen flex-col bg-[var(--sidebar)] text-[var(--sidebar-foreground)]">
+    <div className="flex h-screen flex-col bg-background text-foreground">
       {/* Top bar */}
-      <header className="flex items-center justify-between gap-4 border-b border-[var(--sidebar-border)] bg-[var(--sidebar-header)] px-6 py-3 shadow-[var(--shadow-subtle)]">
+      <header className="flex items-center justify-between gap-4 border-b border-border bg-card px-6 py-3 shadow-[var(--shadow-subtle)]">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-[var(--sidebar-border)] bg-[var(--sidebar-active)] text-[var(--sidebar-active-foreground)]">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary">
             <ChefHat className="size-5" />
           </div>
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold text-[var(--sidebar-active-foreground)]">Kitchen Display</h1>
-            <p className="text-xs text-[var(--sidebar-foreground)]">{groups.length} ออเดอร์ที่รอเสิร์ฟ</p>
+            <h1 className="truncate text-lg font-semibold text-foreground">Kitchen Display</h1>
+            <p className="text-xs text-muted-foreground">{groups.length} ออเดอร์ที่รอเสิร์ฟ</p>
           </div>
         </div>
         {/* Station tabs */}
@@ -271,8 +271,8 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
             className={cn(
               'min-h-9 shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
               activeStation === 'all'
-                ? 'border-[var(--sidebar-ring)] bg-[var(--sidebar-active)] text-[var(--sidebar-active-foreground)] shadow-[var(--shadow-subtle)]'
-                : 'border-transparent text-[var(--sidebar-foreground)] hover:border-[var(--sidebar-border)] hover:bg-[var(--sidebar-accent)] hover:text-[var(--sidebar-accent-foreground)]',
+                ? 'border-primary/30 bg-primary text-primary-foreground shadow-[var(--shadow-subtle)]'
+                : 'border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground',
             )}
           >
             ทั้งหมด
@@ -288,8 +288,8 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
               className={cn(
                 'min-h-9 shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
                 activeStation === s
-                  ? 'border-[var(--sidebar-ring)] bg-[var(--sidebar-active)] text-[var(--sidebar-active-foreground)] shadow-[var(--shadow-subtle)]'
-                  : 'border-transparent text-[var(--sidebar-foreground)] hover:border-[var(--sidebar-border)] hover:bg-[var(--sidebar-accent)] hover:text-[var(--sidebar-accent-foreground)]',
+                  ? 'border-primary/30 bg-primary text-primary-foreground shadow-[var(--shadow-subtle)]'
+                  : 'border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground',
               )}
             >
               {STATION_LABEL[s]}
@@ -303,14 +303,14 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
       <main className="flex-1 overflow-y-auto p-4">
         {visibleGroups.length === 0 ? (
           <div className="flex h-full items-center justify-center">
-            <div className="flex min-h-40 min-w-72 flex-col items-center justify-center rounded-xl border border-[var(--sidebar-border)] bg-[var(--surface-1)] px-8 py-6 text-center shadow-[var(--shadow-card)]">
+            <div className="flex min-h-40 min-w-72 flex-col items-center justify-center rounded-xl border border-border bg-card px-8 py-6 text-center shadow-[var(--shadow-card)]">
               <ChefHat className="size-9 text-muted-foreground" />
               <p className="mt-3 text-sm font-semibold text-foreground">ไม่มีรายการที่รอเสิร์ฟ</p>
               <p className="mt-1 text-xs text-muted-foreground">ครัวยังไม่มีออเดอร์ใหม่</p>
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
             {visibleGroups.map((group) => (
               <KdsCard
                 key={group.groupKey}

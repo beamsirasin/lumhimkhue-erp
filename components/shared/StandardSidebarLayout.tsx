@@ -663,6 +663,7 @@ export interface StandardSidebarLayoutProps {
   navLayout?: StoredNavLayout;
   menuLabels?: Record<string, string>;
   variant?: 'default' | 'tablet';
+  showThemeToggle?: boolean;
 }
 
 export function StandardSidebarLayout({
@@ -674,6 +675,7 @@ export function StandardSidebarLayout({
   navLayout,
   menuLabels,
   variant = 'default',
+  showThemeToggle = false,
 }: StandardSidebarLayoutProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -769,7 +771,7 @@ export function StandardSidebarLayout({
             )}
           </div>
 
-          <ThemeToggle />
+          {showThemeToggle && <ThemeToggle />}
 
           {/* User avatar — visible on small screens where sidebar is hidden */}
           <div

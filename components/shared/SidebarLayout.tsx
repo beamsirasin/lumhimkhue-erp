@@ -29,6 +29,7 @@ export interface SidebarLayoutProps {
   allowedModules?: string[] | null;
   navLayout?: StoredNavLayout;
   menuLabels?: Record<string, string>;
+  showThemeToggle?: boolean;
 }
 
 export function SidebarLayout({
@@ -40,6 +41,7 @@ export function SidebarLayout({
   allowedModules,
   navLayout,
   menuLabels,
+  showThemeToggle = false,
 }: SidebarLayoutProps) {
   const modules = allowedModules ?? [];
 
@@ -66,6 +68,7 @@ export function SidebarLayout({
       navLayout={navLayout}
       menuLabels={menuLabels}
       variant={useTablet ? 'tablet' : 'default'}
+      showThemeToggle={showThemeToggle}
     >
       {children}
     </StandardSidebarLayout>

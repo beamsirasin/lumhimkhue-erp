@@ -20,15 +20,20 @@ export default async function MyOrdersPage({ params }: Props) {
 
   return (
     <div className="min-h-screen bg-muted/30">
-      <header className="sticky top-0 z-10 bg-card border-b border-border px-4 py-3 flex items-center gap-3">
-        <Link
-          href={`/t/${tableToken}/s/${sessionToken}`}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-          aria-label="กลับไปสั่งอาหาร"
-        >
-          <ChevronLeft className="size-4" />
-        </Link>
-        <h1 className="text-base font-medium text-foreground">รายการที่สั่ง</h1>
+      <header className="sticky top-0 z-10 border-b border-border bg-card/95 px-4 py-3 shadow-[var(--shadow-subtle)] backdrop-blur">
+        <div className="mx-auto flex max-w-sm items-center gap-3">
+          <Link
+            href={`/t/${tableToken}/s/${sessionToken}`}
+            className="flex size-9 items-center justify-center rounded-full border border-border bg-background text-muted-foreground transition-colors hover:text-foreground"
+            aria-label="กลับไปสั่งอาหาร"
+          >
+            <ChevronLeft className="size-4" />
+          </Link>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Lum Him Khue</p>
+            <h1 className="text-base font-semibold text-foreground">รายการที่สั่ง</h1>
+          </div>
+        </div>
       </header>
 
       <OrderList
