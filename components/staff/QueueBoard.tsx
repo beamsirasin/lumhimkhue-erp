@@ -626,6 +626,7 @@ function TableMapPickerModal({
 }) {
   const containerRef                       = useRef<HTMLDivElement>(null);
   const [containerW, setContainerW]       = useState(0);
+  const [containerH, setContainerH]       = useState(0);
   // Tracks explicit user toggle overrides (id → true=on / false=off)
   const [manualToggles, setManualToggles] = useState<Map<string, boolean>>(new Map());
   const [submitting, setSubmitting]       = useState(false);
@@ -651,28 +652,43 @@ function TableMapPickerModal({
     return result;
   }, [parsedBase, manualToggles]);
 
-  // Measure scroll container width for scale calculation
+  // Tight bounding box of actual table shapes — removes unused empty canvas margins
+  const bounds = useMemo(() => {
+    if (!layout.length) return { minX: 0, minY: 0, maxX: 400, maxY: 300 };
+    return {
+      minX: Math.min(...layout.map(t => t.positionX)),
+      minY: Math.min(...layout.map(t => t.positionY)),
+      maxX: Math.max(...layout.map(t => t.positionX + t.width)),
+      maxY: Math.max(...layout.map(t => t.positionY + t.height)),
+    };
+  }, [layout]);
+
+  const PAD      = 32; // visual padding around the cropped table area
+  const croppedW = bounds.maxX - bounds.minX + PAD * 2;
+  const croppedH = bounds.maxY - bounds.minY + PAD * 2;
+  // Shift all table positions so that bounds.minX/Y maps to PAD
+  const offsetX  = PAD - bounds.minX;
+  const offsetY  = PAD - bounds.minY;
+
+  // Measure container for fit-all scale; needs BOTH dimensions
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const measure = () => setContainerW(el.clientWidth);
+    const measure = () => {
+      setContainerW(el.clientWidth);
+      setContainerH(el.clientHeight);
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
-  const PAD     = 24;
-  const canvasW = layout.length
-    ? Math.max(400, ...layout.map(t => t.positionX + t.width  + PAD))
-    : 400;
-  const canvasH = layout.length
-    ? Math.max(300, ...layout.map(t => t.positionY + t.height + PAD))
-    : 300;
-  // Fit canvas to container width only; never upscale.
-  // Height is NOT used for scaling — the map area scrolls vertically if needed.
-  // This keeps tables at a usable tap size on tablet instead of over-shrinking.
-  const scale = containerW > 0 ? Math.min(containerW / canvasW, 1) : 1;
+  // Scale to fit BOTH width and height — all tables visible on tablet, no scroll needed.
+  // Using cropped bounds (not raw canvas origin) keeps scale high enough to stay tappable.
+  const scale = (containerW > 0 && containerH > 0)
+    ? Math.min(containerW / croppedW, containerH / croppedH, 1)
+    : 1;
 
   function toggle(id: string) {
     const willBeOn = !selected.has(id);
@@ -711,12 +727,12 @@ function TableMapPickerModal({
       onClick={onClose}
     >
       {/*
-        Mobile  : full-width bottom sheet, up to 90dvh tall
-        Tablet+ : large centered dialog — 92vw wide, 84dvh tall
-        flex-col so map area can grow to fill remaining height
+        Mobile  : full-width bottom sheet, up to 94dvh tall
+        Tablet+ : 96vw × 92dvh — large enough for the full floor plan
+        flex-col: header (fixed) → map (flex-1, fit-all) → footer (fixed)
       */}
       <div
-        className="flex w-full max-h-[90dvh] flex-col overflow-hidden rounded-t-2xl border border-border bg-[var(--surface-1)] shadow-[var(--shadow-dialog)] md:h-[84dvh] md:w-[92vw] md:max-h-none md:max-w-[1100px] md:rounded-2xl"
+        className="flex w-full max-h-[94dvh] flex-col overflow-hidden rounded-t-2xl border border-border bg-[var(--surface-1)] shadow-[var(--shadow-dialog)] md:h-[92dvh] md:w-[96vw] md:max-h-none md:max-w-[1200px] md:rounded-2xl"
         onClick={e => e.stopPropagation()}
       >
         {/* Handle bar — mobile only */}
@@ -744,7 +760,7 @@ function TableMapPickerModal({
           </button>
         </div>
 
-        {/* Map area — flex-1, scrollable; this is the dominant section */}
+        {/* Map area — flex-1; fit-all scale on tablet means no vertical scroll needed */}
         {isLoading ? (
           <div className="flex flex-1 items-center justify-center bg-[var(--surface-2)]">
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -755,16 +771,17 @@ function TableMapPickerModal({
             ยังไม่มีโต๊ะในระบบ
           </div>
         ) : (
-          /* Scroll container: measures width for scale; scrolls vertically if canvas overflows */
+          /* ref measures BOTH dimensions; overflow-hidden because fit-all avoids overflow */
           <div
             ref={containerRef}
-            className="flex-1 overflow-auto bg-[var(--surface-2)]"
+            className="flex flex-1 items-center justify-center overflow-hidden bg-[var(--surface-2)]"
           >
-            {/* Wrapper at exact rendered canvas dimensions; dot-grid fills this area */}
+            {/* Wrapper sized to the exact rendered cropped-canvas dimensions */}
             <div
-              className="relative"
-              style={{ width: canvasW * scale, height: canvasH * scale + 80 }}
+              className="relative shrink-0"
+              style={{ width: croppedW * scale, height: croppedH * scale }}
             >
+              {/* Dot-grid background */}
               <svg
                 className="pointer-events-none absolute inset-0 h-full w-full"
                 xmlns="http://www.w3.org/2000/svg"
@@ -778,10 +795,10 @@ function TableMapPickerModal({
                 <rect width="100%" height="100%" fill="url(#dots-q)" />
               </svg>
 
-              {/* Scaled canvas — table buttons at their DB pixel positions */}
+              {/* Scaled canvas — buttons at cropped+offset DB positions */}
               <div
                 className="absolute left-0 top-0 origin-top-left"
-                style={{ width: canvasW, height: canvasH, transform: `scale(${scale})` }}
+                style={{ width: croppedW, height: croppedH, transform: `scale(${scale})` }}
               >
                 {layout.map(t => {
                   const isSelected = selected.has(t.id);
@@ -793,10 +810,10 @@ function TableMapPickerModal({
                       onClick={() => toggle(t.id)}
                       style={{
                         position: 'absolute',
-                        left:     t.positionX,
-                        top:      t.positionY,
-                        width:    t.width,
-                        height:   t.height,
+                        left:   t.positionX + offsetX,
+                        top:    t.positionY + offsetY,
+                        width:  t.width,
+                        height: t.height,
                       }}
                       className={cn(
                         'flex flex-col items-center justify-center border-2 font-semibold transition-all active:scale-95 select-none',
@@ -816,7 +833,7 @@ function TableMapPickerModal({
           </div>
         )}
 
-        {/* Footer — always visible; selection summary + action buttons */}
+        {/* Footer — always visible; never overlays map because it's below flex-1 */}
         <div className="shrink-0 border-t border-border bg-[var(--surface-1)] px-4 py-3">
           <div className="flex items-center gap-3">
             {/* Selection summary */}
