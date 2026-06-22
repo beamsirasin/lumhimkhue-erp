@@ -21,18 +21,27 @@ import { writeAuditLog } from '@/lib/actions/audit';
 export const runtime = 'nodejs';
 
 const TIMEOUT_MS = 5_000;
-const MAX_DATA_B64_CHARS = Math.ceil((64 * 1024 * 4) / 3); // ~64 KB decoded
+// Raised to 512 KB decoded — bitmap receipts on 80mm paper can exceed 64 KB.
+const MAX_DATA_B64_CHARS = Math.ceil((512 * 1024 * 4) / 3);
+
+// Accepts both IPv4 addresses (192.168.1.100) and hostnames (localhost, printer.local)
+const IP_OR_HOST = /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$|^(\d{1,3}\.){3}\d{1,3}$/;
 
 const printBodySchema = z.object({
   ip: z
     .string()
-    .regex(/^(\d{1,3}\.){3}\d{1,3}$/, 'IP ไม่ถูกต้อง')
+    .min(1, 'กรุณาระบุ IP หรือ hostname ของ printer')
+    .regex(IP_OR_HOST, 'IP หรือ hostname ไม่ถูกต้อง')
     .refine(
-      (ip) => ip.split('.').every((oct) => Number(oct) <= 255),
-      'IP ไม่ถูกต้อง',
+      (ip) => {
+        // Only validate octet range for IPv4 addresses
+        if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) return true;
+        return ip.split('.').every((oct) => Number(oct) <= 255);
+      },
+      'IP ไม่ถูกต้อง (octet เกิน 255)',
     ),
   port: z.number().int().min(1).max(65535).optional().default(9100),
-  data: z.string().max(MAX_DATA_B64_CHARS, 'ข้อมูลใหญ่เกิน 64 KB'),
+  data: z.string().min(1, 'ข้อมูล ESC/POS ว่างเปล่า').max(MAX_DATA_B64_CHARS, 'ข้อมูลใหญ่เกินไป (เกิน 512 KB)'),
 });
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -51,7 +60,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   let body: z.infer<typeof printBodySchema>;
   try {
     const raw = await req.json();
-    body = printBodySchema.parse(raw);
+    const result = printBodySchema.safeParse(raw);
+    if (!result.success) {
+      const msg = result.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง';
+      return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+    }
+    body = result.data;
   } catch {
     return NextResponse.json({ ok: false, error: 'ข้อมูลไม่ถูกต้อง' }, { status: 400 });
   }
