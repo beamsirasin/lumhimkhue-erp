@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { eq, and, inArray, or, lt, lte, asc, gte, sql } from 'drizzle-orm';
+import { eq, and, inArray, isNotNull, lt, lte, desc, asc, gte, sql } from 'drizzle-orm';
 import { startOfDay, endOfDay } from 'date-fns';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { nanoid } from 'nanoid';
@@ -25,8 +25,8 @@ function bangkokDayStart(): Date {
 }
 
 /* ─── getQueueList ──────────────────────────────────────────────────────── */
-// Returns: waiting/called/waiting_suitable_table (all) + admitted where billIssued=false.
-// Admitted queues are hidden from the board only after billIssued is set to true.
+// Returns all active entries: waiting/called/waiting_suitable_table/admitted (any billIssued).
+// Billed admitted rows remain visible on the board — the UI distinguishes them visually.
 
 export async function getQueueList() {
   const authSession = await auth();
@@ -39,10 +39,7 @@ export async function getQueueList() {
       .select()
       .from(queueEntries)
       .where(
-        or(
-          inArray(queueEntries.status, ['waiting', 'waiting_suitable_table', 'called']),
-          and(eq(queueEntries.status, 'admitted'), eq(queueEntries.billIssued, false)),
-        ),
+        inArray(queueEntries.status, ['waiting', 'waiting_suitable_table', 'called', 'admitted']),
       )
       .orderBy(asc(queueEntries.createdAt));
 
@@ -439,7 +436,27 @@ export async function getQueueStatus(token: string) {
       position = Number(count) + 1;
     }
 
-    return { ok: true as const, data: { entry, position } };
+    // Latest queue that was called today — for customer position display
+    const [latestCalledEntry] = await db
+      .select({ queueNumber: queueEntries.queueNumber })
+      .from(queueEntries)
+      .where(
+        and(
+          gte(queueEntries.createdAt, bangkokDayStart()),
+          isNotNull(queueEntries.calledAt),
+        ),
+      )
+      .orderBy(desc(queueEntries.calledAt))
+      .limit(1);
+
+    return {
+      ok: true as const,
+      data: {
+        entry,
+        position,
+        latestCalledQueueNumber: latestCalledEntry?.queueNumber ?? null,
+      },
+    };
   } catch (e) {
     console.error('[getQueueStatus]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด' };

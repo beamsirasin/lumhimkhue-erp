@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNowStrict, format } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -9,6 +10,8 @@ import {
   Check,
   ClipboardList,
   Clock,
+  Copy,
+  ExternalLink,
   History,
   Loader2,
   MapPin,
@@ -16,6 +19,7 @@ import {
   MoreVertical,
   Plus,
   Printer,
+  QrCode,
   SkipForward,
   Trash2,
   UserCheck,
@@ -36,11 +40,9 @@ import {
   SOUP_OPTIONS,
   CUSTOMER_TYPE_LABELS,
   CUSTOMER_TYPE_SHORT,
-  SIMPLIFIED_SEATING_UI,
   SKIP_REASON_PRESETS,
   seatingDisplayLabel,
   type CustomerType,
-  type SeatingFit,
   type SoupOption,
 } from '@/lib/validations/queue';
 import type { AddQueueInput } from '@/lib/validations/queue';
@@ -75,10 +77,16 @@ function shortTableNote(note: string | null | undefined): string {
 
 /* ─── Soup chip styles (row display) ────────────────────────────── */
 
+const SOUP_SHORT_LABEL: Record<string, string> = {
+  'น้ำดำ':  'ดำ',
+  'น้ำใส':  'ใส',
+  'หมาล่า': 'หมาล่า',
+};
+
 const SOUP_CHIP_STYLE: Record<string, string> = {
-  'น้ำดำ':  'border-border bg-[var(--surface-2)] text-foreground',
-  'น้ำใส':  'border-[var(--status-info-border)] bg-[var(--status-info-bg)] text-[var(--status-info-fg)]',
-  'หมาล่า': 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]',
+  'น้ำดำ':  'border-foreground/40 bg-foreground text-background',
+  'น้ำใส':  'border-foreground/25 bg-background text-foreground',
+  'หมาล่า': 'border-[var(--status-danger-border)] bg-[var(--status-danger-fg)] text-white',
 };
 
 /* ─── Soup selector styles (form buttons) ───────────────────────── */
@@ -100,7 +108,7 @@ const SOUP_STYLE: Record<SoupOption, { sel: string; unsel: string }> = {
 
 /* ─── Row status tones ───────────────────────────────────────────── */
 
-type DisplayStatus = 'waiting' | 'waiting_suitable_table' | 'called' | 'admitted';
+type DisplayStatus = 'waiting' | 'waiting_suitable_table' | 'called' | 'admitted' | 'billed';
 
 const ROW_TONE: Record<DisplayStatus, { label: string; badge: string; accentColor: string }> = {
   waiting: {
@@ -122,6 +130,11 @@ const ROW_TONE: Record<DisplayStatus, { label: string; badge: string; accentColo
     label:       'รับเข้าแล้ว',
     badge:       'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-fg)]',
     accentColor: 'var(--status-success-fg)',
+  },
+  billed: {
+    label:       'ออกบิลแล้ว',
+    badge:       'border-[var(--status-neutral-border)] bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
+    accentColor: 'var(--status-neutral-fg)',
   },
 };
 
@@ -148,7 +161,14 @@ const HIST_CLS: Record<string, string> = {
 
 function soupSummary(pots: Array<{ soups: string[] }> | null | undefined): string {
   if (!pots?.length) return '';
-  return pots.map(p => p.soups.join('/')).join(' · ');
+  return pots
+    .map(p => {
+      if (!p.soups?.length) return '';
+      if (p.soups.length === 2 && p.soups[0] === p.soups[1]) return `${p.soups[0]} ×2`;
+      return p.soups.join(' + ');
+    })
+    .filter(Boolean)
+    .join(' · ');
 }
 
 function buildQrData(
@@ -178,25 +198,27 @@ function buildQrData(
 
 function SoupChips({ pots }: { pots: Array<{ soups: string[] }> | null | undefined }) {
   if (!pots?.length) return null;
-  const seen = new Set<string>();
-  const unique: string[] = [];
-  for (const pot of pots) {
-    for (const soup of pot.soups) {
-      if (!seen.has(soup)) { seen.add(soup); unique.push(soup); }
+  const chips: { label: string; style: string }[] = [];
+  for (const p of pots) {
+    if (!p.soups?.length) continue;
+    if (p.soups.length === 2 && p.soups[0] === p.soups[1]) {
+      const short = SOUP_SHORT_LABEL[p.soups[0]] ?? p.soups[0];
+      chips.push({ label: `${short} ×2`, style: SOUP_CHIP_STYLE[p.soups[0]] ?? SOUP_CHIP_STYLE['น้ำดำ'] });
+    } else {
+      for (const soup of p.soups) {
+        chips.push({ label: SOUP_SHORT_LABEL[soup] ?? soup, style: SOUP_CHIP_STYLE[soup] ?? SOUP_CHIP_STYLE['น้ำดำ'] });
+      }
     }
   }
-  if (!unique.length) return null;
+  if (!chips.length) return null;
   return (
     <>
-      {unique.map(soup => (
+      {chips.map((chip, i) => (
         <span
-          key={soup}
-          className={cn(
-            'shrink-0 rounded border px-1.5 py-0.5 text-xs font-semibold leading-none',
-            SOUP_CHIP_STYLE[soup] ?? SOUP_CHIP_STYLE['น้ำดำ'],
-          )}
+          key={i}
+          className={cn('shrink-0 rounded border px-1.5 py-0.5 text-xs font-bold leading-none', chip.style)}
         >
-          {soup}
+          {chip.label}
         </span>
       ))}
     </>
@@ -216,6 +238,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
   const [skipTarget, setSkipTarget]     = useState<QueueEntry | null>(null);
   const [cancelTarget, setCancelTarget] = useState<QueueEntry | null>(null);
   const [tableTarget, setTableTarget]   = useState<QueueEntry | null>(null);
+  const [qrTarget, setQrTarget]         = useState<QueueEntry | null>(null);
   const [historyOpen, setHistoryOpen]   = useState(false);
   const [lastAdded, setLastAdded]       = useState<QueueQrData | null>(null);
 
@@ -238,10 +261,10 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
     staleTime: 15_000,
   });
 
-  // Counter computations — entries only contains active (server-filtered)
+  // Counter computations — entries now includes all admitted (billed and not-billed)
   const waitingCount   = entries.filter(e => e.status !== 'admitted').length;
-  const admittedCount  = entries.filter(e => e.status === 'admitted').length;
-  const billedToday    = todayHistory.filter(e => e.status === 'admitted' && e.billIssued).length;
+  const admittedCount  = entries.filter(e => e.status === 'admitted' && !e.billIssued).length;
+  const billedCount    = entries.filter(e => e.status === 'admitted' && !!e.billIssued).length;
   const skippedToday   = todayHistory.filter(e => e.status === 'skipped').length;
   const cancelledToday = todayHistory.filter(e => e.status === 'cancelled').length;
 
@@ -299,7 +322,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-xs">
             <Counter label="รอ"        count={waitingCount}   cls="text-[var(--status-warning-fg)] bg-[var(--status-warning-bg)] border-[var(--status-warning-border)]" />
             <Counter label="รับเข้า"  count={admittedCount}  cls="text-[var(--status-success-fg)] bg-[var(--status-success-bg)] border-[var(--status-success-border)]" />
-            <Counter label="ออกบิล"   count={billedToday}    cls="text-[var(--status-info-fg)] bg-[var(--status-info-bg)] border-[var(--status-info-border)]" />
+            <Counter label="ออกบิล"   count={billedCount}    cls="text-[var(--status-neutral-fg)] bg-[var(--status-neutral-bg)] border-[var(--status-neutral-border)]" />
             <Counter label="ข้าม"     count={skippedToday}   cls="text-muted-foreground bg-muted/30 border-border" />
             <Counter label="ยกเลิก"   count={cancelledToday} cls="text-muted-foreground bg-muted/30 border-border" />
           </div>
@@ -349,7 +372,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
       )}
 
       {/* ── Single-sequence board ──────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 min-h-0 overflow-y-auto">
         {entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
             <div className="flex size-14 items-center justify-center rounded-full bg-[var(--surface-2)]">
@@ -369,7 +392,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
             </button>
           </div>
         ) : (
-          <div className="space-y-2 px-3 pb-4 pt-2">
+          <div className="space-y-2 px-3 pb-8 pt-2">
             {entries.map(entry => (
               <ActiveQueueRow
                 key={entry.id}
@@ -381,6 +404,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
                 onBillIssued={() => doToggleBill({ id: entry.id, issued: true })}
                 onCancel={() => setCancelTarget(entry)}
                 onPrint={getPrintHandler(entry)}
+                onShowQr={() => setQrTarget(entry)}
               />
             ))}
           </div>
@@ -427,6 +451,13 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
       {historyOpen && (
         <HistoryModal todayStr={todayStr} onClose={() => setHistoryOpen(false)} />
       )}
+      {qrTarget && (
+        <QrPreviewModal
+          entry={qrTarget}
+          url={`${appUrl}/q/${qrTarget.publicToken}`}
+          onClose={() => setQrTarget(null)}
+        />
+      )}
     </div>
   );
 }
@@ -452,25 +483,43 @@ interface ActiveQueueRowProps {
   onBillIssued: () => void;
   onCancel: () => void;
   onPrint: () => void;
+  onShowQr: () => void;
 }
 
 function ActiveQueueRow({
-  entry, onEdit, onPickTable, onAdmit, onSkip, onBillIssued, onCancel, onPrint,
+  entry, onEdit, onPickTable, onAdmit, onSkip, onBillIssued, onCancel, onPrint, onShowQr,
 }: ActiveQueueRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const [menuFixed, setMenuFixed] = useState<{ top: number; right: number } | null>(null);
 
+  const isBilled   = entry.status === 'admitted' && !!entry.billIssued;
   const isAdmitted = entry.status === 'admitted';
-  const tone       = ROW_TONE[entry.status as DisplayStatus] ?? ROW_TONE.waiting;
+  const displayStatus: DisplayStatus = isBilled ? 'billed' : (entry.status as DisplayStatus);
+  const tone       = ROW_TONE[displayStatus] ?? ROW_TONE.waiting;
   const seating    = seatingDisplayLabel(entry.seatingFit);
   const isNonNormal = entry.customerType && entry.customerType !== 'normal';
   const tableNote  = (entry.plannedTableNote && entry.plannedTableNote !== '-')
     ? entry.plannedTableNote : null;
   const timeRef    = (isAdmitted && entry.admittedAt) ? entry.admittedAt : entry.createdAt;
 
-  // Card surface changes subtly for admitted state
-  const cardCls = isAdmitted
-    ? 'border-[var(--status-success-border)]/50 bg-[var(--status-success-bg)]/15'
-    : 'border-border/60 bg-[var(--surface-1)]';
+  function openMenu() {
+    const rect = menuBtnRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const approxMenuH = 134; // 3 items × ~40px + 2 dividers + border
+    const top = rect.bottom + approxMenuH > window.innerHeight
+      ? rect.top - approxMenuH - 4
+      : rect.bottom + 4;
+    setMenuFixed({ top, right: window.innerWidth - rect.right });
+    setMenuOpen(true);
+  }
+
+  // Card surface changes subtly per status
+  const cardCls = isBilled
+    ? 'border-border/40 bg-[var(--surface-2)]/60 opacity-75'
+    : isAdmitted
+      ? 'border-[var(--status-success-border)]/50 bg-[var(--status-success-bg)]/15'
+      : 'border-border/60 bg-[var(--surface-1)]';
 
   // Table chip color: success for admitted, info for waiting
   const tableChipCls = tableNote
@@ -494,11 +543,11 @@ function ActiveQueueRow({
       <button
         type="button"
         onClick={onEdit}
-        className="flex flex-1 flex-col justify-center gap-1 px-3 py-2.5 text-left transition-colors hover:bg-foreground/[0.02]"
+        className="flex flex-1 flex-col justify-center gap-1.5 px-3 py-3.5 text-left transition-colors hover:bg-foreground/[0.02]"
       >
         {/* Line 1: number · status badge · time */}
         <div className="flex items-center gap-2">
-          <span className="w-[3.5rem] shrink-0 text-xl font-black tabular-nums leading-none text-foreground">
+          <span className="w-[4.5rem] shrink-0 text-2xl font-black tabular-nums leading-none text-foreground">
             {entry.queueNumber}
           </span>
           <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold leading-none', tone.badge)}>
@@ -512,8 +561,8 @@ function ActiveQueueRow({
 
         {/* Line 2: count · soup chips · seating · table chip · type chip */}
         <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
-          <span className="shrink-0 font-semibold text-foreground/80">
-            ผ{entry.adultCount}/ด{entry.childCount}
+          <span className="shrink-0 font-semibold text-foreground">
+            ผู้ใหญ่ {entry.adultCount ?? 0} · เด็ก {entry.childCount ?? 0}
           </span>
           <SoupChips pots={entry.soupPots as Array<{ soups: string[] }> | null} />
           {seating && <span className="shrink-0 text-muted-foreground">{seating}</span>}
@@ -548,53 +597,64 @@ function ActiveQueueRow({
           {tableNote ? shortTableNote(tableNote) : 'โต๊ะ'}
         </button>
 
-        {/* Status-conditional primary action */}
-        {isAdmitted ? (
-          <button
-            type="button"
-            onClick={onBillIssued}
-            className="flex min-h-9 items-center gap-1 rounded-lg border border-primary bg-primary px-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95"
-          >
-            <Check className="size-3.5 shrink-0" />
-            ออกบิล
-          </button>
-        ) : (
-          <>
+        {/* Status-conditional primary action — hidden when billed */}
+        {!isBilled && (
+          isAdmitted ? (
             <button
               type="button"
-              onClick={onAdmit}
-              className="flex min-h-9 items-center gap-1 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-2.5 text-xs font-semibold text-[var(--status-success-fg)] transition-colors hover:border-[var(--status-success-fg)] active:scale-95"
+              onClick={onBillIssued}
+              className="flex min-h-9 items-center gap-1 rounded-lg border border-primary bg-primary px-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95"
             >
-              <UserCheck className="size-3.5 shrink-0" />
-              รับเข้า
+              <Check className="size-3.5 shrink-0" />
+              ออกบิล
             </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onAdmit}
+                className="flex min-h-9 items-center gap-1 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-2.5 text-xs font-semibold text-[var(--status-success-fg)] transition-colors hover:border-[var(--status-success-fg)] active:scale-95"
+              >
+                <UserCheck className="size-3.5 shrink-0" />
+                รับเข้า
+              </button>
 
-            {/* ข้าม — icon only */}
-            <button
-              type="button"
-              onClick={onSkip}
-              aria-label="ข้ามคิว"
-              className="flex size-9 items-center justify-center rounded-lg border border-[var(--status-warning-border)] text-[var(--status-warning-fg)] transition-colors hover:bg-[var(--status-warning-bg)] active:scale-95"
-            >
-              <SkipForward className="size-4" />
-            </button>
-          </>
+              {/* ข้าม — icon only */}
+              <button
+                type="button"
+                onClick={onSkip}
+                aria-label="ข้ามคิว"
+                className="flex size-9 items-center justify-center rounded-lg border border-[var(--status-warning-border)] text-[var(--status-warning-fg)] transition-colors hover:bg-[var(--status-warning-bg)] active:scale-95"
+              >
+                <SkipForward className="size-4" />
+              </button>
+            </>
+          )
         )}
 
-        {/* Overflow menu */}
-        <div className="relative">
+        {/* Overflow menu — rendered in a portal so overflow-hidden/scroll cannot clip it */}
+        <div>
           <button
+            ref={menuBtnRef}
             type="button"
             aria-label="เมนูเพิ่มเติม"
-            onClick={() => setMenuOpen(v => !v)}
+            onClick={openMenu}
             className="flex size-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted"
           >
             <MoreVertical className="size-4" />
           </button>
-          {menuOpen && (
+          {menuOpen && menuFixed && createPortal(
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-xl border border-border bg-[var(--surface-raised)] shadow-[var(--shadow-raised)]">
+              <div className="fixed inset-0 z-50" onClick={() => setMenuOpen(false)} />
+              <div
+                className="fixed z-50 w-44 overflow-hidden rounded-xl border border-border bg-[var(--surface-raised)] shadow-[var(--shadow-raised)]"
+                style={{ top: menuFixed.top, right: menuFixed.right }}
+              >
+                <button type="button" onClick={() => { setMenuOpen(false); onShowQr(); }}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-muted">
+                  <QrCode className="size-3.5 text-muted-foreground" />แสดง QR
+                </button>
+                <div className="border-t border-border" />
                 <button type="button" onClick={() => { setMenuOpen(false); onPrint(); }}
                   className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-muted">
                   <Printer className="size-3.5 text-muted-foreground" />พิมพ์ตั๋วซ้ำ
@@ -605,7 +665,8 @@ function ActiveQueueRow({
                   <Trash2 className="size-3.5" />ยกเลิกคิว
                 </button>
               </div>
-            </>
+            </>,
+            document.body,
           )}
         </div>
       </div>
@@ -920,56 +981,95 @@ function Stepper({ label, value, onChange, min = 0 }: {
 
 /* ─── SoupPotSelector ────────────────────────────────────────────── */
 
+type PotUI = { s1: SoupOption | null; s2: SoupOption | null };
+
 function SoupPotSelector({
   pots, onChange,
 }: {
-  pots: Array<{ soups: SoupOption[] }>;
-  onChange: (v: Array<{ soups: SoupOption[] }>) => void;
+  pots: PotUI[];
+  onChange: (v: PotUI[]) => void;
 }) {
-  function toggleSoup(potIdx: number, soup: SoupOption) {
-    const next = pots.map((p, i) => {
+  function selectSlot(potIdx: number, slot: 's1' | 's2', soup: SoupOption) {
+    onChange(pots.map((p, i) => {
       if (i !== potIdx) return p;
-      const has = p.soups.includes(soup);
-      if (has) return { soups: p.soups.filter(s => s !== soup) };
-      if (p.soups.length >= 2) return p;
-      return { soups: [...p.soups, soup] };
-    });
-    onChange(next);
+      return { ...p, [slot]: p[slot] === soup ? null : soup };
+    }));
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {pots.map((pot, potIdx) => (
-        <div key={potIdx} className="flex items-center gap-2">
-          <span className="w-8 shrink-0 text-xs font-semibold text-muted-foreground">หม้อ{potIdx + 1}</span>
-          <div className="flex flex-1 gap-2">
-            {SOUP_OPTIONS.map(soup => {
-              const selected = pot.soups.includes(soup);
-              const maxed = !selected && pot.soups.length >= 2;
-              return (
-                <button key={soup} type="button" onClick={() => toggleSoup(potIdx, soup)} disabled={maxed}
+        <div key={potIdx} className="space-y-2">
+          {/* Pot header — only shown when there are multiple pots */}
+          {pots.length > 1 && (
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-muted-foreground">หม้อ {potIdx + 1}</span>
+              <button
+                type="button"
+                aria-label={`ลบหม้อ ${potIdx + 1}`}
+                onClick={() => onChange(pots.filter((_, i) => i !== potIdx))}
+                className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-[var(--status-danger-fg)]"
+              >
+                <X className="size-3" />ลบหม้อ
+              </button>
+            </div>
+          )}
+
+          {/* Slot 1 */}
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-muted-foreground">ซุป 1</p>
+            <div className="flex gap-2">
+              {SOUP_OPTIONS.map(soup => (
+                <button
+                  key={soup}
+                  type="button"
+                  onClick={() => selectSlot(potIdx, 's1', soup)}
                   className={cn(
-                    'flex min-h-11 flex-1 items-center justify-center rounded-xl border text-sm font-semibold transition-colors active:scale-95 disabled:opacity-40',
-                    selected ? SOUP_STYLE[soup].sel : SOUP_STYLE[soup].unsel,
-                  )}>
+                    'flex min-h-11 flex-1 items-center justify-center rounded-xl border text-sm font-semibold transition-colors active:scale-95',
+                    pot.s1 === soup ? SOUP_STYLE[soup].sel : SOUP_STYLE[soup].unsel,
+                  )}
+                >
                   {soup}
                 </button>
-              );
-            })}
+              ))}
+            </div>
           </div>
-          {pots.length > 1 && (
-            <button type="button" aria-label={`ลบหม้อ ${potIdx + 1}`}
-              onClick={() => onChange(pots.filter((_, i) => i !== potIdx))}
-              className="flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted">
-              <X className="size-3.5" />
-            </button>
+
+          {/* Slot 2 — optional, always visible */}
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+              ซุป 2 <span className="opacity-50">(ไม่บังคับ)</span>
+            </p>
+            <div className="flex gap-2">
+              {SOUP_OPTIONS.map(soup => (
+                <button
+                  key={soup}
+                  type="button"
+                  onClick={() => selectSlot(potIdx, 's2', soup)}
+                  className={cn(
+                    'flex min-h-11 flex-1 items-center justify-center rounded-xl border text-sm font-semibold transition-colors active:scale-95',
+                    pot.s2 === soup ? SOUP_STYLE[soup].sel : SOUP_STYLE[soup].unsel,
+                  )}
+                >
+                  {soup}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Divider between pots */}
+          {pots.length > 1 && potIdx < pots.length - 1 && (
+            <div className="border-t border-border pt-1" />
           )}
         </div>
       ))}
+
       {pots.length < 4 && (
-        <button type="button"
-          onClick={() => onChange([...pots, { soups: ['น้ำดำ' as SoupOption] }])}
-          className="flex min-h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-primary/50 bg-[var(--surface-primary-subtle)] text-sm font-medium text-primary transition-colors hover:bg-[var(--surface-primary-muted)]">
+        <button
+          type="button"
+          onClick={() => onChange([...pots, { s1: null, s2: null }])}
+          className="flex min-h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-primary/50 bg-[var(--surface-primary-subtle)] text-sm font-medium text-primary transition-colors hover:bg-[var(--surface-primary-muted)]"
+        >
           <Plus className="size-3.5" />เพิ่มหม้อ
         </button>
       )}
@@ -995,27 +1095,28 @@ function QueueFormModal({ mode, entry, onClose, onSuccess }: QueueFormModalProps
   const [customerType, setCustomerType] = useState<CustomerType>(
     (entry?.customerType as CustomerType) ?? 'normal',
   );
-  const [soupPots, setSoupPots] = useState<Array<{ soups: SoupOption[] }>>(
-    (entry?.soupPots as Array<{ soups: SoupOption[] }> | null) ?? [{ soups: ['น้ำดำ' as SoupOption] }],
-  );
-  const [seatingFit, setSeatingFit] = useState<SeatingFit | undefined>(
-    (entry?.seatingFit as SeatingFit | undefined) ?? undefined,
-  );
+  const [soupPots, setSoupPots] = useState<PotUI[]>(() => {
+    const entryPots = entry?.soupPots as Array<{ soups: SoupOption[] }> | null;
+    if (entryPots?.length) {
+      return entryPots.map(p => ({
+        s1: (p.soups[0] as SoupOption | undefined) ?? null,
+        s2: (p.soups[1] as SoupOption | undefined) ?? null,
+      }));
+    }
+    return [{ s1: null, s2: null }];
+  });
   const [error, setError]           = useState('');
   const [submitting, setSubmitting] = useState(false);
   const total = adultCount + childCount;
 
-  function suggestSeating(adult: number, child: number) {
-    if (seatingFit) return;
-    const t = adult + child;
-    if (t >= 1) setSeatingFit(t <= 4 ? 'need_big' : t <= 6 ? 'need_adjacent' : 'split_ok');
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (total === 0)                               { setError('กรุณากรอกจำนวนคน'); return; }
-    if (soupPots.some(p => p.soups.length === 0))  { setError('กรุณาเลือกน้ำซุปอย่างน้อย 1 อย่างต่อหม้อ'); return; }
-    const payload: AddQueueInput = { adultCount, childCount, customerType, soupPots, seatingFit };
+    const serverPots = soupPots.map(p => ({
+      soups: [p.s1, p.s2].filter((s): s is SoupOption => s !== null),
+    }));
+    if (total === 0)                                 { setError('กรุณากรอกจำนวนคน'); return; }
+    if (serverPots.some(p => p.soups.length === 0))  { setError('กรุณาเลือกน้ำซุปอย่างน้อย 1 อย่างต่อหม้อ'); return; }
+    const payload: AddQueueInput = { adultCount, childCount, customerType, soupPots: serverPots };
     setSubmitting(true); setError('');
     try {
       if (mode === 'add') {
@@ -1054,9 +1155,9 @@ function QueueFormModal({ mode, entry, onClose, onSuccess }: QueueFormModalProps
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">จำนวนคน · รวม {total} คน</p>
             <div className="flex gap-4 rounded-xl border border-border bg-[var(--surface-2)] px-4 py-3">
-              <Stepper label="ผู้ใหญ่" value={adultCount} onChange={v => { setAdultCount(v); suggestSeating(v, childCount); }} />
+              <Stepper label="ผู้ใหญ่" value={adultCount} onChange={setAdultCount} />
               <div className="w-px bg-border" />
-              <Stepper label="เด็ก"    value={childCount}  onChange={v => { setChildCount(v); suggestSeating(adultCount, v); }} />
+              <Stepper label="เด็ก"    value={childCount}  onChange={setChildCount} />
             </div>
           </div>
           <div>
@@ -1076,24 +1177,8 @@ function QueueFormModal({ mode, entry, onClose, onSuccess }: QueueFormModalProps
             </div>
           </div>
           <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">น้ำซุป (เลือกได้ 1–2 อย่าง/หม้อ)</p>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">น้ำซุป</p>
             <SoupPotSelector pots={soupPots} onChange={setSoupPots} />
-          </div>
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">การจัดที่นั่ง</p>
-            <div className="grid grid-cols-2 gap-2">
-              {SIMPLIFIED_SEATING_UI.map(({ label, value }) => (
-                <button key={value} type="button" onClick={() => setSeatingFit(value)}
-                  className={cn(
-                    'flex min-h-10 items-center justify-center rounded-xl border text-sm font-semibold transition-colors active:scale-95',
-                    seatingFit === value
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border bg-[var(--surface-2)] text-foreground hover:border-primary/50',
-                  )}>
-                  {label}
-                </button>
-              ))}
-            </div>
           </div>
           {error && (
             <p className="rounded-lg bg-[var(--status-danger-bg)] px-3 py-2.5 text-sm font-medium text-[var(--status-danger-fg)]">
@@ -1241,6 +1326,129 @@ function ConfirmCancelDialog({ entry, onClose, onSuccess }: {
         </button>
       </div>
     </ModalShell>
+  );
+}
+
+/* ─── QrPreviewModal ─────────────────────────────────────────────── */
+
+function QrPreviewModal({
+  entry, url, onClose,
+}: {
+  entry: QueueEntry;
+  url: string;
+  onClose: () => void;
+}) {
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [copied, setCopied]       = useState<'idle' | 'ok' | 'fail'>('idle');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { default: QRCode } = await import('qrcode');
+      const dataUrl = await QRCode.toDataURL(url, {
+        width: 280, margin: 2, errorCorrectionLevel: 'M',
+        color: { dark: '#000000', light: '#ffffff' },
+      });
+      if (!cancelled) setQrDataUrl(dataUrl);
+    })().catch(console.error);
+    return () => { cancelled = true; };
+  }, [url]);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied('ok');
+    } catch {
+      setCopied('fail');
+    }
+    setTimeout(() => setCopied('idle'), 2500);
+  }
+
+  const soup = soupSummary(entry.soupPots as Array<{ soups: string[] }> | null);
+
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center bg-foreground/30 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm overflow-y-auto rounded-2xl border border-border bg-[var(--surface-1)] shadow-[var(--shadow-dialog)]"
+        style={{ maxHeight: '92dvh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="sticky top-0 flex items-center justify-between border-b border-border bg-[var(--surface-1)] px-5 py-3.5">
+          <h2 className="text-base font-bold text-foreground">QR คิว {entry.queueNumber}</h2>
+          <button type="button" aria-label="ปิด" onClick={onClose}
+            className="flex size-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted">
+            <X className="size-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex flex-col items-center gap-5 px-6 pb-6 pt-5">
+          {/* QR code */}
+          <div className="rounded-2xl border border-border bg-white p-4 shadow-[var(--shadow-card)]">
+            {qrDataUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={qrDataUrl} alt={`QR คิว ${entry.queueNumber}`} width={280} height={280} />
+            ) : (
+              <div className="flex size-[280px] items-center justify-center">
+                <Loader2 className="size-8 animate-spin text-muted-foreground" />
+              </div>
+            )}
+          </div>
+
+          {/* Queue info */}
+          <div className="text-center">
+            <p className="text-3xl font-black tabular-nums text-foreground">{entry.queueNumber}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              ผู้ใหญ่ {entry.adultCount ?? 0} · เด็ก {entry.childCount ?? 0}
+              {soup ? ` · ${soup}` : ''}
+            </p>
+          </div>
+
+          {/* Staff instruction */}
+          <p className="text-center text-xs text-muted-foreground">
+            ให้ลูกค้าสแกนเพื่อเช็คสถานะคิว หรือยกเลิกคิว
+          </p>
+
+          {/* Action buttons */}
+          <div className="flex w-full gap-2">
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border bg-[var(--surface-2)] text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+            >
+              <ExternalLink className="size-4" />เปิดลิงก์
+            </a>
+            <button
+              type="button"
+              onClick={handleCopy}
+              className={cn(
+                'flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border text-sm font-semibold transition-colors',
+                copied === 'ok'
+                  ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'
+                  : copied === 'fail'
+                    ? 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]'
+                    : 'border-border bg-[var(--surface-2)] text-foreground hover:bg-muted',
+              )}
+            >
+              {copied === 'ok' ? <Check className="size-4" /> : <Copy className="size-4" />}
+              {copied === 'ok' ? 'คัดลอกแล้ว' : copied === 'fail' ? 'คัดลอกไม่สำเร็จ' : 'คัดลอกลิงก์'}
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex min-h-10 w-full items-center justify-center rounded-xl bg-primary text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95"
+          >
+            ปิด
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
