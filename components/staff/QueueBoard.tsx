@@ -504,7 +504,7 @@ function ActiveQueueRow({
           <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold leading-none', tone.badge)}>
             {tone.label}
           </span>
-          <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+          <span className="flex items-center gap-0.5 text-xs text-muted-foreground" suppressHydrationWarning>
             <Clock className="size-3 shrink-0" />
             {formatDistanceToNowStrict(new Date(timeRef as string | Date), { locale: th, addSuffix: true })}
           </span>
