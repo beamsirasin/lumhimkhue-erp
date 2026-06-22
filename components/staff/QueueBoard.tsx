@@ -763,7 +763,7 @@ function TableMapPickerModal({
             {/* Wrapper at exact rendered canvas dimensions; dot-grid fills this area */}
             <div
               className="relative"
-              style={{ width: canvasW * scale, height: canvasH * scale }}
+              style={{ width: canvasW * scale, height: canvasH * scale + 80 }}
             >
               <svg
                 className="pointer-events-none absolute inset-0 h-full w-full"
@@ -802,7 +802,7 @@ function TableMapPickerModal({
                         'flex flex-col items-center justify-center border-2 font-semibold transition-all active:scale-95 select-none',
                         shape,
                         isSelected
-                          ? 'border-primary bg-primary text-primary-foreground shadow-md ring-2 ring-primary/25 ring-offset-1'
+                          ? 'border-primary bg-primary text-primary-foreground shadow-md ring-[3px] ring-primary/60 ring-offset-2'
                           : 'border-border/60 bg-[var(--surface-1)] text-foreground hover:border-primary/50 hover:bg-[var(--surface-primary-subtle)]',
                       )}
                     >
@@ -824,6 +824,7 @@ function TableMapPickerModal({
               {selected.size > 0 ? (
                 <>
                   <MapPin className="size-3.5 shrink-0 text-[var(--status-info-fg)]" />
+                  <span className="shrink-0 text-sm text-muted-foreground">เลือกแล้ว:</span>
                   <span className="truncate text-sm font-semibold text-[var(--status-info-fg)]">
                     {notePreview}
                   </span>
@@ -832,7 +833,7 @@ function TableMapPickerModal({
                   </span>
                 </>
               ) : (
-                <span className="text-sm text-muted-foreground">แตะโต๊ะบนแผนผังเพื่อเลือก</span>
+                <span className="text-sm text-muted-foreground">แตะโต๊ะบนแผนผังเพื่อเลือก (เลือกได้มากกว่า 1)</span>
               )}
             </div>
 
