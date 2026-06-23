@@ -29,6 +29,7 @@ import {
 } from '@/lib/db/schema';
 import type { ReceiptData } from '@/lib/printer/types';
 import { resolveBillConfig } from '@/lib/utils/billConfig';
+import type { BillTypeKey } from '@/lib/utils/billConfig';
 
 const TZ = 'Asia/Bangkok';
 
@@ -322,7 +323,7 @@ function receiptDate(value: Date | string | null | undefined) {
   });
 }
 
-async function getReceiptShopInfo(kind: 'main' | 'taxInvoice' = 'main') {
+async function getReceiptShopInfo(kind: BillTypeKey = 'main') {
   const [settings] = await db.select().from(storeSettings).where(eq(storeSettings.id, 1)).limit(1);
   const cfg = settings ? resolveBillConfig(settings, kind) : null;
   const hidden = new Set(cfg?.hiddenFields ?? []);
@@ -438,11 +439,22 @@ export async function getPaymentReceiptData(paymentId: string) {
       orderBy: [asc(payments.paidAt), asc(payments.id)],
     });
     const paymentEventNumber = Math.max(1, allPayments.findIndex((item) => item.id === payment.id) + 1);
-    const rowsByPayment = await getReceiptPaymentRows([payment.id]);
-    const allocationsByPayment = await getReceiptAllocations([payment.id]);
+    const [rowsByPayment, allocationsByPayment, primaryAccountRow] = await Promise.all([
+      getReceiptPaymentRows([payment.id]),
+      getReceiptAllocations([payment.id]),
+      db.select({ code: receivingAccounts.code })
+        .from(paymentRows)
+        .innerJoin(receivingAccounts, eq(paymentRows.receivingAccountId, receivingAccounts.id))
+        .where(and(eq(paymentRows.paymentId, payment.id), eq(paymentRows.status, 'completed')))
+        .orderBy(asc(paymentRows.id))
+        .limit(1),
+    ]);
     const paymentRowsForReceipt = rowsByPayment.get(payment.id) ?? [];
     const allocations = allocationsByPayment.get(payment.id) ?? [];
-    const shop = await getReceiptShopInfo('main');
+    const isTaxInvoice = typeof payment.notes === 'string' && payment.notes.includes('[ใบกำกับภาษี:');
+    const primaryCode = primaryAccountRow[0]?.code;
+    const billType: BillTypeKey = isTaxInvoice ? 'taxInvoice' : primaryCode ? `account:${primaryCode}` : 'main';
+    const shop = await getReceiptShopInfo(billType);
     const hidden = shop.hidden;
     const paidThisTime = Number(payment.total);
     const paidBefore = Number(payment.paidBefore);
@@ -545,9 +557,24 @@ export async function getFullBillReceiptData(sessionId: string) {
       getReceiptPaymentRows(paymentIds),
       getReceiptAllocations(paymentIds),
     ]);
-    const shop = await getReceiptShopInfo('main');
-    const hidden = shop.hidden;
     const latestPayment = completedPayments.at(-1);
+    const isTaxInvoiceFullBill = typeof latestPayment?.notes === 'string' && latestPayment.notes.includes('[ใบกำกับภาษี:');
+    let fullBillType: BillTypeKey = 'main';
+    if (isTaxInvoiceFullBill) {
+      fullBillType = 'taxInvoice';
+    } else if (latestPayment) {
+      const primaryAccountRow = await db
+        .select({ code: receivingAccounts.code })
+        .from(paymentRows)
+        .innerJoin(receivingAccounts, eq(paymentRows.receivingAccountId, receivingAccounts.id))
+        .where(and(eq(paymentRows.paymentId, latestPayment.id), eq(paymentRows.status, 'completed')))
+        .orderBy(asc(paymentRows.id))
+        .limit(1);
+      const primaryCode = primaryAccountRow[0]?.code;
+      if (primaryCode) fullBillType = `account:${primaryCode}`;
+    }
+    const shop = await getReceiptShopInfo(fullBillType);
+    const hidden = shop.hidden;
     const billTotal = latestPayment
       ? Number(latestPayment.billTotalAtPayment)
       : chargeLines.reduce((sum, line) => sum + Number(line.total), 0);

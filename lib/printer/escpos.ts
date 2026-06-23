@@ -8,6 +8,7 @@
  */
 
 import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder';
+import { buildThermalReceiptLines } from './thermal-layout';
 import type { ReceiptData, TableQrData, QueueQrData, KitchenOrderData } from './types';
 
 /* ─── Constants ─────────────────────────────────────────────────────────── */
@@ -106,102 +107,41 @@ function wrapLines(text: string, cols: number): string[] {
 /* ─── Receipt ────────────────────────────────────────────────────────────── */
 
 export function buildReceipt(data: ReceiptData, paperWidth: 58 | 80, thaiCodepage = 21): Uint8Array {
-  const cols = COLS[paperWidth];
-  const label = data.billTypeLabel ?? (data.receiptType === 'receipt' ? 'receipt_short' : 'food');
-  const showTaxFields = data.receiptType === 'receipt' || label === 'tax_full';
+  const cols  = COLS[paperWidth];
+  const lines = buildThermalReceiptLines(data);
 
   let e = makeEncoder(paperWidth, thaiCodepage)
     .initialize()
-    .codepage(getThaiCpName(thaiCodepage))
-    /* Shop header */
-    .align('center');
+    .codepage(getThaiCpName(thaiCodepage));
 
-  if (data.shopNameTh) e = e.bold(true).size(2, 2).line(data.shopNameTh).size(1, 1).bold(false);
-
-  if (data.shopNameEn)  e = e.line(data.shopNameEn);
-  if (data.companyName) e = e.line(data.companyName);
-  if (data.shopAddress) for (const l of wrapLines(data.shopAddress, cols)) e = e.line(l);
-  if (data.phone)       e = e.line(`โทรศัพท์: ${data.phone}`);
-  if (data.taxId)       e = e.line(`เลขผู้เสียภาษี: ${data.taxId}`);
-  if (data.branch)      e = e.line(`สาขา: ${data.branch}`);
-  if (data.registerNo)  e = e.line(`Register No: ${data.registerNo}`);
-
-  /* Buyer info (tax_full only) */
-  if (label === 'tax_full' && data.buyerInfo) {
-    e = e.line(sep(cols))
-      .line('ข้อมูลผู้ซื้อ');
-    for (const l of wrapLines(data.buyerInfo.companyName, cols)) e = e.line(l);
-    for (const l of wrapLines(data.buyerInfo.address, cols)) e = e.line(l);
-    e = e.line(`เลขผู้เสียภาษี: ${data.buyerInfo.taxId}`);
-  }
-
-  /* Document title */
-  const docTitle =
-    label === 'food'          ? 'บิลรายการอาหาร' :
-    label === 'receipt_short' ? 'ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ' :
-                                'ใบกำกับภาษี';
-
-  e = e
-    .line(sep(cols))
-    .line(docTitle);
-  if (label === 'receipt_short') e = e.line('ราคารวมภาษีมูลค่าเพิ่มแล้ว');
-
-  e = e
-    .line(sep(cols))
-    /* Session info */
-    .align('left');
-
-  if (data.receiptNo)                    e = e.line(row('เลขที่',   data.receiptNo,   cols));
-  if (data.tableNumber)                  e = e.line(row('โต๊ะ',     data.tableNumber, cols));
-  if (data.cashierName) e = e.line(row('พนักงาน', data.cashierName, cols));
-  if (data.paidAt)                       e = e.line(row('วันที่',   data.paidAt,      cols));
-  e = e.line(sep(cols));
-
-  /* Items */
-  for (const item of data.items) {
-    const right = `x${item.quantity}  ฿${item.total.toFixed(2)}`;
-    const maxNameLen = cols - right.length - 1;
-    if (item.name.length <= maxNameLen) {
-      e = e.line(row(item.name, right, cols));
+  for (const ln of lines) {
+    if (ln.t === 'hr') {
+      e = e.align('left').line(sep(cols));
+    } else if (ln.t === 'sp') {
+      // trailing space handled by .newline(3) below
+    } else if (ln.t === 'qr') {
+      e = e.qrcode(ln.url, 2, 4, 'm');
+    } else if (ln.t === 'row') {
+      const text = row(ln.l, ln.r, cols);
+      e = e.align('left');
+      if (ln.bold) e = e.bold(true).line(text).bold(false);
+      else         e = e.line(text);
     } else {
-      const nameLines = wrapLines(item.name, cols);
-      for (let i = 0; i < nameLines.length - 1; i++) e = e.line(nameLines[i]);
-      const last = nameLines[nameLines.length - 1] ?? '';
-      e = last.length <= maxNameLen
-        ? e.line(row(last, right, cols))
-        : e.line(last).line(row('', right, cols));
+      // text
+      const align: 'left' | 'center' | 'right' =
+        ln.a === 'c' ? 'center' : ln.a === 'r' ? 'right' : 'left';
+      e = e.align(align);
+      if (ln.bold) e = e.bold(true);
+      if (ln.big)  e = e.size(2, 2);
+      const textCols = ln.big ? Math.floor(cols / 2) : cols;
+      for (const s of wrapLines(ln.s, textCols)) e = e.line(s);
+      if (ln.big)  e = e.size(1, 1);
+      if (ln.bold) e = e.bold(false);
+      e = e.align('left');
     }
   }
 
-  e = e.line(sep(cols));
-
-  /* Totals */
-  e = e.line(row('ยอดรวม', `฿${data.subtotal.toFixed(2)}`, cols));
-  if (data.discount > 0) {
-    e = e.line(row('ส่วนลด', `-฿${data.discount.toFixed(2)}`, cols));
-  }
-  if (data.serviceCharge > 0) {
-    e = e.line(row('ค่าบริการ', `+฿${data.serviceCharge.toFixed(2)}`, cols));
-  }
-  if (showTaxFields) {
-    const vat = data.vatPercent ?? 7;
-    const vatAmt = data.total * vat / (100 + vat);
-    if (vatAmt > 0) e = e.line(row(`ภาษีมูลค่าเพิ่ม ${vat}% (รวม)`, vatAmt.toFixed(2), cols));
-  }
-  e = e.bold(true).line(row('ทั้งหมด', `฿${data.total.toFixed(2)}`, cols)).bold(false);
-
-  e = e
-    .line(sep(cols))
-    .align('center')
-    .line(data.footerNote ?? 'ขอบคุณและขอให้โชคดี');
-
-  if (data.receiptType === 'receipt') {
-    e = e.qrcode(data.sessionId, 2, 4, 'm');
-  }
-
-  e = e.newline(3).cut('partial');
-
-  return e.encode();
+  return e.newline(3).cut('partial').encode();
 }
 
 /* ─── Table QR ───────────────────────────────────────────────────────────── */

@@ -550,6 +550,7 @@ type PaymentRowDraft = {
   paymentMethodName: string;
   paymentMethodType: string;
   receivingAccountId: string;
+  receivingAccountCode: string;
   receivingAccountName: string;
   amount: number;
   amountTendered: number | null;
@@ -1123,7 +1124,12 @@ function PaymentPanel({
         const qty = addonQty[t.id] ?? 0;
         if (qty > 0) receiptItems.push({ name: t.name, quantity: qty, total: Number(t.price) * qty });
       }
-      const billType: BillTypeKey = taxInvoice ? 'taxInvoice' : 'main';
+      const primaryAccountCode = paymentRowsDraft[0]?.receivingAccountCode;
+      const billType: BillTypeKey = taxInvoice
+        ? 'taxInvoice'
+        : primaryAccountCode
+          ? (`account:${primaryAccountCode}` as BillTypeKey)
+          : 'main';
       const freshRes = await getStoreSettings();
       const fresh = freshRes.ok ? freshRes.data : storeSettings;
       const { cfg, ...shopInfo } = buildShopInfo(billType, fresh);
@@ -1209,7 +1215,7 @@ function PaymentPanel({
     if (method === 'cash' && numpadNum < total) { toast.error('จำนวนเงินที่รับไม่เพียงพอ'); return; }
     if (method === 'cash_qr' && cashPortion > 0 && cashQrChange < 0) { toast.error('จำนวนเงินสดไม่เพียงพอ'); return; }
     setSubmitting(true);
-    const accountLabel = bankAccount === 'main' ? 'บัญชีหลัก' : 'บัญชีรอง';
+    const accountLabel = bankAccount === 'main' ? 'บัญชี A' : 'บัญชี B';
     const splitNote = method === 'cash_qr'
       ? `[QR ฿${qrPortion.toLocaleString('th-TH')} + เงินสด ฿${cashPortion.toLocaleString('th-TH')}]`
       : '';
@@ -1250,7 +1256,7 @@ function PaymentPanel({
     }
     const billType: BillTypeKey = taxInvoice
       ? 'taxInvoice'
-      : (bankAccount === 'main' ? 'main' : 'secondary');
+      : (bankAccount === 'main' ? 'account:bank_cash_a' : 'account:bank_cash_b');
     const freshRes = await getStoreSettings();
     const fresh = freshRes.ok ? freshRes.data : storeSettings;
     const { cfg, ...shopInfo } = buildShopInfo(billType, fresh);
@@ -1470,6 +1476,7 @@ function PaymentPanel({
         paymentMethodName: draftMethod.name,
         paymentMethodType: draftMethod.type,
         receivingAccountId: draftAccount.id,
+        receivingAccountCode: draftAccount.code,
         receivingAccountName: draftAccount.name,
         amount: draftAmountNum,
         amountTendered: isCashMethod ? draftTenderedNum : null,
@@ -2297,7 +2304,7 @@ function PaymentPanel({
           return `[รอบ ${i + 1}: ฿${r.subtotal.toLocaleString('th-TH')} ${mLabel}]`;
         })
         .join(' ');
-      const accountLabel = bankAccount === 'main' ? 'บัญชีหลัก' : 'บัญชีรอง';
+      const accountLabel = bankAccount === 'main' ? 'บัญชี A' : 'บัญชี B';
       const partialNote = !allDone ? `[ชำระบางส่วน]` : '';
       const fullNotes = [
         `[${accountLabel}]`,
@@ -2339,7 +2346,7 @@ function PaymentPanel({
       );
       const splitBillType: BillTypeKey = taxInvoice
         ? 'taxInvoice'
-        : (bankAccount === 'main' ? 'main' : 'secondary');
+        : (bankAccount === 'main' ? 'account:bank_cash_a' : 'account:bank_cash_b');
       const splitFreshRes = await getStoreSettings();
       const splitFresh = splitFreshRes.ok ? splitFreshRes.data : storeSettings;
       const { cfg: splitCfg, ...splitShopInfo } = buildShopInfo(splitBillType, splitFresh);
@@ -2509,7 +2516,7 @@ function PaymentPanel({
                       className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${
                         bankAccount === acc ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-foreground hover:bg-muted/50'
                       }`}>
-                      {acc === 'main' ? 'บัญชีหลัก' : 'บัญชีรอง'}
+                      {acc === 'main' ? 'บัญชี A' : 'บัญชี B'}
                     </button>
                   ))}
                 </div>
@@ -2676,7 +2683,7 @@ function PaymentPanel({
   const totalGuests = guestTiles.reduce((s, t) => s + (guestQty[t.id] ?? 0), 0);
 
   return (
-    <div className="flex flex-col h-[90dvh]">
+    <div className="flex flex-col h-full">
       {/* Header bar */}
       <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border shrink-0">
         <div>

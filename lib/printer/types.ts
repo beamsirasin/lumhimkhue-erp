@@ -45,6 +45,25 @@ export type PrintJob =
   | { type: 'queue_qr'; queueEntry: QueueQrData }
   | { type: 'kitchen_order'; order: KitchenOrderData };
 
+/* ─── Shared receipt layout constants ───────────────────────────────────── */
+
+/** Column labels used in item-table header across all receipt renderers.
+ *  Kept here so ESC/POS, bitmap, and HTML templates always stay in sync. */
+export const RECEIPT_ITEM_COLUMNS = {
+  name:  'สินค้า',
+  qty:   'Qty',
+  total: 'ราคารวม',
+} as const;
+
+/** Renderer-agnostic thermal receipt line.
+ *  Shared between ESC/POS, bitmap, and HTML renderers so layout is identical. */
+export type ThermalLine =
+  | { t: 'text'; s: string; a: 'l' | 'c' | 'r'; bold?: boolean; big?: boolean }
+  | { t: 'row';  l: string; r: string; bold?: boolean }
+  | { t: 'hr' }
+  | { t: 'sp';   n?: number }
+  | { t: 'qr';   url: string };
+
 /* ─── Job Payloads ──────────────────────────────────────────────────────── */
 
 export type BuyerInfo = {

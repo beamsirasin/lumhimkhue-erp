@@ -3,7 +3,8 @@
  */
 
 import QRCode from 'qrcode';
-import type { ReceiptData, TableQrData, QueueQrData, KitchenOrderData } from './types';
+import { buildThermalReceiptLines } from './thermal-layout';
+import type { ThermalLine, ReceiptData, TableQrData, QueueQrData, KitchenOrderData } from './types';
 
 const QR_OPTS: QRCode.QRCodeToDataURLOptions = {
   width: 200, margin: 1, errorCorrectionLevel: 'M',
@@ -27,15 +28,6 @@ function row(label: string, value: string, bold = false): string {
   return `<div class="row${cls}"><span class="name">${esc(label)}</span><span class="value">${esc(value)}</span></div>`;
 }
 
-/** Three-column table row: name | qty | total */
-function itemRow(name: string, qty: number, total: number): string {
-  return `<div class="item-row"><span class="item-name">${esc(name)}</span><span class="item-qty">${qty}</span><span class="item-total">${total.toFixed(2)}</span></div>`;
-}
-
-
-function allocationRow(label: string, quantity: number, unitPrice: number, total: number): string {
-  return `<div class="item-row"><span class="item-name">${esc(label)} x ${quantity}</span><span class="item-qty">${unitPrice.toFixed(2)}</span><span class="item-total">${total.toFixed(2)}</span></div>`;
-}
 
 const STATION_LABEL: Record<string, string> = {
   meat: 'เนื้อสัตว์', seafood: 'ทะเล', vegetable: 'ผัก',
@@ -44,107 +36,37 @@ const STATION_LABEL: Record<string, string> = {
 
 /* ─── Receipt / Bill ────────────────────────────────────────────────────── */
 
+function renderThermalLinesToHtml(lines: ThermalLine[]): string {
+  return lines.map((ln) => {
+    switch (ln.t) {
+      case 'hr':  return '<hr />';
+      case 'sp':  return '';
+      case 'qr':  return '';
+      case 'row': {
+        const cls = ln.bold ? ' bold' : '';
+        return `<div class="row${cls}"><span class="name">${esc(ln.l)}</span><span class="value">${esc(ln.r)}</span></div>`;
+      }
+      case 'text': {
+        const classes = [
+          ln.a === 'c' ? 'center' : ln.a === 'r' ? 'right' : '',
+          ln.bold ? 'bold' : '',
+          ln.big  ? 'big'  : '',
+        ].filter(Boolean).join(' ');
+        return classes
+          ? `<div class="${classes}">${esc(ln.s)}</div>`
+          : `<div>${esc(ln.s)}</div>`;
+      }
+    }
+  }).filter(Boolean).join('\n');
+}
+
 export async function renderReceiptHTML(data: ReceiptData): Promise<string> {
-  const isReceipt = data.receiptType === 'receipt';
-  const label = data.billTypeLabel ?? (isReceipt ? 'receipt_short' : 'food');
-  const isTaxFull = label === 'tax_full';
-  const showTaxFields = isReceipt || isTaxFull;
-  const vat = data.vatPercent ?? 7;
-  const vatAmount = showTaxFields ? data.total * vat / (100 + vat) : 0;
-  const isPaymentEventReceipt = data.receiptKind === 'payment_event';
-  const isFullBillReceipt = data.receiptKind === 'full_bill';
-
   const logoStyle = data.logoHeight ? ` style="max-height:${data.logoHeight}px"` : '';
-
-  /* Header block */
-  const header = `
-<div class="center">
-  ${data.logoUrl ? `<div class="logo-wrap"><img src="${data.logoUrl}" alt="logo" class="logo"${logoStyle} /></div>` : ''}
-  ${data.shopNameTh ? `<div class="big bold">${esc(data.shopNameTh)}</div>` : ''}
-  ${data.shopNameEn ? `<div>${esc(data.shopNameEn)}</div>` : ''}
-  ${data.companyName ? `<div>${esc(data.companyName)}</div>` : ''}
-  ${data.shopAddress ? `<div class="small">${esc(data.shopAddress)}</div>` : ''}
-  ${data.phone ? `<div>โทรศัพท์: ${esc(data.phone)}</div>` : ''}
-  ${data.taxId ? `<div class="small">เลขประจำตัวผู้เสียภาษี: ${esc(data.taxId)}</div>` : ''}
-  ${data.branch ? `<div>สาขา: ${esc(data.branch)}</div>` : ''}
-  ${data.registerNo ? `<div class="small">Register No: ${esc(data.registerNo)}</div>` : ''}
-</div>`;
-
-  /* Buyer info block (tax_full only) */
-  const buyerBlock = isTaxFull && data.buyerInfo ? `
-${hr()}
-<div class="center small bold">ข้อมูลผู้ซื้อ</div>
-<div class="small">${esc(data.buyerInfo.companyName)}</div>
-<div class="small">${esc(data.buyerInfo.address)}</div>
-<div class="small">เลขประจำตัวผู้เสียภาษี: ${esc(data.buyerInfo.taxId)}</div>` : '';
-
-  /* Document type label */
-  const docLabel =
-    label === 'food'          ? `<div class="center bold">บิลรายการอาหาร</div>` :
-    label === 'receipt_short' ? `<div class="center bold">ใบเสร็จรับเงิน / ใบกำกับภาษีอย่างย่อ</div>
-                                 <div class="center small">ราคารวมภาษีมูลค่าเพิ่มแล้ว</div>` :
-                                `<div class="center bold">ใบกำกับภาษี</div>`;
-
-  const receiptDocLabel = isFullBillReceipt
-    ? `<div class="center bold">ใบเสร็จรวม / ใบสรุปบิล</div>`
-    : isPaymentEventReceipt && data.settlementType === 'partial'
-      ? `<div class="center bold">ใบรับชำระ / ใบรับชำระบางส่วน</div>`
-      : isPaymentEventReceipt && data.settlementType === 'final'
-        ? `<div class="center bold">ใบเสร็จรับเงิน / ใบปิดบิล</div>`
-        : docLabel;
-
-  /* Transaction details */
-  const txDetails = `
-${data.receiptNo ? row('เลขที่', data.receiptNo) : ''}
-${data.tableNumber  ? row('โต๊ะ', data.tableNumber) : ''}
-${data.cashierName ? row('แคชเชียร์', data.cashierName) : ''}
-${data.paidAt ? row('วันที่/เวลา', data.paidAt) : ''}`;
-
-  /* Items */
-  const itemHeader = `<div class="item-row bold"><span class="item-name">สินค้า</span><span class="item-qty">Qty</span><span class="item-total">ราคารวม</span></div>`;
-  const itemRows = data.items.map((i) => itemRow(i.name, i.quantity, i.total)).join('\n');
-  const receiptItemTitle = isPaymentEventReceipt
-    ? 'รายการที่ชำระครั้งนี้'
-    : isFullBillReceipt
-      ? 'รายการทั้งหมดของบิล'
-      : 'สินค้า';
-  const receiptItemHeader = isPaymentEventReceipt || isFullBillReceipt
-    ? `<div class="item-row bold"><span class="item-name">${receiptItemTitle}</span><span class="item-qty">ราคา/หน่วย</span><span class="item-total">ราคารวม</span></div>`
-    : itemHeader;
-  const receiptItemRows = isPaymentEventReceipt
-    ? data.allocations?.length
-      ? data.allocations.map((i) => allocationRow(i.label, i.quantity, i.unitPrice, i.total)).join('\n')
-      : `<div class="small center">${esc(data.allocationFallbackNote ?? 'รายการชำระแบบไม่ได้ระบุหัว')}</div>`
-    : isFullBillReceipt
-      ? data.items.map((i) => allocationRow(i.name, i.quantity, i.quantity > 0 ? i.total / i.quantity : i.total, i.total)).join('\n')
-      : itemRows;
-
-  /* Totals */
-  const discountRow = data.discount > 0 ? row('ส่วนลด', `-฿${data.discount.toFixed(2)}`) : '';
-  const totalsBlock = `
-${row('ยอดรวม', `${data.subtotal.toFixed(2)}`)}
-${discountRow}
-${showTaxFields && vatAmount > 0 ? row(`ภาษีมูลค่าเพิ่ม ${vat}% (รวม)`, vatAmount.toFixed(2)) : ''}
-${row('ทั้งหมด', `฿${data.total.toFixed(2)}`, true)}`;
-
-  /* Footer */
-  const footer = `<div class="center">${esc(data.footerNote ?? 'ขอบคุณและขอให้โชคดี')}</div>`;
-
-  return `
-${header}
-${buyerBlock}
-${hr()}
-${receiptDocLabel}
-${hr()}
-${txDetails}
-${hr()}
-${receiptItemHeader}
-${receiptItemRows}
-${hr()}
-${totalsBlock}
-${hr()}
-${footer}
-`.trim();
+  const logoBlock = data.logoUrl
+    ? `<div class="logo-wrap"><img src="${data.logoUrl}" alt="" class="logo"${logoStyle} /></div>\n`
+    : '';
+  const lines = buildThermalReceiptLines(data);
+  return `${logoBlock}${renderThermalLinesToHtml(lines)}`.trim();
 }
 
 /* ─── Table QR ───────────────────────────────────────────────────────────── */
