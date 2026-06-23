@@ -27,6 +27,7 @@ import { ShiftWidget } from '@/components/staff/ShiftWidget';
 import { print as printReceipt } from '@/lib/printer/service';
 import type { ReceiptData } from '@/lib/printer/types';
 import type { PricingTile } from '@/lib/db/schema';
+import { getAccountGroup } from '@/lib/payments/account-group';
 
 type PosPaymentOption = NonNullable<
   Extract<Awaited<ReturnType<typeof getActivePaymentOptionsForPos>>, { ok: true }>['data']
@@ -652,6 +653,15 @@ function PaymentPanel({
   const [cashEditTarget, setCashEditTarget] = useState<'amount' | 'tendered'>('amount');
   const [draftPayerLabel, setDraftPayerLabel] = useState('');
   const [notesOpen, setNotesOpen] = useState(false);
+  const [amountPopupOpen, setAmountPopupOpen] = useState(false);
+
+  // Derived: account group locked by the first draft row ('a' | 'b' | null)
+  const lockedAccountGroup = useMemo(
+    () => paymentRowsDraft.length > 0
+      ? getAccountGroup(paymentRowsDraft[0].receivingAccountCode)
+      : null,
+    [paymentRowsDraft],
+  );
 
   // Keep numpad in sync with round subtotal when QR is selected
   useEffect(() => {
@@ -1195,6 +1205,10 @@ function PaymentPanel({
           }))
           : undefined,
       }]);
+      // Auto-print receipt — non-blocking; payment success never depends on print outcome
+      void printPaymentEventReceipt(result.data.paymentId, receipt).catch(() => {
+        toast.warning('รับชำระสำเร็จ แต่พิมพ์ใบเสร็จไม่สำเร็จ');
+      });
       if (effectiveSettlementMode === 'partial') {
         toast.success(
           checkoutMode === 'head'
@@ -1292,6 +1306,10 @@ function PaymentPanel({
       settlementType: result.data.settlementType,
       receipt,
     }]);
+    // Auto-print receipt — non-blocking; payment success never depends on print outcome
+    void printPaymentEventReceipt(result.data.paymentId, receipt).catch(() => {
+      toast.warning('รับชำระสำเร็จ แต่พิมพ์ใบเสร็จไม่สำเร็จ');
+    });
   }
 
   /* ── Success ── */
@@ -1457,10 +1475,16 @@ function PaymentPanel({
       const found = paymentOptions.find((opt) => opt.id === methodId) ?? null;
       const nextAmount = remainingForDraft > 0 ? String(remainingForDraft) : '';
       setDraftMethodId(methodId);
-      const defaultAcc =
-        found?.accounts.find((a) => a.id === found.defaultAccountId) ??
-        found?.accounts[0] ??
-        null;
+      // If a prior row has locked the account group, prefer an account from
+      // that group; fall back to the method default if the method has no match.
+      const defaultAcc = lockedAccountGroup !== null
+        ? (found?.accounts.find((a) => getAccountGroup(a.code) === lockedAccountGroup) ??
+           found?.accounts.find((a) => a.id === found.defaultAccountId) ??
+           found?.accounts[0] ??
+           null)
+        : (found?.accounts.find((a) => a.id === found.defaultAccountId) ??
+           found?.accounts[0] ??
+           null);
       setDraftAccountId(defaultAcc?.id ?? '');
       setDraftAmountInput(nextAmount);
       setDraftTenderedInput(found?.type === 'cash' ? nextAmount : '');
@@ -1617,6 +1641,209 @@ function PaymentPanel({
             </div>
           </div>
         )}
+        {/* Amount entry popup */}
+        {amountPopupOpen && !isDraftComplete && (
+          <div
+            className="fixed inset-0 z-[130] flex items-end justify-center bg-black/60 p-4 sm:items-center"
+            onClick={() => setAmountPopupOpen(false)}
+          >
+            <div
+              className="w-full max-w-sm sm:max-w-[640px] rounded-2xl bg-[var(--surface-raised)] border border-border shadow-[var(--shadow-dialog)] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                <div>
+                  <p className="text-lg font-semibold text-foreground">รับชำระ</p>
+                  {draftMethod && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {draftMethod.name}{draftAccount ? ` · ${draftAccount.name}` : ''}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  aria-label="ปิด"
+                  onClick={() => setAmountPopupOpen(false)}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+
+              {/* Two-column body: left = summary + numpad | right = shortcuts + CTA */}
+              <div className="flex flex-col sm:flex-row">
+
+                {/* Left column — amount summary + numpad */}
+                <div className="flex flex-col gap-4 flex-1 px-5 pt-4 pb-5 min-w-0">
+
+                  {/* Amount summary */}
+                  {isCashMethod ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCashEditTarget('amount')}
+                        className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                          cashEditTarget === 'amount'
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border bg-[var(--surface-2)] hover:bg-muted/50'
+                        }`}
+                      >
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">ยอดที่ตัดบิล</span>
+                        <span className={`mt-1 block text-xl font-bold tabular-nums leading-none ${cashEditTarget === 'amount' ? 'text-primary' : 'text-foreground'}`}>
+                          ฿{draftAmountNum.toLocaleString('th-TH')}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCashEditTarget('tendered')}
+                        className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                          cashEditTarget === 'tendered'
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border bg-[var(--surface-2)] hover:bg-muted/50'
+                        }`}
+                      >
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">รับเงินสด</span>
+                        <span className={`mt-1 block text-xl font-bold tabular-nums leading-none ${cashEditTarget === 'tendered' ? 'text-primary' : 'text-foreground'}`}>
+                          ฿{draftTenderedNum.toLocaleString('th-TH')}
+                        </span>
+                      </button>
+                      <div className={`col-span-2 flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-sm font-bold ${
+                        draftAmountNum === 0
+                          ? 'bg-[var(--surface-2)] text-muted-foreground'
+                          : draftChange < 0
+                            ? 'bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]'
+                            : draftChange === 0
+                              ? 'bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'
+                              : 'bg-[var(--status-info-bg)] text-[var(--status-info-fg)]'
+                      }`}>
+                        <span>
+                          {draftAmountNum === 0 ? 'ใส่ยอดชำระ' : draftChange < 0 ? 'ขาดเงินสด' : draftChange === 0 ? 'พอดี' : 'เงินทอน'}
+                        </span>
+                        <span className="tabular-nums">
+                          {draftAmountNum > 0 && draftChange !== 0 ? `฿${Math.abs(draftChange).toLocaleString('th-TH')}` : ''}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-border bg-[var(--surface-2)] px-3 py-3">
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">ยอดที่ต้องรับ</span>
+                        <span className="mt-1 block text-xl font-bold tabular-nums leading-none text-foreground">
+                          ฿{remainingForDraft.toLocaleString('th-TH')}
+                        </span>
+                      </div>
+                      <div className={`rounded-xl border px-3 py-3 transition-colors ${
+                        draftAmountNum > 0 && draftAmountNum === remainingForDraft
+                          ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)]'
+                          : draftAmountNum > remainingForDraft
+                            ? 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)]'
+                            : 'border-border bg-[var(--surface-1)]'
+                      }`}>
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">ยอดที่ใส่</span>
+                        <span className={`mt-1 block text-xl font-bold tabular-nums leading-none ${
+                          draftAmountNum > 0 && draftAmountNum === remainingForDraft
+                            ? 'text-[var(--status-success-fg)]'
+                            : draftAmountNum > remainingForDraft
+                              ? 'text-[var(--status-danger-fg)]'
+                              : 'text-foreground'
+                        }`}>
+                          ฿{draftAmountNum.toLocaleString('th-TH')}
+                        </span>
+                      </div>
+                      <div className={`col-span-2 flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-sm font-bold ${
+                        draftAmountNum === 0
+                          ? 'bg-[var(--surface-2)] text-muted-foreground'
+                          : draftAmountNum === remainingForDraft
+                            ? 'bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'
+                            : draftAmountNum > remainingForDraft
+                              ? 'bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]'
+                              : 'bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]'
+                      }`}>
+                        <span>
+                          {draftAmountNum === 0
+                            ? 'ใส่ยอดชำระ'
+                            : draftAmountNum === remainingForDraft
+                              ? 'พอดี'
+                              : draftAmountNum > remainingForDraft
+                                ? 'เกินยอด'
+                                : 'คงเหลือ'}
+                        </span>
+                        <span className="tabular-nums">
+                          {draftAmountNum > 0 && draftAmountNum !== remainingForDraft
+                            ? `฿${Math.abs(remainingForDraft - draftAmountNum).toLocaleString('th-TH')}`
+                            : ''}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Numpad */}
+                  <div className="grid grid-cols-3 gap-2.5">
+                    {(['7','8','9','4','5','6','1','2','3','C','0','⌫'] as const).map((k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => handleNumpadPress(k)}
+                        className={`rounded-xl text-2xl font-bold transition-all active:scale-[0.92] select-none h-[68px] shadow-sm ${
+                          k === 'C'
+                            ? 'bg-[var(--status-danger-bg)] border border-[var(--status-danger-border)] text-[var(--status-danger-fg)] hover:opacity-80'
+                            : k === '⌫'
+                              ? 'bg-[var(--surface-2)] border border-border text-foreground hover:bg-muted/70'
+                              : 'bg-[var(--surface-1)] border border-border text-foreground hover:bg-[var(--surface-2)]'
+                        }`}
+                      >
+                        {k}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Right column — quick shortcuts + CTA */}
+                <div className="flex flex-col gap-3 border-t border-border sm:border-t-0 sm:border-l sm:border-border px-5 pt-4 pb-5 sm:w-[200px]">
+                  {activeQuickAmounts.length > 0 && (
+                    <>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">ทางลัด</p>
+                      <div className="flex flex-col gap-2">
+                        {activeQuickAmounts.map((amt) => {
+                          const qLabel = isCashMethod && cashEditTarget === 'tendered' && amt === draftAmountNum
+                            ? 'พอดี'
+                            : (isCashMethod && cashEditTarget === 'amount' && amt === remainingForDraft) || (!isCashMethod && amt === remainingForDraft)
+                              ? 'คงเหลือ'
+                              : `฿${amt.toLocaleString('th-TH')}`;
+                          return (
+                            <button
+                              key={amt}
+                              type="button"
+                              onClick={() => { numpadSetter(String(amt)); setNumpadAutoPrefilled(false); }}
+                              className={`w-full rounded-xl border py-3 text-sm font-semibold tabular-nums min-h-[48px] transition-all active:scale-[0.96] ${
+                                numpadValue === String(amt)
+                                  ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                                  : 'border-border bg-[var(--surface-1)] text-foreground hover:bg-[var(--surface-2)] shadow-sm'
+                              }`}
+                            >
+                              {qLabel}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                  <div className="flex-1" />
+                  <button
+                    type="button"
+                    disabled={!canAddRow}
+                    onClick={() => { addDraftRow(); setAmountPopupOpen(false); }}
+                    className="w-full rounded-xl bg-primary py-4 text-base font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-[0.98] min-h-[56px] shadow-[var(--shadow-raised)]"
+                  >
+                    + เพิ่มรายการชำระ
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Left panel: head selection / secondary details ── */}
         <div className="flex min-h-0 flex-col overflow-hidden p-4 gap-2.5 min-w-0 basis-[46%] shrink-0">
 
@@ -1994,7 +2221,7 @@ function PaymentPanel({
         </div>
 
         {/* ── Right panel: payment rows + static numpad ── */}
-        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden border-l border-border bg-muted/20 p-3 min-w-0">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden border-l border-border bg-[var(--surface-0)] p-4 min-w-0">
 
           {paymentOptions.length === 0 ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
@@ -2004,39 +2231,19 @@ function PaymentPanel({
             </div>
           ) : (
             <>
-              {/* Balance summary */}
-              <div className="shrink-0 rounded-xl bg-card border border-border px-3 py-2 space-y-0.5">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">ยอดบิลทั้งหมด</span>
-                  <span className="tabular-nums font-semibold text-foreground">฿{billTotalForSettlement.toLocaleString('th-TH')}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">เลือกชำระครั้งนี้</span>
-                  <span className="tabular-nums font-semibold text-primary">฿{paymentTargetAmount.toLocaleString('th-TH')}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">รับแล้วรอบนี้</span>
-                  <span className="tabular-nums font-semibold text-primary">฿{draftRowsTotal.toLocaleString('th-TH')}</span>
-                </div>
-                <div className="flex items-end justify-between gap-3 rounded-lg bg-primary/10 px-3 py-1.5">
-                  <span className="text-sm font-semibold text-primary">ต้องรับรอบนี้</span>
-                  <span className={`tabular-nums text-xl font-bold leading-none ${remainingForDraft > 0 ? 'text-primary' : 'text-[var(--status-success-fg)]'}`}>
-                    ฿{remainingForDraft.toLocaleString('th-TH')}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">คงเหลือของทั้งบิลหลังเลือกรอบนี้</span>
-                  <span className={`tabular-nums font-semibold ${remainingAfterSelection > 0 ? 'text-muted-foreground' : 'text-[var(--status-success-fg)]'}`}>
-                    ฿{remainingAfterSelection.toLocaleString('th-TH')}
-                  </span>
-                </div>
+              {/* Balance summary — simplified to primary operator focus */}
+              <div className="shrink-0 rounded-xl bg-[var(--surface-1)] border border-border px-4 py-4 shadow-[var(--shadow-card)]">
+                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">ต้องรับรอบนี้</p>
+                <p className={`tabular-nums text-4xl font-bold leading-none ${remainingForDraft > 0 ? 'text-primary' : 'text-[var(--status-success-fg)]'}`}>
+                  ฿{remainingForDraft.toLocaleString('th-TH')}
+                </p>
                 {paymentRowsDraft.length > 0 && draftRowsTotalCents !== paymentTargetCents && (
-                  <p className="text-center text-xs font-medium text-[var(--status-warning-fg)]">
+                  <p className="mt-3 text-center text-xs font-medium text-[var(--status-warning-fg)]">
                     ยอดรับเงินต้องเท่ากับ ฿{paymentTargetAmount.toLocaleString('th-TH')}
                   </p>
                 )}
                 {isCashMethod && draftChange > 0 && (
-                  <div className="flex justify-between text-sm font-semibold text-[var(--status-success-fg)] pt-0.5">
+                  <div className="mt-3 flex justify-between text-sm font-semibold text-[var(--status-success-fg)]">
                     <span>เงินทอน</span>
                     <span className="tabular-nums">฿{draftChange.toLocaleString('th-TH')}</span>
                   </div>
@@ -2050,17 +2257,17 @@ function PaymentPanel({
               {/* Method buttons — hidden when complete */}
               {!isDraftComplete && (
                 <div className="shrink-0">
-                  <p className="text-[11px] font-medium text-muted-foreground mb-1.5">ช่องทางชำระ</p>
-                  <div className="flex flex-wrap gap-1.5">
+                  <p className="text-[11px] font-semibold text-muted-foreground mb-2 text-center uppercase tracking-wide">ช่องทางชำระ</p>
+                  <div className="flex flex-wrap justify-center gap-2">
                     {paymentOptions.map((m) => (
                       <button
                         key={m.id}
                         type="button"
                         onClick={() => selectDraftMethod(m.id)}
-                        className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                        className={`rounded-xl border px-5 py-3 text-sm font-semibold min-h-[52px] min-w-[80px] transition-all active:scale-[0.96] ${
                           draftMethodId === m.id
-                            ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                            : 'border-border bg-card text-foreground hover:bg-muted/50'
+                            ? 'border-primary bg-primary text-primary-foreground shadow-md'
+                            : 'border-border bg-[var(--surface-1)] text-foreground hover:bg-[var(--surface-2)] shadow-sm'
                         }`}
                       >
                         {m.name}
@@ -2073,115 +2280,53 @@ function PaymentPanel({
               {/* Account buttons — only when method has multiple accounts */}
               {!isDraftComplete && draftMethod && draftMethod.accounts.length > 1 && (
                 <div className="shrink-0">
-                  <p className="text-[11px] font-medium text-muted-foreground mb-1.5">บัญชี</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {draftMethod.accounts.map((acc) => (
-                      <button
-                        key={acc.id}
-                        type="button"
-                        onClick={() => setDraftAccountId(acc.id)}
-                        className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-                          draftAccountId === acc.id
-                            ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                            : 'border-border bg-card text-foreground hover:bg-muted/50'
-                        }`}
-                      >
-                        {acc.name}{acc.accountLast4 ? ` ···${acc.accountLast4}` : ''}
-                      </button>
-                    ))}
+                  <p className="text-[11px] font-semibold text-muted-foreground mb-2 text-center uppercase tracking-wide">บัญชีรับเงิน</p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {draftMethod.accounts.map((acc) => {
+                      const isGroupLocked = lockedAccountGroup !== null && getAccountGroup(acc.code) !== lockedAccountGroup;
+                      return (
+                        <button
+                          key={acc.id}
+                          type="button"
+                          disabled={isGroupLocked}
+                          onClick={() => setDraftAccountId(acc.id)}
+                          title={isGroupLocked ? 'รอบชำระนี้ล็อกบัญชีกลุ่มเดิมแล้ว' : undefined}
+                          className={`rounded-xl border px-5 py-3 text-sm font-semibold min-h-[52px] min-w-[80px] transition-all active:scale-[0.96] ${
+                            isGroupLocked
+                              ? 'border-border bg-[var(--surface-1)] text-muted-foreground opacity-40 cursor-not-allowed'
+                              : draftAccountId === acc.id
+                                ? 'border-primary bg-primary text-primary-foreground shadow-md'
+                                : 'border-border bg-[var(--surface-1)] text-foreground hover:bg-[var(--surface-2)] shadow-sm'
+                          }`}
+                        >
+                          {acc.name}{acc.accountLast4 ? ` ···${acc.accountLast4}` : ''}
+                        </button>
+                      );
+                    })}
                   </div>
+                  {lockedAccountGroup && (
+                    <p className="text-[11px] text-amber-600 mt-1.5 text-center">
+                      รอบนี้ล็อกบัญชี {lockedAccountGroup.toUpperCase()} — ทุกช่องทางต้องใช้บัญชีเดียวกัน
+                    </p>
+                  )}
                 </div>
               )}
 
-              {/* Numpad display - ALWAYS visible */}
-              <div className="shrink-0 rounded-xl border border-border bg-card px-3 py-2">
-                {isCashMethod && draftMethodId !== '' ? (
-                  <div className="space-y-1.5">
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setCashEditTarget('amount')}
-                        className={`rounded-lg border px-2.5 py-2 text-left transition-colors ${cashEditTarget === 'amount' ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-muted/20 text-foreground hover:bg-muted/50'}`}
-                      >
-                        <span className="block text-[11px] font-medium text-muted-foreground">ยอดที่ตัดบิลด้วยเงินสด</span>
-                        <span className="mt-1 block truncate text-lg font-bold tabular-nums leading-none">฿{draftAmountNum.toLocaleString('th-TH')}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCashEditTarget('tendered')}
-                        className={`rounded-lg border px-2.5 py-2 text-left transition-colors ${cashEditTarget === 'tendered' ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-muted/20 text-foreground hover:bg-muted/50'}`}
-                      >
-                        <span className="block text-[11px] font-medium text-muted-foreground">รับเงินสดจากลูกค้า</span>
-                        <span className="mt-1 block truncate text-lg font-bold tabular-nums leading-none">฿{draftTenderedNum.toLocaleString('th-TH')}</span>
-                      </button>
-                    </div>
-                    <div className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1 text-sm font-semibold ${draftChange < 0 ? 'bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]' : 'bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'}`}>
-                      <span>{draftChange === 0 ? 'พอดี' : draftChange < 0 ? 'ขาดเงินสด' : 'เงินทอน'}</span>
-                      <span className="tabular-nums">{draftChange === 0 ? '฿0' : `฿${Math.abs(draftChange).toLocaleString('th-TH')}`}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-right">
-                    <p className="mb-1 text-xs font-medium text-muted-foreground">
-                      {draftMethodId === '' ? 'เลือกช่องทางชำระ' : 'ยอดชำระ'}
-                    </p>
-                    <p className="text-2xl font-bold tabular-nums leading-none text-foreground">
-                      {draftMethodId === '' ? `฿${remainingForDraft.toLocaleString('th-TH')}` : `฿${Number(numpadValue || '0').toLocaleString('th-TH')}`}
-                    </p>
-                  </div>
-                )}
-              </div>
-              {/* Numpad keys — ALWAYS visible; disabled when no method or bill is complete */}
-              <div className={`shrink-0 grid grid-cols-3 gap-1.5 ${draftMethodId === '' || isDraftComplete ? 'opacity-30 pointer-events-none' : ''}`}>
-                {(['7','8','9','4','5','6','1','2','3','C','0','⌫'] as const).map((k) => (
+              {/* Enter amount — opens popup */}
+              {!isDraftComplete && (
+                draftMethodId !== '' ? (
                   <button
-                    key={k}
                     type="button"
-                    onClick={() => handleNumpadPress(k)}
-                    className={`rounded-lg text-base font-bold transition-colors active:scale-95 select-none h-10 ${
-                      k === 'C'  ? 'bg-[var(--status-danger-bg)] border border-[var(--status-danger-border)] text-[var(--status-danger-fg)] hover:opacity-80' :
-                      k === '⌫' ? 'bg-muted border border-border text-foreground hover:bg-muted/70' :
-                                   'bg-card border border-border text-foreground hover:bg-muted/50 shadow-sm'
-                    }`}
+                    onClick={() => setAmountPopupOpen(true)}
+                    className="shrink-0 w-full rounded-xl border-2 border-primary bg-primary/5 py-3.5 text-sm font-semibold text-primary hover:bg-primary/10 transition-all active:scale-[0.98] min-h-[52px]"
                   >
-                    {k}
+                    ใส่ยอดชำระ
                   </button>
-                ))}
-              </div>
-
-              {/* Quick amounts */}
-              {!isDraftComplete && draftMethodId !== '' && activeQuickAmounts.length > 0 && (
-                <div className="shrink-0 flex gap-1.5">
-                  {activeQuickAmounts.map((amt) => (
-                    <button
-                      key={amt}
-                      type="button"
-                      onClick={() => {
-                        numpadSetter(String(amt));
-                        setNumpadAutoPrefilled(false);
-                      }}
-                      className={`flex-1 rounded-lg border py-2 text-xs font-semibold tabular-nums transition-colors ${
-                        numpadValue === String(amt)
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border bg-card text-foreground hover:bg-muted/50'
-                      }`}
-                    >
-                      {isCashMethod && cashEditTarget === 'tendered' && amt === draftAmountNum ? 'พอดี' : (isCashMethod && cashEditTarget === 'amount' && amt === remainingForDraft) || (!isCashMethod && amt === remainingForDraft) ? 'คงเหลือ' : `฿${amt.toLocaleString('th-TH')}`}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Add row button */}
-              {!isDraftComplete && draftMethodId !== '' && (
-                <button
-                  type="button"
-                  disabled={!canAddRow}
-                  onClick={addDraftRow}
-                  className="shrink-0 w-full rounded-xl border border-dashed border-primary py-2.5 text-sm font-semibold text-primary hover:bg-primary/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  + เพิ่มรายการชำระ
-                </button>
+                ) : (
+                  <p className="shrink-0 text-center text-sm text-muted-foreground py-2">
+                    เลือกช่องทางและบัญชีเพื่อใส่ยอดชำระ
+                  </p>
+                )
               )}
 
               {/* Draft rows list */}
@@ -2217,7 +2362,7 @@ function PaymentPanel({
                 type="button"
                 onClick={handleSubmit}
                 disabled={confirmDisabled}
-                className="mt-auto flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
+                className="mt-auto flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-primary py-4 text-base font-semibold text-primary-foreground transition-all hover:bg-primary/90 active:scale-[0.98] disabled:opacity-40 shadow-[var(--shadow-raised)] min-h-[60px]"
               >
                 {submitting && <Loader2 className="size-4 animate-spin" />}
                 {submitting ? 'กำลังดำเนินการ…' : confirmLabel}

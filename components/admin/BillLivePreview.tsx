@@ -15,8 +15,8 @@ const SAMPLE_SUBTOTAL = 621;
 interface Props {
   paperWidth: 58 | 80;
   billTypeLabel: BillTypeLabel;
-  /** 'preview' = food bill printed before payment; others = payment receipt */
-  billTypeKey: 'preview' | 'main' | 'secondary' | 'taxInvoice';
+  /** 'preview' = food bill; 'taxInvoice' = full tax invoice; 'account:*' = per-account receipt */
+  billTypeKey: 'preview' | 'main' | 'secondary' | 'taxInvoice' | `account:${string}`;
   shopNameTh: string;
   shopNameEn?: string;
   companyName?: string;
@@ -37,7 +37,7 @@ interface Props {
 function buildSampleData(props: Props): ReceiptData {
   const hidden = new Set(props.hiddenFields ?? []);
   // 'preview' tab always prints a food-bill (receiptType='bill'), regardless of billTypeLabel.
-  // Payment tabs (main/secondary/taxInvoice) always print a receipt (receiptType='receipt').
+  // Payment tabs (account:*, taxInvoice, main, secondary) always print a receipt.
   const isReceipt = props.billTypeKey !== 'preview';
   const vat = hidden.has('vatPercent') ? 0 : props.vatPercent;
   const vatAmt = isReceipt && vat > 0 ? SAMPLE_SUBTOTAL * vat / (100 + vat) : 0;

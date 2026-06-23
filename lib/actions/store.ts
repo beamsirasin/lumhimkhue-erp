@@ -64,6 +64,7 @@ const updateSchema = z.object({
   billMainConfig:       billConfigSchema.optional(),
   billSecondaryConfig:  billConfigSchema.optional(),
   billTaxInvoiceConfig: billConfigSchema.optional(),
+  billAccountConfigs:   z.record(z.string(), billConfigSchema).optional(),
 });
 
 export async function updateStoreSettings(input: unknown) {
@@ -81,7 +82,15 @@ export async function updateStoreSettings(input: unknown) {
   }
 
   try {
-    await db.update(storeSettings).set(parsed.data).where(eq(storeSettings.id, 1));
+    const { billAccountConfigs: rawAccountConfigs, ...rest } = parsed.data;
+    // Filter out null values — the DB column is typed as Record<string, BillConfig> (non-null values)
+    const billAccountConfigs = rawAccountConfigs
+      ? (Object.fromEntries(
+          Object.entries(rawAccountConfigs).filter(([, v]) => v !== null),
+        ) as typeof storeSettings.$inferInsert['billAccountConfigs'])
+      : rawAccountConfigs;
+
+    await db.update(storeSettings).set({ ...rest, billAccountConfigs }).where(eq(storeSettings.id, 1));
     revalidatePath('/settings');
     return { ok: true as const };
   } catch (e) {

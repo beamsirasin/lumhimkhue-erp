@@ -1,6 +1,6 @@
 import type { BillConfig, BillTypeLabel, StoreSettings } from '@/lib/db/schema';
 
-export type BillTypeKey = 'preview' | 'main' | 'secondary' | 'taxInvoice';
+export type BillTypeKey = 'preview' | 'main' | 'secondary' | 'taxInvoice' | `account:${string}`;
 
 export function resolveBillConfig(
   settings: StoreSettings,
@@ -21,13 +21,37 @@ export function resolveBillConfig(
     logoHeight:  settings.logoHeight ?? 56,
   };
 
-  const override: BillConfig | null | undefined =
-    billType === 'preview'     ? settings.billPreviewConfig :
-    billType === 'main'        ? settings.billMainConfig :
-    billType === 'secondary'   ? settings.billSecondaryConfig :
-                                 settings.billTaxInvoiceConfig;
+  let override: BillConfig | null | undefined;
 
-  if (!override) return { ...global, billTypeLabel: defaultBillTypeLabel(billType) };
+  if (billType.startsWith('account:')) {
+    const code = billType.slice(8);
+    const accountCfgs = settings.billAccountConfigs as Record<string, BillConfig> | null | undefined;
+    // First check per-account config; fall back to legacy main/secondary for known codes
+    override = accountCfgs?.[code] ??
+      (code === 'bank_cash_a' ? settings.billMainConfig :
+       code === 'bank_cash_b' ? settings.billSecondaryConfig :
+       null);
+  } else {
+    override =
+      billType === 'preview'   ? settings.billPreviewConfig :
+      billType === 'main'      ? settings.billMainConfig :
+      billType === 'secondary' ? settings.billSecondaryConfig :
+                                 settings.billTaxInvoiceConfig;
+  }
+
+  const DEFAULT_FOOTER = 'ขอบคุณและขอให้โชคดี';
+  const defaultLabel = defaultBillTypeLabel(billType);
+
+  if (!override) {
+    return {
+      ...global,
+      // When no per-bill override exists, ensure the footer falls back to the
+      // standard thank-you text so the toggle OFF signal (undefined) stays
+      // distinguishable from "no text configured" (non-empty string).
+      footerNote: global.footerNote || DEFAULT_FOOTER,
+      billTypeLabel: defaultLabel,
+    };
+  }
 
   const hidden = new Set(override.hiddenFields ?? []);
 
@@ -40,7 +64,9 @@ export function resolveBillConfig(
     taxId:         hidden.has('taxId')     ? undefined : (override.taxId       ?? global.taxId),
     branch:        hidden.has('branch')    ? undefined : (override.branch      ?? global.branch),
     registerNo:    hidden.has('registerNo')? undefined : (override.registerNo  ?? global.registerNo),
-    footerNote:    hidden.has('footerNote')? undefined : (override.footerNote  ?? global.footerNote),
+    // footerNote: undefined = hidden (toggle OFF). Non-empty string = show.
+    // Default text applied here so renderers never need a ?? fallback.
+    footerNote:    hidden.has('footerNote') ? undefined : (override.footerNote ?? global.footerNote ?? DEFAULT_FOOTER),
     // vatPercent hidden → 0 so the VAT row doesn't render (template checks vatAmount > 0)
     vatPercent:    hidden.has('vatPercent')? 0         : (override.vatPercent  ?? global.vatPercent),
     logoUrl:       hidden.has('logo')      ? undefined : global.logoUrl,
@@ -52,8 +78,8 @@ export function resolveBillConfig(
 
 /** Default billTypeLabel per bill type if not explicitly set */
 export function defaultBillTypeLabel(billType: BillTypeKey): BillTypeLabel {
-  if (billType === 'preview')     return 'food';
-  if (billType === 'taxInvoice')  return 'tax_full';
+  if (billType === 'preview')    return 'food';
+  if (billType === 'taxInvoice') return 'tax_full';
   return 'receipt_short';
 }
 

@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { ImagePlus, X, Save } from 'lucide-react';
 import { updateStoreSettings } from '@/lib/actions/store';
 import type { StoreSettingsData } from '@/lib/actions/store';
-import type { BillConfig, BillTypeLabel } from '@/lib/db/schema';
+import type { BillConfig, BillTypeLabel, ReceivingAccount } from '@/lib/db/schema';
 import { BillLivePreview } from '@/components/admin/BillLivePreview';
 import { AppShell } from '@/components/ui/app-shell';
 import { PageHeader } from '@/components/ui/page-header';
@@ -14,19 +14,16 @@ import { FormSection, FormRow } from '@/components/ui/form-section';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-interface Props { initialData: StoreSettingsData; }
+interface Props {
+  initialData: StoreSettingsData;
+  receivingAccounts: ReceivingAccount[];
+}
 
-/* ─── Bill type tabs ─────────────────────────────────────────── */
+/* ─── Bill tab types ─────────────────────────────────────────── */
 
-type BillTab = 'global' | 'preview' | 'main' | 'secondary' | 'taxInvoice';
-
-const BILL_TABS: { key: BillTab; label: string }[] = [
-  { key: 'global',     label: 'ข้อมูลหลัก' },
-  { key: 'preview',    label: 'บิลรายการอาหาร' },
-  { key: 'main',       label: 'บัญชีหลัก' },
-  { key: 'secondary',  label: 'บัญชีรอง' },
-  { key: 'taxInvoice', label: 'ใบกำกับภาษี' },
-];
+type StaticTab = 'global' | 'preview' | 'taxInvoice';
+type AccountTab = `account:${string}`;
+type BillTab = StaticTab | AccountTab;
 
 /* ─── Section toggles ────────────────────────────────────────── */
 
@@ -63,7 +60,7 @@ type BillTabState = {
   hiddenFields: Set<SectionKey>;
 };
 
-function defaultBillTypeLabel(tab: BillTab): BillTypeLabel {
+function defaultLabelForTab(tab: BillTab): BillTypeLabel {
   if (tab === 'preview') return 'food';
   if (tab === 'taxInvoice') return 'tax_full';
   return 'receipt_short';
@@ -73,21 +70,35 @@ const VALID_SECTION_KEYS = new Set<string>(SECTIONS.map((s) => s.key));
 
 function initBillState(cfg: BillConfig | null | undefined, tab: BillTab): BillTabState {
   return {
-    billTypeLabel: cfg?.billTypeLabel ?? defaultBillTypeLabel(tab),
+    billTypeLabel: cfg?.billTypeLabel ?? defaultLabelForTab(tab),
     hiddenFields: new Set(
       (cfg?.hiddenFields ?? []).filter((k) => VALID_SECTION_KEYS.has(k)) as SectionKey[],
     ),
   };
 }
 
-function toBillConfig(state: BillTabState, tab: Exclude<BillTab, 'global'>): BillConfig | null {
+function toBillConfig(state: BillTabState, tab: BillTab): BillConfig | null {
   const hiddenArr = [...state.hiddenFields];
-  const billTypeKey = tab === 'preview' ? 'preview' : tab === 'main' ? 'main' : tab === 'secondary' ? 'secondary' : 'taxInvoice';
-  if (hiddenArr.length === 0 && state.billTypeLabel === defaultBillTypeLabel(billTypeKey)) return null;
+  const defLabel = defaultLabelForTab(tab);
+  if (hiddenArr.length === 0 && state.billTypeLabel === defLabel) return null;
   return {
     billTypeLabel: state.billTypeLabel,
     hiddenFields: hiddenArr.length > 0 ? hiddenArr : undefined,
   };
+}
+
+/* ─── Helpers to extract account config from settings ───────── */
+
+function getAccountConfig(
+  initialData: StoreSettingsData,
+  code: string,
+): BillConfig | null | undefined {
+  const accountCfgs = initialData.billAccountConfigs as Record<string, BillConfig> | null | undefined;
+  if (accountCfgs?.[code] !== undefined) return accountCfgs[code];
+  // Legacy fallback for known codes
+  if (code === 'bank_cash_a') return initialData.billMainConfig;
+  if (code === 'bank_cash_b') return initialData.billSecondaryConfig;
+  return undefined;
 }
 
 /* ─── Shared input style ─────────────────────────────────────── */
@@ -97,7 +108,7 @@ const FIELD_INPUT =
 
 /* ─── Component ──────────────────────────────────────────────── */
 
-export function StoreSettingsForm({ initialData }: Props) {
+export function StoreSettingsForm({ initialData, receivingAccounts }: Props) {
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<BillTab>('global');
   const [previewWidth, setPreviewWidth] = useState<58 | 80>((initialData.billPaperWidth as 58 | 80) ?? 80);
@@ -121,15 +132,22 @@ export function StoreSettingsForm({ initialData }: Props) {
   const [logoHeight, setLogoHeight] = useState(initialData.logoHeight ?? 56);
   const [paperWidth, setPaperWidth] = useState<58 | 80>((initialData.billPaperWidth as 58 | 80) ?? 80);
 
-  // Per-bill tab states
-  const [billStates, setBillStates] = useState<Record<string, BillTabState>>({
-    preview:    initBillState(initialData.billPreviewConfig,    'preview'),
-    main:       initBillState(initialData.billMainConfig,       'main'),
-    secondary:  initBillState(initialData.billSecondaryConfig,  'secondary'),
-    taxInvoice: initBillState(initialData.billTaxInvoiceConfig, 'taxInvoice'),
-  });
+  // Per-bill tab states: preview + account:* + taxInvoice
+  const initAccountStates = (): Record<string, BillTabState> => {
+    const states: Record<string, BillTabState> = {
+      preview:    initBillState(initialData.billPreviewConfig, 'preview'),
+      taxInvoice: initBillState(initialData.billTaxInvoiceConfig, 'taxInvoice'),
+    };
+    for (const acc of receivingAccounts) {
+      const tabKey: AccountTab = `account:${acc.code}`;
+      states[tabKey] = initBillState(getAccountConfig(initialData, acc.code), tabKey);
+    }
+    return states;
+  };
 
-  const billState = billStates[activeTab as string] as BillTabState | undefined;
+  const [billStates, setBillStates] = useState<Record<string, BillTabState>>(initAccountStates);
+
+  const billState = billStates[activeTab] as BillTabState | undefined;
 
   function setBillTypeLabel(tab: string, label: BillTypeLabel) {
     setBillStates(p => ({ ...p, [tab]: { ...p[tab], billTypeLabel: label } }));
@@ -164,6 +182,19 @@ export function StoreSettingsForm({ initialData }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+
+    // Build per-account configs record
+    const billAccountConfigs: Record<string, BillConfig | null> = {};
+    for (const acc of receivingAccounts) {
+      const tabKey: AccountTab = `account:${acc.code}`;
+      const cfg = toBillConfig(billStates[tabKey] ?? initBillState(undefined, tabKey), tabKey);
+      billAccountConfigs[acc.code] = cfg;
+    }
+
+    // Backward-compat: also write main/secondary from the A/B account states
+    const mainState = billStates['account:bank_cash_a'];
+    const secondaryState = billStates['account:bank_cash_b'];
+
     const result = await updateStoreSettings({
       shopNameTh, shopNameEn, companyName, address, phone, taxId,
       branch, registerNo, footerNote, vatPercent,
@@ -171,25 +202,38 @@ export function StoreSettingsForm({ initialData }: Props) {
       logoHeight,
       billPaperWidth: paperWidth,
       taxInvoicePrefix,
-      billPreviewConfig:    toBillConfig(billStates.preview,    'preview'),
-      billMainConfig:       toBillConfig(billStates.main,        'main'),
-      billSecondaryConfig:  toBillConfig(billStates.secondary,   'secondary'),
-      billTaxInvoiceConfig: toBillConfig(billStates.taxInvoice,  'taxInvoice'),
+      billPreviewConfig:    toBillConfig(billStates.preview ?? initBillState(undefined, 'preview'), 'preview'),
+      billMainConfig:       mainState ? toBillConfig(mainState, 'account:bank_cash_a') : undefined,
+      billSecondaryConfig:  secondaryState ? toBillConfig(secondaryState, 'account:bank_cash_b') : undefined,
+      billTaxInvoiceConfig: toBillConfig(billStates.taxInvoice ?? initBillState(undefined, 'taxInvoice'), 'taxInvoice'),
+      billAccountConfigs,
     });
     setSaving(false);
     if (!result.ok) toast.error(result.error);
     else toast.success('บันทึกแล้ว');
   }
 
-  /* ─── Preview props ─── */
+  /* ─── Tab definition ─── */
+  const BILL_TABS: { key: BillTab; label: string; group?: string }[] = [
+    { key: 'global',     label: 'ข้อมูลหลัก' },
+    { key: 'preview',    label: 'บิลรายการอาหาร' },
+    ...receivingAccounts.map((acc) => ({
+      key: `account:${acc.code}` as AccountTab,
+      label: acc.name,
+      group: 'ใบเสร็จรับเงิน',
+    })),
+    { key: 'taxInvoice', label: 'ใบกำกับภาษี' },
+  ];
 
-  const previewTabKey = activeTab === 'global' ? 'preview' : activeTab;
+  /* ─── Preview props ─── */
+  const previewTabKey: BillTab = activeTab === 'global' ? 'preview' : activeTab;
   const previewState = billStates[previewTabKey];
+  const isAccountTab = previewTabKey.startsWith('account:');
 
   const previewProps = {
     paperWidth: previewWidth,
-    billTypeLabel: previewState?.billTypeLabel ?? 'food',
-    billTypeKey: previewTabKey as 'preview' | 'main' | 'secondary' | 'taxInvoice',
+    billTypeLabel: previewState?.billTypeLabel ?? (isAccountTab ? 'receipt_short' : 'food'),
+    billTypeKey: previewTabKey,
     shopNameTh,
     shopNameEn: shopNameEn || undefined,
     companyName: companyName || undefined,
@@ -204,6 +248,10 @@ export function StoreSettingsForm({ initialData }: Props) {
     logoHeight,
     hiddenFields: [...(previewState?.hiddenFields ?? [])],
   };
+
+  /* ─── Account group label ─── */
+  const accountGroupTabs = BILL_TABS.filter((t) => t.group === 'ใบเสร็จรับเงิน');
+  const isInAccountGroup = accountGroupTabs.some((t) => t.key === activeTab);
 
   return (
     <AppShell>
@@ -231,22 +279,50 @@ export function StoreSettingsForm({ initialData }: Props) {
           className="w-[480px] shrink-0 space-y-4"
         >
           {/* Tab bar */}
-          <div className="flex flex-wrap gap-px rounded-lg bg-muted p-1">
-            {BILL_TABS.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => setActiveTab(t.key)}
-                className={cn(
-                  'rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-150',
-                  activeTab === t.key
-                    ? 'bg-[var(--surface-1)] text-foreground shadow-sm ring-1 ring-border'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
+          <div className="space-y-1">
+            <div className="flex flex-wrap gap-px rounded-lg bg-muted p-1">
+              {/* Static tabs */}
+              {BILL_TABS.filter((t) => !t.group).map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setActiveTab(t.key)}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-150',
+                    activeTab === t.key
+                      ? 'bg-[var(--surface-1)] text-foreground shadow-sm ring-1 ring-border'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {/* Account tabs group */}
+            {accountGroupTabs.length > 0 && (
+              <div className="rounded-lg bg-muted p-1">
+                <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  ใบเสร็จรับเงินตามบัญชี
+                </p>
+                <div className="flex flex-wrap gap-px">
+                  {accountGroupTabs.map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setActiveTab(t.key)}
+                      className={cn(
+                        'rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-150',
+                        activeTab === t.key
+                          ? 'bg-[var(--surface-1)] text-foreground shadow-sm ring-1 ring-border'
+                          : 'text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ── Global Tab ────────────────────────────────────────── */}
@@ -466,6 +542,19 @@ export function StoreSettingsForm({ initialData }: Props) {
           {/* ── Per-bill tabs ─────────────────────────────────────── */}
           {activeTab !== 'global' && billState && (
             <div className="space-y-4">
+
+              {/* Context label for account tabs */}
+              {isInAccountGroup && (
+                <div className="rounded-lg border border-[var(--status-info-border)] bg-[var(--status-info-bg)] px-3 py-2 text-xs text-[var(--status-info-fg)]">
+                  ใบเสร็จรับเงินที่พิมพ์เมื่อชำระผ่านบัญชีนี้
+                  {activeTab === 'taxInvoice' ? '' : ' (กรณีไม่มีการออกใบกำกับภาษี)'}
+                </div>
+              )}
+              {activeTab === 'taxInvoice' && (
+                <div className="rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-3 py-2 text-xs text-[var(--status-warning-fg)]">
+                  เทมเพลตนี้จะถูกใช้แทนที่ใบเสร็จปกติ เมื่อแคชเชียร์ออกใบกำกับภาษีเต็มรูปแบบ
+                </div>
+              )}
 
               {/* Document type */}
               <DataCard title="ประเภทเอกสาร">

@@ -42,7 +42,7 @@ export function buildPrintCSS(paperWidth: 58 | 80 = 80): string {
   hr {
     border: none;
     border-top: 1px dashed #000;
-    margin: 3px 0;
+    margin: 0 0 5px;
   }
   .qr-wrap { text-align: center; margin: 6px 0; }
   .qr-wrap img { width: 120px; height: 120px; }

@@ -1769,6 +1769,9 @@ export const storeSettings = pgTable('store_settings', {
   billMainConfig:        jsonb('bill_main_config').$type<BillConfig>(),
   billSecondaryConfig:   jsonb('bill_secondary_config').$type<BillConfig>(),
   billTaxInvoiceConfig:  jsonb('bill_tax_invoice_config').$type<BillConfig>(),
+  /** Per-receiving-account receipt template overrides, keyed by account code.
+   *  Takes precedence over billMainConfig/billSecondaryConfig for new UI. */
+  billAccountConfigs:    jsonb('bill_account_configs').$type<Record<string, BillConfig>>(),
   /** Global menu label overrides — same for all users */
   menuLabels:            jsonb('menu_labels').$type<Record<string, string>>(),
 });

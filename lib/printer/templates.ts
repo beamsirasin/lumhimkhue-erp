@@ -40,6 +40,7 @@ function renderThermalLinesToHtml(lines: ThermalLine[]): string {
   return lines.map((ln) => {
     switch (ln.t) {
       case 'hr':  return '<hr />';
+      case 'gap': return '<div style="height:4px"></div>';
       case 'sp':  return '';
       case 'qr':  return '';
       case 'row': {

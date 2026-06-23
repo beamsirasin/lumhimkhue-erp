@@ -61,6 +61,7 @@ export type ThermalLine =
   | { t: 'text'; s: string; a: 'l' | 'c' | 'r'; bold?: boolean; big?: boolean }
   | { t: 'row';  l: string; r: string; bold?: boolean }
   | { t: 'hr' }
+  | { t: 'gap' } // small section spacer around hr; each renderer interprets for its medium
   | { t: 'sp';   n?: number }
   | { t: 'qr';   url: string };
 

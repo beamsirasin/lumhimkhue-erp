@@ -9,6 +9,7 @@
 
 import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder';
 import { buildThermalReceiptLines } from './thermal-layout';
+import { wrapTextSafe } from './text-wrap';
 import type { ReceiptData, TableQrData, QueueQrData, KitchenOrderData } from './types';
 
 /* ─── Constants ─────────────────────────────────────────────────────────── */
@@ -81,27 +82,11 @@ function sep(cols: number): string {
 
 /**
  * Split text into lines that fit within `cols` characters.
- * Breaks at spaces first; falls back to hard-break at col boundary.
+ * Breaks at spaces first; uses Thai-safe char splitting for words longer than cols.
  * Each Thai/ASCII character counts as 1 column (Thai codepage = 1 byte/char).
  */
 function wrapLines(text: string, cols: number): string[] {
-  if (text.length <= cols) return [text];
-  const words = text.split(' ');
-  const lines: string[] = [];
-  let cur = '';
-  for (const word of words) {
-    const chunk = word.slice(0, cols);
-    if (!cur) {
-      cur = chunk;
-    } else if (cur.length + 1 + chunk.length <= cols) {
-      cur += ' ' + chunk;
-    } else {
-      lines.push(cur);
-      cur = chunk;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines.length ? lines : [text.slice(0, cols)];
+  return wrapTextSafe(text, cols, (s) => s.length);
 }
 
 /* ─── Receipt ────────────────────────────────────────────────────────────── */
@@ -117,6 +102,8 @@ export function buildReceipt(data: ReceiptData, paperWidth: 58 | 80, thaiCodepag
   for (const ln of lines) {
     if (ln.t === 'hr') {
       e = e.align('left').line(sep(cols));
+    } else if (ln.t === 'gap') {
+      e = e.newline(1);
     } else if (ln.t === 'sp') {
       // trailing space handled by .newline(3) below
     } else if (ln.t === 'qr') {

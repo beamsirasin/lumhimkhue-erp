@@ -29,6 +29,7 @@ import {
   getActivePaymentMethodsWithAccounts,
   validateCheckoutPaymentRowsForTotal,
 } from '@/lib/payments/foundation';
+import { getAccountGroup } from '@/lib/payments/account-group';
 
 export async function getPosSessionsForPos() {
   const authSession = await auth();
@@ -500,6 +501,21 @@ export async function processPayment(input: unknown) {
     if (rowValidation && !rowValidation.ok) {
       return { ok: false as const, error: rowValidation.error };
     }
+
+    // Cross-row receiving account group consistency: all rows in one payment
+    // round must use the same account group (A or B). Accounts with no group
+    // suffix (e.g. legacy_unknown) are exempt from this check.
+    if (rowValidation?.ok && rowValidation.data.rows.length > 1) {
+      const groups = new Set(
+        rowValidation.data.rows
+          .map((r) => getAccountGroup(r.account.code))
+          .filter((g): g is 'a' | 'b' => g !== null),
+      );
+      if (groups.size > 1) {
+        return { ok: false as const, error: 'รอบชำระเดียวกันต้องใช้บัญชีรับเงินเดียวกัน' };
+      }
+    }
+
     if (
       STRICT_SHIFT_CASH &&
       !activeShiftId &&

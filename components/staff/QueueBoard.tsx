@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNowStrict, format } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -138,25 +139,6 @@ const ROW_TONE: Record<DisplayStatus, { label: string; badge: string; accentColo
   },
 };
 
-/* ─── History status display ─────────────────────────────────────── */
-
-const HIST_LABEL: Record<string, string> = {
-  admitted: 'รับเข้าแล้ว', seated: 'รับเข้าแล้ว', skipped: 'ข้าม',
-  cancelled: 'ยกเลิก', called: 'เรียกแล้ว', left: 'ออก',
-  waiting: 'รอ', waiting_suitable_table: 'รอโต๊ะ',
-};
-
-const HIST_CLS: Record<string, string> = {
-  admitted: 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-fg)]',
-  seated:   'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-fg)]',
-  skipped:  'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]',
-  cancelled:'border-border bg-muted/30 text-muted-foreground',
-  left:     'border-border bg-muted/30 text-muted-foreground',
-  called:   'border-[var(--status-info-border)] bg-[var(--status-info-bg)] text-[var(--status-info-fg)]',
-  waiting:  'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]',
-  waiting_suitable_table: 'border-[var(--status-orange-border)] bg-[var(--status-orange-bg)] text-[var(--status-orange-fg)]',
-};
-
 /* ─── Helpers ────────────────────────────────────────────────────── */
 
 function soupSummary(pots: Array<{ soups: string[] }> | null | undefined): string {
@@ -232,6 +214,7 @@ interface QueueBoardProps {
 }
 
 export function QueueBoard({ initialEntries }: QueueBoardProps) {
+  const router = useRouter();
   const [formMode, setFormMode]         = useState<'add' | 'edit' | null>(null);
   const [editingEntry, setEditingEntry] = useState<QueueEntry | null>(null);
   const [admitTarget, setAdmitTarget]   = useState<QueueEntry | null>(null);
@@ -239,7 +222,6 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
   const [cancelTarget, setCancelTarget] = useState<QueueEntry | null>(null);
   const [tableTarget, setTableTarget]   = useState<QueueEntry | null>(null);
   const [qrTarget, setQrTarget]         = useState<QueueEntry | null>(null);
-  const [historyOpen, setHistoryOpen]   = useState(false);
   const [lastAdded, setLastAdded]       = useState<QueueQrData | null>(null);
 
   const queryClient = useQueryClient();
@@ -318,6 +300,9 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
         <div className="flex items-center gap-3">
           <ClipboardList className="size-5 shrink-0 text-primary" />
           <span className="text-lg font-bold text-foreground">คิว</span>
+          <span className="shrink-0 text-xs text-muted-foreground" suppressHydrationWarning>
+            วันนี้ {format(new Date(), 'd MMM', { locale: th })}
+          </span>
 
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-xs">
             <Counter label="รอ"        count={waitingCount}   cls="text-[var(--status-warning-fg)] bg-[var(--status-warning-bg)] border-[var(--status-warning-border)]" />
@@ -330,7 +315,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
           <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
-              onClick={() => setHistoryOpen(true)}
+              onClick={() => router.push('/queue/history')}
               className="flex min-h-9 items-center gap-1.5 rounded-lg border border-border bg-[var(--surface-2)] px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
             >
               <History className="size-3.5" />
@@ -447,9 +432,6 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
           onClose={() => setCancelTarget(null)}
           onSuccess={() => { setCancelTarget(null); invalidate(); }}
         />
-      )}
-      {historyOpen && (
-        <HistoryModal todayStr={todayStr} onClose={() => setHistoryOpen(false)} />
       )}
       {qrTarget && (
         <QrPreviewModal
@@ -1446,100 +1428,6 @@ function QrPreviewModal({
           >
             ปิด
           </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─── HistoryModal ───────────────────────────────────────────────── */
-
-function HistoryModal({ todayStr, onClose }: { todayStr: string; onClose: () => void }) {
-  const { data: history = [], isLoading } = useQuery({
-    queryKey: ['queue-history', todayStr],
-    queryFn:  () => getQueueHistory(todayStr).then(r => r.ok ? r.data : []),
-    staleTime: 15_000,
-  });
-
-  // Completed = skipped, cancelled, admitted+billIssued, seated, left
-  // Exclude: waiting/called/waiting_suitable_table and admitted-not-billed
-  const completed = [...history]
-    .filter(e => {
-      if (['waiting', 'waiting_suitable_table', 'called'].includes(e.status)) return false;
-      if (e.status === 'admitted' && !e.billIssued) return false;
-      return true;
-    })
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-  return (
-    <div
-      className="fixed inset-0 z-40 flex items-end justify-center bg-foreground/30 backdrop-blur-[2px] sm:items-center"
-      onClick={onClose}
-    >
-      <div
-        className="flex w-full max-w-md flex-col rounded-t-2xl border border-border bg-[var(--surface-1)] shadow-[var(--shadow-dialog)] sm:rounded-2xl"
-        style={{ maxHeight: '88dvh' }}
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex justify-center pt-2.5 sm:hidden">
-          <div className="h-1 w-10 rounded-full bg-muted-foreground/20" />
-        </div>
-        <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3.5">
-          <div className="flex items-center gap-2">
-            <History className="size-4 text-muted-foreground" />
-            <h2 className="text-base font-bold text-foreground">ประวัติคิวประจำวัน</h2>
-          </div>
-          <button type="button" aria-label="ปิด" onClick={onClose}
-            className="flex size-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted">
-            <X className="size-4" />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-4 py-3">
-          {isLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="size-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : completed.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-10 text-center text-muted-foreground">
-              <ClipboardList className="size-7 opacity-40" />
-              <p className="text-sm">ยังไม่มีประวัติวันนี้</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {completed.map(e => {
-                const statusCls   = HIST_CLS[e.status] ?? HIST_CLS.cancelled;
-                const statusLabel = (e.status === 'admitted' && e.billIssued)
-                  ? 'ออกบิลแล้ว'
-                  : (HIST_LABEL[e.status] ?? e.status);
-                const total = e.adultCount + e.childCount || e.partySize;
-                const tableNote = (e.plannedTableNote && e.plannedTableNote !== '-')
-                  ? e.plannedTableNote : null;
-                return (
-                  <div key={e.id} className="flex items-center gap-3 rounded-xl border border-border bg-[var(--surface-2)] px-3 py-2.5">
-                    <span className="w-10 shrink-0 text-lg font-bold tabular-nums text-foreground">{e.queueNumber}</span>
-                    <div className="min-w-0 flex-1 text-sm">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className={cn('rounded-full border px-2 py-0.5 text-xs font-semibold', statusCls)}>
-                          {statusLabel}
-                        </span>
-                        <span className="text-muted-foreground">ผ{e.adultCount}/ด{e.childCount} ({total} คน)</span>
-                        <SoupChips pots={e.soupPots as Array<{ soups: string[] }> | null} />
-                        {tableNote && (
-                          <span className="inline-flex items-center gap-0.5 rounded border border-border bg-[var(--surface-2)] px-1.5 py-0.5 text-xs text-muted-foreground">
-                            <MapPin className="size-2.5" />{tableNote}
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {format(new Date(e.createdAt), 'HH:mm น.', { locale: th })}
-                        {e.skipReason ? ` · ${e.skipReason}` : ''}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
       </div>
     </div>

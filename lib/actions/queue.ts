@@ -39,7 +39,10 @@ export async function getQueueList() {
       .select()
       .from(queueEntries)
       .where(
-        inArray(queueEntries.status, ['waiting', 'waiting_suitable_table', 'called', 'admitted']),
+        and(
+          inArray(queueEntries.status, ['waiting', 'waiting_suitable_table', 'called', 'admitted']),
+          gte(queueEntries.createdAt, bangkokDayStart()),
+        ),
       )
       .orderBy(asc(queueEntries.createdAt));
 

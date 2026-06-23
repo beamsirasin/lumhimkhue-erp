@@ -13,6 +13,7 @@
 import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder';
 import QRCode from 'qrcode';
 import { buildThermalReceiptLines } from './thermal-layout';
+import { wrapTextSafe } from './text-wrap';
 import type { ThermalLine, ReceiptData, TableQrData, QueueQrData, KitchenOrderData } from './types';
 
 /* ─── Constants ──────────────────────────────────────────────────────────── */
@@ -78,20 +79,7 @@ async function drawToCanvas(lines: ThermalLine[], paperWidth: 58 | 80): Promise<
   function wrapText(s: string, bold: boolean, big: boolean): string[] {
     const fs = big ? BIG : FONT_SIZE;
     mctx.font = `${bold ? 'bold ' : ''}${fs}px ${THAI_FONT}`;
-    if (mctx.measureText(s).width <= PRINTABLE) return [s];
-    const segments: string[] = [];
-    let cur = '';
-    for (const ch of s) {
-      const test = cur + ch;
-      if (mctx.measureText(test).width > PRINTABLE) {
-        if (cur) segments.push(cur);
-        cur = ch;
-      } else {
-        cur = test;
-      }
-    }
-    if (cur) segments.push(cur);
-    return segments.length ? segments : [s];
+    return wrapTextSafe(s, PRINTABLE, (str) => mctx.measureText(str).width);
   }
 
   /* Expand text lines that exceed the printable width */
@@ -109,9 +97,10 @@ async function drawToCanvas(lines: ThermalLine[], paperWidth: 58 | 80): Promise<
   /* Measure total canvas height using the expanded line list */
   let h = PAD_Y;
   for (const ln of expanded) {
-    if      (ln.t === 'hr') h += 16;
-    else if (ln.t === 'sp') h += (ln.n ?? 1) * LINE_H;
-    else if (ln.t === 'qr') h += QR_SIZE + 8;
+    if      (ln.t === 'hr')  h += 16;
+    else if (ln.t === 'gap') h += 8;
+    else if (ln.t === 'sp')  h += (ln.n ?? 1) * LINE_H;
+    else if (ln.t === 'qr')  h += QR_SIZE + 8;
     else if (ln.t === 'text' && ln.big) h += BIG + 8;
     else h += LINE_H;
   }
@@ -142,6 +131,9 @@ async function drawToCanvas(lines: ThermalLine[], paperWidth: 58 | 80): Promise<
       ctx.stroke();
       ctx.restore();
       y += 16;
+
+    } else if (ln.t === 'gap') {
+      y += 8;
 
     } else if (ln.t === 'sp') {
       y += (ln.n ?? 1) * LINE_H;

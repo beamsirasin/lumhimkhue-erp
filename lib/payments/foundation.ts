@@ -23,7 +23,7 @@ export const DEFAULT_PAYMENT_METHODS = [
   },
   {
     code: 'cash',
-    name: 'Cash',
+    name: 'เงินสด',
     type: 'cash' as const,
     requiresReference: false,
     allowOverpay: true,
@@ -32,7 +32,7 @@ export const DEFAULT_PAYMENT_METHODS = [
   },
   {
     code: 'welfare',
-    name: 'Government Welfare',
+    name: 'สวัสดิการรัฐ',
     type: 'welfare' as const,
     requiresReference: false,
     allowOverpay: false,
@@ -53,28 +53,28 @@ export const DEFAULT_PAYMENT_METHODS = [
 export const DEFAULT_RECEIVING_ACCOUNTS = [
   {
     code: 'bank_cash_a',
-    name: 'Bank/Cash Account A',
+    name: 'บัญชี A',
     type: 'bank_cash_group' as const,
     isActive: true,
     sortOrder: 1,
   },
   {
     code: 'bank_cash_b',
-    name: 'Bank/Cash Account B',
+    name: 'บัญชี B',
     type: 'bank_cash_group' as const,
     isActive: true,
     sortOrder: 2,
   },
   {
     code: 'welfare_a',
-    name: 'Welfare Account A',
+    name: 'บัญชีสวัสดิการ A',
     type: 'welfare' as const,
     isActive: true,
     sortOrder: 3,
   },
   {
     code: 'welfare_b',
-    name: 'Welfare Account B',
+    name: 'บัญชีสวัสดิการ B',
     type: 'welfare' as const,
     isActive: true,
     sortOrder: 4,
@@ -135,14 +135,20 @@ async function upsertDefaultPaymentFoundation() {
     await db
       .insert(paymentMethods)
       .values(method)
-      .onConflictDoNothing({ target: paymentMethods.code });
+      .onConflictDoUpdate({
+        target: paymentMethods.code,
+        set: { name: method.name },
+      });
   }
 
   for (const account of DEFAULT_RECEIVING_ACCOUNTS) {
     await db
       .insert(receivingAccounts)
       .values(account)
-      .onConflictDoNothing({ target: receivingAccounts.code });
+      .onConflictDoUpdate({
+        target: receivingAccounts.code,
+        set: { name: account.name },
+      });
   }
 
   const [methods, accounts] = await Promise.all([
