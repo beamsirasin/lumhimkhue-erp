@@ -22,12 +22,9 @@ import {
   TrendingUp,
   XCircle,
 } from 'lucide-react';
-import {
-  getKitchenReport,
-  ITEM_STATUS_LABELS,
-  STATION_LABELS,
-} from '@/lib/actions/reports/kitchen-report';
+import { getKitchenReport } from '@/lib/actions/reports/kitchen-report';
 import type { KitchenReportData } from '@/lib/actions/reports/kitchen-report';
+import { ITEM_STATUS_LABELS, STATION_LABELS } from '@/lib/reports/report-labels';
 import { AppShell } from '@/components/ui/app-shell';
 import { PageHeader } from '@/components/ui/page-header';
 import { DataCard } from '@/components/ui/section-card';

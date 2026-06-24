@@ -19,8 +19,9 @@ import {
   Users,
   UsersRound,
 } from 'lucide-react';
-import { getTableReport, SESSION_STATUS_LABELS } from '@/lib/actions/reports/table-report';
+import { getTableReport } from '@/lib/actions/reports/table-report';
 import type { TableReportData } from '@/lib/actions/reports/table-report';
+import { SESSION_STATUS_LABELS } from '@/lib/reports/report-labels';
 import { AppShell } from '@/components/ui/app-shell';
 import { PageHeader } from '@/components/ui/page-header';
 import { DataCard } from '@/components/ui/section-card';

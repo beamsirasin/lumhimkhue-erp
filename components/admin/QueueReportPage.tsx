@@ -22,8 +22,8 @@ import {
   XCircle,
 } from 'lucide-react';
 import { getQueueReport } from '@/lib/actions/reports/queue-report';
-import { QUEUE_STATUS_LABELS } from '@/lib/actions/reports/queue-report';
 import type { QueueReportData } from '@/lib/actions/reports/queue-report';
+import { QUEUE_STATUS_LABELS } from '@/lib/reports/report-labels';
 import { CUSTOMER_TYPE_SHORT } from '@/lib/validations/queue';
 import type { CustomerType } from '@/lib/validations/queue';
 import { AppShell } from '@/components/ui/app-shell';

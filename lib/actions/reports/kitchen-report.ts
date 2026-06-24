@@ -7,29 +7,10 @@ import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
 import { orderItems, orders, sessions, tables, menuItems } from '@/lib/db/schema';
+import { ITEM_STATUS_LABELS, STATION_LABELS } from '@/lib/reports/report-labels';
 
 const TZ = 'Asia/Bangkok';
 const MIN_TIMING_SAMPLES = 5;
-
-// ─── Labels ───────────────────────────────────────────────────────────────────
-
-export const ITEM_STATUS_LABELS: Record<string, string> = {
-  pending:   'รอทำ',
-  preparing: 'กำลังทำ',
-  ready:     'พร้อมเสิร์ฟ',
-  served:    'เสิร์ฟแล้ว',
-  cancelled: 'ยกเลิก',
-};
-
-export const STATION_LABELS: Record<string, string> = {
-  meat:      'เนื้อสัตว์',
-  seafood:   'อาหารทะเล',
-  vegetable: 'ผัก',
-  noodle:    'เส้น',
-  dessert:   'ของหวาน',
-  drink:     'เครื่องดื่ม',
-  sauce:     'น้ำจิ้ม',
-};
 
 const STATION_ORDER = ['meat', 'seafood', 'vegetable', 'noodle', 'drink', 'dessert', 'sauce'];
 const ORDERED_STATUSES = ['pending', 'preparing', 'ready', 'served', 'cancelled'];

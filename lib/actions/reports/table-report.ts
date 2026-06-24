@@ -7,6 +7,7 @@ import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
 import { sessions, tables, sessionGuests, payments } from '@/lib/db/schema';
+import { SESSION_STATUS_LABELS } from '@/lib/reports/report-labels';
 
 const TZ = 'Asia/Bangkok';
 
@@ -66,13 +67,6 @@ export type TableReportData = {
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-export const SESSION_STATUS_LABELS: Record<string, string> = {
-  active:  'กำลังใช้งาน',
-  closing: 'กำลังออกบิล',
-  closed:  'ปิดแล้ว',
-  paid:    'ชำระแล้ว',
-};
 
 const ORDERED_STATUSES = ['active', 'closing', 'closed', 'paid'];
 

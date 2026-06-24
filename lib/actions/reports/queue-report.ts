@@ -9,6 +9,7 @@ import { db } from '@/lib/db';
 import { queueEntries } from '@/lib/db/schema';
 import { CUSTOMER_TYPE_LABELS } from '@/lib/validations/queue';
 import type { CustomerType } from '@/lib/validations/queue';
+import { QUEUE_STATUS_LABELS } from '@/lib/reports/report-labels';
 
 const TZ = 'Asia/Bangkok';
 
@@ -77,17 +78,6 @@ export type QueueReportData = {
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-export const QUEUE_STATUS_LABELS: Record<string, string> = {
-  waiting:                'รอ',
-  waiting_suitable_table: 'รอโต๊ะเหมาะสม',
-  called:                 'เรียกแล้ว',
-  admitted:               'รับเข้าแล้ว',
-  skipped:                'ข้าม',
-  cancelled:              'ยกเลิก',
-  seated:                 'นั่งแล้ว (เก่า)',
-  left:                   'ออกไปแล้ว (เก่า)',
-};
 
 const ORDERED_STATUSES = [
   'waiting', 'waiting_suitable_table', 'called',
