@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, Fragment } from 'react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -8,6 +9,7 @@ import {
   AlertCircle,
   CalendarRange,
   ChevronDown,
+  ChevronLeft,
   ChevronUp,
   ClipboardList,
   Clock,
@@ -566,27 +568,22 @@ export function AuditReportPage() {
       <PageHeader
         title="รายงานตรวจสอบ"
         subtitle="ตรวจสอบ audit trail รอบแคชเชียร์ และการปรับปรุงการชำระเงินในที่เดียว"
-        className="rounded-lg border border-border bg-[var(--surface-1)] px-5 py-4 shadow-[var(--shadow-card)]"
-        noBorder
-        actions={(
+        breadcrumb={
+          <Link
+            href="/reports"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ChevronLeft className="size-3.5" />
+            รายงาน
+          </Link>
+        }
+        actions={
           <div className="flex items-center gap-2 rounded-lg border border-border bg-[var(--surface-2)] px-3 py-2 text-xs text-muted-foreground">
             <ShieldCheck className="size-4 text-[var(--status-info-fg)]" />
             <span className="font-medium text-foreground">Owner / Manager</span>
           </div>
-        )}
-      >
-        <div className="flex flex-wrap gap-2 pt-1">
-          <span className="rounded-full border border-[var(--status-info-border)] bg-[var(--status-info-bg)] px-3 py-1 text-xs font-medium text-[var(--status-info-fg)]">
-            Audit trail
-          </span>
-          <span className="rounded-full border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-1 text-xs font-medium text-[var(--status-success-fg)]">
-            Cashier shifts
-          </span>
-          <span className="rounded-full border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-3 py-1 text-xs font-medium text-[var(--status-warning-fg)]">
-            Payment adjustments
-          </span>
-        </div>
-      </PageHeader>
+        }
+      />
 
       <DataCard
         title="ตัวกรองรายงาน"
@@ -603,16 +600,6 @@ export function AuditReportPage() {
       </DataCard>
 
       <section className="mt-6 space-y-4">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Audit report</p>
-            <h2 className="text-lg font-semibold text-foreground">เลือกส่วนรายงานที่ต้องการตรวจสอบ</h2>
-          </div>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            ตารางด้านล่างแสดงข้อมูลจาก server action เดิม โดยคงค่า วันที่ สถานะ ยอดเงิน และ snapshot ไว้เหมือนเดิม
-          </p>
-        </div>
-
         <Tabs
           value={tab}
           onValueChange={(v) => { if (typeof v === 'string' && v) setTab(v as Tab); }}

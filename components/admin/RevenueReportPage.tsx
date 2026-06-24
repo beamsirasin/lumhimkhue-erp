@@ -14,6 +14,7 @@ import {
   BarChart3,
   ChevronLeft,
   Download,
+  Loader2,
   ReceiptText,
   TrendingUp,
   Users,
@@ -216,7 +217,7 @@ function Th({ children, align }: { children: ReactNode; align?: 'right' }) {
 function Td({ children, align, className }: { children: ReactNode; align?: 'right'; className?: string }) {
   return (
     <td className={cn(
-      'px-4 py-3.5 text-sm text-foreground',
+      'px-4 py-3 text-sm text-foreground',
       align === 'right' && 'text-right tabular-nums',
       className,
     )}>
@@ -295,7 +296,7 @@ export function RevenueReportPage() {
       totals.guests > 0 ? (totals.revenue / totals.guests).toFixed(2) : '0.00',
     ];
     downloadCsv(
-      `revenue-${fromDate}-${toDate}.csv`,
+      `revenue-report-${fromDate}-${toDate}.csv`,
       [headers, ...dataRows, totalRow].map((r) => r.join(',')).join('\n'),
     );
   }
@@ -379,7 +380,7 @@ export function RevenueReportPage() {
                   key={key}
                   type="button"
                   onClick={() => applyPreset(key)}
-                  className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-[var(--surface-1)] hover:text-foreground"
+                  className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
                 >
                   {label}
                 </button>
@@ -405,14 +406,13 @@ export function RevenueReportPage() {
               ))}
             </div>
 
-            {/* Loading pulse */}
             {loading && (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="inline-block size-1.5 animate-pulse rounded-full bg-primary" />
-                กำลังโหลด…
-              </span>
+              <Loader2 className="size-4 animate-spin text-muted-foreground" />
             )}
           </div>
+          {fromDate > toDate && (
+            <p className="mt-3 text-xs text-destructive">วันเริ่มต้นต้องไม่เกินวันสิ้นสุด</p>
+          )}
         </DataCard>
 
         {/* ── KPI cards — 2 col mobile / 3 col tablet / 6 col desktop ─────── */}
