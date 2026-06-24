@@ -45,10 +45,9 @@ const CATEGORIES: ReportCategory[] = [
     title: 'โต๊ะ',
     description:
       'วิเคราะห์การเปิด-ปิดโต๊ะ รอบโต๊ะ จำนวนลูกค้า เวลานั่งเฉลี่ย และรายได้ต่อโต๊ะ',
-    note: 'รายงานโต๊ะจะใช้ข้อมูลจาก session เปิด/ปิดโต๊ะ เพื่อสรุปรอบโต๊ะและเวลานั่งโดยเฉลี่ย',
     icon: LayoutGrid,
     href: '/reports/tables',
-    status: 'soon',
+    status: 'active',
     tone: 'info',
   },
   {
@@ -65,11 +64,10 @@ const CATEGORIES: ReportCategory[] = [
     id: 'kitchen',
     title: 'ครัว',
     description:
-      'วิเคราะห์ออเดอร์ครัว รายการเสร็จ รายการค้าง และเมนูยอดนิยมจากระบบ KDS',
-    note: 'รายงานครัวจะรวม: ออเดอร์เข้าครัว รายการเสร็จ และเวลาทำเฉลี่ย',
+      'วิเคราะห์ออเดอร์ครัว รายการเสร็จ รายการค้าง เมนูยอดนิยม และภาระงานแต่ละสถานีครัว',
     icon: ChefHat,
     href: '/reports/kitchen',
-    status: 'soon',
+    status: 'active',
     tone: 'warning',
   },
   {
