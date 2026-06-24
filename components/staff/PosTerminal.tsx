@@ -650,7 +650,7 @@ function PaymentPanel({
   const [draftTenderedInput, setDraftTenderedInput] = useState('');
   const [draftAmountAutoPrefilled, setDraftAmountAutoPrefilled] = useState(false);
   const [draftTenderedAutoPrefilled, setDraftTenderedAutoPrefilled] = useState(false);
-  const [cashEditTarget, setCashEditTarget] = useState<'amount' | 'tendered'>('amount');
+  const [cashEditTarget, setCashEditTarget] = useState<'amount' | 'tendered'>('tendered');
   const [draftPayerLabel, setDraftPayerLabel] = useState('');
   const [notesOpen, setNotesOpen] = useState(false);
   const [amountPopupOpen, setAmountPopupOpen] = useState(false);
@@ -1182,7 +1182,7 @@ function PaymentPanel({
       setDraftTenderedInput('');
       setDraftAmountAutoPrefilled(false);
       setDraftTenderedAutoPrefilled(false);
-      setCashEditTarget('amount');
+      setCashEditTarget('tendered');
       setDraftPayerLabel('');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['pos-sessions'] }),
@@ -1490,7 +1490,7 @@ function PaymentPanel({
       setDraftTenderedInput(found?.type === 'cash' ? nextAmount : '');
       setDraftAmountAutoPrefilled(nextAmount !== '');
       setDraftTenderedAutoPrefilled(found?.type === 'cash' && nextAmount !== '');
-      setCashEditTarget('amount');
+      setCashEditTarget('tendered');
     };
     const addDraftRow = () => {
       if (!canAddRow || !draftMethod || !draftAccount) return;
@@ -1544,7 +1544,7 @@ function PaymentPanel({
       setDraftTenderedInput('');
       setDraftAmountAutoPrefilled(false);
       setDraftTenderedAutoPrefilled(false);
-      setCashEditTarget('amount');
+      setCashEditTarget('tendered');
       setDraftPayerLabel('');
     };
     const confirmDisabled =
@@ -1689,7 +1689,7 @@ function PaymentPanel({
                             : 'border-border bg-[var(--surface-2)] hover:bg-muted/50'
                         }`}
                       >
-                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">ยอดที่ตัดบิล</span>
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">ยอดที่ต้องรับ</span>
                         <span className={`mt-1 block text-xl font-bold tabular-nums leading-none ${cashEditTarget === 'amount' ? 'text-primary' : 'text-foreground'}`}>
                           ฿{draftAmountNum.toLocaleString('th-TH')}
                         </span>
@@ -1726,32 +1726,26 @@ function PaymentPanel({
                       </div>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-xl border border-border bg-[var(--surface-2)] px-3 py-3">
-                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">ยอดที่ต้องรับ</span>
-                        <span className="mt-1 block text-xl font-bold tabular-nums leading-none text-foreground">
-                          ฿{remainingForDraft.toLocaleString('th-TH')}
-                        </span>
-                      </div>
-                      <div className={`rounded-xl border px-3 py-3 transition-colors ${
+                    <div className="space-y-2">
+                      <div className={`rounded-xl border px-4 py-4 transition-colors ${
                         draftAmountNum > 0 && draftAmountNum === remainingForDraft
                           ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)]'
                           : draftAmountNum > remainingForDraft
                             ? 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)]'
-                            : 'border-border bg-[var(--surface-1)]'
+                            : 'border-primary bg-primary/5'
                       }`}>
-                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">ยอดที่ใส่</span>
-                        <span className={`mt-1 block text-xl font-bold tabular-nums leading-none ${
+                        <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">ยอดที่ต้องรับ</span>
+                        <span className={`mt-1 block text-3xl font-bold tabular-nums leading-none ${
                           draftAmountNum > 0 && draftAmountNum === remainingForDraft
                             ? 'text-[var(--status-success-fg)]'
                             : draftAmountNum > remainingForDraft
                               ? 'text-[var(--status-danger-fg)]'
-                              : 'text-foreground'
+                              : 'text-primary'
                         }`}>
                           ฿{draftAmountNum.toLocaleString('th-TH')}
                         </span>
                       </div>
-                      <div className={`col-span-2 flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-sm font-bold ${
+                      <div className={`flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-sm font-bold ${
                         draftAmountNum === 0
                           ? 'bg-[var(--surface-2)] text-muted-foreground'
                           : draftAmountNum === remainingForDraft
@@ -1808,7 +1802,7 @@ function PaymentPanel({
                         {activeQuickAmounts.map((amt) => {
                           const qLabel = isCashMethod && cashEditTarget === 'tendered' && amt === draftAmountNum
                             ? 'พอดี'
-                            : (isCashMethod && cashEditTarget === 'amount' && amt === remainingForDraft) || (!isCashMethod && amt === remainingForDraft)
+                            : amt === remainingForDraft
                               ? 'คงเหลือ'
                               : `฿${amt.toLocaleString('th-TH')}`;
                           return (
