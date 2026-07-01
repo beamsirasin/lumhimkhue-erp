@@ -14,7 +14,9 @@ Full-stack ERP/POS SaaS for a Thai shabu buffet restaurant chain. Covers the ent
 
 **Production stack:** Next.js 16 App Router · React 19 · TypeScript (strict) · Neon PostgreSQL · Drizzle ORM · Auth.js v5 (next-auth beta) · Vercel deployment
 
-**Current phase:** Phase 12 — V2 UI Revamp (in progress). See `docs/reui-v2/00_MASTER_PLAN.md`.
+**Current phase:** Phase 16 — Production Hardening (post Phase 15+ / reports revamp / bill & payment work). See `docs/production/00_HARDENING_ROADMAP.md`.
+
+**Feature freeze is active.** No new feature modules until the hardening phases (16B–16F) complete. Core POS / tables / payment logic is frozen except for verified bug fixes and explicitly-prompted hardening phases. Food Cost / COGS features are deferred until accounting, stock counting, and recipe costing are reliable.
 
 ---
 
@@ -71,7 +73,11 @@ app/
     settings/         → Store name, contact, tax ID
     branches/         → Branch management
     system/           → System admin
-    reports/          → Report hub
+    reports/          → Redirects to /reports/revenue
+    reports/revenue/  → Revenue report (income + collection)
+    reports/tables/   → Table usage report
+    reports/queue/    → Queue report
+    reports/kitchen/  → Kitchen report
     reports/audit/    → Audit log viewer
     hr/               → HR dashboard
     hr/employees/     → Employee directory
@@ -177,9 +183,12 @@ components.json       → shadcn/ui config (base-nova, neutral, CSS variables)
 vercel.json           → Region: sin1, Cron: daily-report 16:30 UTC
 
 docs/
-  reui-v2/            → V2 revamp phase plans (active)
+  production/         → Production hardening roadmap + protected-files policy (active)
+  reui-v2/            → V2 revamp phase plans (completed; reference)
   archive/            → Historical audit and polish docs (read-only reference)
     reui-polish/      → Superseded V1 polish plans
+
+android-pos-app/      → Native Android POS bridge app (WebView + local printer bridge)
 
 scripts/
   backfill-payment-rows.ts    → One-time payment row backfill (keep, still in package.json)
@@ -194,7 +203,7 @@ scripts/
 All schema lives in `lib/db/schema.ts`. Do not split it. Never use Prisma.
 
 ### Enums
-`role` (owner/manager/cashier/kitchen) · `tableStatus` (available/occupied/reserved/linked/paid) · `sessionStatus` (active/closing/closed/paid) · `orderStatus` / `itemStatus` (pending/preparing/ready/served/cancelled) · `station` (meat/seafood/vegetable/noodle/dessert/drink/sauce) · `queueStatus` (waiting/called/seated/left) · `tileCategory` (guest/addon/discount/loyalty) · `discountType` (fixed/percentage) · `cashierShiftStatus` (open/closed/reviewed) · `paymentStatus` (completed/voided/refunded) · `paymentSettlementType` (partial/final) · `paymentMethodType` (promptpay/cash/welfare/mixed_legacy/other) · `receivingAccountType` (bank_cash_group/welfare/cash_drawer/other)
+`role` (owner/manager/cashier/kitchen) · `tableStatus` (available/occupied/reserved/linked/paid) · `sessionStatus` (active/closing/closed/paid) · `orderStatus` / `itemStatus` (pending/preparing/ready/served/cancelled) · `station` (meat/seafood/vegetable/noodle/dessert/drink/sauce) · `queueStatus` (waiting/called/seated/left) · `tileCategory` (guest/addon/discount/loyalty/penalty) · `discountType` (fixed/percentage) · `cashierShiftStatus` (open/closed/reviewed) · `paymentStatus` (completed/voided/refunded) · `paymentSettlementType` (partial/final) · `paymentMethodType` (promptpay/cash/welfare/mixed_legacy/other) · `receivingAccountType` (bank_cash_group/welfare/cash_drawer/other)
 
 ### Core Tables
 | Table | Key Columns |
@@ -208,7 +217,7 @@ All schema lives in `lib/db/schema.ts`. Do not split it. Never use Prisma.
 ### Buffet / Billing
 | Table | Key Columns |
 |---|---|
-| `pricingTiles` | id, code, name, category (guest/addon/discount/loyalty), price, vatRate, vatIncluded, discountType, discountValue, sortOrder, isActive |
+| `pricingTiles` | id, code, name, category (guest/addon/discount/loyalty/penalty), price, vatRate, vatIncluded, discountType, discountValue, sortOrder, isActive |
 | `sessionGuests` | id, sessionId, pricingTileId, quantity, unitPrice (snapshot) |
 | `buffetChargeLines` | id, sessionId, pricingTileId, chargeType, label, unitPrice, quantity, total, voidedAt |
 
@@ -301,10 +310,12 @@ export async function doSomething(input: unknown) {
   const parsed = mySchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.message };
 
-  // 4. DB transaction for multi-step writes
-  await db.transaction(async (tx) => {
-    // ...
-  });
+  // 4. Multi-step writes
+  // ⚠️ The current neon-http driver does NOT support db.transaction() —
+  // multi-step writes run sequentially and are NOT atomic. A transaction
+  // strategy is planned in Phase 16C (docs/production/00_HARDENING_ROADMAP.md).
+  // Until then: order writes so a mid-sequence failure leaves recoverable state.
+  await db.insert(/* ... */);
 
   // 5. Cache invalidation
   revalidatePath('/relevant-path');
@@ -329,7 +340,7 @@ Return type: always `{ ok: true, data: T } | { ok: false, error: string }`.
 | `hr.ts` (883 lines) | employees CRUD, schedule cycles, payroll cycles, calculatePayroll |
 | `history.ts` (1329 lines) | payment/session/KDS/queue history, receipt reprint data |
 | `dashboard.ts` (494 lines) | getDashboardMetrics, getRevenueData |
-| `reports/*.ts` (7 files) | collection, P&L, menu performance, VAT, WHT, SSF |
+| `reports/*.ts` (10 files) | collection, daily-closing, kitchen-report, menu-performance, pl, queue-report, ssf-report, table-report, vat-report, wht-report |
 | `audit.ts` | writeAuditLog (fire-and-forget) |
 | `discounts.ts` | createDiscountApproval, approveDiscount |
 | `menu.ts` | menu item CRUD |
@@ -558,8 +569,9 @@ payment recorded → status: paid
 - `billTotalAtPayment` snapshot prevents total drift when prices change mid-session
 
 ### Pricing Tile Model
-- Categories: `guest` (adult/child buffet prices), `addon` (extra items), `discount`, `loyalty` (point redemption)
+- Categories: `guest` (adult/child buffet prices), `addon` (extra items), `discount`, `loyalty` (point redemption), `penalty` (fixed-amount fines/fees, e.g. ค่าปรับกินเหลือ — must have price > 0)
 - Prices are **snapshotted** into `sessionGuests.unitPrice` at session open — do not re-read live tile prices during checkout
+- `buffetChargeLines` is the canonical saved bill: guest and addon tiles saved via `updateSessionGuests` become charge lines; `processPayment` uses the non-voided charge-line total as the authoritative subtotal when present
 
 ### Cashier Shifts
 - A shift must be open before processing payments (`cashierShifts.status = open`)
@@ -622,17 +634,21 @@ Do not use WebSockets or SSE. All real-time updates are poll-based.
 
 ## Reports
 
-All report actions in `lib/actions/reports/*.ts`:
+**Report pages (current):** `/reports` redirects to `/reports/revenue`. The sidebar exposes a "รายงาน" group with:
 
-| Report | File | Purpose |
+| Route | Page component | Backing actions |
 |---|---|---|
-| Collection | `collection.ts` | Payment method totals, shift summary |
-| P&L | `pnl.ts` | Revenue, COGS (recipe cost), gross margin |
-| Menu Performance | `menu-performance.ts` | Items sold, revenue by category |
-| VAT | `vat.ts` | Sales VAT breakdown |
-| WHT | `wht.ts` | Withholding tax liability |
-| SSF | `ssf.ts` | Social security fund contribution |
-| Audit Log | via `audit.ts` + `reports/audit/` | User action trail |
+| `/reports/revenue` | `RevenueReportPage` | `dashboard.ts` (getReportSummary) + `reports/collection.ts` |
+| `/reports/tables` | `TableReportPage` | `reports/table-report.ts` |
+| `/reports/queue` | `QueueReportPage` | `reports/queue-report.ts` |
+| `/reports/kitchen` | Kitchen report | `reports/kitchen-report.ts` |
+| `/reports/audit` | Audit log viewer | `audit.ts` |
+
+Report display labels live in `lib/reports/report-labels.ts` (not inside server actions). Guest-count KPIs on revenue/tables/queue reports support client-side type filtering via `components/admin/GuestCountFilter.tsx` — display filtering only; server calculations are unchanged.
+
+**Report actions without dedicated pages** (used by cron/daily-closing or awaiting UI): `daily-closing.ts`, `menu-performance.ts`, `pl.ts`, `vat-report.ts`, `wht-report.ts`, `ssf-report.ts`.
+
+**Food Cost / COGS reporting is deferred** — recipe costing, stock counting, and accounting inputs are not yet reliable enough; do not build food-cost features without an explicit phase prompt.
 
 ---
 
@@ -717,9 +733,9 @@ host@shabu.local     / password123   role: cashier (queue/tables modules)
 
 ---
 
-## V2 Protected Files
+## Protected Files — Production Freeze
 
-These files must NOT be modified during V2 UI phases without explicit approval:
+Full policy: `docs/production/01_PROTECTED_FILES_POLICY.md`. Any change to a file below requires an explicit phase prompt that states: **phase name · reason · verification steps (typecheck/lint) · manual UAT steps**. "The user asked for a UI tweak nearby" is not sufficient authorization.
 
 ### Critical — Business Logic (Frozen)
 ```
@@ -731,11 +747,16 @@ lib/actions/tables.ts
 lib/actions/history.ts
 lib/actions/inventory.ts
 lib/actions/hr.ts
+lib/actions/payment-settings.ts
+lib/actions/discounts.ts
+lib/actions/tax-invoice.ts
 lib/payments/foundation.ts
 lib/auth/config.ts
 lib/auth/permissions.ts
 lib/printer/*
+lib/utils/billConfig.ts
 proxy.ts
+auth.ts
 ```
 
 ### High Risk — Operational UI (Touch-Safe Redesign Only)
@@ -777,6 +798,9 @@ app/globals.css (token changes; additions OK, editing existing tokens needs appr
 - Do not install new dependencies without explicit user approval
 - Do not create temp scripts at root — use `scripts/` directory
 - Do not use Playwright — it has been removed from this project
+- Do not add new feature modules while the Phase 16 hardening feature freeze is active
+- Do not build Food Cost / COGS features — deferred until accounting/stock/recipe costing is reliable
+- Do not modify protected files without an explicit phase prompt (see `docs/production/01_PROTECTED_FILES_POLICY.md`)
 
 ---
 
@@ -794,14 +818,16 @@ app/globals.css (token changes; additions OK, editing existing tokens needs appr
 - [x] Phase 9 — Polish + Deploy
 - [x] Phase 10 — Inventory (ingredients, suppliers, POs, stock counts)
 - [x] Phase 11 — HR & Payroll (employees, schedules, time tracking, payroll cycles)
-- [ ] **Phase 12 — V2 UI Revamp** ← current
-  - [x] Phase 12.0 — Cleanup: Playwright removal, root hygiene, CLAUDE.md rewrite
-  - [ ] Phase 12.1 — Admin App Shell redesign (sidebar, nav, shell)
-  - [ ] Phase 12.2 — Admin core pages (dashboard, menu, users, settings)
-  - [ ] Phase 12.3 — Admin inventory module
-  - [ ] Phase 12.4 — Admin HR & payroll module
-  - [ ] Phase 12.5 — Admin reports & remaining admin pages
-  - [ ] Phase 12.6 — Operational staff polish (POS, KDS, Tables, Queue)
-  - [ ] Phase 12.7 — Customer QR redesign + login page
+- [x] Phase 12 — V2 UI Revamp (admin shell, admin pages, staff touch polish, customer QR, dark mode for admin)
+- [x] Phase 13 — Pricing tiles foundation, role refactor, customer QR deeper redesign
+- [x] Phase 14 — Performance audit, admin dashboard/report premium upgrades, agent instructions (AGENTS.md)
+- [x] Phase 15 — Android POS bridge app · premium queue board + customer queue page · reports revamp (revenue/tables/queue/kitchen) · 15BILL A–I account-based bill templates + Thai payment labels · 15PAY payment popup redesign · 15Q
+- [ ] **Phase 16 — Production Hardening** ← current (see `docs/production/00_HARDENING_ROADMAP.md`)
+  - [x] Phase 16A — Clean working tree + governance resync
+  - [ ] Phase 16B — Payment idempotency + double-submit protection
+  - [ ] Phase 16C — Money write transaction strategy
+  - [ ] Phase 16D — Money math test harness
+  - [ ] Phase 16E — Migration baseline
+  - [ ] Phase 16F — UAT + go-live runbook
 
-See `docs/reui-v2/00_MASTER_PLAN.md` for the full revamp plan.
+Historical V2 plan: `docs/reui-v2/00_MASTER_PLAN.md` (completed; kept for reference).

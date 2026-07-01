@@ -11,6 +11,8 @@ This version has breaking changes - APIs, conventions, and file structure may al
 Before making changes, read:
 
 - `CLAUDE.md`
+- `docs/production/00_HARDENING_ROADMAP.md` — current phase state + feature freeze
+- `docs/production/01_PROTECTED_FILES_POLICY.md` — files that require an explicit phase prompt
 - `docs/reui-v2/GPT_PROJECT_CONTEXT.md`
 - `docs/reui-v2/02_DESIGN_SYSTEM.md`
 - `docs/reui-v2/03_ADMIN_REVAMP.md`
@@ -18,6 +20,14 @@ Before making changes, read:
 - `docs/reui-v2/05_CUSTOMER_REVAMP.md`
 
 If `docs/reui-v2/08_UI_DEVELOPMENT_CONTRACT.md` exists in a future branch, read it as the mandatory UI contract before editing UI.
+
+## Current Project State (Phase 16 — Production Hardening)
+
+- The project is **post Phase 15+** (reports revamp, account-based bill templates, payment popup redesign, Android POS bridge app).
+- **Feature freeze is active**: no new feature modules until hardening phases 16B–16F complete.
+- Core POS / tables / payment / shift logic is frozen except verified bug fixes under an explicit phase prompt.
+- Food Cost / COGS is deferred until accounting, stock counting, and recipe costing are reliable.
+- Reports live at `/reports/revenue`, `/reports/tables`, `/reports/queue`, `/reports/kitchen`, `/reports/audit` (`/reports` redirects to revenue).
 
 ## Mandatory UI Rule
 
