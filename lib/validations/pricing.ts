@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const tileCategoryValues = ['guest', 'addon', 'discount', 'loyalty'] as const;
+export const tileCategoryValues = ['guest', 'addon', 'discount', 'loyalty', 'penalty'] as const;
 export type TileCategory = (typeof tileCategoryValues)[number];
 
 export const discountTypeValues = ['fixed', 'percentage'] as const;

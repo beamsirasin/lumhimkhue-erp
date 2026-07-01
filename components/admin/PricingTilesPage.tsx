@@ -19,7 +19,7 @@ import {
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Plus, Pencil, Trash2, GripVertical, MoreHorizontal, Upload, X, Tag } from 'lucide-react';
+import { Plus, Pencil, Trash2, GripVertical, MoreHorizontal, Upload, X, Tag, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AppShell } from '@/components/ui/app-shell';
 import { PageHeader } from '@/components/ui/page-header';
@@ -93,6 +93,7 @@ const TABS: { key: TileCategory; label: string; desc: string }[] = [
   { key: 'addon',    label: 'ของเพิ่มเติม',       desc: 'รายการเสริมที่เก็บเพิ่ม เช่น แก้วชา ถ้วยพิเศษ' },
   { key: 'discount', label: 'ส่วนลด',             desc: 'ส่วนลดที่ใช้ตอนชำระเงิน เช่น ส่วนลด 10%' },
   { key: 'loyalty',  label: 'แลกแต้ม',            desc: 'ไทล์สำหรับแลกแต้มสะสม (หักเป็นส่วนลด)' },
+  { key: 'penalty',  label: 'ค่าปรับ',            desc: 'ค่าปรับและค่าธรรมเนียมพิเศษ เช่น ค่าปรับกินเหลือ ค่าเสียหาย' },
 ];
 
 const CATEGORY_VARIANT: Record<TileCategory, BadgeVariant> = {
@@ -100,6 +101,7 @@ const CATEGORY_VARIANT: Record<TileCategory, BadgeVariant> = {
   addon:    'success',
   discount: 'danger',
   loyalty:  'purple',
+  penalty:  'warning',
 };
 
 /* ─── Shared field input style ───────────────────────────────────────── */
@@ -140,6 +142,7 @@ function SortableTileCard({ tile, onEdit, onToggle, onDelete, isPending }: Sorta
     tile.category === 'guest'    ? '#f0f9ff' :
     tile.category === 'addon'    ? '#f0fdf4' :
     tile.category === 'discount' ? '#fff7ed' :
+    tile.category === 'penalty'  ? '#fefce8' :
     '#faf5ff'
   );
 
@@ -209,7 +212,9 @@ function SortableTileCard({ tile, onEdit, onToggle, onDelete, isPending }: Sorta
           'mt-0.5 text-sm font-bold',
           tile.category === 'discount'
             ? 'text-[var(--status-danger-fg)]'
-            : 'text-foreground',
+            : tile.category === 'penalty'
+              ? 'text-[var(--status-warning-fg)]'
+              : 'text-foreground',
         )}>
           {priceText}
         </p>
@@ -318,7 +323,12 @@ function TileForm({ editing, defaultCategory, onClose, onSaved }: TileFormProps)
   };
 
   const isDiscount = form.category === 'discount';
-  const canSubmit = !!form.code && !!form.name && (!isDiscount || !!form.discountType);
+  const isPenalty  = form.category === 'penalty';
+  const canSubmit =
+    !!form.code &&
+    !!form.name &&
+    (!isDiscount || !!form.discountType) &&
+    (!isPenalty  || Number(form.price) > 0);
 
   const categoryInfo = TABS.find((t) => t.key === form.category);
 
@@ -360,7 +370,7 @@ function TileForm({ editing, defaultCategory, onClose, onSaved }: TileFormProps)
               value={form.code}
               disabled={!!editing}
               onChange={(e) => setField('code', e.target.value)}
-              placeholder="adult"
+              placeholder={isPenalty ? 'fine_leftover' : 'adult'}
             />
           </div>
           <div className="space-y-1.5">
@@ -381,14 +391,14 @@ function TileForm({ editing, defaultCategory, onClose, onSaved }: TileFormProps)
         {/* Name */}
         <div className="space-y-1.5">
           <label htmlFor="f-name" className="block text-[11px] font-semibold text-foreground">
-            ชื่อแสดงผล <span className="text-destructive">*</span>
+            {isPenalty ? 'ชื่อค่าปรับ' : 'ชื่อแสดงผล'} <span className="text-destructive">*</span>
           </label>
           <input
             id="f-name"
             className={FIELD_INPUT}
             value={form.name}
             onChange={(e) => setField('name', e.target.value)}
-            placeholder="ผู้ใหญ่"
+            placeholder={isPenalty ? 'กินเหลือ' : 'ผู้ใหญ่'}
           />
         </div>
 
@@ -437,8 +447,24 @@ function TileForm({ editing, defaultCategory, onClose, onSaved }: TileFormProps)
           </div>
         </div>
 
-        {/* Category-specific price/discount fields */}
-        {isDiscount ? (
+        {/* Category-specific price/discount/penalty fields */}
+        {isPenalty ? (
+          <div className="space-y-1.5">
+            <label htmlFor="f-penalty-amt" className="block text-[11px] font-semibold text-foreground">
+              จำนวนเงิน (฿) <span className="text-destructive">*</span>
+            </label>
+            <input
+              id="f-penalty-amt"
+              type="number"
+              min={0.01}
+              step={0.01}
+              className={FIELD_INPUT}
+              value={form.price}
+              onChange={(e) => setField('price', e.target.value)}
+              placeholder="50"
+            />
+          </div>
+        ) : isDiscount ? (
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label htmlFor="f-dtype" className="block text-[11px] font-semibold text-foreground">
@@ -658,7 +684,11 @@ function TabPanel({ category, tiles, onRefetch, onEdit }: TabPanelProps) {
 
       {localTiles.length === 0 ? (
         <EmptyState
-          icon={<Tag className="size-5" />}
+          icon={
+            activeTabInfo.key === 'penalty'
+              ? <SlidersHorizontal className="size-5" />
+              : <Tag className="size-5" />
+          }
           title="ยังไม่มีข้อมูล"
           description={`ยังไม่มี ${activeTabInfo.label} — กด "+ เพิ่ม" เพื่อสร้างรายการแรก`}
         />

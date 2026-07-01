@@ -72,6 +72,10 @@ export async function createPricingTile(input: unknown) {
       return { ok: false as const, error: 'กรุณาระบุจำนวนส่วนลด' };
   }
 
+  // Penalty tiles must have a positive fixed amount — cannot be zero or negative
+  if (d.category === 'penalty' && d.price <= 0)
+    return { ok: false as const, error: 'กรุณาระบุจำนวนเงินค่าปรับ (ต้องมากกว่า 0)' };
+
   try {
     const [tile] = await db
       .insert(pricingTiles)
@@ -131,6 +135,10 @@ export async function updatePricingTile(input: unknown) {
     if (d.discountValue == null || d.discountValue <= 0)
       return { ok: false as const, error: 'กรุณาระบุจำนวนส่วนลด' };
   }
+
+  // Penalty tiles must have a positive fixed amount
+  if (d.category === 'penalty' && d.price <= 0)
+    return { ok: false as const, error: 'กรุณาระบุจำนวนเงินค่าปรับ (ต้องมากกว่า 0)' };
 
   try {
     await db

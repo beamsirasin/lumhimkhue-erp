@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import type React from 'react';
-import { Users, Package, Tag, Gift } from 'lucide-react';
+import { Users, Package, Tag, Gift, SlidersHorizontal } from 'lucide-react';
 import type { PricingTile as PricingTileType } from '@/lib/db/schema';
 
 export type TileMode = 'select' | 'edit' | 'display' | 'tap';
@@ -17,16 +17,18 @@ interface PricingTileProps {
 }
 
 const CATEGORY_ICON: Record<string, React.ElementType> = {
-  guest: Users,
-  addon: Package,
+  guest:   Users,
+  addon:   Package,
   discount: Tag,
   loyalty: Gift,
+  penalty: SlidersHorizontal,
 };
 
 const DEFAULT_BG: Record<string, string> = {
-  guest: '#f0f9ff',
-  addon: '#f0fdf4',
+  guest:   '#f0f9ff',
+  addon:   '#f0fdf4',
   discount: '#fff7ed',
+  penalty: '#fefce8',
 };
 
 function formatPrice(tile: PricingTileType): string {

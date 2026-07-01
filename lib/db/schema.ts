@@ -82,12 +82,13 @@ export const paymentMethodEnum = pgEnum('payment_method', [
   'card',
 ]);
 
-/** Pricing tile category: guest type | add-on item | discount | loyalty redemption */
+/** Pricing tile category: guest type | add-on item | discount | loyalty redemption | penalty fee */
 export const tileCategoryEnum = pgEnum('tile_category', [
   'guest',
   'addon',
   'discount',
   'loyalty',
+  'penalty',
 ]);
 
 /** Discount tile type */
