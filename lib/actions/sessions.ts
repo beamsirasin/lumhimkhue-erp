@@ -356,6 +356,9 @@ export async function setTableAvailable(input: { tableId: string }) {
 const updateGuestsSchema = z.object({
   sessionId: z.string().uuid(),
   guests: z.array(guestRowSchema),
+  // Addon-type tiles — persisted to buffet_charge_lines only (not session_guests),
+  // so processPayment can still add them via lineItems without double-counting.
+  addonItems: z.array(guestRowSchema).optional().default([]),
 });
 
 export async function updateSessionGuests(input: unknown) {
@@ -368,12 +371,15 @@ export async function updateSessionGuests(input: unknown) {
   if (!parsed.success)
     return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' };
 
-  const { sessionId, guests } = parsed.data;
-  const nonZero = guests.filter((g) => g.quantity > 0);
+  const { sessionId, guests, addonItems } = parsed.data;
+  const nonZeroGuests = guests.filter((g) => g.quantity > 0);
+  const nonZeroAddons = addonItems.filter((a) => a.quantity > 0);
+  // All items that should have active charge lines after this save
+  const allNonZeroItems = [...nonZeroGuests, ...nonZeroAddons];
 
   try {
     // Fetch tile data, current active charge lines, and allocation sums in parallel
-    const tileIds = nonZero.map((g) => g.pricingTileId);
+    const allTileIds = allNonZeroItems.map((g) => g.pricingTileId);
     const [currentChargeLines, allocationRows, tileRows, oldGuests] = await Promise.all([
       db.select().from(buffetChargeLines).where(
         and(eq(buffetChargeLines.sessionId, sessionId), isNull(buffetChargeLines.voidedAt)),
@@ -384,36 +390,37 @@ export async function updateSessionGuests(input: unknown) {
       }).from(paymentAllocations)
         .where(eq(paymentAllocations.sessionId, sessionId))
         .groupBy(paymentAllocations.chargeLineId),
-      tileIds.length > 0
+      allTileIds.length > 0
         ? db.select({ id: pricingTiles.id, code: pricingTiles.code, name: pricingTiles.name, price: pricingTiles.price })
-            .from(pricingTiles).where(inArray(pricingTiles.id, tileIds))
+            .from(pricingTiles).where(inArray(pricingTiles.id, allTileIds))
         : Promise.resolve([] as { id: string; code: string; name: string; price: string }[]),
       db.select().from(sessionGuests).where(eq(sessionGuests.sessionId, sessionId)),
     ]);
 
     const tileMap = new Map(tileRows.map((t) => [t.id, t]));
     const allocMap = new Map(allocationRows.map((r) => [r.chargeLineId, r.allocatedQty]));
-    const newTileIds = new Set(nonZero.map((g) => g.pricingTileId));
+    const newTileIds = new Set(allNonZeroItems.map((g) => g.pricingTileId));
 
     // Allocation guard: block reducing any charge line below its already-allocated quantity
     for (const line of currentChargeLines) {
       const allocatedQty = allocMap.get(line.id) ?? 0;
       if (allocatedQty === 0) continue;
-      const newGuest = nonZero.find((g) => g.pricingTileId === line.pricingTileId);
-      const newQty = newGuest?.quantity ?? 0;
+      const newItem = allNonZeroItems.find((g) => g.pricingTileId === line.pricingTileId);
+      const newQty = newItem?.quantity ?? 0;
       if (newQty < allocatedQty) {
         return {
           ok: false as const,
-          error: `ไม่สามารถลดจำนวนหัวต่ำกว่าจำนวนที่ชำระแล้ว (${line.label}: ชำระแล้ว ${allocatedQty} หัว)`,
+          error: `ไม่สามารถลดจำนวนต่ำกว่าจำนวนที่ชำระแล้ว (${line.label}: ชำระแล้ว ${allocatedQty} หน่วย)`,
         };
       }
     }
 
-    // Replace session_guests with unitPrice snapshots
+    // Replace session_guests with GUEST tiles only (addon tiles must NOT go here —
+    // processPayment adds addon amounts via lineItems to avoid double-counting)
     await db.delete(sessionGuests).where(eq(sessionGuests.sessionId, sessionId));
-    if (nonZero.length > 0) {
+    if (nonZeroGuests.length > 0) {
       await db.insert(sessionGuests).values(
-        nonZero.map((g) => {
+        nonZeroGuests.map((g) => {
           const tile = tileMap.get(g.pricingTileId);
           // Reuse snapshotted unitPrice from existing charge line if available; else use live price
           const existingLine = currentChargeLines.find((l) => l.pricingTileId === g.pricingTileId);
@@ -428,7 +435,7 @@ export async function updateSessionGuests(input: unknown) {
       );
     }
 
-    // Sync buffet_charge_lines
+    // Sync buffet_charge_lines for ALL items (guests + addons)
     const chargeLineByTileId = new Map(
       currentChargeLines.map((l) => [l.pricingTileId, l]),
     );
@@ -441,17 +448,17 @@ export async function updateSessionGuests(input: unknown) {
         .where(inArray(buffetChargeLines.id, linesToVoid.map((l) => l.id)));
     }
 
-    // Update existing lines or create new ones
-    for (const g of nonZero) {
-      const tile = tileMap.get(g.pricingTileId);
-      const existingLine = chargeLineByTileId.get(g.pricingTileId);
+    // Update existing lines or create new ones for all items
+    for (const item of allNonZeroItems) {
+      const tile = tileMap.get(item.pricingTileId);
+      const existingLine = chargeLineByTileId.get(item.pricingTileId);
 
       if (existingLine) {
         // Keep existing unitPrice snapshot; only update quantity + total
         await db.update(buffetChargeLines)
           .set({
-            quantity: g.quantity,
-            total: (Number(existingLine.unitPrice) * g.quantity).toFixed(2),
+            quantity: item.quantity,
+            total: (Number(existingLine.unitPrice) * item.quantity).toFixed(2),
           })
           .where(eq(buffetChargeLines.id, existingLine.id));
       } else if (tile) {
@@ -459,12 +466,12 @@ export async function updateSessionGuests(input: unknown) {
         const unitPrice = Number(tile.price);
         await db.insert(buffetChargeLines).values({
           sessionId,
-          pricingTileId: g.pricingTileId,
-          chargeType: tile.code || tile.name || 'guest',
+          pricingTileId: item.pricingTileId,
+          chargeType: tile.code || tile.name || 'item',
           label: tile.name,
           unitPrice: unitPrice.toFixed(2),
-          quantity: g.quantity,
-          total: (unitPrice * g.quantity).toFixed(2),
+          quantity: item.quantity,
+          total: (unitPrice * item.quantity).toFixed(2),
         });
       }
     }
@@ -476,7 +483,10 @@ export async function updateSessionGuests(input: unknown) {
       entity: 'session_guests',
       entityId: sessionId,
       before: { guests: oldGuests.map((g) => ({ pricingTileId: g.pricingTileId, quantity: g.quantity })) },
-      after: { guests: nonZero.map((g) => ({ pricingTileId: g.pricingTileId, quantity: g.quantity })) },
+      after: {
+        guests: nonZeroGuests.map((g) => ({ pricingTileId: g.pricingTileId, quantity: g.quantity })),
+        addons: nonZeroAddons.map((a) => ({ pricingTileId: a.pricingTileId, quantity: a.quantity })),
+      },
     });
 
     revalidatePath('/tables');

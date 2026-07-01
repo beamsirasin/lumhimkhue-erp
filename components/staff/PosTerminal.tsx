@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, memo, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, memo, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { differenceInSeconds } from 'date-fns';
 import { toast } from 'sonner';
@@ -326,6 +326,9 @@ export function PosTerminal({
 }
 
 function baseTotal(session: PosSession): number {
+  // chargeLineTotal = sum of all non-voided charge lines (guests + addons + penalties).
+  // Falls back to live guest pricing for sessions where charge lines are unexpectedly absent.
+  if (session.chargeLineTotal > 0) return session.chargeLineTotal;
   return session.guests.reduce((sum, g) => sum + Number(g.pricingTile.price) * g.quantity, 0);
 }
 
@@ -605,8 +608,24 @@ function PaymentPanel({
   const [guestQty, setGuestQty] = useState<Record<string, number>>(
     Object.fromEntries(session.guests.map((g) => [g.pricingTile.id, g.quantity])),
   );
+  const addonQtyInitialized = useRef(false);
   const [addonQty, setAddonQty] = useState<Record<string, number>>({});
   const [discountQty, setDiscountQty] = useState<Record<string, number>>({});
+
+  // Restore addon quantities from saved charge lines once addon tiles are available.
+  // Uses a ref so periodic detail refetches don't overwrite unsaved user edits.
+  useEffect(() => {
+    if (addonQtyInitialized.current || addonTiles.length === 0) return;
+    const addonTileIds = new Set(addonTiles.map((t) => t.id));
+    const initial: Record<string, number> = {};
+    for (const line of detail.chargeLines ?? []) {
+      if (!line.voidedAt && line.pricingTileId && addonTileIds.has(line.pricingTileId)) {
+        initial[line.pricingTileId] = line.quantity;
+      }
+    }
+    setAddonQty(initial);
+    addonQtyInitialized.current = true;
+  }, [addonTiles, detail.chargeLines]);
   const [saving, setSaving] = useState(false);
 
   const queryClient = useQueryClient();
@@ -914,11 +933,18 @@ function PaymentPanel({
           pricingTileId: t.id,
           quantity: guestQty[t.id] ?? 0,
         })),
+        addonItems: addonTiles.map((t) => ({
+          pricingTileId: t.id,
+          quantity: addonQty[t.id] ?? 0,
+        })),
       });
       if (!result.ok) toast.error(result.error);
       else {
         toast.success('บันทึกแล้ว');
-        queryClient.invalidateQueries({ queryKey: ['pos-sessions'] });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['pos-sessions'] }),
+          queryClient.invalidateQueries({ queryKey: ['pos-detail', session.id] }),
+        ]);
       }
     } finally {
       setSaving(false);
@@ -1103,6 +1129,7 @@ function PaymentPanel({
         notes: draftNotes,
         receiptNo,
         lineItems: buildLineItems(),
+        paymentMode,
         paymentRows: paymentRowsDraft.map((row) => ({
           paymentMethodId:    row.paymentMethodId,
           receivingAccountId: row.receivingAccountId,

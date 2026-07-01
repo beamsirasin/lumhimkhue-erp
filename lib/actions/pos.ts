@@ -48,7 +48,35 @@ export async function getPosSessionsForPos() {
         },
       },
     });
-    return { ok: true as const, data: result };
+
+    // Sum non-voided charge lines per session — this is the canonical saved bill total
+    // and includes guest tiles, addon tiles, and any other charge types.
+    const sessionIds = result.map((s) => s.id);
+    const chargeLineTotals = sessionIds.length > 0
+      ? await db
+          .select({
+            sessionId: buffetChargeLines.sessionId,
+            total: sql<number>`coalesce(sum(${buffetChargeLines.total}::numeric), 0)::float8`,
+          })
+          .from(buffetChargeLines)
+          .where(
+            and(
+              inArray(buffetChargeLines.sessionId, sessionIds),
+              isNull(buffetChargeLines.voidedAt),
+            )
+          )
+          .groupBy(buffetChargeLines.sessionId)
+      : [];
+
+    const chargeTotalMap = new Map(chargeLineTotals.map((r) => [r.sessionId, Number(r.total)]));
+
+    return {
+      ok: true as const,
+      data: result.map((s) => ({
+        ...s,
+        chargeLineTotal: chargeTotalMap.get(s.id) ?? 0,
+      })),
+    };
   } catch (e) {
     console.error('[getPosSessionsForPos]', e);
     return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
@@ -334,13 +362,18 @@ export async function processPayment(input: unknown) {
     return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
 
   const parsed = processPaymentSchema.safeParse(input);
-  if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
+  if (!parsed.success) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('[processPayment] schema parse error', JSON.stringify(parsed.error.issues, null, 2));
+    }
+    return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
+  }
 
-  const { sessionId, settlementMode, paymentMethod, receivedAmount, discount, notes, receiptNo, lineItems, paymentRows: submittedPaymentRows, allocations } = parsed.data;
+  const { sessionId, settlementMode, paymentMethod, receivedAmount, discount, notes, receiptNo, lineItems, paymentRows: submittedPaymentRows, allocations, paymentMode } = parsed.data;
 
   try {
-    // Parallel: session fetch + store settings + active shift lookup
-    const [session, [settings], activeShiftRows] = await Promise.all([
+    // Parallel: session fetch + store settings + active shift + canonical saved bill
+    const [session, [settings], activeShiftRows, savedChargeLineRows] = await Promise.all([
       db.query.sessions.findFirst({
         where: eq(sessions.id, sessionId),
         with: {
@@ -357,8 +390,17 @@ export async function processPayment(input: unknown) {
         .from(cashierShifts)
         .where(and(eq(cashierShifts.cashierId, authSession.user.id), eq(cashierShifts.status, 'open')))
         .limit(1),
+      // Canonical saved bill items — the authoritative pre-discount total for this session
+      db.select({ total: buffetChargeLines.total })
+        .from(buffetChargeLines)
+        .where(and(
+          eq(buffetChargeLines.sessionId, sessionId),
+          isNull(buffetChargeLines.voidedAt),
+        )),
     ]);
     const activeShiftId = activeShiftRows[0]?.id ?? null;
+    // Sum of all non-voided charge lines: guests + addons — server source of truth
+    const savedChargeLineTotal = savedChargeLineRows.reduce((sum, r) => sum + Number(r.total), 0);
 
     if (!session) return { ok: false as const, error: 'session ไม่ถูกต้อง' };
 
@@ -397,6 +439,11 @@ export async function processPayment(input: unknown) {
 
     if (session.status === 'closed' || session.status === 'paid')
       return { ok: false as const, error: 'session ปิดแล้ว' };
+
+    // Server-side guard: item-payment mode with no charge lines selected but bill has saved items
+    if (paymentMode === 'items' && (!allocations || allocations.length === 0) && savedChargeLineTotal > 0) {
+      return { ok: false as const, error: 'กรุณาเลือกรายการที่ต้องการรับชำระ' };
+    }
 
     // Compute base + extra from all sessions in group (primary + linked)
     const linkedSessionIds = session.linkedSessions.map((s) => s.id);
@@ -447,7 +494,9 @@ export async function processPayment(input: unknown) {
           resolvedLineItems.push({ pricingTileId: li.pricingTileId, quantity: li.quantity, amount });
         } else if (tile.category === 'discount') {
           let amount = 0;
-          const subtotalSoFar = baseAmount + extraAmount + addonTotal;
+          // Base the percentage on chargeLines total when available; else on accumulated client amounts.
+          // savedChargeLineTotal already includes addon chargeLines; addonTotal here is from lineItems only.
+          const subtotalSoFar = (savedChargeLineTotal > 0 ? savedChargeLineTotal : baseAmount + extraAmount) + addonTotal;
           if (tile.discountType === 'percentage') {
             amount = -(subtotalSoFar * Number(tile.discountValue) / 100);
           } else {
@@ -466,11 +515,30 @@ export async function processPayment(input: unknown) {
       }
     }
 
-    const subtotal = baseAmount + extraAmount + addonTotal;
+    // Canonical subtotal: saved chargeLines are the server-authoritative source when they exist.
+    // chargeLines already capture guests + addon charge lines saved by updateSessionGuests.
+    // lineItems addons are only used for legacy sessions without saved chargeLines.
+    const subtotal = savedChargeLineTotal > 0
+      ? savedChargeLineTotal
+      : baseAmount + extraAmount + addonTotal;
     const serviceCharge = 0;
     const discountAmount = (discount ?? 0) + discountFromTiles;
     const billTotal = Math.max(0, subtotal + serviceCharge - discountAmount);
     const billTotalCents = toCents(billTotal);
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.info('[processPayment]', {
+        paymentMode,
+        sessionId,
+        savedChargeLineTotal,
+        lineItemsAddonTotal: addonTotal,
+        discountFromTiles,
+        subtotal,
+        billTotal,
+        allocationsTotal: allocations?.reduce((s, a) => s + a.amount, 0) ?? 0,
+        paymentRowsTotal: submittedPaymentRows?.reduce((s, r) => s + r.amount, 0) ?? 0,
+      });
+    }
 
     const [paidBeforeRow] = await db
       .select({ total: sql<number>`coalesce(sum(${payments.total}::numeric), 0)` })

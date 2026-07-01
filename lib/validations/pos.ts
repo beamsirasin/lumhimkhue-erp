@@ -22,7 +22,7 @@ export const checkoutPaymentRowSchema = z.object({
 export const allocationInputSchema = z.object({
   chargeLineId: z.string().uuid(),
   quantity: z.number().int().positive(),
-  amount: z.number().positive(),
+  amount: z.number().min(0),
   note: z.string().max(500).optional().nullable(),
 });
 
@@ -32,7 +32,7 @@ export const processPaymentSchema = z.object({
   paymentMethod: z.enum(['cash', 'cash_qr', 'qr_promptpay', 'transfer', 'card']),
   receivedAmount: z.number().min(0),
   discount: z.number().min(0).default(0),
-  notes: z.string().max(500).optional(),
+  notes: z.string().max(500).optional().nullable(),
   receiptNo: z.string().max(30).optional(),
   /** Addon/discount tile line items applied at checkout */
   lineItems: z.array(lineItemSchema).default([]),
@@ -40,6 +40,8 @@ export const processPaymentSchema = z.object({
   paymentRows: z.array(checkoutPaymentRowSchema).optional(),
   /** Phase 8B-3 optional buffet charge line allocations. Legacy callers omit this field. */
   allocations: z.array(allocationInputSchema).optional(),
+  /** Whether paying the full remaining bill or a selected subset of charge lines. */
+  paymentMode: z.enum(['full', 'items']).optional().default('full'),
 });
 
 export type ProcessPaymentInput = z.infer<typeof processPaymentSchema>;
