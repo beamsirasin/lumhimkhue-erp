@@ -24,6 +24,8 @@ import { getReportSummary } from '@/lib/actions/dashboard';
 import { getPaymentCollectionReport } from '@/lib/actions/reports/collection';
 import type { ReportSummary } from '@/lib/actions/dashboard';
 import type { PaymentCollectionReport } from '@/lib/actions/reports/collection';
+import { GuestCountFilter, type GuestTypeOption } from '@/components/admin/GuestCountFilter';
+import { getActivePricingTiles } from '@/lib/actions/pricing';
 import { AppShell } from '@/components/ui/app-shell';
 import { PageHeader } from '@/components/ui/page-header';
 import { DataCard } from '@/components/ui/section-card';
@@ -238,6 +240,8 @@ export function RevenueReportPage() {
   const [loading, setLoading] = useState(true);
   const [revData, setRevData] = useState<ReportSummary | null>(null);
   const [colData, setColData] = useState<PaymentCollectionReport | null>(null);
+  const [guestTypeOptions, setGuestTypeOptions] = useState<GuestTypeOption[]>([]);
+  const [selectedGuestKeys, setSelectedGuestKeys] = useState<Set<string>>(new Set<string>());
 
   // Fetch both reports in parallel whenever filters change
   useEffect(() => {
@@ -260,6 +264,18 @@ export function RevenueReportPage() {
 
     return () => { cancelled = true; };
   }, [fromDate, toDate, sessionType]);
+
+  // Load guest tile options once on mount — independent of date range
+  useEffect(() => {
+    getActivePricingTiles('guest').then((result) => {
+      if (!result.ok) return;
+      const tiles = result.data;
+      setGuestTypeOptions(tiles.map((t) => ({ key: t.name, label: t.name })));
+      // Default: include paid types (ผู้ใหญ่/เด็ก); exclude free types (เด็กเล็ก, staff)
+      const defaults = tiles.filter((t) => Number(t.price ?? 0) > 0).map((t) => t.name);
+      setSelectedGuestKeys(new Set(defaults.length > 0 ? defaults : tiles.map((t) => t.name)));
+    });
+  }, []);
 
   function applyPreset(preset: 'today' | '7d' | 'month') {
     const now = toZonedTime(new Date(), TZ);
@@ -304,11 +320,21 @@ export function RevenueReportPage() {
   // Derived values — no calculations changed from server actions
   const totals = revData?.totals;
   const avgPerSession = totals && totals.sessions > 0 ? totals.revenue / totals.sessions : 0;
-  const avgPerGuest = totals && totals.guests > 0 ? totals.revenue / totals.guests : 0;
   const totalGuests = totals?.guests ?? 0;
   const sortedGuests = revData ? [...revData.guestBreakdown].sort((a, b) => b.total - a.total) : [];
   const totalColAmount = colData?.totalCollected ?? 0;
   const dateLabel = fromDate === toDate ? fromDate : `${fromDate} – ${toDate}`;
+
+  // Guest-count KPIs — filtered by selectedGuestKeys, with fallback to raw total
+  // noBreakdown: data exists but per-type tile info is unavailable (e.g. pricingTileId was NULL)
+  const noBreakdown = !loading && revData !== null && totalGuests > 0 && sortedGuests.length === 0;
+  const filteredGuestTotal = sortedGuests.length > 0
+    ? sortedGuests
+        .filter((g) => selectedGuestKeys.has(g.name))
+        .reduce((s, g) => s + g.total, 0)
+    : totalGuests;  // fallback: use raw total when breakdown is unavailable
+  const filteredAvgPerGuest =
+    filteredGuestTotal > 0 ? (totals?.revenue ?? 0) / filteredGuestTotal : 0;
 
   return (
     <AppShell>
@@ -406,6 +432,13 @@ export function RevenueReportPage() {
               ))}
             </div>
 
+            <GuestCountFilter
+              types={guestTypeOptions}
+              selected={selectedGuestKeys}
+              onChange={setSelectedGuestKeys}
+              noBreakdown={noBreakdown}
+            />
+
             {loading && (
               <Loader2 className="size-4 animate-spin text-muted-foreground" />
             )}
@@ -443,8 +476,12 @@ export function RevenueReportPage() {
           />
           <KpiCard
             label="จำนวนลูกค้า"
-            value={totalGuests.toLocaleString('th-TH')}
-            detail="คน"
+            value={filteredGuestTotal.toLocaleString('th-TH')}
+            detail={
+              filteredGuestTotal < totalGuests
+                ? `จาก ${totalGuests} คน (กรองประเภท)`
+                : 'คน'
+            }
             icon={<Users className="size-5" />}
             tone="neutral"
             loading={loading}
@@ -459,8 +496,14 @@ export function RevenueReportPage() {
           />
           <KpiCard
             label="เฉลี่ยต่อหัว"
-            value={totalGuests > 0 ? thb(avgPerGuest, 0) : '—'}
-            detail={totalGuests > 0 ? 'บาท / คน' : 'ยังไม่มีข้อมูล'}
+            value={filteredGuestTotal > 0 ? thb(filteredAvgPerGuest, 0) : '—'}
+            detail={
+              filteredGuestTotal > 0
+                ? 'บาท / คน'
+                : totalGuests === 0
+                ? 'ยังไม่มีข้อมูล'
+                : 'ไม่มีประเภทที่เลือก'
+            }
             icon={<TrendingUp className="size-5" />}
             tone="success"
             loading={loading}

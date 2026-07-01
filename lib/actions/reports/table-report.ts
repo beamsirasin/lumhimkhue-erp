@@ -1,12 +1,12 @@
 'use server';
 
-import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { startOfDay, endOfDay, format } from 'date-fns';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
-import { sessions, tables, sessionGuests, payments } from '@/lib/db/schema';
+import { sessions, tables, sessionGuests, payments, pricingTiles } from '@/lib/db/schema';
 import { SESSION_STATUS_LABELS } from '@/lib/reports/report-labels';
 
 const TZ = 'Asia/Bangkok';
@@ -64,6 +64,7 @@ export type TableReportData = {
   statusSummary: TableStatusSummary[];
   dailyRows: TableDailyRow[];
   longestSessions: TableReportRow[];  // top 10 by duration
+  guestBreakdown: Array<{ name: string; total: number }>;
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -83,6 +84,7 @@ export async function getTableReport(startDate: string, endDate: string) {
     totalGuests: 0, avgDurationMinutes: null, avgGuestsPerSession: null,
     totalRevenue: 0, avgRevenuePerSession: null,
     tableBreakdown: [], statusSummary: [], dailyRows: [], longestSessions: [],
+    guestBreakdown: [],
   };
 
   try {
@@ -126,6 +128,24 @@ export async function getTableReport(startDate: string, endDate: string) {
           .from(sessionGuests)
           .where(inArray(sessionGuests.sessionId, primarySessionIds))
       : [];
+
+    // ── 2b. Guest breakdown by pricing tile name (for client-side filtering) ──
+
+    const guestBreakdownRows = primarySessionIds.length > 0
+      ? await db
+          .select({
+            name: pricingTiles.name,
+            total: sql<number>`coalesce(sum(${sessionGuests.quantity}), 0)`,
+          })
+          .from(sessionGuests)
+          .innerJoin(pricingTiles, eq(sessionGuests.pricingTileId, pricingTiles.id))
+          .where(inArray(sessionGuests.sessionId, primarySessionIds))
+          .groupBy(pricingTiles.name)
+      : [];
+    const guestBreakdown = guestBreakdownRows.map((r) => ({
+      name: r.name,
+      total: Number(r.total),
+    }));
 
     // ── 3. Revenue — sum ALL completed payments per session (partial + final) ─
 
@@ -285,6 +305,7 @@ export async function getTableReport(startDate: string, endDate: string) {
         statusSummary,
         dailyRows,
         longestSessions,
+        guestBreakdown,
       } satisfies TableReportData,
     };
   } catch (e) {

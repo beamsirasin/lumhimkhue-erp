@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import { getQueueReport } from '@/lib/actions/reports/queue-report';
 import type { QueueReportData } from '@/lib/actions/reports/queue-report';
+import { GuestCountFilter } from '@/components/admin/GuestCountFilter';
+import type { GuestTypeOption } from '@/components/admin/GuestCountFilter';
 import { QUEUE_STATUS_LABELS } from '@/lib/reports/report-labels';
 import { CUSTOMER_TYPE_SHORT } from '@/lib/validations/queue';
 import type { CustomerType } from '@/lib/validations/queue';
@@ -297,6 +299,9 @@ export function QueueReportPage() {
   const [toDate,   setToDate]   = useState(todayStr);
   const [loading,  setLoading]  = useState(true);
   const [data,     setData]     = useState<QueueReportData | null>(null);
+  const [selectedQueueTypes, setSelectedQueueTypes] = useState<Set<string>>(
+    new Set(['adult', 'child']),
+  );
 
   useEffect(() => {
     if (fromDate > toDate) return;
@@ -350,6 +355,17 @@ export function QueueReportPage() {
   }
 
   const dateLabel = fromDate === toDate ? fromDate : `${fromDate} – ${toDate}`;
+
+  const QUEUE_GUEST_TYPES: GuestTypeOption[] = [
+    { key: 'adult', label: 'ผู้ใหญ่' },
+    { key: 'child', label: 'เด็ก' },
+  ];
+
+  const filteredAdults = selectedQueueTypes.has('adult') ? (data?.totalAdults ?? 0) : 0;
+  const filteredChildren = selectedQueueTypes.has('child') ? (data?.totalChildren ?? 0) : 0;
+  const filteredPersons = filteredAdults + filteredChildren;
+  const filteredAvgPerQueue =
+    (data?.totalQueues ?? 0) > 0 ? filteredPersons / data!.totalQueues : 0;
 
   return (
     <AppShell>
@@ -425,6 +441,12 @@ export function QueueReportPage() {
               ))}
             </div>
 
+            <GuestCountFilter
+              types={QUEUE_GUEST_TYPES}
+              selected={selectedQueueTypes}
+              onChange={setSelectedQueueTypes}
+            />
+
             {loading && (
               <Loader2 className="size-4 animate-spin text-muted-foreground" />
             )}
@@ -495,8 +517,17 @@ export function QueueReportPage() {
           />
           <KpiCard
             label="ลูกค้ารวม"
-            value={data?.totalPersons ?? '—'}
-            detail={loading || !data ? undefined : `${data.totalAdults} ผู้ใหญ่ · ${data.totalChildren} เด็ก`}
+            value={loading ? '—' : filteredPersons}
+            detail={
+              !loading && data
+                ? [
+                    selectedQueueTypes.has('adult') && `${filteredAdults} ผู้ใหญ่`,
+                    selectedQueueTypes.has('child') && `${filteredChildren} เด็ก`,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || 'ไม่มีประเภทที่เลือก'
+                : undefined
+            }
             icon={<Users className="size-5" />}
             tone="neutral"
             loading={loading}
@@ -627,17 +658,23 @@ export function QueueReportPage() {
               <EmptyState icon={<Users className="size-5" />} title="ไม่มีข้อมูล" size="sm" />
             ) : (
               <div className="space-y-3">
-                <div className="flex items-center justify-between rounded-lg bg-[var(--surface-2)] px-4 py-3">
+                <div className={cn(
+                  'flex items-center justify-between rounded-lg px-4 py-3',
+                  selectedQueueTypes.has('adult') ? 'bg-[var(--surface-2)]' : 'bg-[var(--surface-1)] opacity-50',
+                )}>
                   <p className="text-sm font-medium text-muted-foreground">ผู้ใหญ่</p>
-                  <p className="text-2xl font-bold tabular-nums text-foreground">{data.totalAdults}</p>
+                  <p className="text-2xl font-bold tabular-nums text-foreground">{filteredAdults}</p>
                 </div>
-                <div className="flex items-center justify-between rounded-lg bg-[var(--surface-2)] px-4 py-3">
+                <div className={cn(
+                  'flex items-center justify-between rounded-lg px-4 py-3',
+                  selectedQueueTypes.has('child') ? 'bg-[var(--surface-2)]' : 'bg-[var(--surface-1)] opacity-50',
+                )}>
                   <p className="text-sm font-medium text-muted-foreground">เด็ก</p>
-                  <p className="text-2xl font-bold tabular-nums text-foreground">{data.totalChildren}</p>
+                  <p className="text-2xl font-bold tabular-nums text-foreground">{filteredChildren}</p>
                 </div>
-                {data.totalQueues > 0 && (
+                {filteredPersons > 0 && data.totalQueues > 0 && (
                   <p className="text-center text-xs text-muted-foreground">
-                    เฉลี่ย {(data.totalPersons / data.totalQueues).toFixed(1)} คน/คิว
+                    เฉลี่ย {filteredAvgPerQueue.toFixed(1)} คน/คิว
                   </p>
                 )}
               </div>

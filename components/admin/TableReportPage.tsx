@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { getTableReport } from '@/lib/actions/reports/table-report';
 import type { TableReportData } from '@/lib/actions/reports/table-report';
+import { GuestCountFilter, type GuestTypeOption } from '@/components/admin/GuestCountFilter';
+import { getActivePricingTiles } from '@/lib/actions/pricing';
 import { SESSION_STATUS_LABELS } from '@/lib/reports/report-labels';
 import { AppShell } from '@/components/ui/app-shell';
 import { PageHeader } from '@/components/ui/page-header';
@@ -242,6 +244,8 @@ export function TableReportPage() {
   const [toDate,   setToDate]   = useState(todayStr);
   const [loading,  setLoading]  = useState(true);
   const [data,     setData]     = useState<TableReportData | null>(null);
+  const [guestTypeOptions, setGuestTypeOptions] = useState<GuestTypeOption[]>([]);
+  const [selectedGuestKeys, setSelectedGuestKeys] = useState<Set<string>>(new Set<string>());
 
   useEffect(() => {
     if (fromDate > toDate) return;
@@ -258,6 +262,32 @@ export function TableReportPage() {
 
     return () => { cancelled = true; };
   }, [fromDate, toDate]);
+
+  // Load guest tile options once on mount — independent of date range
+  useEffect(() => {
+    getActivePricingTiles('guest').then((result) => {
+      if (!result.ok) return;
+      const tiles = result.data;
+      setGuestTypeOptions(tiles.map((t) => ({ key: t.name, label: t.name })));
+      const defaults = tiles.filter((t) => Number(t.price ?? 0) > 0).map((t) => t.name);
+      setSelectedGuestKeys(new Set(defaults.length > 0 ? defaults : tiles.map((t) => t.name)));
+    });
+  }, []);
+
+  // Guest-count KPIs — filtered by selectedGuestKeys, with fallback to raw total
+  const guestBreakdownRows = data?.guestBreakdown ?? [];
+  const noBreakdown = !loading && data !== null && (data.totalGuests > 0) && guestBreakdownRows.length === 0;
+  const filteredGuestTotal = guestBreakdownRows.length > 0
+    ? guestBreakdownRows
+        .filter((g) => selectedGuestKeys.has(g.name))
+        .reduce((s, g) => s + g.total, 0)
+    : (data?.totalGuests ?? 0);  // fallback when no per-type breakdown
+  const primaryWithGuests = data?.rows.filter(
+    (r) => r.parentSessionId === null && (r.guestCount ?? 0) > 0,
+  ).length ?? 0;
+  const filteredAvgPerSession: number | null = guestBreakdownRows.length > 0
+    ? (primaryWithGuests > 0 ? Math.round((filteredGuestTotal / primaryWithGuests) * 10) / 10 : null)
+    : (data?.avgGuestsPerSession ?? null);  // fallback: use server-computed value
 
   function applyPreset(preset: 'today' | '7d' | 'month') {
     const now = toZonedTime(new Date(), TZ);
@@ -369,6 +399,13 @@ export function TableReportPage() {
               ))}
             </div>
 
+            <GuestCountFilter
+              types={guestTypeOptions}
+              selected={selectedGuestKeys}
+              onChange={setSelectedGuestKeys}
+              noBreakdown={noBreakdown}
+            />
+
             {loading && (
               <Loader2 className="size-4 animate-spin text-muted-foreground" />
             )}
@@ -399,8 +436,12 @@ export function TableReportPage() {
           />
           <KpiCard
             label="ลูกค้ารวม"
-            value={data?.totalGuests ?? '—'}
-            detail="จากโต๊ะหลัก (primary sessions)"
+            value={loading ? '—' : filteredGuestTotal}
+            detail={
+              !loading && data && filteredGuestTotal < data.totalGuests
+                ? `จาก ${data.totalGuests} คน (กรองประเภท)`
+                : 'จากโต๊ะหลัก (primary sessions)'
+            }
             icon={<Users className="size-5" />}
             tone="neutral"
             loading={loading}
@@ -422,10 +463,14 @@ export function TableReportPage() {
           <KpiCard
             label="เฉลี่ยคน/โต๊ะ"
             value={loading ? '—'
-              : data?.avgGuestsPerSession !== null && data?.avgGuestsPerSession !== undefined
-              ? data.avgGuestsPerSession.toFixed(1)
+              : filteredAvgPerSession !== null
+              ? filteredAvgPerSession.toFixed(1)
               : '—'}
-            detail="เฉพาะโต๊ะที่มีข้อมูลผู้ใช้บริการ"
+            detail={
+              !loading && filteredAvgPerSession === null
+                ? 'ยังไม่มีข้อมูลพอ'
+                : 'เฉพาะโต๊ะที่มีข้อมูลผู้ใช้บริการ'
+            }
             icon={<UsersRound className="size-5" />}
             tone="neutral"
             loading={loading}

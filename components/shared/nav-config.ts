@@ -37,7 +37,7 @@ export const MODULE_HREFS: Record<string, string[]> = {
   'pricing-tiles': ['/pricing-tiles'],
   'payment-settings': ['/payment-settings'],
   inventory:       ['/inventory', '/inventory/count', '/inventory/ingredients', '/inventory/suppliers', '/inventory/orders'],
-  reports:         ['/reports'],
+  reports:         ['/reports', '/reports/revenue', '/reports/tables', '/reports/queue', '/reports/kitchen', '/reports/audit'],
   settings:        ['/settings'],
   users:           ['/users'],
   hr:              ['/hr', '/hr/employees', '/hr/schedule', '/hr/time', '/hr/payroll', '/hr/settings'],

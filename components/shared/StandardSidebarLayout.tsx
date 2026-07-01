@@ -15,6 +15,8 @@ import {
   Tag,
   Users,
   BarChart3,
+  Banknote,
+  ShieldCheck,
   Settings,
   Info,
   Menu,
@@ -123,6 +125,19 @@ const queueGroup: NavGroup = {
   ],
 };
 
+const reportsGroup: NavGroup = {
+  label: 'รายงาน',
+  Icon: BarChart3,
+  matchPrefix: '/reports',
+  children: [
+    { href: '/reports/revenue', label: 'รายได้',  Icon: Banknote },
+    { href: '/reports/tables',  label: 'โต๊ะ',    Icon: Grid3X3 },
+    { href: '/reports/queue',   label: 'คิว',      Icon: UsersRound },
+    { href: '/reports/kitchen', label: 'ครัว',     Icon: ChefHat },
+    { href: '/reports/audit',   label: 'ตรวจสอบ', Icon: ShieldCheck },
+  ],
+};
+
 const NAV: Record<Role, NavSection[]> = {
   owner: [
     {
@@ -137,7 +152,7 @@ const NAV: Record<Role, NavSection[]> = {
         { href: '/recipes',       label: 'สูตรอาหาร',    Icon: BookOpen },
         { href: '/pricing-tiles', label: 'Pricing Tiles', Icon: Tag },
         inventoryGroup,
-        { href: '/reports',       label: 'รายงาน',        Icon: BarChart3 },
+        reportsGroup,
         hrGroup,
       ],
     },
