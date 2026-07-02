@@ -65,14 +65,27 @@ Each phase below requires its own explicit phase prompt before work begins.
   the remaining-balance guard protects the sequential case, the concurrent race is 16C.
 
 ### Phase 16C — Money Write Transaction Strategy
-- **Recommended:** switch `lib/db/index.ts` from `drizzle-orm/neon-http` to the Neon
-  WebSocket/Pool driver (`drizzle-orm/neon-serverless`) — same `@neondatabase/serverless`
-  package, no new dependency — then wrap `processPayment`, `closeShift`, `closeSession`,
-  `updateSessionGuests`, goods receipts, and payroll calculation in real transactions.
-- **NOT started in 16A by design.** Driver change touches every query path and needs its own
-  phase with full UAT.
-- Fallback if driver change is rejected: fail-safe write ordering + orphan-detection
-  reconciliation script.
+- **16C-A (audit) ✅ COMPLETE** — see `02_TRANSACTION_STRATEGY.md` for the full evidence,
+  inventory, failure-mode matrix, and options. Key findings:
+  - `db.transaction()` throws on the current neon-http driver (verified in node_modules),
+    but **`db.batch()` IS atomic** on neon-http (Neon HTTP non-interactive transaction) —
+    real atomicity is available **without a driver change**.
+  - `drizzle-orm/neon-serverless` (interactive tx) is already installed; Node ≥ 22 needs
+    no `ws` dependency (local dev is Node 24; verify Vercel runtime before any switch).
+  - Latent defects found: delete/reopen payment flows never delete `payment_allocations`
+    (enforced FK → mid-sequence failure, payment left half-stripped); tax-invoice number
+    generator has an upsert-then-select race (possible duplicate legal numbers).
+- **Recommended path (Option C, staged):**
+  - **16C-B** — read-only reconciliation script (R1–R10 in the strategy doc) + prod baseline.
+  - **16C-C** — convert Critical money writes to atomic `db.batch()` on the current driver
+    (processPayment → delete/reopen incl. allocations FK bug fix → updateSessionGuests →
+    openSession) + tax-invoice `.returning()` fix.
+  - **16D** — money math test harness (unchanged, before any transport change).
+  - **16C-D (optional, after 16D)** — dual-client `neon-serverless` transactions only for
+    read-inside-tx cases (two-device same-session race, closeShift snapshot).
+- A full immediate driver switch (Option A) was evaluated and **not recommended** before
+  the 16D test harness exists — it converts a payment-path fix into an all-queries
+  transport migration with no safety net.
 
 ### Phase 16D — Money Math Test Harness
 - **NOT started in 16A by design** (no test framework installed yet — new dependency needs approval).

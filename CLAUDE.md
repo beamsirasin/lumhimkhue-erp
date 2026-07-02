@@ -827,6 +827,10 @@ app/globals.css (token changes; additions OK, editing existing tokens needs appr
   - [x] Phase 16A — Clean working tree + governance resync
   - [x] Phase 16B — Payment idempotency + double-submit protection (migration `db:migrate-phase16b` must run before deploy; UAT pending)
   - [ ] Phase 16C — Money write transaction strategy
+    - [x] 16C-A — Audit + strategy (see `docs/production/02_TRANSACTION_STRATEGY.md`)
+    - [ ] 16C-B — Reconciliation script (read-only) + baseline
+    - [ ] 16C-C — Batch-atomic money writes (`db.batch()`, current driver) + delete/reopen allocations bug fix
+    - [ ] 16C-D — (optional, after 16D) dual-client interactive transactions
   - [ ] Phase 16D — Money math test harness
   - [ ] Phase 16E — Migration baseline
   - [ ] Phase 16F — UAT + go-live runbook
