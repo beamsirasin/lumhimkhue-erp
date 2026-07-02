@@ -76,7 +76,9 @@ Each phase below requires its own explicit phase prompt before work begins.
     (enforced FK → mid-sequence failure, payment left half-stripped); tax-invoice number
     generator has an upsert-then-select race (possible duplicate legal numbers).
 - **Recommended path (Option C, staged):**
-  - **16C-B** — read-only reconciliation script (R1–R10 in the strategy doc) + prod baseline.
+  - **16C-B ✅ IMPLEMENTED** — read-only reconciliation script `scripts/reconcile-payments.ts`
+    (`npm run reconcile:payments`, checks R1–R12, exit 1 on critical/high findings; see
+    `03_RECONCILIATION.md`). Run it against prod for a baseline before starting 16C-C.
   - **16C-C** — convert Critical money writes to atomic `db.batch()` on the current driver
     (processPayment → delete/reopen incl. allocations FK bug fix → updateSessionGuests →
     openSession) + tax-invoice `.returning()` fix.

@@ -666,6 +666,7 @@ npm run db:migrate-payment-foundation  # payment methods/accounts bootstrap
 npm run db:migrate-phase16b        # payments.idempotency_key + unique index (Phase 16B)
 npm run payments:verify            # verify payment foundation setup
 npm run payments:backfill          # one-time payment row backfill
+npm run reconcile:payments         # READ-ONLY payment reconciliation (R1–R12, Phase 16C-B)
 ```
 
 ---
@@ -828,7 +829,7 @@ app/globals.css (token changes; additions OK, editing existing tokens needs appr
   - [x] Phase 16B — Payment idempotency + double-submit protection (migration `db:migrate-phase16b` must run before deploy; UAT pending)
   - [ ] Phase 16C — Money write transaction strategy
     - [x] 16C-A — Audit + strategy (see `docs/production/02_TRANSACTION_STRATEGY.md`)
-    - [ ] 16C-B — Reconciliation script (read-only) + baseline
+    - [x] 16C-B — Reconciliation script `npm run reconcile:payments` (read-only, R1–R12; prod baseline run pending)
     - [ ] 16C-C — Batch-atomic money writes (`db.batch()`, current driver) + delete/reopen allocations bug fix
     - [ ] 16C-D — (optional, after 16D) dual-client interactive transactions
   - [ ] Phase 16D — Money math test harness
