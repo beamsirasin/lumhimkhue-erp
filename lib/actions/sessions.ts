@@ -10,6 +10,7 @@ import { db } from '@/lib/db';
 import { sessions, tables, sessionGuests, pricingTiles, buffetChargeLines, paymentAllocations } from '@/lib/db/schema';
 import { z } from 'zod';
 import { writeAuditLog } from '@/lib/actions/audit';
+import { chargeLineTotal } from '@/lib/payments/money-math';
 
 /* ─── Shared schemas ─────────────────────────────────────────────────── */
 
@@ -138,7 +139,7 @@ export async function openSession(input: unknown) {
               label: tile.name,
               unitPrice: unitPrice.toFixed(2),
               quantity: g.quantity,
-              total: (unitPrice * g.quantity).toFixed(2),
+              total: chargeLineTotal(unitPrice, g.quantity),
             };
           }),
         ),
@@ -442,7 +443,7 @@ export async function updateSessionGuests(input: unknown) {
           db.update(buffetChargeLines)
             .set({
               quantity: item.quantity,
-              total: (Number(existingLine.unitPrice) * item.quantity).toFixed(2),
+              total: chargeLineTotal(existingLine.unitPrice, item.quantity),
             })
             .where(eq(buffetChargeLines.id, existingLine.id)),
         );
@@ -456,7 +457,7 @@ export async function updateSessionGuests(input: unknown) {
           label: tile.name,
           unitPrice: unitPrice.toFixed(2),
           quantity: item.quantity,
-          total: (unitPrice * item.quantity).toFixed(2),
+          total: chargeLineTotal(unitPrice, item.quantity),
         });
       }
     }

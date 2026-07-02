@@ -155,6 +155,8 @@ lib/
   validations/        → Zod schemas matching server action inputs
   payments/
     foundation.ts     → Default methods/accounts, checkout validation helpers
+    money-math.ts     → Pure money formulas (Phase 16D golden extractions — tested)
+    account-group.ts  → A/B receiving-account group derivation + mix lock
     display-labels.ts → Payment method/account label formatters
   printer/
     service.ts        → Public API: print(job, printerId?)
@@ -667,6 +669,7 @@ npm run db:migrate-phase16b        # payments.idempotency_key + unique index (Ph
 npm run payments:verify            # verify payment foundation setup
 npm run payments:backfill          # one-time payment row backfill
 npm run reconcile:payments         # READ-ONLY payment reconciliation (R1–R12, Phase 16C-B)
+npm run test:money                 # money math unit tests (node:test via tsx, no DB — Phase 16D)
 ```
 
 ---
@@ -836,7 +839,7 @@ app/globals.css (token changes; additions OK, editing existing tokens needs appr
       - [x] 16C-C2B — updateSessionGuests + openSession batch-atomic (UAT pending)
       - [x] 16C-C3 — tax-invoice generator RETURNING race fix (UAT pending)
     - [ ] 16C-D — (optional, after 16D) dual-client interactive transactions
-  - [ ] Phase 16D — Money math test harness
+  - [x] Phase 16D — Money math test harness (`npm run test:money`, node:test via tsx, 70 tests; golden extractions in `lib/payments/money-math.ts`)
   - [ ] Phase 16E — Migration baseline
   - [ ] Phase 16F — UAT + go-live runbook
 

@@ -13,6 +13,7 @@ import {
   reviewShiftSchema,
   listShiftsSchema,
 } from '@/lib/validations/shifts';
+import { computeShiftCashSummary } from '@/lib/payments/money-math';
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
@@ -167,8 +168,8 @@ export async function closeShift(input: unknown) {
         ),
       );
     const cashTotal = Number(cashResult?.total ?? 0);
-    const expectedCash = Number(shift.openingFloat) + cashTotal;
-    const cashDifference = actualCash - expectedCash;
+    // Phase 16D: formula extracted to money-math (golden copy, tested)
+    const { expectedCash, cashDifference } = computeShiftCashSummary(shift.openingFloat, cashTotal, actualCash);
 
     if (cashDifference !== 0 && !differenceReason?.trim())
       return {

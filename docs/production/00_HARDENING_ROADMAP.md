@@ -114,12 +114,18 @@ Each phase below requires its own explicit phase prompt before work begins.
   the 16D test harness exists — it converts a payment-path fix into an all-queries
   transport migration with no safety net.
 
-### Phase 16D — Money Math Test Harness
-- **NOT started in 16A by design** (no test framework installed yet — new dependency needs approval).
-- Extract pure calculation logic (bill subtotal/discount/VAT, change, mixed-payment splits,
-  shift expected-cash, payroll gross→net) into testable functions.
-- Add a lightweight runner (e.g. vitest or `node:test`) and cover the extracted functions.
-- `npm test` becomes part of the standard verification workflow next to typecheck/lint.
+### Phase 16D — Money Math Test Harness ✅ IMPLEMENTED
+- **Run: `npm run test:money`** — 70 tests, ~0.3s, no DB. Runner is Node's built-in
+  `node:test` via the already-installed `tsx` — zero new dependencies.
+- Pure money formulas extracted as golden-behavior copies into
+  `lib/payments/money-math.ts` (+ `hasMixedAccountGroups` in `account-group.ts`) and the
+  runtime actions (`pos.ts`, `foundation.ts`, `sessions.ts`, `shifts.ts`) now import them —
+  tests exercise the real production formulas.
+- Covered: bill totals/charge lines/penalty, discounts (percentage/fixed/loyalty, zero
+  floor), split-tender cash/non-cash rules, remaining-balance & partial/final settlement
+  rules, account A/B lock, shift expected-cash. Honest gaps (VAT in frozen receipt/report
+  files, DB-coupled row validation, payroll) documented in `04_MONEY_TEST_HARNESS.md`.
+- Run `test:money` alongside typecheck/lint/reconcile before any money-path merge.
 
 ### Phase 16E — Migration Baseline
 - Generate a Drizzle migration snapshot matching current production schema.

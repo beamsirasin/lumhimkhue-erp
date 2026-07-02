@@ -31,7 +31,20 @@ import {
   resolveLegacyPaymentMethodAccount,
   validateCheckoutPaymentRowsForTotal,
 } from '@/lib/payments/foundation';
-import { getAccountGroup } from '@/lib/payments/account-group';
+import { hasMixedAccountGroups } from '@/lib/payments/account-group';
+import {
+  toCents,
+  fromCents,
+  addonLineAmount,
+  discountTileAmount,
+  loyaltyRedemptionBaht,
+  discountBaseSoFar,
+  resolveCanonicalSubtotal,
+  computeBillTotal,
+  paidBeforeError,
+  settlementAmountError,
+  legacyCashChange,
+} from '@/lib/payments/money-math';
 
 export async function getPosSessionsForPos() {
   const authSession = await auth();
@@ -349,13 +362,8 @@ export async function getActivePaymentOptionsForPos() {
 // Set env STRICT_SHIFT_CASH=true to block cash payments without an open shift.
 const STRICT_SHIFT_CASH = process.env.STRICT_SHIFT_CASH === 'true';
 
-function toCents(value: number | string | null | undefined) {
-  return Math.round(Number(value ?? 0) * 100);
-}
-
-function fromCents(value: number) {
-  return value / 100;
-}
+// toCents/fromCents and all pure money formulas moved to lib/payments/money-math.ts
+// (Phase 16D golden extraction — behavior identical, locked by tests/money/*).
 
 /**
  * Phase 16B — shared "already processed" response for duplicate submissions
@@ -519,25 +527,20 @@ export async function processPayment(input: unknown) {
         if (!tile) continue;
 
         if (tile.category === 'addon') {
-          const amount = Number(tile.price) * li.quantity;
+          const amount = addonLineAmount(tile.price, li.quantity);
           addonTotal += amount;
           resolvedLineItems.push({ pricingTileId: li.pricingTileId, quantity: li.quantity, amount });
         } else if (tile.category === 'discount') {
-          let amount = 0;
           // Base the percentage on chargeLines total when available; else on accumulated client amounts.
           // savedChargeLineTotal already includes addon chargeLines; addonTotal here is from lineItems only.
-          const subtotalSoFar = (savedChargeLineTotal > 0 ? savedChargeLineTotal : baseAmount + extraAmount) + addonTotal;
-          if (tile.discountType === 'percentage') {
-            amount = -(subtotalSoFar * Number(tile.discountValue) / 100);
-          } else {
-            amount = -(Number(tile.discountValue) * li.quantity);
-          }
+          const subtotalSoFar = discountBaseSoFar(savedChargeLineTotal, baseAmount, extraAmount, addonTotal);
+          const amount = discountTileAmount(tile.discountType, tile.discountValue, li.quantity, subtotalSoFar);
           discountFromTiles += Math.abs(amount);
           resolvedLineItems.push({ pricingTileId: li.pricingTileId, quantity: li.quantity, amount });
         } else if (tile.category === 'loyalty') {
           // quantity = points to redeem; amount = -(points / redeemRate)
           const pointsToRedeem = li.quantity;
-          const bahtDiscount = pointsToRedeem / redeemRate;
+          const bahtDiscount = loyaltyRedemptionBaht(pointsToRedeem, redeemRate);
           loyaltyPointsRedeemed += pointsToRedeem;
           discountFromTiles += bahtDiscount;
           resolvedLineItems.push({ pricingTileId: li.pricingTileId, quantity: li.quantity, amount: -bahtDiscount });
@@ -548,12 +551,10 @@ export async function processPayment(input: unknown) {
     // Canonical subtotal: saved chargeLines are the server-authoritative source when they exist.
     // chargeLines already capture guests + addon charge lines saved by updateSessionGuests.
     // lineItems addons are only used for legacy sessions without saved chargeLines.
-    const subtotal = savedChargeLineTotal > 0
-      ? savedChargeLineTotal
-      : baseAmount + extraAmount + addonTotal;
+    const subtotal = resolveCanonicalSubtotal(savedChargeLineTotal, baseAmount, extraAmount, addonTotal);
     const serviceCharge = 0;
     const discountAmount = (discount ?? 0) + discountFromTiles;
-    const billTotal = Math.max(0, subtotal + serviceCharge - discountAmount);
+    const billTotal = computeBillTotal(subtotal, serviceCharge, discountAmount);
     const billTotalCents = toCents(billTotal);
 
     if (process.env.NODE_ENV !== 'production') {
@@ -576,17 +577,11 @@ export async function processPayment(input: unknown) {
       .where(and(inArray(payments.sessionId, allSessionIds), eq(payments.status, 'completed')));
     const paidBeforeCents = toCents(paidBeforeRow?.total ?? 0);
 
-    if (paidBeforeCents > billTotalCents) {
-      return {
-        ok: false as const,
-        error: 'ยอดบิลต่ำกว่ายอดที่ชำระไปแล้ว กรุณาตรวจสอบส่วนลดหรือรายการก่อนรับชำระเพิ่ม',
-      };
+    const paidGuardError = paidBeforeError(paidBeforeCents, billTotalCents);
+    if (paidGuardError) {
+      return { ok: false as const, error: paidGuardError };
     }
-
     const remainingBeforeCents = billTotalCents - paidBeforeCents;
-    if (remainingBeforeCents <= 0) {
-      return { ok: false as const, error: 'บิลนี้ชำระครบแล้ว' };
-    }
 
     const rowValidation = submittedPaymentRows
       ? await validateCheckoutPaymentRowsForTotal(
@@ -604,12 +599,7 @@ export async function processPayment(input: unknown) {
     // round must use the same account group (A or B). Accounts with no group
     // suffix (e.g. legacy_unknown) are exempt from this check.
     if (rowValidation?.ok && rowValidation.data.rows.length > 1) {
-      const groups = new Set(
-        rowValidation.data.rows
-          .map((r) => getAccountGroup(r.account.code))
-          .filter((g): g is 'a' | 'b' => g !== null),
-      );
-      if (groups.size > 1) {
+      if (hasMixedAccountGroups(rowValidation.data.rows.map((r) => r.account.code))) {
         return { ok: false as const, error: 'รอบชำระเดียวกันต้องใช้บัญชีรับเงินเดียวกัน' };
       }
     }
@@ -628,17 +618,9 @@ export async function processPayment(input: unknown) {
       : remainingBeforeCents;
     const remainingAfterCents = remainingBeforeCents - paidThisTimeCents;
 
-    if (paidThisTimeCents <= 0) {
-      return { ok: false as const, error: 'ยอดชำระต้องมากกว่า 0' };
-    }
-    if (paidThisTimeCents > remainingBeforeCents) {
-      return { ok: false as const, error: 'ยอดชำระมากกว่ายอดคงเหลือ' };
-    }
-    if (settlementMode === 'partial' && paidThisTimeCents >= remainingBeforeCents) {
-      return { ok: false as const, error: 'ยอดชำระบางส่วนต้องน้อยกว่ายอดคงเหลือ' };
-    }
-    if (settlementMode === 'final' && paidThisTimeCents !== remainingBeforeCents) {
-      return { ok: false as const, error: 'ยอดปิดบิลต้องเท่ากับยอดคงเหลือ' };
+    const settlementError = settlementAmountError(settlementMode, paidThisTimeCents, remainingBeforeCents);
+    if (settlementError) {
+      return { ok: false as const, error: settlementError };
     }
 
     const paidThisTime = fromCents(paidThisTimeCents);
@@ -758,7 +740,7 @@ export async function processPayment(input: unknown) {
     const summaryReceivedAmount = rowValidation?.ok ? rowValidation.data.receivedAmount : String(receivedAmount);
     const summaryChangeAmount = rowValidation?.ok
       ? rowValidation.data.changeAmount
-      : String(paymentMethod === 'cash' ? receivedAmount - paidThisTime : 0);
+      : String(legacyCashChange(paymentMethod, receivedAmount, paidThisTime));
     const summaryNotes = rowValidation?.ok
       ? [notes, rowValidation.data.notesSummary].filter(Boolean).join('\n\n')
       : notes;

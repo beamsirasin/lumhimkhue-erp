@@ -1,5 +1,6 @@
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
+import { checkoutRowTenderError } from '@/lib/payments/money-math';
 import {
   paymentMethodAccounts,
   paymentMethods,
@@ -327,19 +328,9 @@ export async function validateCheckoutPaymentRowsForTotal(
     const tenderedCents = draft.amountTendered == null ? null : toCents(draft.amountTendered);
     const changeCents = draft.changeAmount == null ? 0 : toCents(draft.changeAmount);
 
-    if (method.type === 'cash') {
-      if (tenderedCents == null || tenderedCents < amountCents) {
-        return { ok: false as const, error: 'Cash tendered must be greater than or equal to the cash amount' };
-      }
-      if (changeCents !== tenderedCents - amountCents) {
-        return { ok: false as const, error: 'Cash change must equal tendered minus amount' };
-      }
-    } else {
-      if (changeCents !== 0) return { ok: false as const, error: 'Non-cash payment rows cannot have change' };
-      if (tenderedCents != null && tenderedCents !== amountCents) {
-        return { ok: false as const, error: 'Non-cash tendered amount must equal the row amount' };
-      }
-    }
+    // Phase 16D: cash/non-cash tender rules extracted to money-math (golden copy, tested)
+    const tenderError = checkoutRowTenderError(method.type, amountCents, tenderedCents, changeCents);
+    if (tenderError) return { ok: false as const, error: tenderError };
 
     rows.push({
       ...draft,

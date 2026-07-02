@@ -11,3 +11,15 @@ export function getAccountGroup(code: string): 'a' | 'b' | null {
   if (suffix === 'b') return 'b';
   return null;
 }
+
+/**
+ * True when checkout rows span more than one A/B account group.
+ * Accounts without a group suffix (null) are exempt and never cause a mix.
+ * Golden extraction of the cross-row consistency check in processPayment.
+ */
+export function hasMixedAccountGroups(accountCodes: string[]): boolean {
+  const groups = new Set(
+    accountCodes.map(getAccountGroup).filter((g): g is 'a' | 'b' => g !== null),
+  );
+  return groups.size > 1;
+}
