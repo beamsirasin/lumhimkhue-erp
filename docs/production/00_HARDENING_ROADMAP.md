@@ -87,8 +87,14 @@ Each phase below requires its own explicit phase prompt before work begins.
       unique index (23505) and returns the winner — same 16B behavior, cleaner mechanism.
       Remaining post-batch by design: loyalty award (recoverable), tax-invoice counter
       increment pre-batch (failure = skipped number, acceptable).
-    - **16C-C2** — delete/reopen payment flows (incl. missing payment_allocations FK bug
-      fix) → updateSessionGuests → openSession.
+    - **16C-C2A ✅ IMPLEMENTED (UAT pending)** — `deletePaymentRecord` and
+      `reopenSessionForPayment` are batch-atomic: adjustment ledger insert + child deletes
+      (**now including `payment_allocations` — the latent FK bug is fixed**) + payment
+      delete + session/table updates commit together or not at all. Delete-flow remaining
+      balance is computed pre-batch by excluding the deleted payment (same result).
+      Snapshots now also preserve allocations. Approach C upgraded: a ledger row exists
+      iff the mutation actually committed.
+    - **16C-C2B** — updateSessionGuests → openSession batch conversion.
     - **16C-C3** — tax-invoice generator `.returning()` race fix.
   - **16D** — money math test harness (unchanged, before any transport change).
   - **16C-D (optional, after 16D)** — dual-client `neon-serverless` transactions only for

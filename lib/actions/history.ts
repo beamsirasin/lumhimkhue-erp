@@ -2,6 +2,7 @@
 
 import { eq, and, gte, not, lte, desc, asc, inArray, isNull } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
+import type { BatchItem } from 'drizzle-orm/batch';
 import { z } from 'zod';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { startOfDay } from 'date-fns';
@@ -777,9 +778,12 @@ export async function deletePaymentRecord(input: unknown) {
   }
 
   try {
-    // neon-http does not support db.transaction() — ops run sequentially.
-    // INSERT is first (Approach C): if it fails → payment untouched.
-    // If a subsequent delete fails → orphaned adjustment row (detectable) but payment preserved.
+    // ─── Phase 16C-C2A: batch-atomic delete ──────────────────────────────────
+    // All reads run BEFORE the batch; the adjustment insert, child deletes,
+    // payment delete, and session/table updates commit together or not at all
+    // (db.batch = one atomic Neon HTTP transaction). This also fixes the latent
+    // FK defect: payment_allocations were never deleted, so DELETE payments
+    // failed halfway and stripped the payment of its rows first.
     const lineItems = await db
       .select({
         id: paymentLineItems.id,
@@ -793,82 +797,111 @@ export async function deletePaymentRecord(input: unknown) {
       .select()
       .from(paymentRows)
       .where(eq(paymentRows.paymentId, paymentId));
+    const allocationRows = await db
+      .select()
+      .from(paymentAllocations)
+      .where(eq(paymentAllocations.paymentId, paymentId));
 
-    // Insert immutable audit record first — Approach C guarantee.
-    // paymentId has no FK: payment_adjustments survives after hard delete.
-    await db.insert(paymentAdjustments).values({
-      paymentId: payment.id,
-      sessionId: payment.sessionId,
-      shiftId: payment.shiftId,
-      type: 'void',
-      amount: payment.total,
-      reason: normalizedReason || 'ไม่ระบุ',
-      requestedBy: authSession.user.id,
-      approvedBy: authSession.user.id,
-      approvedAt: new Date(),
-      status: 'approved',
-      paymentSnapshot: {
-        payment: {
-          id: payment.id,
-          sessionId: payment.sessionId,
-          subtotal: payment.subtotal,
-          serviceCharge: payment.serviceCharge,
-          discount: payment.discount,
-          total: payment.total,
-          paymentMethod: payment.paymentMethod,
-          receivedAmount: payment.receivedAmount,
-          changeAmount: payment.changeAmount,
-          paidAt: payment.paidAt.toISOString(),
-          processedBy: payment.processedBy,
-          receiptNo: payment.receiptNo,
-          notes: payment.notes,
-          shiftId: payment.shiftId,
-          status: payment.status,
-          settlementType: payment.settlementType,
-          billTotalAtPayment: payment.billTotalAtPayment,
-          paidBefore: payment.paidBefore,
-          remainingAfter: payment.remainingAfter,
-        },
-        lineItems,
-        paymentRows: rowItems,
-        context: {
-          action: 'delete_payment',
-          performedBy: authSession.user.id,
-          performedAt: new Date().toISOString(),
-          shiftStatusAtMutation,
-          shiftClosedAt: shift?.closedAt ? new Date(shift.closedAt).toISOString() : null,
-          mutationAfterClose: shiftStatusAtMutation === 'closed' || shiftStatusAtMutation === 'reviewed',
-          reason: normalizedReason || 'ไม่ระบุ',
-        },
-      },
-    });
-
-    await db.delete(paymentRows).where(eq(paymentRows.paymentId, paymentId));
-    await db.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
-    await db.delete(payments).where(eq(payments.id, paymentId));
+    // Remaining balance is computed BEFORE the batch by excluding this payment —
+    // identical to the old post-delete query (batch statements cannot read
+    // post-delete state).
     const [remainingPaymentState] = await db
       .select({
         paidTotal: sql<number>`coalesce(sum(${payments.total}::numeric), 0)`,
         billTotal: sql<number>`coalesce(max(${payments.billTotalAtPayment}::numeric), ${payment.billTotalAtPayment}::numeric)`,
       })
       .from(payments)
-      .where(and(eq(payments.sessionId, payment.sessionId), eq(payments.status, 'completed')));
+      .where(and(
+        eq(payments.sessionId, payment.sessionId),
+        eq(payments.status, 'completed'),
+        not(eq(payments.id, paymentId)),
+      ));
     const paidTotalAfterDelete = Number(remainingPaymentState?.paidTotal ?? 0);
     const billTotalAfterDelete = Number(remainingPaymentState?.billTotal ?? payment.billTotalAtPayment);
     const remainingAfterDelete = Math.round((billTotalAfterDelete - paidTotalAfterDelete) * 100) / 100;
 
+    // Statement 1 — immutable adjustment ledger row (Approach C, now stronger:
+    // atomicity means the ledger row exists if and only if the delete actually
+    // committed — no more orphan adjustments from half-failed deletes).
+    // paymentId has no FK: payment_adjustments survives after the hard delete.
+    // The snapshot now also preserves allocations, since they are deleted below.
+    const batchStatements: [BatchItem<'pg'>, ...BatchItem<'pg'>[]] = [
+      db.insert(paymentAdjustments).values({
+        paymentId: payment.id,
+        sessionId: payment.sessionId,
+        shiftId: payment.shiftId,
+        type: 'void',
+        amount: payment.total,
+        reason: normalizedReason || 'ไม่ระบุ',
+        requestedBy: authSession.user.id,
+        approvedBy: authSession.user.id,
+        approvedAt: new Date(),
+        status: 'approved',
+        paymentSnapshot: {
+          payment: {
+            id: payment.id,
+            sessionId: payment.sessionId,
+            subtotal: payment.subtotal,
+            serviceCharge: payment.serviceCharge,
+            discount: payment.discount,
+            total: payment.total,
+            paymentMethod: payment.paymentMethod,
+            receivedAmount: payment.receivedAmount,
+            changeAmount: payment.changeAmount,
+            paidAt: payment.paidAt.toISOString(),
+            processedBy: payment.processedBy,
+            receiptNo: payment.receiptNo,
+            notes: payment.notes,
+            shiftId: payment.shiftId,
+            status: payment.status,
+            settlementType: payment.settlementType,
+            billTotalAtPayment: payment.billTotalAtPayment,
+            paidBefore: payment.paidBefore,
+            remainingAfter: payment.remainingAfter,
+          },
+          lineItems,
+          paymentRows: rowItems,
+          allocations: allocationRows,
+          context: {
+            action: 'delete_payment',
+            performedBy: authSession.user.id,
+            performedAt: new Date().toISOString(),
+            shiftStatusAtMutation,
+            shiftClosedAt: shift?.closedAt ? new Date(shift.closedAt).toISOString() : null,
+            mutationAfterClose: shiftStatusAtMutation === 'closed' || shiftStatusAtMutation === 'reviewed',
+            reason: normalizedReason || 'ไม่ระบุ',
+          },
+        },
+      }),
+      // Children before parent — allocations/rows/line items all FK-reference
+      // payments.id with no cascade (schema verified); allocations were the
+      // missing delete that caused the FK failure.
+      db.delete(paymentAllocations).where(eq(paymentAllocations.paymentId, paymentId)),
+      db.delete(paymentRows).where(eq(paymentRows.paymentId, paymentId)),
+      db.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId)),
+      db.delete(payments).where(eq(payments.id, paymentId)),
+    ];
+
     if (payment.settlementType === 'partial' || remainingAfterDelete > 0) {
-      await db.update(sessions)
-        .set({ status: 'closing', closedAt: null })
-        .where(eq(sessions.id, payment.sessionId));
-      await db.update(tables)
-        .set({ status: 'occupied' })
-        .where(eq(tables.id, mainSessionForDelete.tableId));
+      batchStatements.push(
+        db.update(sessions)
+          .set({ status: 'closing', closedAt: null })
+          .where(eq(sessions.id, payment.sessionId)),
+      );
+      batchStatements.push(
+        db.update(tables)
+          .set({ status: 'occupied' })
+          .where(eq(tables.id, mainSessionForDelete.tableId)),
+      );
     } else {
-      await db.update(sessions)
-        .set({ status: 'closed' })
-        .where(eq(sessions.id, payment.sessionId));
+      batchStatements.push(
+        db.update(sessions)
+          .set({ status: 'closed' })
+          .where(eq(sessions.id, payment.sessionId)),
+      );
     }
+
+    await db.batch(batchStatements);
 
     // Fire-and-forget secondary log (payment_adjustments is the primary audit trail)
     writeAuditLog({
@@ -982,8 +1015,10 @@ export async function reopenSessionForPayment(input: unknown) {
   const allTableIds = [...new Set([mainSession.tableId, ...groupLinked.map((s) => s.tableId)])];
 
   try {
-    // neon-http does not support db.transaction() — ops run sequentially.
-    // INSERT is first (Approach C): if it fails → payment untouched.
+    // ─── Phase 16C-C2A: batch-atomic reopen ──────────────────────────────────
+    // All reads run BEFORE the batch; the adjustment insert, child deletes,
+    // payment delete, and session/table reopen updates commit together or not
+    // at all. Fixes the latent FK defect (payment_allocations never deleted).
     const lineItems = await db
       .select({
         id: paymentLineItems.id,
@@ -997,68 +1032,81 @@ export async function reopenSessionForPayment(input: unknown) {
       .select()
       .from(paymentRows)
       .where(eq(paymentRows.paymentId, paymentId));
+    const allocationRows = await db
+      .select()
+      .from(paymentAllocations)
+      .where(eq(paymentAllocations.paymentId, paymentId));
 
-    // Insert immutable audit record first — Approach C guarantee.
-    // paymentId has no FK: payment_adjustments survives after hard delete.
-    await db.insert(paymentAdjustments).values({
-      paymentId: payment.id,
-      sessionId: payment.sessionId,
-      shiftId: payment.shiftId,
-      type: 'void',
-      amount: payment.total,
-      reason: normalizedReason || 'ไม่ระบุ',
-      requestedBy: authSession.user.id,
-      approvedBy: authSession.user.id,
-      approvedAt: new Date(),
-      status: 'approved',
-      paymentSnapshot: {
-        payment: {
-          id: payment.id,
-          sessionId: payment.sessionId,
-          subtotal: payment.subtotal,
-          serviceCharge: payment.serviceCharge,
-          discount: payment.discount,
-          total: payment.total,
-          paymentMethod: payment.paymentMethod,
-          receivedAmount: payment.receivedAmount,
-          changeAmount: payment.changeAmount,
-          paidAt: payment.paidAt.toISOString(),
-          processedBy: payment.processedBy,
-          receiptNo: payment.receiptNo,
-          notes: payment.notes,
-          shiftId: payment.shiftId,
-          status: payment.status,
-          settlementType: payment.settlementType,
-          billTotalAtPayment: payment.billTotalAtPayment,
-          paidBefore: payment.paidBefore,
-          remainingAfter: payment.remainingAfter,
+    // Statement 1 — immutable adjustment ledger row (Approach C, now stronger:
+    // the ledger row exists if and only if the reopen actually committed).
+    // paymentId has no FK: payment_adjustments survives after the hard delete.
+    // The snapshot now also preserves allocations, since they are deleted below.
+    const batchStatements: [BatchItem<'pg'>, ...BatchItem<'pg'>[]] = [
+      db.insert(paymentAdjustments).values({
+        paymentId: payment.id,
+        sessionId: payment.sessionId,
+        shiftId: payment.shiftId,
+        type: 'void',
+        amount: payment.total,
+        reason: normalizedReason || 'ไม่ระบุ',
+        requestedBy: authSession.user.id,
+        approvedBy: authSession.user.id,
+        approvedAt: new Date(),
+        status: 'approved',
+        paymentSnapshot: {
+          payment: {
+            id: payment.id,
+            sessionId: payment.sessionId,
+            subtotal: payment.subtotal,
+            serviceCharge: payment.serviceCharge,
+            discount: payment.discount,
+            total: payment.total,
+            paymentMethod: payment.paymentMethod,
+            receivedAmount: payment.receivedAmount,
+            changeAmount: payment.changeAmount,
+            paidAt: payment.paidAt.toISOString(),
+            processedBy: payment.processedBy,
+            receiptNo: payment.receiptNo,
+            notes: payment.notes,
+            shiftId: payment.shiftId,
+            status: payment.status,
+            settlementType: payment.settlementType,
+            billTotalAtPayment: payment.billTotalAtPayment,
+            paidBefore: payment.paidBefore,
+            remainingAfter: payment.remainingAfter,
+          },
+          lineItems,
+          paymentRows: rowItems,
+          allocations: allocationRows,
+          linkedSessions: groupLinked,
+          context: {
+            action: 'reopen_session',
+            performedBy: authSession.user.id,
+            performedAt: new Date().toISOString(),
+            allSessionIds,
+            allTableIds,
+            shiftStatusAtMutation,
+            shiftClosedAt: shift?.closedAt ? new Date(shift.closedAt).toISOString() : null,
+            mutationAfterClose: shiftStatusAtMutation === 'closed' || shiftStatusAtMutation === 'reviewed',
+            reason: normalizedReason || 'ไม่ระบุ',
+          },
         },
-        lineItems,
-        paymentRows: rowItems,
-        linkedSessions: groupLinked,
-        context: {
-          action: 'reopen_session',
-          performedBy: authSession.user.id,
-          performedAt: new Date().toISOString(),
-          allSessionIds,
-          allTableIds,
-          shiftStatusAtMutation,
-          shiftClosedAt: shift?.closedAt ? new Date(shift.closedAt).toISOString() : null,
-          mutationAfterClose: shiftStatusAtMutation === 'closed' || shiftStatusAtMutation === 'reviewed',
-          reason: normalizedReason || 'ไม่ระบุ',
-        },
-      },
-    });
+      }),
+      // Children before parent — allocations/rows/line items all FK-reference
+      // payments.id with no cascade (schema verified).
+      db.delete(paymentAllocations).where(eq(paymentAllocations.paymentId, paymentId)),
+      db.delete(paymentRows).where(eq(paymentRows.paymentId, paymentId)),
+      db.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId)),
+      db.delete(payments).where(eq(payments.id, paymentId)),
+      db.update(sessions)
+        .set({ status: 'closing', closedAt: null })
+        .where(inArray(sessions.id, allSessionIds)),
+      db.update(tables)
+        .set({ status: 'occupied' })
+        .where(inArray(tables.id, allTableIds)),
+    ];
 
-    await db.delete(paymentRows).where(eq(paymentRows.paymentId, paymentId));
-    await db.delete(paymentLineItems).where(eq(paymentLineItems.paymentId, paymentId));
-    await db.delete(payments).where(eq(payments.id, paymentId));
-    await db.update(sessions)
-      .set({ status: 'closing', closedAt: null })
-      .where(inArray(sessions.id, allSessionIds));
-    await db.update(tables)
-      .set({ status: 'occupied' })
-      .where(inArray(tables.id, allTableIds));
+    await db.batch(batchStatements);
 
     // Fire-and-forget secondary log (payment_adjustments is the primary audit trail)
     writeAuditLog({

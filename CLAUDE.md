@@ -832,7 +832,8 @@ app/globals.css (token changes; additions OK, editing existing tokens needs appr
     - [x] 16C-B — Reconciliation script `npm run reconcile:payments` (read-only, R1–R12; prod baseline run pending)
     - [ ] 16C-C — Batch-atomic money writes (`db.batch()`, current driver)
       - [x] 16C-C1 — processPayment write phase batch-atomic (UAT pending)
-      - [ ] 16C-C2 — delete/reopen (+allocations FK bug fix), updateSessionGuests, openSession
+      - [x] 16C-C2A — delete/reopen batch-atomic + payment_allocations FK bug fix (UAT pending)
+      - [ ] 16C-C2B — updateSessionGuests, openSession batch conversion
       - [ ] 16C-C3 — tax-invoice generator race fix
     - [ ] 16C-D — (optional, after 16D) dual-client interactive transactions
   - [ ] Phase 16D — Money math test harness
