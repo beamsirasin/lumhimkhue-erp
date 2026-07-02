@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { eq, inArray, or, and, ne, sql, isNull } from 'drizzle-orm';
+import type { BatchItem } from 'drizzle-orm/batch';
 import { nanoid } from 'nanoid';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
@@ -76,76 +77,62 @@ export async function openSession(input: unknown) {
 
     const startedAt = new Date();
     const sessionToken = nanoid(12);
-    let newSession: { id: string; sessionToken: string } | null = null;
-    let linkedSessionRows: Array<{
-      tableId: string;
-      startedAt: Date;
-      sessionToken: string;
-      status: 'active';
-      parentSessionId: string;
-    }> = [];
 
-    const cleanupCreatedSession = async () => {
-      if (!newSession) return;
-      try {
-        await db.delete(buffetChargeLines).where(eq(buffetChargeLines.sessionId, newSession.id));
-        await db.delete(sessionGuests).where(eq(sessionGuests.sessionId, newSession.id));
-        await db.delete(sessions).where(eq(sessions.parentSessionId, newSession.id));
-        await db.delete(sessions).where(eq(sessions.id, newSession.id));
-        for (const tableRow of tableRows) {
-          await db.update(tables).set({ status: tableRow.status }).where(eq(tables.id, tableRow.id));
-        }
-      } catch (cleanupError) {
-        console.error('[openSession] Cleanup error', cleanupError);
-      }
-    };
+    // ─── Phase 16C-C2B: batch-atomic write phase ─────────────────────────────
+    // The primary-session id is pre-generated (batch statements cannot read
+    // RETURNING values) and every insert + table update commits in one
+    // db.batch() — an atomic Neon HTTP transaction. This replaces both the
+    // hand-rolled compensating cleanup and the post-insert verification counts,
+    // which existed only to mitigate the old non-atomic sequential writes.
+    const sessionId = crypto.randomUUID();
 
-    try {
-      const [createdSession] = await db
-        .insert(sessions)
-        .values({
-          tableId,
-          startedAt,
-          sessionToken,
-          status: 'active',
-          notes: notes ?? null,
-          parentSessionId: null,
-          customerId: customerId ?? null,
-        })
-        .returning({ id: sessions.id, sessionToken: sessions.sessionToken });
-      newSession = createdSession;
+    // Pre-generate linked session rows (tokens captured for the return value)
+    const linkedSessionRows = linkedTableIds.map((ltId) => ({
+      tableId: ltId,
+      startedAt,
+      sessionToken: nanoid(12),
+      status: 'active' as const,
+      parentSessionId: sessionId,
+    }));
 
-      // Pre-generate linked session rows (tokens captured for return value)
-      linkedSessionRows = linkedTableIds.map((ltId) => ({
-        tableId: ltId,
+    const batchStatements: [BatchItem<'pg'>, ...BatchItem<'pg'>[]] = [
+      db.insert(sessions).values({
+        id: sessionId,
+        tableId,
         startedAt,
-        sessionToken: nanoid(12),
-        status: 'active' as const,
-        parentSessionId: createdSession.id,
-      }));
+        sessionToken,
+        status: 'active',
+        notes: notes ?? null,
+        parentSessionId: null,
+        customerId: customerId ?? null,
+      }),
+    ];
 
-      if (linkedSessionRows.length > 0) {
-        await db.insert(sessions).values(linkedSessionRows);
-      }
+    if (linkedSessionRows.length > 0) {
+      batchStatements.push(db.insert(sessions).values(linkedSessionRows));
+    }
 
-      // Insert session guests on primary session (skip if none - Drizzle errors on empty values)
-      if (nonZeroGuests.length > 0) {
-        await db.insert(sessionGuests).values(
+    // Session guests on the primary session (skip if none — Drizzle errors on empty values)
+    if (nonZeroGuests.length > 0) {
+      batchStatements.push(
+        db.insert(sessionGuests).values(
           nonZeroGuests.map((g) => ({
-            sessionId: createdSession.id,
+            sessionId,
             pricingTileId: g.pricingTileId,
             quantity: g.quantity,
             unitPrice: tileMap.get(g.pricingTileId)?.price ?? '0',
           })),
-        );
+        ),
+      );
 
-        // Create buffet charge lines with snapshotted price.
-        await db.insert(buffetChargeLines).values(
+      // Buffet charge lines with snapshotted price.
+      batchStatements.push(
+        db.insert(buffetChargeLines).values(
           nonZeroGuests.map((g) => {
             const tile = tileMap.get(g.pricingTileId)!;
             const unitPrice = Number(tile.price);
             return {
-              sessionId: createdSession.id,
+              sessionId,
               pricingTileId: g.pricingTileId,
               chargeType: tile.code || tile.name || 'guest',
               label: tile.name,
@@ -154,35 +141,17 @@ export async function openSession(input: unknown) {
               total: (unitPrice * g.quantity).toFixed(2),
             };
           }),
-        );
-
-        const [guestCheck] = await db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(sessionGuests)
-          .where(eq(sessionGuests.sessionId, createdSession.id));
-        const [chargeLineCheck] = await db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(buffetChargeLines)
-          .where(eq(buffetChargeLines.sessionId, createdSession.id));
-        if (Number(guestCheck?.count ?? 0) < nonZeroGuests.length || Number(chargeLineCheck?.count ?? 0) < nonZeroGuests.length) {
-          throw new Error('openSession verification failed: missing guest or charge-line rows');
-        }
-      }
-
-      await db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, tableId));
-      if (linkedTableIds.length > 0) {
-        await db.update(tables).set({ status: 'linked' }).where(inArray(tables.id, linkedTableIds));
-      }
-    } catch (writeError) {
-      console.error('[openSession] Error', writeError);
-      await cleanupCreatedSession();
-      return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
+        ),
+      );
     }
 
-    if (!newSession) {
-      console.error('[openSession] Error', new Error('session was not created'));
-      return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
+    batchStatements.push(db.update(tables).set({ status: 'occupied' }).where(eq(tables.id, tableId)));
+    if (linkedTableIds.length > 0) {
+      batchStatements.push(db.update(tables).set({ status: 'linked' }).where(inArray(tables.id, linkedTableIds)));
     }
+
+    await db.batch(batchStatements);
+
     const thLocale: Intl.DateTimeFormatOptions = {
       dateStyle: 'short',
       timeStyle: 'short',
@@ -206,8 +175,8 @@ export async function openSession(input: unknown) {
       role: authSession.user.role,
       action: 'create',
       entity: 'sessions',
-      entityId: newSession.id,
-      after: { tableId, linkedTableIds, sessionToken: newSession.sessionToken },
+      entityId: sessionId,
+      after: { tableId, linkedTableIds, sessionToken },
     });
     if (nonZeroGuests.length > 0) {
       writeAuditLog({
@@ -215,7 +184,7 @@ export async function openSession(input: unknown) {
         role: authSession.user.role,
         action: 'headcount_created',
         entity: 'session_guests',
-        entityId: newSession.id,
+        entityId: sessionId,
         after: {
           guests: nonZeroGuests.map((g) => ({
             pricingTileId: g.pricingTileId,
@@ -229,8 +198,8 @@ export async function openSession(input: unknown) {
     return {
       ok: true as const,
       data: {
-        sessionId: newSession.id,
-        sessionToken: newSession.sessionToken,
+        sessionId,
+        sessionToken,
         tableQrToken: primaryTableRow.qrToken,
         tableLabel: primaryTableRow.label,
         startedAt: startedAt.toLocaleString('th-TH', thLocale),
@@ -415,23 +384,33 @@ export async function updateSessionGuests(input: unknown) {
       }
     }
 
+    // ─── Phase 16C-C2B: batch-atomic write phase ─────────────────────────────
+    // Every write decision is derived from the pre-reads above; the guest
+    // delete/re-insert and every charge-line void/update/insert commit together
+    // or not at all — the canonical saved bill (charge lines) can no longer
+    // diverge from the guest list on a mid-write failure.
+
     // Replace session_guests with GUEST tiles only (addon tiles must NOT go here —
     // processPayment adds addon amounts via lineItems to avoid double-counting)
-    await db.delete(sessionGuests).where(eq(sessionGuests.sessionId, sessionId));
+    const batchStatements: [BatchItem<'pg'>, ...BatchItem<'pg'>[]] = [
+      db.delete(sessionGuests).where(eq(sessionGuests.sessionId, sessionId)),
+    ];
     if (nonZeroGuests.length > 0) {
-      await db.insert(sessionGuests).values(
-        nonZeroGuests.map((g) => {
-          const tile = tileMap.get(g.pricingTileId);
-          // Reuse snapshotted unitPrice from existing charge line if available; else use live price
-          const existingLine = currentChargeLines.find((l) => l.pricingTileId === g.pricingTileId);
-          const unitPrice = existingLine ? existingLine.unitPrice : (tile?.price ?? '0');
-          return {
-            sessionId,
-            pricingTileId: g.pricingTileId,
-            quantity: g.quantity,
-            unitPrice,
-          };
-        }),
+      batchStatements.push(
+        db.insert(sessionGuests).values(
+          nonZeroGuests.map((g) => {
+            const tile = tileMap.get(g.pricingTileId);
+            // Reuse snapshotted unitPrice from existing charge line if available; else use live price
+            const existingLine = currentChargeLines.find((l) => l.pricingTileId === g.pricingTileId);
+            const unitPrice = existingLine ? existingLine.unitPrice : (tile?.price ?? '0');
+            return {
+              sessionId,
+              pricingTileId: g.pricingTileId,
+              quantity: g.quantity,
+              unitPrice,
+            };
+          }),
+        ),
       );
     }
 
@@ -443,28 +422,34 @@ export async function updateSessionGuests(input: unknown) {
     // Void removed lines (only safe because allocation guard above already blocked any with allocations)
     const linesToVoid = currentChargeLines.filter((l) => !newTileIds.has(l.pricingTileId ?? ''));
     if (linesToVoid.length > 0) {
-      await db.update(buffetChargeLines)
-        .set({ voidedAt: new Date() })
-        .where(inArray(buffetChargeLines.id, linesToVoid.map((l) => l.id)));
+      batchStatements.push(
+        db.update(buffetChargeLines)
+          .set({ voidedAt: new Date() })
+          .where(inArray(buffetChargeLines.id, linesToVoid.map((l) => l.id))),
+      );
     }
 
-    // Update existing lines or create new ones for all items
+    // Update existing lines (one statement per line — distinct values) or
+    // collect new ones into a single multi-row insert.
+    const newLineValues: (typeof buffetChargeLines.$inferInsert)[] = [];
     for (const item of allNonZeroItems) {
       const tile = tileMap.get(item.pricingTileId);
       const existingLine = chargeLineByTileId.get(item.pricingTileId);
 
       if (existingLine) {
         // Keep existing unitPrice snapshot; only update quantity + total
-        await db.update(buffetChargeLines)
-          .set({
-            quantity: item.quantity,
-            total: (Number(existingLine.unitPrice) * item.quantity).toFixed(2),
-          })
-          .where(eq(buffetChargeLines.id, existingLine.id));
+        batchStatements.push(
+          db.update(buffetChargeLines)
+            .set({
+              quantity: item.quantity,
+              total: (Number(existingLine.unitPrice) * item.quantity).toFixed(2),
+            })
+            .where(eq(buffetChargeLines.id, existingLine.id)),
+        );
       } else if (tile) {
         // New tile not seen before: create charge line with current tile price
         const unitPrice = Number(tile.price);
-        await db.insert(buffetChargeLines).values({
+        newLineValues.push({
           sessionId,
           pricingTileId: item.pricingTileId,
           chargeType: tile.code || tile.name || 'item',
@@ -475,6 +460,11 @@ export async function updateSessionGuests(input: unknown) {
         });
       }
     }
+    if (newLineValues.length > 0) {
+      batchStatements.push(db.insert(buffetChargeLines).values(newLineValues));
+    }
+
+    await db.batch(batchStatements);
 
     writeAuditLog({
       userId: authSession.user.id,

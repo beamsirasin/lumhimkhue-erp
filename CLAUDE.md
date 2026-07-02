@@ -833,7 +833,7 @@ app/globals.css (token changes; additions OK, editing existing tokens needs appr
     - [ ] 16C-C — Batch-atomic money writes (`db.batch()`, current driver)
       - [x] 16C-C1 — processPayment write phase batch-atomic (UAT pending)
       - [x] 16C-C2A — delete/reopen batch-atomic + payment_allocations FK bug fix (UAT pending)
-      - [ ] 16C-C2B — updateSessionGuests, openSession batch conversion
+      - [x] 16C-C2B — updateSessionGuests + openSession batch-atomic (UAT pending)
       - [ ] 16C-C3 — tax-invoice generator race fix
     - [ ] 16C-D — (optional, after 16D) dual-client interactive transactions
   - [ ] Phase 16D — Money math test harness

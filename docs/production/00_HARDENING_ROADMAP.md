@@ -94,7 +94,12 @@ Each phase below requires its own explicit phase prompt before work begins.
       balance is computed pre-batch by excluding the deleted payment (same result).
       Snapshots now also preserve allocations. Approach C upgraded: a ledger row exists
       iff the mutation actually committed.
-    - **16C-C2B** — updateSessionGuests → openSession batch conversion.
+    - **16C-C2B ✅ IMPLEMENTED (UAT pending)** — `updateSessionGuests` and `openSession`
+      are batch-atomic. openSession pre-generates the session id; the hand-rolled
+      compensating cleanup and post-insert verification counts (both non-atomicity
+      mitigations) are replaced by the transaction. updateSessionGuests: guest
+      delete/re-insert + every charge-line void/update/insert commit together — the
+      canonical saved bill can no longer diverge from the guest list mid-write.
     - **16C-C3** — tax-invoice generator `.returning()` race fix.
   - **16D** — money math test harness (unchanged, before any transport change).
   - **16C-D (optional, after 16D)** — dual-client `neon-serverless` transactions only for
