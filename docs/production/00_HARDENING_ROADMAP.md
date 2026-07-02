@@ -127,12 +127,20 @@ Each phase below requires its own explicit phase prompt before work begins.
   files, DB-coupled row validation, payroll) documented in `04_MONEY_TEST_HARNESS.md`.
 - Run `test:money` alongside typecheck/lint/reconcile before any money-path merge.
 
-### Phase 16E — Migration Baseline
-- Generate a Drizzle migration snapshot matching current production schema.
-- Record which historical tsx migration scripts have run against prod (inventory in `docs/architecture/MIGRATIONS.md`).
-- Adopt `db:generate` / `db:migrate` for all future schema changes; retire `db:push` for prod.
-- Includes the pending migration for `tile_category` enum value `'penalty'`
-  (`ALTER TYPE tile_category ADD VALUE 'penalty'`) — committed in code during 16A but **not yet applied to any database**.
+### Phase 16E — Migration Baseline & Schema Governance ✅ IMPLEMENTED
+- **`npm run db:check-migrations`** — read-only introspection that verifies every
+  table/column/index/enum the current code needs, grouped by originating migration;
+  **exit 1 blocks deploy** when a critical group is missing.
+- Baseline verified 2026-07-03 against the current DATABASE_URL: **11/12 groups APPLIED**
+  (v12 → 15BILL → 16B incl. `payments.idempotency_key`); the only gap is the
+  `tile_category 'penalty'` enum value (WARNING — penalty tiles fail until applied;
+  exact SQL documented, NOT executed).
+- Governance: `docs/architecture/MIGRATIONS.md` — no `db:push` for production; every
+  schema change = phase name + idempotent tsx script + Neon snapshot + run record +
+  rollback notes + check-script group in the same commit. Full 9-script historical
+  inventory with verified applied-status included.
+- Note: retrofitting drizzle-kit SQL history was evaluated and deliberately skipped
+  (high risk against a live DB, low value vs. the verifiable check above).
 
 ### Phase 16F — UAT + Go-Live Runbook
 - Full UAT scripts: happy-path service day ×3, payment edge cases (mixed, partial, void,

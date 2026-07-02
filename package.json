@@ -23,6 +23,7 @@
     "payments:backfill": "tsx scripts/backfill-payment-rows.ts",
     "payments:verify": "tsx scripts/verify-payment-foundation.ts",
     "reconcile:payments": "tsx scripts/reconcile-payments.ts",
+    "db:check-migrations": "tsx scripts/check-migration-status.ts",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx lib/db/seed.ts",
     "db:seed-inventory": "tsx lib/db/seed-inventory.ts",

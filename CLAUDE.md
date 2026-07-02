@@ -670,6 +670,7 @@ npm run payments:verify            # verify payment foundation setup
 npm run payments:backfill          # one-time payment row backfill
 npm run reconcile:payments         # READ-ONLY payment reconciliation (R1–R12, Phase 16C-B)
 npm run test:money                 # money math unit tests (node:test via tsx, no DB — Phase 16D)
+npm run db:check-migrations        # READ-ONLY schema-vs-code check; exit 1 = deploy blocked (Phase 16E)
 ```
 
 ---
@@ -800,6 +801,7 @@ app/globals.css (token changes; additions OK, editing existing tokens needs appr
 - Do not read `pricingTiles.price` at checkout — use the snapshot in `sessionGuests.unitPrice`
 - Do not modify `paymentAdjustments` rows — append only, never update/delete
 - Do not run `npm run build` or `npm run db:push` without explicit user approval
+- Do not deploy while `npm run db:check-migrations` fails against the target database (see `docs/architecture/MIGRATIONS.md`)
 - Do not install new dependencies without explicit user approval
 - Do not create temp scripts at root — use `scripts/` directory
 - Do not use Playwright — it has been removed from this project
@@ -840,7 +842,7 @@ app/globals.css (token changes; additions OK, editing existing tokens needs appr
       - [x] 16C-C3 — tax-invoice generator RETURNING race fix (UAT pending)
     - [ ] 16C-D — (optional, after 16D) dual-client interactive transactions
   - [x] Phase 16D — Money math test harness (`npm run test:money`, node:test via tsx, 70 tests; golden extractions in `lib/payments/money-math.ts`)
-  - [ ] Phase 16E — Migration baseline
+  - [x] Phase 16E — Migration baseline & governance (`npm run db:check-migrations`; policy in `docs/architecture/MIGRATIONS.md`; pending: `tile_category` `'penalty'` enum value)
   - [ ] Phase 16F — UAT + go-live runbook
 
 Historical V2 plan: `docs/reui-v2/00_MASTER_PLAN.md` (completed; kept for reference).
