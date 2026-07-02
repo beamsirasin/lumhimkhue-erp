@@ -100,7 +100,13 @@ Each phase below requires its own explicit phase prompt before work begins.
       mitigations) are replaced by the transaction. updateSessionGuests: guest
       delete/re-insert + every charge-line void/update/insert commit together — the
       canonical saved bill can no longer diverge from the guest list mid-write.
-    - **16C-C3** — tax-invoice generator `.returning()` race fix.
+    - **16C-C3 ✅ IMPLEMENTED (UAT pending)** — `generateTaxInvoiceNumber` reads the
+      incremented sequence from `RETURNING` on the atomic upsert itself; the separate
+      SELECT that could race under concurrent finals (duplicate legal numbers) is gone.
+      Invoice format and first/subsequent-of-month behavior unchanged.
+
+  **All 16C-C sub-phases are implemented.** Remaining before 16C closes: manual UAT
+  passes for C1/C2A/C2B/C3 and a production baseline run of `npm run reconcile:payments`.
   - **16D** — money math test harness (unchanged, before any transport change).
   - **16C-D (optional, after 16D)** — dual-client `neon-serverless` transactions only for
     read-inside-tx cases (two-device same-session race, closeShift snapshot).

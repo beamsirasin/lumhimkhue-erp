@@ -1,6 +1,6 @@
 'use server';
 
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import { db } from '@/lib/db';
@@ -22,8 +22,12 @@ export async function generateTaxInvoiceNumber(): Promise<string> {
     .from(storeSettings).limit(1);
   const prefix = settings?.prefix ?? 'INV';
 
-  // Upsert sequence row and atomically increment
-  await db.insert(taxInvoiceSequence)
+  // Upsert sequence row and atomically increment. Phase 16C-C3: the
+  // incremented value is read from RETURNING on the SAME statement — the old
+  // separate SELECT could race with a concurrent increment and mint duplicate
+  // legal invoice numbers. RETURNING yields exactly the value this statement
+  // produced (1 on first invoice of the month, previous+1 otherwise).
+  const [row] = await db.insert(taxInvoiceSequence)
     .values({ month, lastNumber: 1, updatedAt: new Date() })
     .onConflictDoUpdate({
       target: taxInvoiceSequence.month,
@@ -31,11 +35,8 @@ export async function generateTaxInvoiceNumber(): Promise<string> {
         lastNumber: sql`${taxInvoiceSequence.lastNumber} + 1`,
         updatedAt: new Date(),
       },
-    });
-
-  const [row] = await db.select({ lastNumber: taxInvoiceSequence.lastNumber })
-    .from(taxInvoiceSequence)
-    .where(eq(taxInvoiceSequence.month, month));
+    })
+    .returning({ lastNumber: taxInvoiceSequence.lastNumber });
 
   const seq = String(row.lastNumber).padStart(4, '0');
   return `${prefix}${mmyy}${seq}`;
