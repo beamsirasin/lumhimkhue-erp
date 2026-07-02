@@ -79,9 +79,17 @@ Each phase below requires its own explicit phase prompt before work begins.
   - **16C-B ✅ IMPLEMENTED** — read-only reconciliation script `scripts/reconcile-payments.ts`
     (`npm run reconcile:payments`, checks R1–R12, exit 1 on critical/high findings; see
     `03_RECONCILIATION.md`). Run it against prod for a baseline before starting 16C-C.
-  - **16C-C** — convert Critical money writes to atomic `db.batch()` on the current driver
-    (processPayment → delete/reopen incl. allocations FK bug fix → updateSessionGuests →
-    openSession) + tax-invoice `.returning()` fix.
+  - **16C-C** — convert Critical money writes to atomic `db.batch()` on the current driver:
+    - **16C-C1 ✅ IMPLEMENTED (UAT pending)** — `processPayment` write phase is one atomic
+      `db.batch()`: payments + tender rows (draft or pre-resolved legacy row) + allocations
+      (pre-generated ids) + line items + tax-invoice number + session/table close commit
+      together or not at all. Duplicate idempotency key now aborts the whole batch via the
+      unique index (23505) and returns the winner — same 16B behavior, cleaner mechanism.
+      Remaining post-batch by design: loyalty award (recoverable), tax-invoice counter
+      increment pre-batch (failure = skipped number, acceptable).
+    - **16C-C2** — delete/reopen payment flows (incl. missing payment_allocations FK bug
+      fix) → updateSessionGuests → openSession.
+    - **16C-C3** — tax-invoice generator `.returning()` race fix.
   - **16D** — money math test harness (unchanged, before any transport change).
   - **16C-D (optional, after 16D)** — dual-client `neon-serverless` transactions only for
     read-inside-tx cases (two-device same-session race, closeShift snapshot).

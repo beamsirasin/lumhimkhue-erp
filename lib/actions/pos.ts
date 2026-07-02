@@ -24,9 +24,11 @@ import {
   paymentAllocations,
 } from '@/lib/db/schema';
 import { processPaymentSchema } from '@/lib/validations/pos';
+import type { BatchItem } from 'drizzle-orm/batch';
 import {
   ensurePaymentRowsForLegacyPayment,
   getActivePaymentMethodsWithAccounts,
+  resolveLegacyPaymentMethodAccount,
   validateCheckoutPaymentRowsForTotal,
 } from '@/lib/payments/foundation';
 import { getAccountGroup } from '@/lib/payments/account-group';
@@ -766,149 +768,187 @@ export async function processPayment(input: unknown) {
 
     const changeAmount = Number(summaryChangeAmount);
 
-    // Insert payment — shiftId linked if cashier has an open shift, null otherwise.
-    // Phase 16B: ON CONFLICT (idempotency_key) DO NOTHING is the DB-level last
-    // line of defense when a concurrent duplicate submit races past the SELECT
-    // check at the top of this action. NULL keys (legacy callers) never conflict.
-    const insertedPayments = await db.insert(payments).values({
-      sessionId,
-      subtotal: String(subtotal),
-      serviceCharge: String(serviceCharge),
-      discount: String(discountAmount),
-      total: paidThisTime.toFixed(2),
-      paymentMethod: summaryPaymentMethod,
-      receivedAmount: summaryReceivedAmount,
-      changeAmount: summaryChangeAmount,
-      processedBy: authSession.user.id,
-      receiptNo: receiptNo ?? null,
-      notes: summaryNotes,
-      shiftId: activeShiftId,
-      settlementType: settlementMode,
-      billTotalAtPayment: billTotal.toFixed(2),
-      paidBefore: paidBefore.toFixed(2),
-      remainingAfter: remainingAfter.toFixed(2),
-      idempotencyKey: idempotencyKey ?? null,
-    }).onConflictDoNothing({ target: payments.idempotencyKey }).returning({
-      id: payments.id,
-      sessionId: payments.sessionId,
-      subtotal: payments.subtotal,
-      serviceCharge: payments.serviceCharge,
-      discount: payments.discount,
-      total: payments.total,
-      paymentMethod: payments.paymentMethod,
-      receivedAmount: payments.receivedAmount,
-      changeAmount: payments.changeAmount,
-      paidAt: payments.paidAt,
-      processedBy: payments.processedBy,
-      receiptNo: payments.receiptNo,
-      notes: payments.notes,
-      shiftId: payments.shiftId,
-      status: payments.status,
-      settlementType: payments.settlementType,
-      billTotalAtPayment: payments.billTotalAtPayment,
-      paidBefore: payments.paidBefore,
-      remainingAfter: payments.remainingAfter,
-    });
+    // ─── Phase 16C-C1: batch-atomic write phase ─────────────────────────────
+    // Every value is computed BEFORE any write so the whole write sequence runs
+    // inside one db.batch() — a single atomic Neon HTTP transaction on the
+    // current neon-http driver (docs/production/02_TRANSACTION_STRATEGY.md).
+    // Either all statements commit or none do: a mid-write failure can no longer
+    // leave a payment without rows, rows without allocations, or money recorded
+    // on a session that never closes.
+    const paymentId = crypto.randomUUID();
+    const paidAt = new Date();
 
-    // Empty result = a concurrent submit with the same idempotency key won the
-    // race between our SELECT check and this INSERT. Return the winner's result;
-    // skip row repair because the winning request may still be inserting rows.
-    if (insertedPayments.length === 0) {
-      const winner = idempotencyKey
-        ? await db.query.payments.findFirst({
-            where: eq(payments.idempotencyKey, idempotencyKey),
-          })
-        : null;
-      if (winner) return alreadyProcessedPaymentResult(winner, { repairRows: false });
-      return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
-    }
-    const payment = insertedPayments[0];
-
-    if (rowValidation?.ok) {
-      await db.insert(paymentRows).values(
-        rowValidation.data.rows.map((row) => ({
-          paymentId: payment.id,
-          sessionId: payment.sessionId,
-          paymentMethodId: row.paymentMethodId,
-          receivingAccountId: row.receivingAccountId,
-          amount: (row.amountCents / 100).toFixed(2),
-          amountTendered: row.tenderedCents == null ? null : (row.tenderedCents / 100).toFixed(2),
-          changeAmount: (row.changeCents / 100).toFixed(2),
-          referenceNo: row.referenceNo ?? null,
-          payerLabel: row.payerLabel ?? null,
-          note: row.note ?? null,
-          status: 'completed' as const,
-          cashierId: authSession.user.id,
-          shiftId: activeShiftId,
-          paidAt: payment.paidAt,
-        })),
-      );
-    } else {
-      await ensurePaymentRowsForLegacyPayment(payment);
+    // Legacy callers (no paymentRows submitted): resolve the summary method/
+    // account BEFORE the batch so the single legacy tender row is written inside
+    // it. Values mirror ensurePaymentRowsForLegacyPayment (payments/foundation).
+    let legacyRowValues: typeof paymentRows.$inferInsert | null = null;
+    if (!rowValidation) {
+      const { method, account } = await resolveLegacyPaymentMethodAccount(summaryPaymentMethod, summaryNotes);
+      const isLegacyCash = method.type === 'cash';
+      const isLegacyMixed = method.type === 'mixed_legacy';
+      legacyRowValues = {
+        paymentId,
+        sessionId,
+        paymentMethodId: method.id,
+        receivingAccountId: account.id,
+        amount: paidThisTime.toFixed(2),
+        amountTendered: isLegacyCash ? Number(summaryReceivedAmount).toFixed(2) : null,
+        changeAmount: (isLegacyCash ? changeAmount : 0).toFixed(2),
+        note: isLegacyMixed ? summaryNotes ?? 'Backfilled from legacy cash_qr payment' : summaryNotes ?? null,
+        status: 'completed',
+        cashierId: authSession.user.id,
+        shiftId: activeShiftId,
+        paidAt,
+      };
     }
 
-    // Insert payment allocations (allocation-aware path only)
-    const allocationsSummary: Array<{ id: string; chargeLineId: string; label: string; quantity: number; amount: number }> = [];
-    if (pendingAllocations && pendingAllocations.length > 0) {
-      const inserted = await db.insert(paymentAllocations).values(
-        pendingAllocations.map((a) => ({
-          paymentId: payment.id,
-          sessionId,
-          chargeLineId: a.chargeLineId,
-          quantity: a.quantity,
-          amount: a.amount.toFixed(2),
-          note: a.note ?? null,
-        })),
-      ).returning({ id: paymentAllocations.id, chargeLineId: paymentAllocations.chargeLineId });
+    // Allocation ids are pre-generated — batch statements cannot read each
+    // other's RETURNING values — and the response summary is built from them.
+    const preparedAllocations = (pendingAllocations ?? []).map((a) => ({
+      id: crypto.randomUUID(),
+      ...a,
+    }));
+    const allocationsSummary = preparedAllocations.map((a) => ({
+      id: a.id,
+      chargeLineId: a.chargeLineId,
+      label: allocLabelMap.get(a.chargeLineId) ?? '',
+      quantity: a.quantity,
+      amount: a.amount,
+    }));
 
-      const insertedMap = new Map(inserted.map((i) => [i.chargeLineId, i.id]));
-      for (const a of pendingAllocations) {
-        allocationsSummary.push({
-          id: insertedMap.get(a.chargeLineId) ?? '',
-          chargeLineId: a.chargeLineId,
-          label: allocLabelMap.get(a.chargeLineId) ?? '',
-          quantity: a.quantity,
-          amount: a.amount,
-        });
-      }
-    }
-
-    // Insert payment line items
-    if (resolvedLineItems.length > 0) {
-      await db.insert(paymentLineItems).values(
-        resolvedLineItems.map((li) => ({
-          paymentId: payment.id,
-          pricingTileId: li.pricingTileId,
-          quantity: li.quantity,
-          amount: String(li.amount),
-        })),
-      );
-    }
-
-    // Generate tax invoice number only once the bill is fully settled.
+    // Tax invoice number is generated BEFORE the batch (its counter is a
+    // separate upsert). If the batch fails afterwards, that sequence number is
+    // skipped — acceptable. The generator's own race is 16C-C3 scope.
     let taxInvoiceNumber: string | undefined;
     if (session.taxInvoiceRequested && settlementMode === 'final' && remainingAfterCents === 0) {
       taxInvoiceNumber = await generateTaxInvoiceNumber();
-      await db.update(sessions)
-        .set({ taxInvoiceNumber })
-        .where(eq(sessions.id, sessionId));
     }
 
-    if (settlementMode === 'final' && remainingAfterCents === 0) {
-      await db
-        .update(sessions)
-        .set({ status: 'paid', closedAt: new Date() })
-        .where(inArray(sessions.id, allSessionIds));
+    const isFinalSettled = settlementMode === 'final' && remainingAfterCents === 0;
+    const allTableIds = [session.tableId, ...session.linkedSessions.map((s) => s.tableId)];
 
-      const allTableIds = [session.tableId, ...session.linkedSessions.map((s) => s.tableId)];
-      await db
-        .update(tables)
-        .set({ status: 'paid' })
-        .where(inArray(tables.id, allTableIds));
+    // Statement 1 — payments insert. The 16B ON CONFLICT DO NOTHING is replaced
+    // by letting the unique index raise (same duplicate-safe outcome, cleaner
+    // mechanism): a concurrent duplicate key now aborts the WHOLE batch with a
+    // 23505 on payments_idempotency_key_uq, so a losing request can never write
+    // child rows or close the session. NULL keys (legacy callers) never conflict.
+    const batchStatements: [BatchItem<'pg'>, ...BatchItem<'pg'>[]] = [
+      db.insert(payments).values({
+        id: paymentId,
+        sessionId,
+        subtotal: String(subtotal),
+        serviceCharge: String(serviceCharge),
+        discount: String(discountAmount),
+        total: paidThisTime.toFixed(2),
+        paymentMethod: summaryPaymentMethod,
+        receivedAmount: summaryReceivedAmount,
+        changeAmount: summaryChangeAmount,
+        paidAt,
+        processedBy: authSession.user.id,
+        receiptNo: receiptNo ?? null,
+        notes: summaryNotes,
+        shiftId: activeShiftId,
+        settlementType: settlementMode,
+        billTotalAtPayment: billTotal.toFixed(2),
+        paidBefore: paidBefore.toFixed(2),
+        remainingAfter: remainingAfter.toFixed(2),
+        idempotencyKey: idempotencyKey ?? null,
+      }),
+    ];
+
+    // Statement 2 — tender rows (always present: draft rows or the legacy row).
+    if (rowValidation?.ok) {
+      batchStatements.push(
+        db.insert(paymentRows).values(
+          rowValidation.data.rows.map((row) => ({
+            paymentId,
+            sessionId,
+            paymentMethodId: row.paymentMethodId,
+            receivingAccountId: row.receivingAccountId,
+            amount: (row.amountCents / 100).toFixed(2),
+            amountTendered: row.tenderedCents == null ? null : (row.tenderedCents / 100).toFixed(2),
+            changeAmount: (row.changeCents / 100).toFixed(2),
+            referenceNo: row.referenceNo ?? null,
+            payerLabel: row.payerLabel ?? null,
+            note: row.note ?? null,
+            status: 'completed' as const,
+            cashierId: authSession.user.id,
+            shiftId: activeShiftId,
+            paidAt,
+          })),
+        ),
+      );
+    } else if (legacyRowValues) {
+      batchStatements.push(db.insert(paymentRows).values(legacyRowValues));
+    }
+
+    if (preparedAllocations.length > 0) {
+      batchStatements.push(
+        db.insert(paymentAllocations).values(
+          preparedAllocations.map((a) => ({
+            id: a.id,
+            paymentId,
+            sessionId,
+            chargeLineId: a.chargeLineId,
+            quantity: a.quantity,
+            amount: a.amount.toFixed(2),
+            note: a.note ?? null,
+          })),
+        ),
+      );
+    }
+
+    if (resolvedLineItems.length > 0) {
+      batchStatements.push(
+        db.insert(paymentLineItems).values(
+          resolvedLineItems.map((li) => ({
+            paymentId,
+            pricingTileId: li.pricingTileId,
+            quantity: li.quantity,
+            amount: String(li.amount),
+          })),
+        ),
+      );
+    }
+
+    if (taxInvoiceNumber) {
+      batchStatements.push(
+        db.update(sessions).set({ taxInvoiceNumber }).where(eq(sessions.id, sessionId)),
+      );
+    }
+
+    if (isFinalSettled) {
+      batchStatements.push(
+        db.update(sessions)
+          .set({ status: 'paid', closedAt: paidAt })
+          .where(inArray(sessions.id, allSessionIds)),
+      );
+      batchStatements.push(
+        db.update(tables).set({ status: 'paid' }).where(inArray(tables.id, allTableIds)),
+      );
+    }
+
+    try {
+      await db.batch(batchStatements);
+    } catch (batchErr) {
+      // A concurrent duplicate submit with the same idempotency key aborts the
+      // batch atomically — this request wrote nothing. Return the winner's
+      // result; skip row repair because the winner may still be writing its rows.
+      if (idempotencyKey) {
+        const winner = await db.query.payments.findFirst({
+          where: eq(payments.idempotencyKey, idempotencyKey),
+        });
+        if (winner && winner.id !== paymentId) {
+          return alreadyProcessedPaymentResult(winner, { repairRows: false });
+        }
+      }
+      throw batchErr;
     }
 
     // Award loyalty points once for the original bill when fully settled.
-    if (session.customerId && settlementMode === 'final' && remainingAfterCents === 0) {
+    // Post-batch by design: it needs its own reads and is recoverable — a loss
+    // here never affects payment integrity (02_TRANSACTION_STRATEGY.md).
+    if (session.customerId && isFinalSettled) {
       await awardLoyaltyPoints({
         customerId: session.customerId,
         sessionId,
@@ -925,7 +965,7 @@ export async function processPayment(input: unknown) {
       role: authSession.user.role,
       action: 'process_payment',
       entity: 'payments',
-      entityId: payment.id,
+      entityId: paymentId,
       after: {
         sessionId,
         settlementType: settlementMode,
@@ -946,10 +986,10 @@ export async function processPayment(input: unknown) {
         role: authSession.user.role,
         action: 'payment_allocation_created',
         entity: 'payment_allocations',
-        entityId: payment.id,
+        entityId: paymentId,
         after: {
           sessionId,
-          paymentId: payment.id,
+          paymentId,
           allocationCount: allocationsSummary.length,
           paidThisTime,
           allocations: allocationsSummary.map((a) => ({ chargeLineId: a.chargeLineId, label: a.label, quantity: a.quantity, amount: a.amount })),
@@ -959,12 +999,12 @@ export async function processPayment(input: unknown) {
     return {
       ok: true as const,
       data: {
-        paymentId: payment.id,
+        paymentId,
         total: paidThisTime,
         changeAmount,
         receiptNo: receiptNo ?? undefined,
         taxInvoiceNumber,
-        settlementType: payment.settlementType,
+        settlementType: settlementMode,
         billTotal,
         paidBefore,
         paidThisTime,
