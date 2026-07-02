@@ -42,6 +42,12 @@ export const processPaymentSchema = z.object({
   allocations: z.array(allocationInputSchema).optional(),
   /** Whether paying the full remaining bill or a selected subset of charge lines. */
   paymentMode: z.enum(['full', 'items']).optional().default('full'),
+  /**
+   * Phase 16B — stable key identifying one client checkout attempt.
+   * Resubmitting the same key can never create a second payment.
+   * Optional so legacy/scripted callers keep working; all POS clients send it.
+   */
+  idempotencyKey: z.string().min(8).max(64).optional(),
 });
 
 export type ProcessPaymentInput = z.infer<typeof processPaymentSchema>;

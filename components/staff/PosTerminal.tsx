@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, memo, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { differenceInSeconds } from 'date-fns';
+import { nanoid } from 'nanoid';
 import { toast } from 'sonner';
 import {
   getPosSessionsForPos,
@@ -642,6 +643,14 @@ function PaymentPanel({
   const [cashQrField, setCashQrField] = useState<'qr' | 'cash'>('qr');
   const [cashQrCashInput, setCashQrCashInput] = useState('0');
   const [submitting, setSubmitting] = useState(false);
+  // ─── Phase 16B: double-submit protection ─────────────────────────────────
+  // submitLockRef closes the same-frame double-tap gap (React state updates are
+  // async, so `submitting` alone can't stop two taps landing before a re-render).
+  // idempotencyKeyRef identifies one checkout attempt to the server: it is kept
+  // across failures (a retry is the same attempt) and rotated only after the
+  // server confirms the attempt is recorded (success or already-processed).
+  const submitLockRef = useRef(false);
+  const idempotencyKeyRef = useRef<string>(nanoid(24));
   const [paid, setPaid] = useState(false);
   const [settlementMode, setSettlementMode] = useState<SettlementMode>('final');
   const [checkoutMode, setCheckoutMode] = useState<CheckoutMode>('head');
@@ -1059,7 +1068,20 @@ function PaymentPanel({
     await printReceipt({ type: 'receipt', payment: fallbackReceipt });
   }
 
+  // Phase 16B: synchronous re-entry lock around the real submit. Two taps in
+  // the same frame both reach onClick before React re-renders with a disabled
+  // button — the ref check is synchronous, so the second tap is a no-op.
   async function handleSubmit() {
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
+    try {
+      await submitPaymentAttempt();
+    } finally {
+      submitLockRef.current = false;
+    }
+  }
+
+  async function submitPaymentAttempt() {
     // ── Draft payment rows path ──────────────────────────────────────────
     if (paymentRowsDraft.length > 0) {
       const draftRowsTotalCents = Math.round(draftRowsTotal * 100);
@@ -1130,6 +1152,7 @@ function PaymentPanel({
         receiptNo,
         lineItems: buildLineItems(),
         paymentMode,
+        idempotencyKey: idempotencyKeyRef.current,
         paymentRows: paymentRowsDraft.map((row) => ({
           paymentMethodId:    row.paymentMethodId,
           receivingAccountId: row.receivingAccountId,
@@ -1148,6 +1171,11 @@ function PaymentPanel({
       });
       setSubmitting(false);
       if (!result.ok) { toast.error(result.error); return; }
+      // Attempt is recorded server-side — rotate the key so the next payment
+      // attempt on this session is a distinct attempt.
+      const alreadyProcessed = result.data.alreadyProcessed === true;
+      idempotencyKeyRef.current = nanoid(24);
+      if (alreadyProcessed) toast.info('รายการชำระนี้ถูกบันทึกแล้ว');
       if (result.data.shiftWarning) {
         toast.warning('ไม่มีรอบแคชเชียร์เปิดอยู่ รายการนี้จะไม่ถูกรวมในการตรวจรอบ');
       }
@@ -1216,26 +1244,35 @@ function PaymentPanel({
         queryClient.invalidateQueries({ queryKey: ['pos-detail', session.id] }),
       ]);
       setLastPaymentId(result.data.paymentId);
-      setLocalPaymentHistory((prev) => [...prev, {
-        id: result.data.paymentId,
-        amount: result.data.total,
-        methodLabel: draftMethodLabel || 'รับชำระ',
-        accountLabel: draftAccountLabel || undefined,
-        paidAtLabel: paymentHistoryTime(),
-        settlementType: result.data.settlementType,
-        receipt,
-        allocations: 'allocations' in result.data
-          ? result.data.allocations?.map((allocation: { label: string; quantity: number; amount: number }) => ({
-            label: allocation.label,
-            quantity: allocation.quantity,
-            amount: allocation.amount,
-          }))
-          : undefined,
-      }]);
-      // Auto-print receipt — non-blocking; payment success never depends on print outcome
-      void printPaymentEventReceipt(result.data.paymentId, receipt).catch(() => {
-        toast.warning('รับชำระสำเร็จ แต่พิมพ์ใบเสร็จไม่สำเร็จ');
-      });
+      setLocalPaymentHistory((prev) => [
+        // Guard against a duplicate local entry when the server reports an
+        // already-processed attempt whose success response reached us earlier
+        ...prev.filter((p) => p.id !== result.data.paymentId),
+        {
+          id: result.data.paymentId,
+          amount: result.data.total,
+          methodLabel: draftMethodLabel || 'รับชำระ',
+          accountLabel: draftAccountLabel || undefined,
+          paidAtLabel: paymentHistoryTime(),
+          settlementType: result.data.settlementType,
+          receipt,
+          allocations: 'allocations' in result.data
+            ? result.data.allocations?.map((allocation: { label: string; quantity: number; amount: number }) => ({
+              label: allocation.label,
+              quantity: allocation.quantity,
+              amount: allocation.amount,
+            }))
+            : undefined,
+        },
+      ]);
+      // Auto-print receipt — non-blocking; payment success never depends on print
+      // outcome. Skipped for already-processed duplicates so a re-submitted
+      // attempt never prints the same receipt twice (manual reprint stays available).
+      if (!alreadyProcessed) {
+        void printPaymentEventReceipt(result.data.paymentId, receipt).catch(() => {
+          toast.warning('รับชำระสำเร็จ แต่พิมพ์ใบเสร็จไม่สำเร็จ');
+        });
+      }
       if (effectiveSettlementMode === 'partial') {
         toast.success(
           checkoutMode === 'head'
@@ -1279,9 +1316,13 @@ function PaymentPanel({
       notes: fullNotes || undefined,
       receiptNo,
       lineItems: buildLineItems(),
+      idempotencyKey: idempotencyKeyRef.current,
     });
     setSubmitting(false);
     if (!result.ok) { toast.error(result.error); return; }
+    const alreadyProcessed = result.data.alreadyProcessed === true;
+    idempotencyKeyRef.current = nanoid(24);
+    if (alreadyProcessed) toast.info('รายการชำระนี้ถูกบันทึกแล้ว');
     if (result.data.shiftWarning) {
       toast.warning('ไม่มีรอบแคชเชียร์เปิดอยู่ รายการนี้จะไม่ถูกรวมในการตรวจรอบ');
     }
@@ -1325,18 +1366,23 @@ function PaymentPanel({
     setLastReceipt(receipt);
     setPaid(true);
     setLastPaymentId(result.data.paymentId);
-    setLocalPaymentHistory((prev) => [...prev, {
-      id: result.data.paymentId,
-      amount: result.data.total,
-      methodLabel: METHOD_LABEL[method],
-      paidAtLabel: paymentHistoryTime(),
-      settlementType: result.data.settlementType,
-      receipt,
-    }]);
-    // Auto-print receipt — non-blocking; payment success never depends on print outcome
-    void printPaymentEventReceipt(result.data.paymentId, receipt).catch(() => {
-      toast.warning('รับชำระสำเร็จ แต่พิมพ์ใบเสร็จไม่สำเร็จ');
-    });
+    setLocalPaymentHistory((prev) => [
+      ...prev.filter((p) => p.id !== result.data.paymentId),
+      {
+        id: result.data.paymentId,
+        amount: result.data.total,
+        methodLabel: METHOD_LABEL[method],
+        paidAtLabel: paymentHistoryTime(),
+        settlementType: result.data.settlementType,
+        receipt,
+      },
+    ]);
+    // Auto-print receipt — non-blocking; skipped for already-processed duplicates
+    if (!alreadyProcessed) {
+      void printPaymentEventReceipt(result.data.paymentId, receipt).catch(() => {
+        toast.warning('รับชำระสำเร็จ แต่พิมพ์ใบเสร็จไม่สำเร็จ');
+      });
+    }
   }
 
   /* ── Success ── */
@@ -2435,12 +2481,23 @@ function PaymentPanel({
       confirmRound();
     }
 
+    // Phase 16B: same synchronous re-entry lock as handleSubmit
     async function handleRoundSubmit() {
       if (completedRounds.length === 0) return;
       if (!allDone) {
         toast.error('กรุณาใช้โหมดรับชำระบางส่วนในหน้าชำระเงินหลัก');
         return;
       }
+      if (submitLockRef.current) return;
+      submitLockRef.current = true;
+      try {
+        await submitRoundsAttempt();
+      } finally {
+        submitLockRef.current = false;
+      }
+    }
+
+    async function submitRoundsAttempt() {
       setSubmitting(true);
 
       // Aggregate per-tile quantities from completed rounds
@@ -2503,9 +2560,12 @@ function PaymentPanel({
         notes: fullNotes || undefined,
         receiptNo: splitReceiptNo,
         lineItems: lineItemsToUse,
+        idempotencyKey: idempotencyKeyRef.current,
       });
       setSubmitting(false);
       if (!result.ok) { toast.error(result.error); return; }
+      if (result.data.alreadyProcessed === true) toast.info('รายการชำระนี้ถูกบันทึกแล้ว');
+      idempotencyKeyRef.current = nanoid(24);
 
       const receiptItems: ReceiptData['items'] = completedRounds.flatMap((r) =>
         r.items.map((x) => ({ name: x.name, quantity: x.qty, total: x.price * x.qty })),
@@ -2538,14 +2598,17 @@ function PaymentPanel({
 
       setPaid(true);
       setLastPaymentId(result.data.paymentId);
-      setLocalPaymentHistory((prev) => [...prev, {
-        id: result.data.paymentId,
-        amount: result.data.total,
-        methodLabel: METHOD_LABEL[dbMethod],
-        paidAtLabel: paymentHistoryTime(),
-        settlementType: result.data.settlementType,
-        receipt,
-      }]);
+      setLocalPaymentHistory((prev) => [
+        ...prev.filter((p) => p.id !== result.data.paymentId),
+        {
+          id: result.data.paymentId,
+          amount: result.data.total,
+          methodLabel: METHOD_LABEL[dbMethod],
+          paidAtLabel: paymentHistoryTime(),
+          settlementType: result.data.settlementType,
+          receipt,
+        },
+      ]);
     }
 
     const activeTiles = [...guestTiles, ...addonTiles].filter((t) => (roundRemaining[t.id] ?? 0) > 0);

@@ -18,6 +18,7 @@
     "db:migrate-phase6b": "tsx lib/db/migrate-phase6b-partial-payments.ts",
     "db:migrate-phase15q": "tsx lib/db/migrate-phase15q.ts",
     "db:migrate-phase15bill": "tsx lib/db/migrate-phase15bill.ts",
+    "db:migrate-phase16b": "tsx lib/db/migrate-phase16b.ts",
     "payments:backfill": "tsx scripts/backfill-payment-rows.ts",
     "payments:verify": "tsx scripts/verify-payment-foundation.ts",
     "db:studio": "drizzle-kit studio",

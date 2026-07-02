@@ -224,7 +224,7 @@ All schema lives in `lib/db/schema.ts`. Do not split it. Never use Prisma.
 ### Payment Tables
 | Table | Key Columns |
 |---|---|
-| `payments` | id, sessionId, subtotal, serviceCharge, discount, total, paymentMethod (legacy enum), paidAt, processedBy, receiptNo, shiftId, status, settlementType, billTotalAtPayment, paidBefore, remainingAfter |
+| `payments` | id, sessionId, subtotal, serviceCharge, discount, total, paymentMethod (legacy enum), paidAt, processedBy, receiptNo, shiftId, status, settlementType, billTotalAtPayment, paidBefore, remainingAfter, idempotencyKey (unique, Phase 16B) |
 | `paymentRows` | id, paymentId, sessionId, paymentMethodId, receivingAccountId, amount, amountTendered, changeAmount, referenceNo, status, cashierId, shiftId |
 | `paymentLineItems` | id, paymentId, pricingTileId, quantity, amount |
 | `paymentMethods` | id, code (unique), name, type, requiresReference, allowOverpay, isActive, sortOrder |
@@ -663,6 +663,7 @@ npm run db:seed-inventory          # seed inventory data
 npm run db:seed-hr                 # seed HR data
 npm run db:studio                  # open Drizzle Studio
 npm run db:migrate-payment-foundation  # payment methods/accounts bootstrap
+npm run db:migrate-phase16b        # payments.idempotency_key + unique index (Phase 16B)
 npm run payments:verify            # verify payment foundation setup
 npm run payments:backfill          # one-time payment row backfill
 ```
@@ -824,7 +825,7 @@ app/globals.css (token changes; additions OK, editing existing tokens needs appr
 - [x] Phase 15 — Android POS bridge app · premium queue board + customer queue page · reports revamp (revenue/tables/queue/kitchen) · 15BILL A–I account-based bill templates + Thai payment labels · 15PAY payment popup redesign · 15Q
 - [ ] **Phase 16 — Production Hardening** ← current (see `docs/production/00_HARDENING_ROADMAP.md`)
   - [x] Phase 16A — Clean working tree + governance resync
-  - [ ] Phase 16B — Payment idempotency + double-submit protection
+  - [x] Phase 16B — Payment idempotency + double-submit protection (migration `db:migrate-phase16b` must run before deploy; UAT pending)
   - [ ] Phase 16C — Money write transaction strategy
   - [ ] Phase 16D — Money math test harness
   - [ ] Phase 16E — Migration baseline

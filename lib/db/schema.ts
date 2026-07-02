@@ -571,6 +571,10 @@ export const payments = pgTable(
     remainingAfter: numeric('remaining_after', { precision: 10, scale: 2 })
       .notNull()
       .default('0'),
+    // ─── Phase 16B: idempotency ──────────────────────────────────────────────
+    // One key per client checkout attempt. Nullable so pre-16B rows stay valid;
+    // Postgres unique indexes treat NULLs as distinct, so only real keys dedupe.
+    idempotencyKey: varchar('idempotency_key', { length: 64 }),
   },
   (t) => [
     index('payments_paid_at_idx').on(t.paidAt),
@@ -578,6 +582,7 @@ export const payments = pgTable(
     index('payments_shift_id_idx').on(t.shiftId),
     index('payments_session_id_idx').on(t.sessionId),
     index('payments_settlement_type_idx').on(t.settlementType),
+    uniqueIndex('payments_idempotency_key_uq').on(t.idempotencyKey),
   ],
 );
 

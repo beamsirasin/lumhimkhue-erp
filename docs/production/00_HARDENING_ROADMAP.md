@@ -41,10 +41,28 @@ later. Therefore: **hardening first, features after Phase 16F.**
 
 Each phase below requires its own explicit phase prompt before work begins.
 
-### Phase 16B — Payment Idempotency + Double-Submit Protection
-- Idempotency key generated per checkout attempt, validated server-side in `processPayment`.
-- Client-side: pay button disabled while a submission is pending; safe re-enable on failure.
-- Verification: manual double-tap UAT + a reconciliation query showing no duplicate payments per attempt key.
+### Phase 16B — Payment Idempotency + Double-Submit Protection ✅ IMPLEMENTED (UAT pending)
+- **Client** (`PosTerminal.tsx`): synchronous `submitLockRef` re-entry lock on all three
+  submit paths (draft rows, legacy, split rounds) — closes the same-frame double-tap gap
+  that `submitting` state alone cannot; per-attempt `idempotencyKey` (nanoid 24) kept
+  across failures, rotated only after the server confirms the attempt; auto-print skipped
+  and "รายการชำระนี้ถูกบันทึกแล้ว" shown on already-processed responses.
+- **Server** (`processPayment`): early lookup by `idempotencyKey` returns the existing
+  payment (`alreadyProcessed: true`) before any other guard; the insert uses
+  `ON CONFLICT (idempotency_key) DO NOTHING` so a concurrent duplicate that races past
+  the lookup cannot create a second `payments` row.
+- **Migration** (`npm run db:migrate-phase16b` — **NOT YET RUN on any database**; required
+  before running this code, POS payments fail without it):
+  ```sql
+  ALTER TABLE payments ADD COLUMN IF NOT EXISTS idempotency_key varchar(64);
+  CREATE UNIQUE INDEX IF NOT EXISTS payments_idempotency_key_uq ON payments (idempotency_key);
+  ```
+- **Known limit (16C scope):** writes after the payment insert (rows/allocations/session
+  close) are still non-atomic. If they fail mid-sequence, a same-key retry returns
+  already-processed and best-effort backfills payment rows via
+  `ensurePaymentRowsForLegacyPayment` — durable atomicity arrives with transactions in 16C.
+  Two *different* devices submitting the same session concurrently use different keys;
+  the remaining-balance guard protects the sequential case, the concurrent race is 16C.
 
 ### Phase 16C — Money Write Transaction Strategy
 - **Recommended:** switch `lib/db/index.ts` from `drizzle-orm/neon-http` to the Neon

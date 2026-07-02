@@ -355,6 +355,39 @@ function fromCents(value: number) {
   return value / 100;
 }
 
+/**
+ * Phase 16B — shared "already processed" response for duplicate submissions
+ * (same idempotency key, or same session+receiptNo for legacy dedupe).
+ * repairRows backfills missing payment rows when the original attempt failed
+ * after the payment insert (best-effort until Phase 16C makes writes atomic);
+ * it is skipped in the concurrent-race path where the winning request may
+ * still be inserting its own rows.
+ */
+async function alreadyProcessedPaymentResult(
+  payment: typeof payments.$inferSelect,
+  { repairRows = true }: { repairRows?: boolean } = {},
+) {
+  if (repairRows) await ensurePaymentRowsForLegacyPayment(payment);
+  return {
+    ok: true as const,
+    data: {
+      paymentId: payment.id,
+      total: Number(payment.total),
+      changeAmount: Number(payment.changeAmount),
+      receiptNo: payment.receiptNo ?? undefined,
+      settlementType: payment.settlementType,
+      billTotal: Number(payment.billTotalAtPayment),
+      paidBefore: Number(payment.paidBefore),
+      paidThisTime: Number(payment.total),
+      paidTotal: Number(payment.paidBefore) + Number(payment.total),
+      remainingAfter: Number(payment.remainingAfter),
+      shiftWarning: !payment.shiftId,
+      /** true = this attempt was recorded earlier; client must not auto-print again */
+      alreadyProcessed: true as const,
+    },
+  };
+}
+
 export async function processPayment(input: unknown) {
   const authSession = await auth();
   if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
@@ -369,9 +402,20 @@ export async function processPayment(input: unknown) {
     return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
   }
 
-  const { sessionId, settlementMode, paymentMethod, receivedAmount, discount, notes, receiptNo, lineItems, paymentRows: submittedPaymentRows, allocations, paymentMode } = parsed.data;
+  const { sessionId, settlementMode, paymentMethod, receivedAmount, discount, notes, receiptNo, lineItems, paymentRows: submittedPaymentRows, allocations, paymentMode, idempotencyKey } = parsed.data;
 
   try {
+    // ─── Phase 16B: idempotency — one checkout attempt can never pay twice ──
+    // Runs before every other guard so retrying an attempt that already
+    // succeeded returns the safe already-processed result instead of
+    // "session ปิดแล้ว" / "บิลนี้ชำระครบแล้ว" errors.
+    if (idempotencyKey) {
+      const existingByKey = await db.query.payments.findFirst({
+        where: eq(payments.idempotencyKey, idempotencyKey),
+      });
+      if (existingByKey) return alreadyProcessedPaymentResult(existingByKey);
+    }
+
     // Parallel: session fetch + store settings + active shift + canonical saved bill
     const [session, [settings], activeShiftRows, savedChargeLineRows] = await Promise.all([
       db.query.sessions.findFirst({
@@ -412,23 +456,7 @@ export async function processPayment(input: unknown) {
         })
       : null;
     if (duplicateReceiptBeforeStatus) {
-      await ensurePaymentRowsForLegacyPayment(duplicateReceiptBeforeStatus);
-      return {
-        ok: true as const,
-        data: {
-          paymentId: duplicateReceiptBeforeStatus.id,
-          total: Number(duplicateReceiptBeforeStatus.total),
-          changeAmount: Number(duplicateReceiptBeforeStatus.changeAmount),
-          receiptNo: duplicateReceiptBeforeStatus.receiptNo ?? undefined,
-          settlementType: duplicateReceiptBeforeStatus.settlementType,
-          billTotal: Number(duplicateReceiptBeforeStatus.billTotalAtPayment),
-          paidBefore: Number(duplicateReceiptBeforeStatus.paidBefore),
-          paidThisTime: Number(duplicateReceiptBeforeStatus.total),
-          paidTotal: Number(duplicateReceiptBeforeStatus.paidBefore) + Number(duplicateReceiptBeforeStatus.total),
-          remainingAfter: Number(duplicateReceiptBeforeStatus.remainingAfter),
-          shiftWarning: !duplicateReceiptBeforeStatus.shiftId,
-        },
-      };
+      return alreadyProcessedPaymentResult(duplicateReceiptBeforeStatus);
     }
 
     const legacyHasCash =
@@ -721,23 +749,7 @@ export async function processPayment(input: unknown) {
         })
       : null;
     if (duplicateReceiptPayment) {
-      await ensurePaymentRowsForLegacyPayment(duplicateReceiptPayment);
-      return {
-        ok: true as const,
-        data: {
-          paymentId: duplicateReceiptPayment.id,
-          total: Number(duplicateReceiptPayment.total),
-          changeAmount: Number(duplicateReceiptPayment.changeAmount),
-          receiptNo: duplicateReceiptPayment.receiptNo ?? undefined,
-          settlementType: duplicateReceiptPayment.settlementType,
-          billTotal: Number(duplicateReceiptPayment.billTotalAtPayment),
-          paidBefore: Number(duplicateReceiptPayment.paidBefore),
-          paidThisTime: Number(duplicateReceiptPayment.total),
-          paidTotal: Number(duplicateReceiptPayment.paidBefore) + Number(duplicateReceiptPayment.total),
-          remainingAfter: Number(duplicateReceiptPayment.remainingAfter),
-          shiftWarning: !duplicateReceiptPayment.shiftId,
-        },
-      };
+      return alreadyProcessedPaymentResult(duplicateReceiptPayment);
     }
 
     const summaryPaymentMethod = rowValidation?.ok ? rowValidation.data.legacyPaymentMethod : paymentMethod;
@@ -754,8 +766,11 @@ export async function processPayment(input: unknown) {
 
     const changeAmount = Number(summaryChangeAmount);
 
-    // Insert payment — shiftId linked if cashier has an open shift, null otherwise
-    const [payment] = await db.insert(payments).values({
+    // Insert payment — shiftId linked if cashier has an open shift, null otherwise.
+    // Phase 16B: ON CONFLICT (idempotency_key) DO NOTHING is the DB-level last
+    // line of defense when a concurrent duplicate submit races past the SELECT
+    // check at the top of this action. NULL keys (legacy callers) never conflict.
+    const insertedPayments = await db.insert(payments).values({
       sessionId,
       subtotal: String(subtotal),
       serviceCharge: String(serviceCharge),
@@ -772,7 +787,8 @@ export async function processPayment(input: unknown) {
       billTotalAtPayment: billTotal.toFixed(2),
       paidBefore: paidBefore.toFixed(2),
       remainingAfter: remainingAfter.toFixed(2),
-    }).returning({
+      idempotencyKey: idempotencyKey ?? null,
+    }).onConflictDoNothing({ target: payments.idempotencyKey }).returning({
       id: payments.id,
       sessionId: payments.sessionId,
       subtotal: payments.subtotal,
@@ -793,6 +809,20 @@ export async function processPayment(input: unknown) {
       paidBefore: payments.paidBefore,
       remainingAfter: payments.remainingAfter,
     });
+
+    // Empty result = a concurrent submit with the same idempotency key won the
+    // race between our SELECT check and this INSERT. Return the winner's result;
+    // skip row repair because the winning request may still be inserting rows.
+    if (insertedPayments.length === 0) {
+      const winner = idempotencyKey
+        ? await db.query.payments.findFirst({
+            where: eq(payments.idempotencyKey, idempotencyKey),
+          })
+        : null;
+      if (winner) return alreadyProcessedPaymentResult(winner, { repairRows: false });
+      return { ok: false as const, error: 'เกิดข้อผิดพลาด กรุณาลองใหม่' };
+    }
+    const payment = insertedPayments[0];
 
     if (rowValidation?.ok) {
       await db.insert(paymentRows).values(
@@ -941,6 +971,7 @@ export async function processPayment(input: unknown) {
         paidTotal,
         remainingAfter,
         shiftWarning: !activeShiftId, // true = payment saved without a linked shift
+        alreadyProcessed: false as const, // Phase 16B — this call created the payment
         ...(allocationsSummary.length > 0 && { allocations: allocationsSummary }),
       },
     };
