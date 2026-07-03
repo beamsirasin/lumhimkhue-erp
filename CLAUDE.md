@@ -360,6 +360,7 @@ Return type: always `{ ok: true, data: T } | { ok: false, error: string }`.
 | `staff.ts` | staff directory, deactivate user |
 | `reorder.ts` | inventory reorder suggestions |
 | `inventory-variance.ts` | variance analysis |
+| `shift-backfill.ts` | 16G-A: owner/manager same-day cash→shift late assignment (audited) |
 
 ---
 
@@ -833,6 +834,7 @@ app/globals.css (token changes; additions OK, editing existing tokens needs appr
 - [x] Phase 14 — Performance audit, admin dashboard/report premium upgrades, agent instructions (AGENTS.md)
 - [x] Phase 15 — Android POS bridge app · premium queue board + customer queue page · reports revamp (revenue/tables/queue/kitchen) · 15BILL A–I account-based bill templates + Thai payment labels · 15PAY payment popup redesign · 15Q
 - [ ] **Phase 16 — Production Hardening** ← current (see `docs/production/00_HARDENING_ROADMAP.md`)
+  - [x] Phase 16G-A — Same-day cash shift backfill tool (owner/manager, audited; UAT pending)
   - [x] Phase 16A — Clean working tree + governance resync
   - [x] Phase 16B — Payment idempotency + double-submit protection (migration `db:migrate-phase16b` must run before deploy; UAT pending)
   - [ ] Phase 16C — Money write transaction strategy

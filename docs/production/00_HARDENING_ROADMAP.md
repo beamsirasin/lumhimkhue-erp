@@ -158,6 +158,17 @@ Each phase below requires its own explicit phase prompt before work begins.
 
 ---
 
+### Phase 16G-A — Same-Day Cash Shift Backfill ✅ IMPLEMENTED (UAT pending)
+- Owner/manager correction tool on `/pos/shifts` ("ผูกเงินสดเข้ารอบย้อนหลัง"): assigns
+  completed cash `payment_rows` with `shift_id NULL` (R7a) into a **same-business-day**
+  shift. Reason mandatory; cashiers have no access; reviewed shifts are not assignable.
+- Atomic `db.batch()`: rows update (+ recomputed stored `expectedCash`/`cashDifference`
+  when the target shift is already closed) + an `auditLogs` insert
+  (`action: cash_shift_backfill`, `lateAssignment: true`, before/after row+shift state).
+- No schema change (the `payment_adjustments.type` enum would have needed a migration;
+  `audit_logs` captures the correction fully). Amounts/receipts/revenue untouched —
+  only the shift linkage changes.
+
 ## Deferred (do not build during Phase 16)
 
 - **Food Cost / COGS** — deferred until accounting, stock counting, and recipe costing are reliable.

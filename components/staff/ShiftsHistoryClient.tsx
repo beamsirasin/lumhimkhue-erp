@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { CashShiftBackfillSheet } from '@/components/staff/CashShiftBackfillSheet';
 import { HistoryCalendar } from '@/components/staff/HistoryCalendar';
 import { ShiftHistoryTable } from '@/components/staff/ShiftHistoryTable';
 import { AppShell } from '@/components/ui/app-shell';
@@ -62,7 +63,15 @@ export function ShiftsHistoryClient({ canReview }: Props) {
       <PageHeader
         title="รอบแคชเชียร์"
         subtitle={format(new Date(selectedDate), 'EEEE d MMMM yyyy', { locale: th })}
-        actions={<HistoryCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />}
+        actions={
+          <div className="flex items-center gap-2">
+            {/* Phase 16G-A: owner/manager-only correction tool (canReview = owner/manager) */}
+            {canReview && (
+              <CashShiftBackfillSheet initialDate={selectedDate} onAssigned={refresh} />
+            )}
+            <HistoryCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+          </div>
+        }
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <DataCard title="ประวัติและตรวจสอบรอบการรับเงิน" subtitle={`${rows.length} รอบ`} noPadding>
