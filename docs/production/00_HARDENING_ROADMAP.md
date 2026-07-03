@@ -142,12 +142,19 @@ Each phase below requires its own explicit phase prompt before work begins.
 - Note: retrofitting drizzle-kit SQL history was evaluated and deliberately skipped
   (high risk against a live DB, low value vs. the verifiable check above).
 
-### Phase 16F — UAT + Go-Live Runbook
-- Full UAT scripts: happy-path service day ×3, payment edge cases (mixed, partial, void,
-  refund, discount approval, linked tables), failure cases (printer offline, wifi loss
-  mid-payment, double-tap), shift over/short, report-vs-hand-calculation checks.
-- Ops runbook (open/close day, printer troubleshooting, "printed but not saved" recovery) — staff-readable, Thai.
-- Go-live checklist (env, seeds, cron, backups/Neon PITR) + incident playbook.
+### Phase 16F — UAT + Go-Live Runbook ✅ DOCS COMPLETE (execution pending)
+- `docs/uat/UAT_SCRIPTS.md` — executable UAT pack, blocks A–G (POS payments incl.
+  double-tap/split/item-mode, delete/reopen incl. the fixed allocations case, session/table
+  flows, tax invoice incl. two-tab race, queue/KDS/QR smoke, reports smoke, roles) with
+  pass/fail columns, reconcile checkpoints after every block, and a sign-off table.
+- `docs/ops/GO_LIVE_CHECKLIST.md` — gated: pre-push → migrations → deploy → rollback.
+- `docs/ops/RUNBOOK.md` — Thai staff-facing daily operations (shifts, payments, print
+  failures, stuck-payment procedure, daily close, สิ่งที่ห้ามทำ).
+- `docs/ops/INCIDENT_PLAYBOOK.md` — 11 incidents with symptoms / actions / don'ts /
+  commands / approval levels / recovery / audit steps.
+- **Phase 16 is NOT closed yet.** Human gates: manual UAT execution (blocks A–D minimum),
+  Vercel `DATABASE_URL` confirmation, penalty-enum decision. Push/deploy blocked until
+  `GO_LIVE_CHECKLIST.md` Gate 1 is fully checked.
 
 ---
 

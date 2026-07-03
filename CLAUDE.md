@@ -186,6 +186,9 @@ vercel.json           → Region: sin1, Cron: daily-report 16:30 UTC
 
 docs/
   production/         → Production hardening roadmap + protected-files policy (active)
+  architecture/       → MIGRATIONS.md (schema governance)
+  ops/                → Go-live checklist, staff runbook (Thai), incident playbook
+  uat/                → Manual UAT scripts (blocks A–G)
   reui-v2/            → V2 revamp phase plans (completed; reference)
   archive/            → Historical audit and polish docs (read-only reference)
     reui-polish/      → Superseded V1 polish plans
@@ -843,6 +846,6 @@ app/globals.css (token changes; additions OK, editing existing tokens needs appr
     - [ ] 16C-D — (optional, after 16D) dual-client interactive transactions
   - [x] Phase 16D — Money math test harness (`npm run test:money`, node:test via tsx, 70 tests; golden extractions in `lib/payments/money-math.ts`)
   - [x] Phase 16E — Migration baseline & governance (`npm run db:check-migrations`; policy in `docs/architecture/MIGRATIONS.md`; pending: `tile_category` `'penalty'` enum value)
-  - [ ] Phase 16F — UAT + go-live runbook
+  - [x] Phase 16F — UAT pack + go-live runbook docs (`docs/uat/UAT_SCRIPTS.md`, `docs/ops/GO_LIVE_CHECKLIST.md`, `docs/ops/RUNBOOK.md`, `docs/ops/INCIDENT_PLAYBOOK.md`) — **UAT execution + Vercel DB confirmation + penalty-enum decision still pending; push/deploy blocked until Go-Live Gate 1 passes**
 
 Historical V2 plan: `docs/reui-v2/00_MASTER_PLAN.md` (completed; kept for reference).
