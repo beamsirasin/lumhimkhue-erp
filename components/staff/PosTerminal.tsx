@@ -179,11 +179,15 @@ export function PosTerminal({
 
       {/* Session grid */}
       {primarySessions.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-[var(--surface-1)] px-6 py-20 text-center shadow-[var(--shadow-soft)]">
-          <p className="text-sm font-medium text-muted-foreground">ไม่มีโต๊ะที่ใช้งาน</p>
+        <div className="flex flex-col items-center rounded-2xl border border-dashed border-border bg-[var(--surface-1)] px-6 py-20 text-center shadow-[var(--shadow-soft)]">
+          <div className="flex size-14 items-center justify-center rounded-full bg-[var(--surface-2)]">
+            <Receipt className="size-6 text-muted-foreground/60" />
+          </div>
+          <p className="mt-4 text-sm font-semibold text-foreground">ไม่มีโต๊ะที่ใช้งาน</p>
+          <p className="mt-1 text-xs text-muted-foreground">เมื่อเปิดโต๊ะจากหน้าผังโต๊ะ บิลจะแสดงที่นี่</p>
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {primarySessions.map((s) => {
             const linked = linkedMap[s.id] ?? [];
             const isGroupSelected = selectedId === s.id || linked.some((l) => l.id === selectedId);
@@ -473,9 +477,11 @@ function DetailPanel({ sessionId, cashierName, onPaid }: { sessionId: string; ca
 
   return (
     <div className="relative h-full min-h-0">
-      {(isFetching || isError) && (
-        <div className="pointer-events-none absolute left-1/2 top-2 z-20 -translate-x-1/2 rounded-full border border-border bg-card/95 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
-          {isError ? detailError : 'กำลังอัปเดตข้อมูลบิล...'}
+      {/* Only surface a pill when the background refresh actually failed —
+          showing it on every 10s poll flickers over the bill */}
+      {isError && (
+        <div className="pointer-events-none absolute left-1/2 top-2 z-20 -translate-x-1/2 rounded-full border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-3 py-1 text-[11px] font-medium text-[var(--status-warning-fg)] shadow-sm">
+          {detailError}
         </div>
       )}
       <PaymentPanel

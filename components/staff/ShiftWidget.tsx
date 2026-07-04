@@ -167,7 +167,7 @@ export function ShiftWidget() {
       {/* ── Close-shift dialog ────────────────────────────────────────────── */}
       {shift && (
         <Dialog open={modal === 'close'} onOpenChange={(next) => { if (!next) setModal(null); }}>
-          <DialogContent className="sm:max-w-sm">
+          <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-sm">
             <DialogHeader>
               <DialogTitle>ปิดรอบแคชเชียร์</DialogTitle>
             </DialogHeader>

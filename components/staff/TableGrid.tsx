@@ -1648,20 +1648,32 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
     // delta is in screen px; divide by scale to get logical px
     const newX = Math.max(0, Math.round((table.positionX + delta.x / scale) / GRID) * GRID);
     const newY = Math.max(0, Math.round((table.positionY + delta.y / scale) / GRID) * GRID);
-    await updateTablePosition({ tableId: table.id, positionX: newX, positionY: newY });
+    // Optimistic position so the node doesn't snap back while the save is in flight;
+    // a failed save refetches server truth
+    qc.setQueryData<TableData[]>(['tables'], (prev) =>
+      prev?.map((t) => (t.id === table.id ? { ...t, positionX: newX, positionY: newY } : t)),
+    );
+    const r = await updateTablePosition({ tableId: table.id, positionX: newX, positionY: newY });
+    if (!r.ok) toast.error(r.error);
     refetch();
   };
 
+  const movePendingRef = useRef(false);
   const handleMoveConfirm = async (targetTable: TableData) => {
-    if (!moveSessionId) return;
-    const r = await moveSession({ sessionId: moveSessionId, newTableId: targetTable.id });
-    if (r.ok) {
-      toast.success(`ย้ายโต๊ะไปยัง ${targetTable.label} สำเร็จ`);
-      setMoveSessionId(null);
-      setMoveSessionLabel('');
-      refetch();
-    } else {
-      toast.error(r.error);
+    if (!moveSessionId || movePendingRef.current) return;
+    movePendingRef.current = true;
+    try {
+      const r = await moveSession({ sessionId: moveSessionId, newTableId: targetTable.id });
+      if (r.ok) {
+        toast.success(`ย้ายโต๊ะไปยัง ${targetTable.label} สำเร็จ`);
+        setMoveSessionId(null);
+        setMoveSessionLabel('');
+        refetch();
+      } else {
+        toast.error(r.error);
+      }
+    } finally {
+      movePendingRef.current = false;
     }
   };
 

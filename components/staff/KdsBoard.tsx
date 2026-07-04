@@ -66,6 +66,12 @@ function groupItems(items: KdsItem[]): KdsGroup[] {
 
 const LATE_SEC = 600;
 
+function formatElapsedClock(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 const CARD_TONE = {
   waiting: {
     card: 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)]',
@@ -119,12 +125,12 @@ const KdsCard = memo(function KdsCard({
           </p>
         </div>
         <div className="ml-3 shrink-0 text-right">
-          <p className={cn('inline-flex items-center gap-1 text-[10px] font-semibold tabular-nums', tone.accent)}>
-            <Clock className="size-3" />
-            {seconds}s
+          <p className={cn('inline-flex items-center gap-1 text-sm font-bold tabular-nums', tone.accent)}>
+            <Clock className="size-3.5" />
+            {formatElapsedClock(seconds)}
           </p>
           {isLate && (
-            <p className="mt-0.5 text-[9px] font-bold text-[var(--status-danger-fg)]">เสิร์ฟช้า</p>
+            <p className="mt-0.5 text-[11px] font-bold text-[var(--status-danger-fg)]">เสิร์ฟช้า</p>
           )}
         </div>
       </div>
@@ -201,6 +207,8 @@ interface KdsBoardProps {
 
 export function KdsBoard({ initialItems }: KdsBoardProps) {
   const [activeStation, setActiveStation] = useState<Station | 'all'>('all');
+  // Only the card being acted on shows a pending state — other cards stay usable
+  const [pendingGroupKey, setPendingGroupKey] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const { data: items = [] } = useQuery({
@@ -211,26 +219,26 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
     staleTime: 1_000,
   });
 
-  const { mutate: serve, isPending: isServing } = useMutation({
-    mutationFn: (itemIds: string[]) => serveGroup({ itemIds }),
+  const { mutate: serve } = useMutation({
+    mutationFn: ({ itemIds }: { groupKey: string; itemIds: string[] }) => serveGroup({ itemIds }),
     onSuccess: (result) => {
       if (!result.ok) { toast.error(result.error); return; }
       queryClient.invalidateQueries({ queryKey: ['kds-items'] });
     },
     onError: () => toast.error('เกิดข้อผิดพลาด'),
+    onSettled: () => setPendingGroupKey(null),
   });
 
-  const { mutate: cancel, isPending: isCancelling } = useMutation({
-    mutationFn: (itemIds: string[]) => cancelGroup({ itemIds }),
+  const { mutate: cancel } = useMutation({
+    mutationFn: ({ itemIds }: { groupKey: string; itemIds: string[] }) => cancelGroup({ itemIds }),
     onSuccess: (result) => {
       if (!result.ok) { toast.error(result.error); return; }
       toast.success('ยกเลิกออเดอร์แล้ว');
       queryClient.invalidateQueries({ queryKey: ['kds-items'] });
     },
     onError: () => toast.error('เกิดข้อผิดพลาด'),
+    onSettled: () => setPendingGroupKey(null),
   });
-
-  const isPending = isServing || isCancelling;
 
   const groups = useMemo(() => groupItems(items), [items]);
   const visibleGroups = useMemo(
@@ -315,9 +323,17 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
               <KdsCard
                 key={group.groupKey}
                 group={group}
-                isPending={isPending}
-                onServe={() => serve(group.items.map((i) => i.id))}
-                onCancel={() => cancel(group.items.map((i) => i.id))}
+                isPending={pendingGroupKey === group.groupKey}
+                onServe={() => {
+                  if (pendingGroupKey) return;
+                  setPendingGroupKey(group.groupKey);
+                  serve({ groupKey: group.groupKey, itemIds: group.items.map((i) => i.id) });
+                }}
+                onCancel={() => {
+                  if (pendingGroupKey) return;
+                  setPendingGroupKey(group.groupKey);
+                  cancel({ groupKey: group.groupKey, itemIds: group.items.map((i) => i.id) });
+                }}
               />
             ))}
           </div>

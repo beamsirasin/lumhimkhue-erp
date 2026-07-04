@@ -255,7 +255,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
     queryClient.invalidateQueries({ queryKey: ['queue-history', todayStr] });
   }, [queryClient, todayStr]);
 
-  const { mutate: doToggleBill } = useMutation({
+  const { mutate: doToggleBill, isPending: billPending, variables: billVars } = useMutation({
     mutationFn: ({ id, issued }: { id: string; issued: boolean }) =>
       toggleBillIssued(id, issued),
     onSuccess: r => { if (!r.ok) toast.error(r.error); else invalidate(); },
@@ -386,7 +386,8 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
                 onPickTable={() => setTableTarget(entry)}
                 onAdmit={() => setAdmitTarget(entry)}
                 onSkip={() => setSkipTarget(entry)}
-                onBillIssued={() => doToggleBill({ id: entry.id, issued: true })}
+                billPending={billPending && billVars?.id === entry.id}
+                onBillIssued={() => { if (!billPending) doToggleBill({ id: entry.id, issued: true }); }}
                 onCancel={() => setCancelTarget(entry)}
                 onPrint={getPrintHandler(entry)}
                 onShowQr={() => setQrTarget(entry)}
@@ -462,6 +463,7 @@ interface ActiveQueueRowProps {
   onPickTable: () => void;
   onAdmit: () => void;
   onSkip: () => void;
+  billPending: boolean;
   onBillIssued: () => void;
   onCancel: () => void;
   onPrint: () => void;
@@ -469,7 +471,7 @@ interface ActiveQueueRowProps {
 }
 
 function ActiveQueueRow({
-  entry, onEdit, onPickTable, onAdmit, onSkip, onBillIssued, onCancel, onPrint, onShowQr,
+  entry, onEdit, onPickTable, onAdmit, onSkip, billPending, onBillIssued, onCancel, onPrint, onShowQr,
 }: ActiveQueueRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
@@ -584,10 +586,13 @@ function ActiveQueueRow({
           isAdmitted ? (
             <button
               type="button"
+              disabled={billPending}
               onClick={onBillIssued}
-              className="flex min-h-9 items-center gap-1 rounded-lg border border-primary bg-primary px-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95"
+              className="flex min-h-9 items-center gap-1 rounded-lg border border-primary bg-primary px-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:pointer-events-none disabled:opacity-60"
             >
-              <Check className="size-3.5 shrink-0" />
+              {billPending
+                ? <Loader2 className="size-3.5 shrink-0 animate-spin" />
+                : <Check className="size-3.5 shrink-0" />}
               ออกบิล
             </button>
           ) : (
