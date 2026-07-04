@@ -850,9 +850,9 @@ function TableSheet({
       <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="sm:max-w-md p-0 flex flex-col max-h-[90dvh]">
         <DialogHeader className="shrink-0 border-b border-border px-6 py-5 pr-14">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <span className={`h-2.5 w-2.5 rounded-full ${STATUS_CONFIG[visualStatus].dot}`} />
-            <DialogTitle className="text-base">
+            <DialogTitle className="text-lg font-semibold">
               โต๊ะ {table.label}
             </DialogTitle>
             {/* เปลี่ยนโต๊ะหลัก — shown only on truly linked secondary tables, not partial-payment continuations */}
@@ -937,10 +937,10 @@ function TableSheet({
                 return (
                   <>
                     {/* Session info — always from primary */}
-                    <div className="rounded-xl bg-muted/50 border border-border p-3 space-y-2 text-sm">
+                    <div className="rounded-xl bg-muted/50 border border-border p-4 space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="flex items-center gap-1.5 text-muted-foreground"><Clock className="size-3.5" />เริ่ม</span>
-                        <span className="font-medium">{new Date(displaySess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
+                        <span className="font-medium tabular-nums">{new Date(displaySess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">เวลาที่ผ่านมา</span>
@@ -948,23 +948,24 @@ function TableSheet({
                       </div>
                       <div className="flex justify-between">
                         <span className="flex items-center gap-1.5 text-muted-foreground"><Users className="size-3.5" />จำนวนคน</span>
-                        <span className="font-medium">{displaySess.totalGuests} คน</span>
+                        <span className="font-medium tabular-nums">{displaySess.totalGuests} คน</span>
                       </div>
                       {displaySess.guests.map((g) => (
                         <div key={g.id} className="flex justify-between pl-3 text-xs text-muted-foreground">
                           <span>{g.pricingTile.name} ×{g.quantity}</span>
-                          <span>฿{(Number(g.pricingTile.price) * g.quantity).toLocaleString('th-TH')}</span>
+                          <span className="tabular-nums">฿{(Number(g.pricingTile.price) * g.quantity).toLocaleString('th-TH')}</span>
                         </div>
                       ))}
-                      <div className="flex justify-between border-t border-border pt-1.5">
+                      <div className="flex items-center justify-between border-t border-border pt-2">
                         <span className="text-muted-foreground">ยอดค่าอาหาร</span>
-                        <span className="font-semibold text-foreground">฿{displaySess.baseAmount.toLocaleString('th-TH')}</span>
+                        <span className="text-base font-bold tabular-nums text-foreground">฿{displaySess.baseAmount.toLocaleString('th-TH')}</span>
                       </div>
                       {displaySess.notes && <p className="text-xs text-muted-foreground italic">{displaySess.notes}</p>}
                     </div>
 
                     {/* Link + QR — all tables in the group */}
                     <div className="space-y-1.5">
+                      <p className="text-xs font-medium text-muted-foreground">ลิงก์สั่งอาหารของลูกค้า</p>
                       {entries.map((entry) => {
                         const url = `${appUrl}/t/${entry.qrToken}/s/${entry.sessionToken}`;
                         return (
@@ -977,17 +978,17 @@ function TableSheet({
                             <button
                               type="button"
                               onClick={() => window.open(url, '_blank')}
-                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
+                              className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
                             >
-                              <Link2 className="size-3.5" />Link
+                              <Link2 className="size-4" />Link
                             </button>
                             <button
                               type="button"
                               onClick={() => setQrView({ url, label: entry.label })}
                               aria-label="ดู QR"
-                              className="flex items-center justify-center rounded-xl border border-border px-3 py-2.5 text-foreground hover:bg-muted/50 transition-colors"
+                              className="flex min-h-11 items-center justify-center rounded-xl border border-border px-3.5 py-2.5 text-foreground hover:bg-muted/50 transition-colors"
                             >
-                              <Eye className="size-3.5" />
+                              <Eye className="size-4" />
                             </button>
                             <button
                               type="button"
@@ -995,9 +996,9 @@ function TableSheet({
                                 const qrPrint: TableQrData = { tableNumber: entry.label, url, startedAt: startedAtStr };
                                 void printTableQr({ type: 'table_qr', table: qrPrint });
                               }}
-                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
+                              className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
                             >
-                              <Printer className="size-3.5" />พิมพ์ QR
+                              <Printer className="size-4" />พิมพ์ QR
                             </button>
                           </div>
                         );
@@ -1017,47 +1018,52 @@ function TableSheet({
                     router.push(`/pos?session=${encodeURIComponent(posSessionId)}`);
                   }}
                   disabled={busy || !sess.id}
-                  className="w-full rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
+                  className="w-full rounded-xl border-2 border-primary bg-primary px-4 py-4 text-base font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                 >
                   <span className="flex items-center justify-center gap-2"><Receipt className="size-5" />บิล</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onEditGuests(sess.id, sess.guests.map((g) => ({ pricingTileId: g.pricingTile.id, quantity: g.quantity })));
-                  }}
-                  disabled={busy}
-                  className="w-full rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
-                >
-                  <span className="flex items-center justify-center gap-2"><Pencil className="size-5" />แก้ไข</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { onClose(); onMoveTable(sess.id, table.label); }}
-                  disabled={busy}
-                  className="w-full rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
-                >
-                  <span className="flex items-center justify-center gap-2"><MoveRight className="size-5" />ย้ายโต๊ะ</span>
-                </button>
-
-                {isInLinkedGroup ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button type="button" onClick={handleCloseSingle} disabled={busy}
-                      className="rounded-xl border border-[var(--status-danger-border)] px-4 py-4 text-base font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors">
-                      ปิดโต๊ะนี้
-                    </button>
-                    <button type="button" onClick={handleCloseAll} disabled={busy}
-                      className="rounded-xl border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-4 py-4 text-base font-semibold text-[var(--status-danger-fg)] hover:border-[var(--status-danger-fg)] disabled:opacity-50 transition-colors">
-                      ปิดทั้งหมด
-                    </button>
-                  </div>
-                ) : (
-                  <button type="button" onClick={handleForceClose} disabled={busy}
-                    className="w-full rounded-xl border border-[var(--status-danger-border)] px-4 py-4 text-base font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors">
-                    บังคับปิดโต๊ะ
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onEditGuests(sess.id, sess.guests.map((g) => ({ pricingTileId: g.pricingTile.id, quantity: g.quantity })));
+                    }}
+                    disabled={busy}
+                    className="rounded-xl border border-border px-4 py-3.5 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
+                  >
+                    <span className="flex items-center justify-center gap-2"><Pencil className="size-5" />แก้ไข</span>
                   </button>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => { onClose(); onMoveTable(sess.id, table.label); }}
+                    disabled={busy}
+                    className="rounded-xl border border-border px-4 py-3.5 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
+                  >
+                    <span className="flex items-center justify-center gap-2"><MoveRight className="size-5" />ย้ายโต๊ะ</span>
+                  </button>
+                </div>
+
+                {/* Destructive zone — separated from normal actions */}
+                <div className="border-t border-border pt-3 mt-3">
+                  {isInLinkedGroup ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button type="button" onClick={handleCloseSingle} disabled={busy}
+                        className="rounded-xl border border-[var(--status-danger-border)] px-4 py-3.5 text-sm font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors">
+                        ปิดโต๊ะนี้
+                      </button>
+                      <button type="button" onClick={handleCloseAll} disabled={busy}
+                        className="rounded-xl border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-4 py-3.5 text-sm font-semibold text-[var(--status-danger-fg)] hover:border-[var(--status-danger-fg)] disabled:opacity-50 transition-colors">
+                        ปิดทั้งหมด
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={handleForceClose} disabled={busy}
+                      className="w-full rounded-xl border border-[var(--status-danger-border)] px-4 py-3.5 text-sm font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors">
+                      บังคับปิดโต๊ะ
+                    </button>
+                  )}
+                </div>
               </div>
             </>
           )}
@@ -1232,10 +1238,10 @@ function TableSheet({
 
                 return (
                   <>
-                    <div className="rounded-xl bg-muted/50 border border-border p-3 space-y-2 text-sm">
+                    <div className="rounded-xl bg-muted/50 border border-border p-4 space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="flex items-center gap-1.5 text-muted-foreground"><Clock className="size-3.5" />เริ่ม</span>
-                        <span className="font-medium">{new Date(displaySess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
+                        <span className="font-medium tabular-nums">{new Date(displaySess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">เวลาที่ผ่านมา</span>
@@ -1243,34 +1249,35 @@ function TableSheet({
                       </div>
                       <div className="flex justify-between">
                         <span className="flex items-center gap-1.5 text-muted-foreground"><Users className="size-3.5" />จำนวนคน</span>
-                        <span className="font-medium">{displaySess.totalGuests} คน</span>
+                        <span className="font-medium tabular-nums">{displaySess.totalGuests} คน</span>
                       </div>
                       {displaySess.guests.map((g) => (
                         <div key={g.id} className="flex justify-between pl-3 text-xs text-muted-foreground">
                           <span>{g.pricingTile.name} ×{g.quantity}</span>
-                          <span>฿{(Number(g.pricingTile.price) * g.quantity).toLocaleString('th-TH')}</span>
+                          <span className="tabular-nums">฿{(Number(g.pricingTile.price) * g.quantity).toLocaleString('th-TH')}</span>
                         </div>
                       ))}
-                      <div className="flex justify-between border-t border-border pt-1.5">
+                      <div className="flex items-center justify-between border-t border-border pt-2">
                         <span className="text-muted-foreground">ยอดค่าอาหาร</span>
-                        <span className="font-semibold text-foreground">฿{displaySess.baseAmount.toLocaleString('th-TH')}</span>
+                        <span className="text-base font-bold tabular-nums text-foreground">฿{displaySess.baseAmount.toLocaleString('th-TH')}</span>
                       </div>
                       {displaySess.notes && <p className="text-xs text-muted-foreground italic">{displaySess.notes}</p>}
                     </div>
 
                     <div className="space-y-1.5">
+                      <p className="text-xs font-medium text-muted-foreground">ลิงก์สั่งอาหารของลูกค้า</p>
                       {entries.map((entry) => {
                         const url = `${appUrl}/t/${entry.qrToken}/s/${entry.sessionToken}`;
                         return (
                           <div key={entry.sessionToken} className="flex items-center gap-2">
                             {isMultiple && <span className="w-12 shrink-0 text-xs font-medium text-muted-foreground">โต๊ะ {entry.label}</span>}
                             <button type="button" onClick={() => window.open(url, '_blank')}
-                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">
-                              <Link2 className="size-3.5" />Link
+                              className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">
+                              <Link2 className="size-4" />Link
                             </button>
                             <button type="button" onClick={() => { const qr: TableQrData = { tableNumber: entry.label, url, startedAt: startedAtStr }; void printTableQr({ type: 'table_qr', table: qr }); }}
-                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">
-                              <Printer className="size-3.5" />พิมพ์ QR
+                              className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">
+                              <Printer className="size-4" />พิมพ์ QR
                             </button>
                           </div>
                         );
@@ -1284,39 +1291,44 @@ function TableSheet({
                 <button type="button"
                   onClick={() => { onClose(); router.push(`/pos?session=${encodeURIComponent(sess.parentSessionId ?? sess.id)}`); }}
                   disabled={busy || !sess.id}
-                  className="w-full rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
+                  className="w-full rounded-xl border-2 border-primary bg-primary px-4 py-4 text-base font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
                   <span className="flex items-center justify-center gap-2"><Receipt className="size-5" />บิล</span>
                 </button>
-                <button type="button"
-                  onClick={() => { onClose(); onEditGuests(sess.id, sess.guests.map((g) => ({ pricingTileId: g.pricingTile.id, quantity: g.quantity }))); }}
-                  disabled={busy}
-                  className="w-full rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
-                  <span className="flex items-center justify-center gap-2"><Pencil className="size-5" />แก้ไข</span>
-                </button>
-                <button type="button"
-                  onClick={() => { onClose(); onMoveTable(sess.id, table.label); }}
-                  disabled={busy}
-                  className="w-full rounded-xl border border-border px-4 py-4 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
-                  <span className="flex items-center justify-center gap-2"><MoveRight className="size-5" />ย้ายโต๊ะ</span>
-                </button>
-
-                {sess.parentSessionId ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button type="button" onClick={handleCloseSingle} disabled={busy}
-                      className="rounded-xl border border-[var(--status-danger-border)] px-4 py-4 text-base font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors">
-                      ปิดโต๊ะนี้
-                    </button>
-                    <button type="button" onClick={handleCloseAll} disabled={busy}
-                      className="rounded-xl border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-4 py-4 text-base font-semibold text-[var(--status-danger-fg)] hover:border-[var(--status-danger-fg)] disabled:opacity-50 transition-colors">
-                      ปิดทั้งหมด
-                    </button>
-                  </div>
-                ) : (
-                  <button type="button" onClick={handleForceClose} disabled={busy}
-                    className="w-full rounded-xl border border-[var(--status-danger-border)] px-4 py-4 text-base font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors">
-                    บังคับปิดโต๊ะ
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button"
+                    onClick={() => { onClose(); onEditGuests(sess.id, sess.guests.map((g) => ({ pricingTileId: g.pricingTile.id, quantity: g.quantity }))); }}
+                    disabled={busy}
+                    className="rounded-xl border border-border px-4 py-3.5 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
+                    <span className="flex items-center justify-center gap-2"><Pencil className="size-5" />แก้ไข</span>
                   </button>
-                )}
+                  <button type="button"
+                    onClick={() => { onClose(); onMoveTable(sess.id, table.label); }}
+                    disabled={busy}
+                    className="rounded-xl border border-border px-4 py-3.5 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
+                    <span className="flex items-center justify-center gap-2"><MoveRight className="size-5" />ย้ายโต๊ะ</span>
+                  </button>
+                </div>
+
+                {/* Destructive zone — separated from normal actions */}
+                <div className="border-t border-border pt-3 mt-3">
+                  {sess.parentSessionId ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button type="button" onClick={handleCloseSingle} disabled={busy}
+                        className="rounded-xl border border-[var(--status-danger-border)] px-4 py-3.5 text-sm font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors">
+                        ปิดโต๊ะนี้
+                      </button>
+                      <button type="button" onClick={handleCloseAll} disabled={busy}
+                        className="rounded-xl border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-4 py-3.5 text-sm font-semibold text-[var(--status-danger-fg)] hover:border-[var(--status-danger-fg)] disabled:opacity-50 transition-colors">
+                        ปิดทั้งหมด
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={handleForceClose} disabled={busy}
+                      className="w-full rounded-xl border border-[var(--status-danger-border)] px-4 py-3.5 text-sm font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors">
+                      บังคับปิดโต๊ะ
+                    </button>
+                  )}
+                </div>
               </div>
             </>
           )}
