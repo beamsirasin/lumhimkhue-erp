@@ -159,7 +159,7 @@ export function QueueStatus({ token, initialData }: QueueStatusProps) {
     );
   }
 
-  const { entry, position } = data;
+  const { entry, position, latestCalledQueueNumber } = data;
 
   const displayStatusKey = (
     entry.status === 'admitted' && !!entry.billIssued ? 'admitted_billed' : entry.status
@@ -241,29 +241,37 @@ export function QueueStatus({ token, initialData }: QueueStatusProps) {
           </p>
         </section>
 
-        {/* 3. Position row — waiting only; เรียกล่าสุด removed (not dependable yet) */}
+        {/* 3. Position stats — waiting only, compact side-by-side */}
         {isActiveWaiting && (
-          <div
-            className={cn(
-              'flex min-h-11 items-center justify-center rounded-xl border px-3 py-2 text-center',
-              isFirst
-                ? 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)]'
-                : 'border-border bg-card shadow-[var(--shadow-card)]',
-            )}
-          >
-            {isFirst ? (
-              <p className="text-sm font-bold text-[var(--status-warning-fg)]">
-                กลุ่มแรก! <span className="font-medium">เตรียมพร้อมเข้าโต๊ะ</span>
+          <div className="grid grid-cols-2 gap-2.5">
+            <div
+              className={cn(
+                'flex min-h-14 flex-col items-center justify-center rounded-xl border px-3 py-1.5 text-center',
+                isFirst
+                  ? 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)]'
+                  : 'border-border bg-card shadow-[var(--shadow-card)]',
+              )}
+            >
+              {isFirst ? (
+                <>
+                  <p className="text-sm font-bold text-[var(--status-warning-fg)]">กลุ่มแรก!</p>
+                  <p className="text-[11px] text-muted-foreground">เตรียมพร้อมเข้าโต๊ะ</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-[11px] text-muted-foreground">เหลืออีก</p>
+                  <p className="text-xl font-black leading-tight tabular-nums text-foreground">
+                    {aheadCount} <span className="text-[11px] font-medium text-muted-foreground">คิว</span>
+                  </p>
+                </>
+              )}
+            </div>
+            <div className="flex min-h-14 flex-col items-center justify-center rounded-xl border border-border bg-card px-3 py-1.5 text-center shadow-[var(--shadow-card)]">
+              <p className="text-[11px] text-muted-foreground">เรียกล่าสุด</p>
+              <p className="text-xl font-black leading-tight tabular-nums text-foreground">
+                {latestCalledQueueNumber ?? '—'}
               </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                เหลืออีก{' '}
-                <span className="mx-0.5 text-xl font-black tabular-nums align-middle text-foreground">
-                  {aheadCount}
-                </span>{' '}
-                คิวก่อนหน้า
-              </p>
-            )}
+            </div>
           </div>
         )}
 
