@@ -607,7 +607,7 @@ payment recorded → status: paid
 | Queue (host) | 5s |
 | Customer "my orders" | 10s |
 | Customer unserved check | 5s |
-| Queue (customer) | 10s |
+| Queue (customer) | adaptive: 3s while waiting/called · 15s after admitted/terminal |
 | Dashboard | 60s |
 
 Do not use WebSockets or SSE. All real-time updates are poll-based.

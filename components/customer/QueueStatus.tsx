@@ -124,8 +124,17 @@ export function QueueStatus({ token, initialData }: QueueStatusProps) {
     queryKey: ['queue-status', token],
     queryFn: () => getQueueStatus(token).then((r) => (r.ok ? r.data : null)),
     initialData,
-    refetchInterval: 10_000,
-    staleTime: 5_000,
+    // Adaptive polling: near-realtime while the status can still change,
+    // relaxed once the queue is admitted/terminal (staff can still revert,
+    // so never stop entirely).
+    refetchInterval: (query) => {
+      const status = query.state.data?.entry.status;
+      if (status === 'waiting' || status === 'waiting_suitable_table' || status === 'called') {
+        return 3_000;
+      }
+      return 15_000;
+    },
+    staleTime: 2_000,
   });
 
   async function handleCancel() {
