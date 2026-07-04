@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { eq, and, inArray, isNotNull, lt, lte, desc, asc, gte, sql } from 'drizzle-orm';
+import { eq, and, or, inArray, isNotNull, lt, lte, desc, asc, gte, sql } from 'drizzle-orm';
 import { startOfDay, endOfDay } from 'date-fns';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { nanoid } from 'nanoid';
@@ -439,17 +439,23 @@ export async function getQueueStatus(token: string) {
       position = Number(count) + 1;
     }
 
-    // Latest queue that was called today — for customer position display
+    // Latest queue called OR admitted today — for customer position display.
+    // The staff board admits directly without a separate "call" step
+    // (รับเข้า = เรียกคิว), so admittedAt is the primary signal;
+    // calledAt is kept for legacy called-only rows.
     const [latestCalledEntry] = await db
       .select({ queueNumber: queueEntries.queueNumber })
       .from(queueEntries)
       .where(
         and(
           gte(queueEntries.createdAt, bangkokDayStart()),
-          isNotNull(queueEntries.calledAt),
+          or(
+            isNotNull(queueEntries.admittedAt),
+            isNotNull(queueEntries.calledAt),
+          ),
         ),
       )
-      .orderBy(desc(queueEntries.calledAt))
+      .orderBy(desc(sql`COALESCE(${queueEntries.admittedAt}, ${queueEntries.calledAt})`))
       .limit(1);
 
     return {
