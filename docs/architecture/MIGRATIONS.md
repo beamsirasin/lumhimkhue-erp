@@ -80,7 +80,30 @@ arrived via dev-time `db:push` (no script) — present and verified.
   `lib/db/migrate-phase16e-penalty.ts` + `db:migrate-phase16e-penalty` when explicitly
   approved, then §5 updated and the check script's `penalty-tile-enum` group promoted.
 
-### 4.2 `payments.idempotency_key` — applied here, **verify per environment**
+### 4.2 `manager_approval_codes` table — APPLIED (Phase 17POS-AUTH-A1)
+
+- **Introduced by:** Phase 17POS-AUTH-A1 (Manager Approval Code / รหัสอนุมัติ foundation).
+  `lib/db/schema.ts` declares `managerApprovalCodes`. Applied via
+  `npm run db:migrate-phase17pos-auth-a1` on the current `DATABASE_URL`
+  (verified: `db:check-migrations` group `phase17pos-auth-a1-approval-codes` — APPLIED).
+  If a different environment's database is targeted, run the same migration there first
+  (after a snapshot) and re-verify with `db:check-migrations`.
+- What it created: `CREATE TABLE IF NOT EXISTS manager_approval_codes` (status is
+  `varchar`, not a pg enum — deliberately, to avoid the `ALTER TYPE ADD VALUE` friction
+  documented in §4.1) + 4 `CREATE INDEX IF NOT EXISTS` statements. Fully idempotent,
+  additive only, no data migration/backfill.
+  Rollback: `DROP TABLE manager_approval_codes` — safe, loses only approval-code
+  history, never payment/session data (nothing else FKs into this table).
+- **Scope note:** A1 was foundation only (generate/revoke/view/audit). Phase 17POS-AUTH-A2
+  wired code *consumption* into `updateSessionGuests` for saved guest-count edits only
+  (reopen/delete payment explicitly deferred) using the `usedAt`/`usedByUserId`/
+  `usedForAction`/`usedEntityType`/`usedEntityId` columns already reserved in this table —
+  **no schema change was needed for A2, A2B, or A2C.** A2B changed which roles the gate
+  applies to; A2C changed the self-approval policy (owner-only self-redeem). Both are
+  application-level policy changes reusing the existing `generatedByUserId`/`usedByUserId`
+  columns — no data model change.
+
+### 4.3 `payments.idempotency_key` — applied here, **verify per environment**
 
 - Applied on the current `DATABASE_URL` (verified). If the Vercel production deployment
   points at a **different** database, run `npm run db:migrate-phase16b` there (after a
@@ -92,6 +115,7 @@ arrived via dev-time `db:push` (no script) — present and verified.
 | Date | Migration | Database | Run by | Result |
 |---|---|---|---|---|
 | ≤ 2026-07-01 | phases v12 → 15BILL + 16B (historical; exact dates unrecorded) | ep-noisy-sun-…/neondb | owner (pre-governance) | Verified applied via `db:check-migrations` 2026-07-03 |
+| 2026-07-14 | `migrate-phase17pos-auth-a1.ts` (`manager_approval_codes`) | ep-noisy-sun-…/neondb | Claude (agent, explicit approval given) | Applied; verified via `db:check-migrations` same day |
 
 *(Append a row here for every future production migration run.)*
 

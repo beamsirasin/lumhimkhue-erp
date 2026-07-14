@@ -10,6 +10,7 @@ import { revalidatePath } from 'next/cache';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { writeAuditLog } from '@/lib/actions/audit';
+import { consumeManagerApprovalCode } from '@/lib/actions/manager-approval';
 import { db } from '@/lib/db';
 import {
   sessions,
@@ -720,11 +721,14 @@ export async function deletePaymentRecord(input: unknown) {
     .object({
       paymentId: z.string().uuid(),
       reason: z.string().max(500).optional(),
+      // Phase 17POS-AUTH-A3 — approval code is a second approval step, not a
+      // permission grant. payment:delete is already owner-only above.
+      approvalCode: z.string().trim().max(20).optional(),
     })
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
 
-  const { paymentId, reason } = parsed.data;
+  const { paymentId, reason, approvalCode } = parsed.data;
 
   // Fetch full payment for snapshot outside tx — early return gives clean error message
   const [payment] = await db
@@ -773,9 +777,42 @@ export async function deletePaymentRecord(input: unknown) {
   if (shift?.status === 'reviewed') {
     return { ok: false as const, error: 'ไม่สามารถแก้ไขการชำระเงินในรอบที่ตรวจสอบแล้ว' };
   }
-  if (shift?.status === 'closed' && !normalizedReason) {
-    return { ok: false as const, error: 'ต้องระบุเหตุผลสำหรับการแก้ไขในรอบที่ปิดแล้ว' };
+
+  // ─── Phase 17POS-AUTH-A3: manager approval gate ──────────────────────────
+  // deletePaymentRecord is owner-only (payment:delete, checked above) and is
+  // always a destructive hard-delete of a completed payment — unlike the
+  // saved-guest-edit gate (A2B), there is no "unsaved/no-op" case here, so
+  // the code + reason are unconditionally required once permission passes.
+  // This replaces the old "reason required only if shift closed" rule with a
+  // strictly stronger one (reason always required), so no Phase 16C
+  // hardening around closed/reviewed shifts is weakened.
+  // Self-approval (owner may use its own code) is enforced inside
+  // consumeManagerApprovalCode via isSelfApprovalAllowed — unchanged from A2C.
+  if (!approvalCode) {
+    return {
+      ok: false as const,
+      error: 'ต้องใช้รหัสอนุมัติสำหรับการลบบิล/รายการชำระเงิน',
+      requiresApproval: true as const,
+    };
   }
+  if (!normalizedReason) {
+    return {
+      ok: false as const,
+      error: 'ต้องระบุเหตุผลสำหรับการลบรายการชำระเงิน',
+      requiresApproval: true as const,
+    };
+  }
+  const approval = await consumeManagerApprovalCode({
+    code: approvalCode,
+    action: 'pos_payment_delete',
+    entityType: 'payment',
+    entityId: paymentId,
+    requestedByUserId: authSession.user.id,
+    requestedByRole: authSession.user.role,
+    requestedByBranchId: authSession.user.branchId ?? null,
+    reason: normalizedReason,
+  });
+  if (!approval.ok) return { ok: false as const, error: approval.error, requiresApproval: true as const };
 
   try {
     // ─── Phase 16C-C2A: batch-atomic delete ──────────────────────────────────
@@ -918,6 +955,27 @@ export async function deletePaymentRecord(input: unknown) {
       },
       after: { deleted: true, reason: normalizedReason || 'ไม่ระบุ' },
     });
+    writeAuditLog({
+      userId: authSession.user.id,
+      role: authSession.user.role,
+      action: 'sensitive_action_approved_by_code',
+      entity: 'payments',
+      entityId: paymentId,
+      before: null,
+      after: {
+        actorUserId: authSession.user.id,
+        actorRole: authSession.user.role,
+        approvalCodeId: approval.codeId,
+        generatedByUserId: approval.generatedByUserId,
+        // Owner is the only role that can reach this point AND have
+        // generatedByUserId === actorUserId — isSelfApprovalAllowed already
+        // rejected manager/cashier self-approval before the code was consumed.
+        selfApproved: approval.generatedByUserId === authSession.user.id,
+        reason: normalizedReason,
+        actionKey: 'pos_payment_delete',
+        sessionId: payment.sessionId,
+      },
+    });
 
     revalidatePath('/pos/history');
     revalidatePath('/tables/history');
@@ -944,11 +1002,14 @@ export async function reopenSessionForPayment(input: unknown) {
     .object({
       paymentId: z.string().uuid(),
       reason: z.string().max(500).optional(),
+      // Phase 17POS-AUTH-A3 — approval code is a second approval step, not a
+      // permission grant. payment:reopen is already owner+manager above.
+      approvalCode: z.string().trim().max(20).optional(),
     })
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'ข้อมูลไม่ถูกต้อง' };
 
-  const { paymentId, reason } = parsed.data;
+  const { paymentId, reason, approvalCode } = parsed.data;
 
   // Fetch full payment for snapshot outside tx — early return gives clean error message
   const [payment] = await db
@@ -991,12 +1052,44 @@ export async function reopenSessionForPayment(input: unknown) {
   if (shift?.status === 'reviewed') {
     return { ok: false as const, error: 'ไม่สามารถแก้ไขการชำระเงินในรอบที่ตรวจสอบแล้ว' };
   }
-  if (shift?.status === 'closed' && !normalizedReason) {
-    return { ok: false as const, error: 'ต้องระบุเหตุผลสำหรับการแก้ไขในรอบที่ปิดแล้ว' };
-  }
   if (shift?.status === 'closed' && authSession.user.role === 'manager') {
     return { ok: false as const, error: 'เฉพาะเจ้าของร้านเท่านั้นที่แก้ไขการชำระเงินในรอบที่ปิดแล้วได้' };
   }
+
+  // ─── Phase 17POS-AUTH-A3: manager approval gate ──────────────────────────
+  // reopenSessionForPayment is owner+manager only (payment:reopen, checked
+  // above) and always cancels a completed payment for re-entry — like
+  // deletePaymentRecord, code + reason are unconditionally required once
+  // permission (and the shift-status checks above) pass. This replaces the
+  // old "reason required only if shift closed" rule with a strictly stronger
+  // one, so no Phase 16C hardening is weakened. Self-approval (owner may use
+  // its own code; manager may not) is enforced inside
+  // consumeManagerApprovalCode via isSelfApprovalAllowed — unchanged from A2C.
+  if (!approvalCode) {
+    return {
+      ok: false as const,
+      error: 'ต้องใช้รหัสอนุมัติสำหรับการยกเลิก/แก้ไขบิล',
+      requiresApproval: true as const,
+    };
+  }
+  if (!normalizedReason) {
+    return {
+      ok: false as const,
+      error: 'ต้องระบุเหตุผลสำหรับการแก้ไขการชำระเงิน',
+      requiresApproval: true as const,
+    };
+  }
+  const approval = await consumeManagerApprovalCode({
+    code: approvalCode,
+    action: 'pos_payment_reopen',
+    entityType: 'payment',
+    entityId: paymentId,
+    requestedByUserId: authSession.user.id,
+    requestedByRole: authSession.user.role,
+    requestedByBranchId: authSession.user.branchId ?? null,
+    reason: normalizedReason,
+  });
+  if (!approval.ok) return { ok: false as const, error: approval.error, requiresApproval: true as const };
 
   const [mainSession] = await db
     .select({ id: sessions.id, tableId: sessions.tableId })
@@ -1124,6 +1217,27 @@ export async function reopenSessionForPayment(input: unknown) {
       },
       after: { sessionStatus: 'closing', reason: normalizedReason || 'ไม่ระบุ' },
     });
+    writeAuditLog({
+      userId: authSession.user.id,
+      role: authSession.user.role,
+      action: 'sensitive_action_approved_by_code',
+      entity: 'payments',
+      entityId: paymentId,
+      before: null,
+      after: {
+        actorUserId: authSession.user.id,
+        actorRole: authSession.user.role,
+        approvalCodeId: approval.codeId,
+        generatedByUserId: approval.generatedByUserId,
+        // Owner is the only role that can reach this point AND have
+        // generatedByUserId === actorUserId — isSelfApprovalAllowed already
+        // rejected manager self-approval before the code was consumed.
+        selfApproved: approval.generatedByUserId === authSession.user.id,
+        reason: normalizedReason,
+        actionKey: 'pos_payment_reopen',
+        sessionId: mainSession.id,
+      },
+    });
 
     revalidatePath('/pos');
     revalidatePath('/pos/history');
@@ -1143,6 +1257,9 @@ const AUDIT_ACTIONS = [
   'shift_open', 'shift_close', 'shift_review',
   'discount_request', 'discount_approve', 'discount_reject',
   'cancel_order',
+  'manager_approval_code_generated', 'manager_approval_code_revoked',
+  'manager_approval_code_used', 'manager_approval_code_failed_attempt',
+  'sensitive_action_approved_by_code',
 ] as const;
 
 export type AuditAction = typeof AUDIT_ACTIONS[number];

@@ -172,6 +172,21 @@ const GROUPS: Group[] = [
     severity: 'WARNING',
     reqs: [{ kind: 'enum', type: 'tile_category', value: 'penalty' }],
   },
+  {
+    id: 'phase17pos-auth-a1-approval-codes',
+    source: 'lib/db/migrate-phase17pos-auth-a1.ts — REQUIRED for /approval-code page + manager-approval.ts actions',
+    severity: 'CRITICAL',
+    reqs: [
+      { kind: 'table', table: 'manager_approval_codes' },
+      { kind: 'column', table: 'manager_approval_codes', column: 'code_hash' },
+      { kind: 'column', table: 'manager_approval_codes', column: 'status' },
+      { kind: 'column', table: 'manager_approval_codes', column: 'expires_at' },
+      { kind: 'index', index: 'manager_approval_codes_status_idx' },
+      { kind: 'index', index: 'manager_approval_codes_branch_status_idx' },
+      { kind: 'index', index: 'manager_approval_codes_expires_at_idx' },
+      { kind: 'index', index: 'manager_approval_codes_generated_at_idx' },
+    ],
+  },
 ];
 
 async function main() {

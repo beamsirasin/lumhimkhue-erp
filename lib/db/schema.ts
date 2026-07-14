@@ -834,6 +834,47 @@ export const discountApprovals = pgTable(
   ],
 );
 
+/** Phase 17POS-AUTH-A1 — Manager approval codes (รหัสอนุมัติ).
+ *  One active code per branch at a time; generating a new code revokes the
+ *  previous active one. codeHash only — plaintext is never persisted, only
+ *  returned once by generateManagerApprovalCode(). status is text/varchar
+ *  (not pgEnum) per phase instructions to avoid ALTER TYPE migration
+ *  complexity; valid values enforced at the action layer:
+ *  'active' | 'used' | 'expired' | 'revoked'. 'expired' is set lazily —
+ *  the read/mutation paths flip an active-but-time-expired row to 'expired'
+ *  when they encounter it, no cron needed. Consumption/use validation
+ *  (usedAt/usedBy/... columns populated) belongs to Phase 17POS-AUTH-A2 —
+ *  this phase only generates/revokes/displays. */
+export const managerApprovalCodes = pgTable(
+  'manager_approval_codes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    branchId: uuid('branch_id').references(() => branches.id),
+    codeHash: varchar('code_hash', { length: 100 }).notNull(),
+    status: varchar('status', { length: 16 }).notNull().default('active'),
+    generatedByUserId: uuid('generated_by_user_id')
+      .notNull()
+      .references(() => users.id),
+    generatedAt: timestamp('generated_at').notNull().defaultNow(),
+    expiresAt: timestamp('expires_at').notNull(),
+    usedAt: timestamp('used_at'),
+    usedByUserId: uuid('used_by_user_id').references(() => users.id),
+    usedForAction: varchar('used_for_action', { length: 64 }),
+    usedEntityType: varchar('used_entity_type', { length: 32 }),
+    usedEntityId: varchar('used_entity_id', { length: 128 }),
+    revokedAt: timestamp('revoked_at'),
+    revokedByUserId: uuid('revoked_by_user_id').references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('manager_approval_codes_status_idx').on(t.status),
+    index('manager_approval_codes_branch_status_idx').on(t.branchId, t.status),
+    index('manager_approval_codes_expires_at_idx').on(t.expiresAt),
+    index('manager_approval_codes_generated_at_idx').on(t.generatedAt),
+  ],
+);
+
 // ─── Inventory Tables ─────────────────────────────────────────────────────────
 
 export const ingredientCategories = pgTable('ingredient_categories', {
@@ -1545,6 +1586,28 @@ export const discountApprovalsRelations = relations(discountApprovals, ({ one })
     fields: [discountApprovals.approvedBy],
     references: [users.id],
     relationName: 'discountApprovedBy',
+  }),
+}));
+
+export const managerApprovalCodesRelations = relations(managerApprovalCodes, ({ one }) => ({
+  branch: one(branches, {
+    fields: [managerApprovalCodes.branchId],
+    references: [branches.id],
+  }),
+  generatedByUser: one(users, {
+    fields: [managerApprovalCodes.generatedByUserId],
+    references: [users.id],
+    relationName: 'approvalCodeGeneratedBy',
+  }),
+  usedByUser: one(users, {
+    fields: [managerApprovalCodes.usedByUserId],
+    references: [users.id],
+    relationName: 'approvalCodeUsedBy',
+  }),
+  revokedByUser: one(users, {
+    fields: [managerApprovalCodes.revokedByUserId],
+    references: [users.id],
+    relationName: 'approvalCodeRevokedBy',
   }),
 }));
 

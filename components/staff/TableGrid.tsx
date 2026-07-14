@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useContext, CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import { useConfirm } from '@/components/shared/ConfirmDialog';
+import { ManagerApprovalModal } from '@/components/shared/ManagerApprovalModal';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors, type Modifier } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
@@ -202,12 +203,15 @@ function TileSummaryPanel({ pricingTiles, quantities, onChange }: TileSummaryPan
   const editingQty = editingId ? (quantities[editingId] ?? 0) : 0;
 
   return (
-    <div className="w-full md:w-64 shrink-0 rounded-xl border border-border bg-[var(--surface-2)] p-3 flex flex-col md:h-full">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">รายการ</p>
+    <div className="w-full md:w-72 shrink-0 rounded-xl border border-border bg-[var(--surface-2)] p-3 flex flex-col md:h-full">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">รายการที่เลือก</p>
       {selected.length === 0 ? (
-        <p className="flex-1 flex items-center justify-center text-center text-xs text-muted-foreground leading-relaxed">
-          แตะ tile<br />เพื่อเพิ่ม
-        </p>
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
+          <div className="flex size-11 items-center justify-center rounded-full bg-[var(--surface-1)] border border-border">
+            <Users className="size-5 text-muted-foreground/50" />
+          </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">แตะ tile ด้านซ้าย<br />เพื่อเพิ่มผู้เข้าใช้</p>
+        </div>
       ) : (
         <div className="flex-1 overflow-y-auto space-y-2 pr-0.5">
           {selected.map((t) => {
@@ -239,9 +243,9 @@ function TileSummaryPanel({ pricingTiles, quantities, onChange }: TileSummaryPan
             <span className="text-muted-foreground">รวม</span>
             <span className="font-bold text-foreground">{totalGuests} คน</span>
           </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">ยอดรวม</span>
-            <span className="font-bold text-foreground">฿{totalAmount.toLocaleString('th-TH')}</span>
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm text-muted-foreground">ยอดรวม</span>
+            <span className="text-lg font-bold tabular-nums text-foreground">฿{totalAmount.toLocaleString('th-TH')}</span>
           </div>
         </div>
       )}
@@ -512,7 +516,7 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className={step === 'link'
         ? 'flex flex-col sm:max-w-[96vw] w-[96vw] h-[92dvh] max-h-[92dvh] p-0 gap-0 overflow-hidden'
-        : 'sm:max-w-[92vw] max-h-[82dvh] overflow-y-auto'
+        : 'sm:max-w-4xl max-h-[88dvh] overflow-y-auto'
       }>
 
         {step === 'link' ? (
@@ -577,20 +581,26 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
         ) : (
           <>
             <DialogHeader className="border-b border-border px-6 pt-4 pb-4">
-              <DialogTitle className="text-xl font-bold leading-tight">
-                เปิดโต๊ะ {table.label}
-              </DialogTitle>
-              {table.capacity > 0 && (
-                <p className="mt-1 text-sm text-muted-foreground">{table.capacity} ที่นั่ง — เลือกประเภทผู้เข้าใช้</p>
-              )}
+              <div className="flex items-center gap-3">
+                <DialogTitle className="text-xl font-bold leading-tight">
+                  เปิดโต๊ะ {table.label}
+                </DialogTitle>
+                {table.capacity > 0 && (
+                  <span className="rounded-full border border-border bg-[var(--surface-2)] px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                    {table.capacity} ที่นั่ง
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">แตะ tile เพื่อเพิ่มผู้เข้าใช้ — แตะรายการด้านขวาเพื่อแก้จำนวน</p>
             </DialogHeader>
 
-            <div className="flex flex-col md:flex-row gap-3 md:gap-4 md:h-[52dvh]">
-              <div className="flex-1 min-w-0 min-h-0 overflow-y-auto space-y-4 pr-1">
+            <div className="flex flex-col md:flex-row gap-3 md:gap-4 md:h-[54dvh]">
+              <div className="flex-1 min-w-0 min-h-0 overflow-y-auto space-y-5 pr-1">
                 <TilePicker
                   tiles={pricingTiles}
                   quantities={quantities}
                   onChange={(id, qty) => setQuantities((p) => ({ ...p, [id]: qty }))}
+                  tileSize="lg"
                 />
                 <div className="space-y-1.5">
                   <Label htmlFor="open-notes">หมายเหตุ (ไม่บังคับ)</Label>
@@ -604,24 +614,24 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
               />
             </div>
 
-            <DialogFooter className="flex-row items-center gap-3 border-t border-border bg-[var(--surface-2)] px-6 py-3 sm:justify-between">
-              <div className="flex items-center gap-2 text-sm">
+            <DialogFooter className="flex-row items-center gap-3 border-t border-border bg-[var(--surface-2)] px-6 py-3.5 sm:justify-between">
+              <div className="flex min-w-0 items-baseline gap-2">
                 {totalGuests > 0 ? (
                   <>
-                    <span className="text-muted-foreground">{totalGuests} คน</span>
-                    <span className="text-muted-foreground">·</span>
-                    <span className="font-bold tabular-nums text-foreground">฿{totalAmount.toLocaleString('th-TH')}</span>
+                    <span className="text-sm text-muted-foreground">{totalGuests} คน</span>
+                    <span className="text-sm text-muted-foreground">·</span>
+                    <span className="text-lg font-bold tabular-nums text-foreground">฿{totalAmount.toLocaleString('th-TH')}</span>
                   </>
                 ) : (
-                  <span className="text-muted-foreground text-xs">เลือกประเภทผู้เข้าใช้</span>
+                  <span className="text-sm text-muted-foreground">ยังไม่ได้เลือกผู้เข้าใช้</span>
                 )}
               </div>
               <div className="flex shrink-0 gap-2">
-                <button type="button" onClick={onClose} className="rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
+                <button type="button" onClick={onClose} className="min-h-11 rounded-xl border border-border px-4 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
                 <button
                   type="button"
                   onClick={() => setStep('link')}
-                  className="flex items-center gap-1.5 rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
+                  className="flex min-h-11 items-center gap-1.5 rounded-xl border border-border px-4 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
                 >
                   <Link2 className="size-4" />เชื่อมโต๊ะ
                 </button>
@@ -629,10 +639,10 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
                   type="button"
                   onClick={handleSubmit}
                   disabled={submitting || totalGuests === 0}
-                  className="flex items-center justify-center gap-1.5 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                  className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-primary px-6 text-sm font-bold text-primary-foreground hover:bg-primary/90 active:scale-[0.98] disabled:opacity-40 transition-all"
                 >
                   {submitting && <Loader2 className="size-4 animate-spin" />}
-                  {submitting ? 'กำลังเปิด...' : 'เปิดโต๊ะ'}
+                  {submitting ? 'กำลังเปิด...' : totalGuests > 0 ? `เปิดโต๊ะ · ${totalGuests} คน` : 'เปิดโต๊ะ'}
                 </button>
               </div>
             </DialogFooter>
@@ -678,14 +688,36 @@ interface EditGuestsDialogProps {
   open: boolean;
   sessionId: string | null;
   currentGuests: { pricingTileId: string; quantity: number }[];
+  tableLabel: string;
   pricingTiles: PricingTileData[];
   onClose: () => void;
   onSuccess: () => void;
 }
 
-function EditGuestsDialog({ open, sessionId, currentGuests, pricingTiles, onClose, onSuccess }: EditGuestsDialogProps) {
+/** Phase 17POS-AUTH-A2 — lines like "ผู้ใหญ่: 2 → 3" for tiles whose quantity changed. */
+function buildGuestDiffLines(
+  pricingTiles: PricingTileData[],
+  before: { pricingTileId: string; quantity: number }[],
+  after: { pricingTileId: string; quantity: number }[],
+): string[] {
+  const beforeMap = new Map(before.map((g) => [g.pricingTileId, g.quantity]));
+  const afterMap = new Map(after.map((g) => [g.pricingTileId, g.quantity]));
+  const tileIds = new Set([...beforeMap.keys(), ...afterMap.keys()]);
+  const lines: string[] = [];
+  for (const id of tileIds) {
+    const b = beforeMap.get(id) ?? 0;
+    const a = afterMap.get(id) ?? 0;
+    if (b === a) continue;
+    const name = pricingTiles.find((t) => t.id === id)?.name ?? id;
+    lines.push(`${name}: ${b} → ${a}`);
+  }
+  return lines;
+}
+
+function EditGuestsDialog({ open, sessionId, currentGuests, tableLabel, pricingTiles, onClose, onSuccess }: EditGuestsDialogProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -693,25 +725,44 @@ function EditGuestsDialog({ open, sessionId, currentGuests, pricingTiles, onClos
       for (const g of currentGuests) init[g.pricingTileId] = g.quantity;
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setQuantities(init);
+      setApprovalModalOpen(false);
     }
   }, [open, currentGuests]);
 
   const totalGuests = Object.values(quantities).reduce((s, q) => s + q, 0);
 
+  const currentGuestsPayload = () =>
+    pricingTiles
+      .map((t) => ({ pricingTileId: t.id, quantity: quantities[t.id] ?? 0 }))
+      .filter((g) => g.quantity > 0);
+
+  const submit = async (approval?: { code: string; reason: string }) => {
+    if (!sessionId) return { ok: false as const, error: 'ไม่พบ session' };
+    const guests = currentGuestsPayload();
+    const result = await updateSessionGuests({
+      sessionId,
+      guests,
+      approvalCode: approval?.code,
+      reason: approval?.reason,
+    });
+    if (result.ok) {
+      toast.success('แก้ไขข้อมูลลูกค้าแล้ว');
+      setApprovalModalOpen(false);
+      onSuccess();
+      onClose();
+      return { ok: true as const };
+    }
+    return { ok: false as const, error: result.error, requiresApproval: 'requiresApproval' in result && result.requiresApproval };
+  };
+
   const handleSubmit = async () => {
     if (!sessionId || submitting) return;
     setSubmitting(true);
-    const guests = pricingTiles
-      .map((t) => ({ pricingTileId: t.id, quantity: quantities[t.id] ?? 0 }))
-      .filter((g) => g.quantity > 0);
-    const result = await updateSessionGuests({ sessionId, guests });
+    const result = await submit();
     setSubmitting(false);
-    if (result.ok) {
-      toast.success('แก้ไขข้อมูลลูกค้าแล้ว');
-      onSuccess();
-      onClose();
-    } else {
-      toast.error(result.error);
+    if (!result.ok) {
+      if (result.requiresApproval) setApprovalModalOpen(true);
+      else toast.error(result.error);
     }
   };
 
@@ -745,6 +796,17 @@ function EditGuestsDialog({ open, sessionId, currentGuests, pricingTiles, onClos
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      <ManagerApprovalModal
+        open={approvalModalOpen}
+        description="การแก้ไขจำนวนผู้เข้าใช้ที่บันทึกแล้วต้องใช้รหัสอนุมัติ"
+        contextLines={[
+          ...(tableLabel ? [`โต๊ะ ${tableLabel}`] : []),
+          ...buildGuestDiffLines(pricingTiles, currentGuests, currentGuestsPayload()),
+        ]}
+        onCancel={() => setApprovalModalOpen(false)}
+        onConfirm={(params) => submit(params)}
+      />
     </Dialog>
   );
 }
@@ -760,7 +822,7 @@ interface TableSheetProps {
   onRefetch: () => void;
   onOpenTable: (table: TableData, prefillGuests?: Record<string, number>) => void;
   onMoveTable: (sessionId: string, tableLabel: string) => void;
-  onEditGuests: (sessionId: string, currentGuests: { pricingTileId: string; quantity: number }[]) => void;
+  onEditGuests: (sessionId: string, currentGuests: { pricingTileId: string; quantity: number }[], tableLabel: string) => void;
 }
 
 function TableSheet({
@@ -1027,7 +1089,7 @@ function TableSheet({
                     type="button"
                     onClick={() => {
                       onClose();
-                      onEditGuests(sess.id, sess.guests.map((g) => ({ pricingTileId: g.pricingTile.id, quantity: g.quantity })));
+                      onEditGuests(sess.id, sess.guests.map((g) => ({ pricingTileId: g.pricingTile.id, quantity: g.quantity })), table?.label ?? '');
                     }}
                     disabled={busy}
                     className="rounded-xl border border-border px-4 py-3.5 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
@@ -1296,7 +1358,7 @@ function TableSheet({
                 </button>
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button"
-                    onClick={() => { onClose(); onEditGuests(sess.id, sess.guests.map((g) => ({ pricingTileId: g.pricingTile.id, quantity: g.quantity }))); }}
+                    onClick={() => { onClose(); onEditGuests(sess.id, sess.guests.map((g) => ({ pricingTileId: g.pricingTile.id, quantity: g.quantity })), table?.label ?? ''); }}
                     disabled={busy}
                     className="rounded-xl border border-border px-4 py-3.5 text-base font-medium text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors">
                     <span className="flex items-center justify-center gap-2"><Pencil className="size-5" />แก้ไข</span>
@@ -1585,6 +1647,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
   // Edit session guests
   const [editGuestsSessionId, setEditGuestsSessionId] = useState<string | null>(null);
   const [editGuestsCurrentGuests, setEditGuestsCurrentGuests] = useState<{ pricingTileId: string; quantity: number }[]>([]);
+  const [editGuestsTableLabel, setEditGuestsTableLabel] = useState('');
 
   const { data: tables = initialTables } = useQuery({
     queryKey: ['tables'],
@@ -1895,9 +1958,10 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
           setMoveSessionId(sessionId);
           setMoveSessionLabel(label);
         }}
-        onEditGuests={(sessionId, guests) => {
+        onEditGuests={(sessionId, guests, tableLabel) => {
           setEditGuestsSessionId(sessionId);
           setEditGuestsCurrentGuests(guests);
+          setEditGuestsTableLabel(tableLabel);
         }}
       />
 
@@ -1906,6 +1970,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
         open={!!editGuestsSessionId}
         sessionId={editGuestsSessionId}
         currentGuests={editGuestsCurrentGuests}
+        tableLabel={editGuestsTableLabel}
         pricingTiles={pricingTiles}
         onClose={() => setEditGuestsSessionId(null)}
         onSuccess={refetch}

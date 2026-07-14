@@ -63,6 +63,11 @@ const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   discount_approve: 'อนุมัติส่วนลด',
   discount_reject:  'ปฏิเสธส่วนลด',
   cancel_order:     'ยกเลิกออเดอร์',
+  manager_approval_code_generated: 'สร้างรหัสอนุมัติ',
+  manager_approval_code_revoked:   'ยกเลิกรหัสอนุมัติ',
+  manager_approval_code_used:      'ใช้รหัสอนุมัติ',
+  manager_approval_code_failed_attempt: 'กรอกรหัสอนุมัติผิด/หมดอายุ',
+  sensitive_action_approved_by_code:    'แก้ไขรายการสำคัญด้วยรหัสอนุมัติ',
 };
 
 const ADJ_TYPE_LABELS: Record<string, string> = {
@@ -98,6 +103,11 @@ const AUDIT_ACTION_VARIANTS: Partial<Record<AuditAction, BadgeVariant>> = {
   discount_approve: 'success',
   discount_reject: 'danger',
   cancel_order: 'orange',
+  manager_approval_code_generated: 'info',
+  manager_approval_code_revoked: 'warning',
+  manager_approval_code_used: 'success',
+  manager_approval_code_failed_attempt: 'danger',
+  sensitive_action_approved_by_code: 'purple',
 };
 
 function AuditStatusBadge({ status }: { status: string }) {

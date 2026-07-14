@@ -11,6 +11,8 @@ import { sessions, tables, sessionGuests, pricingTiles, buffetChargeLines, payme
 import { z } from 'zod';
 import { writeAuditLog } from '@/lib/actions/audit';
 import { chargeLineTotal } from '@/lib/payments/money-math';
+import { consumeManagerApprovalCode } from '@/lib/actions/manager-approval';
+import { requiresApprovalForSavedGuestEdit, hasGuestCountDecrease } from '@/lib/auth/approval-code-core';
 
 /* ─── Shared schemas ─────────────────────────────────────────────────── */
 
@@ -329,7 +331,23 @@ const updateGuestsSchema = z.object({
   // Addon-type tiles — persisted to buffet_charge_lines only (not session_guests),
   // so processPayment can still add them via lineItems without double-counting.
   addonItems: z.array(guestRowSchema).optional().default([]),
+  // Phase 17POS-AUTH-A2 — required from cashiers only when this edit changes
+  // an already-saved guest count (see requiresApproval check below).
+  approvalCode: z.string().trim().max(20).optional(),
+  reason: z.string().trim().max(500).optional(),
 });
+
+/** Phase 17POS-AUTH-A2 — true if the guest tile set actually differs (added/removed/quantity changed). */
+function guestSetsEqual(
+  a: { pricingTileId: string; quantity: number }[],
+  b: { pricingTileId: string; quantity: number }[],
+): boolean {
+  const normalize = (arr: typeof a) =>
+    arr.filter((g) => g.quantity > 0).map((g) => `${g.pricingTileId}:${g.quantity}`).sort();
+  const na = normalize(a);
+  const nb = normalize(b);
+  return na.length === nb.length && na.every((v, i) => v === nb[i]);
+}
 
 export async function updateSessionGuests(input: unknown) {
   const authSession = await auth();
@@ -341,7 +359,7 @@ export async function updateSessionGuests(input: unknown) {
   if (!parsed.success)
     return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'ข้อมูลไม่ถูกต้อง' };
 
-  const { sessionId, guests, addonItems } = parsed.data;
+  const { sessionId, guests, addonItems, approvalCode, reason } = parsed.data;
   const nonZeroGuests = guests.filter((g) => g.quantity > 0);
   const nonZeroAddons = addonItems.filter((a) => a.quantity > 0);
   // All items that should have active charge lines after this save
@@ -383,6 +401,71 @@ export async function updateSessionGuests(input: unknown) {
           error: `ไม่สามารถลดจำนวนต่ำกว่าจำนวนที่ชำระแล้ว (${line.label}: ชำระแล้ว ${allocatedQty} หน่วย)`,
         };
       }
+    }
+
+    // ─── Phase 17POS-AUTH-A2B: manager approval gate (all roles) ─────────────
+    // Policy change from A2: EVERY role that can reach this point — owner,
+    // manager, cashier (kitchen lacks manage_tables and is already blocked
+    // above) — must enter a valid approval code to edit an ALREADY-SAVED
+    // guest set. A fresh headcount entry (oldGuests empty) or a no-op resave
+    // never requires a code. There is no silent bypass for owner/manager.
+    //
+    // Phase 17POS-AUTH-A4: narrowed to decreases only. Raising a quantity or
+    // adding a new tile to an already-saved guest set never requires a code
+    // — it only increases the bill, which isn't the fraud scenario approval
+    // codes exist for (quietly removing a paying guest after the count was
+    // saved). Any per-tile decrease still gates the whole edit — see
+    // hasGuestCountDecrease() in lib/auth/approval-code-core.ts.
+    //
+    // Self-approval (Phase 17POS-AUTH-A2C): only OWNER may redeem a code
+    // they generated themselves. Manager/cashier self-approval is rejected
+    // inside consumeManagerApprovalCode with a specific message — see
+    // isSelfApprovalAllowed() in lib/auth/approval-code-core.ts. The
+    // `selfApproved` audit field below records the outcome.
+    //
+    // Atomic boundary: code consumption (consumeManagerApprovalCode) is a
+    // separate conditional UPDATE that runs and commits BEFORE the batch
+    // below. The neon-http driver has no db.transaction(), so these cannot
+    // be one atomic unit; all edit-input validation (zod parse + allocation
+    // guard above) runs first specifically to minimize the window where a
+    // code could be marked used but the subsequent batch still fails.
+    const isSavedGuestEdit = oldGuests.length > 0 && !guestSetsEqual(oldGuests, nonZeroGuests);
+    const isGuestCountDecrease = hasGuestCountDecrease(oldGuests, nonZeroGuests);
+    const requiresApproval = requiresApprovalForSavedGuestEdit(
+      authSession.user.role,
+      isSavedGuestEdit && isGuestCountDecrease,
+    );
+    let approvalCodeId: string | null = null;
+    let approvalCodeGeneratedBy: string | null = null;
+
+    if (requiresApproval) {
+      if (!approvalCode) {
+        return {
+          ok: false as const,
+          error: 'ต้องใช้รหัสอนุมัติสำหรับการแก้ไขจำนวนลูกค้าที่บันทึกแล้ว',
+          requiresApproval: true as const,
+        };
+      }
+      if (!reason || reason.trim().length === 0) {
+        return {
+          ok: false as const,
+          error: 'ต้องระบุเหตุผลสำหรับการแก้ไขนี้',
+          requiresApproval: true as const,
+        };
+      }
+      const approval = await consumeManagerApprovalCode({
+        code: approvalCode,
+        action: 'pos_saved_guest_count_edit',
+        entityType: 'session',
+        entityId: sessionId,
+        requestedByUserId: authSession.user.id,
+        requestedByRole: authSession.user.role,
+        requestedByBranchId: authSession.user.branchId ?? null,
+        reason,
+      });
+      if (!approval.ok) return { ok: false as const, error: approval.error };
+      approvalCodeId = approval.codeId;
+      approvalCodeGeneratedBy = approval.generatedByUserId;
     }
 
     // ─── Phase 16C-C2B: batch-atomic write phase ─────────────────────────────
@@ -479,6 +562,30 @@ export async function updateSessionGuests(input: unknown) {
         addons: nonZeroAddons.map((a) => ({ pricingTileId: a.pricingTileId, quantity: a.quantity })),
       },
     });
+
+    if (approvalCodeId) {
+      writeAuditLog({
+        userId: authSession.user.id,
+        role: authSession.user.role,
+        action: 'sensitive_action_approved_by_code',
+        entity: 'session',
+        entityId: sessionId,
+        before: { guests: oldGuests.map((g) => ({ pricingTileId: g.pricingTileId, quantity: g.quantity })) },
+        after: {
+          guests: nonZeroGuests.map((g) => ({ pricingTileId: g.pricingTileId, quantity: g.quantity })),
+          actorUserId: authSession.user.id,
+          actorRole: authSession.user.role,
+          approvalCodeId,
+          generatedByUserId: approvalCodeGeneratedBy,
+          // Phase 17POS-AUTH-A2C: true only when actorRole === 'owner' —
+          // manager/cashier self-approval never reaches this point (rejected
+          // earlier by consumeManagerApprovalCode).
+          selfApproved: approvalCodeGeneratedBy != null ? approvalCodeGeneratedBy === authSession.user.id : null,
+          reason: reason ?? null,
+          actionKey: 'pos_saved_guest_count_edit',
+        },
+      });
+    }
 
     revalidatePath('/tables');
     revalidatePath('/pos');

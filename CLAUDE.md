@@ -106,6 +106,7 @@ app/
     tables/history/   → Session history
     printers/         → Printer configuration
     payment-settings/ → Payment methods & receiving accounts
+    approval-code/    → Manager approval code (รหัสอนุมัติ) — owner/manager only (Phase 17POS-AUTH-A1)
   (customer)/         → Public QR-accessible, no auth
     q/[queueToken]/   → Queue status display
     t/[tableToken]/   → Table entry point
@@ -361,6 +362,7 @@ Return type: always `{ ok: true, data: T } | { ok: false, error: string }`.
 | `reorder.ts` | inventory reorder suggestions |
 | `inventory-variance.ts` | variance analysis |
 | `shift-backfill.ts` | 16G-A: owner/manager same-day cash→shift late assignment (audited) |
+| `manager-approval.ts` | 17POS-AUTH-A1: getManagerApprovalCodeState, generateManagerApprovalCode, revokeManagerApprovalCode (รหัสอนุมัติ — owner/manager only; no POS action gating yet) |
 
 ---
 
@@ -390,7 +392,7 @@ This codebase has **three strictly separated UI zones**. Never apply POS pattern
 - Custom components — do NOT replace with ReUI/admin patterns
 
 ### Zone 3 — Admin / Back-office
-**Routes:** `(admin)/*`, `(staff)/printers`, `(staff)/payment-settings`, `(staff)/pos/shifts`
+**Routes:** `(admin)/*`, `(staff)/printers`, `(staff)/payment-settings`, `(staff)/pos/shifts`, `(staff)/approval-code`
 - Tablet/desktop, 768px+
 - IBM Plex Sans Thai, weight 400/500 only
 - Navy blue primary (`oklch(0.30 0.11 248)`)
@@ -670,10 +672,12 @@ npm run db:seed-hr                 # seed HR data
 npm run db:studio                  # open Drizzle Studio
 npm run db:migrate-payment-foundation  # payment methods/accounts bootstrap
 npm run db:migrate-phase16b        # payments.idempotency_key + unique index (Phase 16B)
+npm run db:migrate-phase17pos-auth-a1  # manager_approval_codes table + indexes (Phase 17POS-AUTH-A1, applied)
 npm run payments:verify            # verify payment foundation setup
 npm run payments:backfill          # one-time payment row backfill
 npm run reconcile:payments         # READ-ONLY payment reconciliation (R1–R12, Phase 16C-B)
 npm run test:money                 # money math unit tests (node:test via tsx, no DB — Phase 16D)
+npm run test:approval-code         # approval-code core helper unit tests (node:test via tsx, no DB — Phase 17POS-AUTH-A1)
 npm run db:check-migrations        # READ-ONLY schema-vs-code check; exit 1 = deploy blocked (Phase 16E)
 ```
 
@@ -849,5 +853,13 @@ app/globals.css (token changes; additions OK, editing existing tokens needs appr
   - [x] Phase 16D — Money math test harness (`npm run test:money`, node:test via tsx, 70 tests; golden extractions in `lib/payments/money-math.ts`)
   - [x] Phase 16E — Migration baseline & governance (`npm run db:check-migrations`; policy in `docs/architecture/MIGRATIONS.md`; pending: `tile_category` `'penalty'` enum value)
   - [x] Phase 16F — UAT pack + go-live runbook docs (`docs/uat/UAT_SCRIPTS.md`, `docs/ops/GO_LIVE_CHECKLIST.md`, `docs/ops/RUNBOOK.md`, `docs/ops/INCIDENT_PLAYBOOK.md`) — **UAT execution + Vercel DB confirmation + penalty-enum decision still pending; push/deploy blocked until Go-Live Gate 1 passes**
+- [ ] **Phase 17POS-AUTH — Manager Approval Code (รหัสอนุมัติ)** — explicit, prompted exception to the Phase 16 feature freeze (anti-fraud/access-control hardening, not a new business feature module)
+  - [x] Phase 17POS-AUTH-A1 — Foundation: `manager_approval_codes` table (migration `db:migrate-phase17pos-auth-a1`, **applied**), owner/manager generate/revoke/view page at `/approval-code`, `lib/actions/manager-approval.ts`, audit logging (`manager_approval_code_generated`/`_revoked`). Codes are 6-char alphanumeric (confusables excluded), bcrypt-hashed at rest (no plaintext persisted — shown once at generation), 1-hour TTL, one active code per branch (new code revokes the prior one).
+  - [x] Phase 17POS-AUTH-A2 — Wired code consumption into `updateSessionGuests` for saved guest/customer-count edits only (reopen/delete payment explicitly deferred, not gated). `consumeManagerApprovalCode()` in `manager-approval.ts`: atomic conditional UPDATE, generic rejection message, branch-scope-with-store-wide-fallback lookup. Audit: `manager_approval_code_used`, `manager_approval_code_failed_attempt`, `sensitive_action_approved_by_code`. `ManagerApprovalModal` wired into `PosTerminal.tsx` and `TableGrid.tsx`.
+  - [x] Phase 17POS-AUTH-A2B — Policy change: gate applies to **all** roles that can reach a saved-guest edit (owner, manager, cashier), not cashier only — no silent owner/manager bypass. Reason field now server-enforced as required when gated. Self-approval was allowed for all roles at this point — **superseded by A2C below**. Pure gating decision extracted to `requiresApprovalForSavedGuestEdit()` in `lib/auth/approval-code-core.ts` (unit tested). Kitchen remains blocked upstream by the existing `manage_tables` permission check — the approval code was never a permission grant.
+  - [x] Phase 17POS-AUTH-A2C — Self-approval policy tightened: only **owner** may redeem a code it generated itself; manager/cashier self-approval is rejected with a specific Thai message (distinct from the generic invalid-code message — deliberately more informative since the code IS valid, the actor just isn't allowed to use it) and does **not** consume the code. `isSelfApprovalAllowed(role, generatedByUserId, actorUserId)` in `lib/auth/approval-code-core.ts` (unit tested); enforced in `consumeManagerApprovalCode()` after hash verification, before the code is marked used. `selfApproved` audit flag on `manager_approval_code_used` / `sensitive_action_approved_by_code` can now only be `true` when actor role is owner.
+  - [x] Phase 17POS-AUTH-A3 — Approval code layered onto the two existing paid-bill mutations without changing RBAC: `deletePaymentRecord` (owner-only, `payment:delete`, unchanged) and `reopenSessionForPayment` (owner+manager, `payment:reopen`, unchanged) in `lib/actions/history.ts` now require a valid, non-self (per A2C), reasoned approval code, checked strictly after permission/input/shift-status validation — a valid code never grants delete/reopen to a role that lacks the permission. `ManagerApprovalModal` wired into `SessionDetailDialog.tsx`. Reuses `delete_payment`/`reopen_session`/`sensitive_action_approved_by_code` audit actions (no new labels needed). Closeout UAT (2026-07-13/14): owner delete with code succeeds and is audited with no plaintext code (UAT-01 ✓ live); wrong/empty/used code rejected, no deletion (UAT-02 ✓ live); manager reopen with owner-generated non-self code succeeds (UAT-05 ✓ live, discovered organically); manager/cashier delete-blocked-even-with-valid-code (UAT-03/04) and manager-self-code-blocked (UAT-06) verified by code path + `payment-delete-reopen-permissions.test.ts` rather than a live click (user opted to skip after UAT-03 attempt actually exercised reopen, not delete). `npm run test:approval-code` 65/65, `reconcile:payments` 0 Critical/0 High, `db:check-migrations` baseline OK (penalty-tile-enum warning only, untouched).
+  - [x] Phase 17POS-AUTH-A4 — Directional gating for the saved-guest-count edit (A2/A2B/A2C): only a **decrease** to any previously-saved tile (including removing one entirely) requires the approval code; pure increases/additions never do, since they can't hide a fraud scenario the code exists to catch. `hasGuestCountDecrease()` added to `lib/auth/approval-code-core.ts` (unit tested), composed into the existing gate in `lib/actions/sessions.ts`. `PosTerminal.tsx`'s per-tile quantity popup now has its own บันทึก button (saves immediately, triggers the modal inline if a decrease is detected) alongside ปิด, which now reverts the tile to its pre-popup quantity instead of leaving an unsaved draft change on screen. `npm run test:approval-code` 65/65 (9 new tests).
+  - [ ] Phase 17POS-AUTH-A3B (found during A3 closeout, unrelated to approval codes) — Two staff-nav/module wiring gaps fixed: (1) `payment-settings` was listed in `nav-config.ts`'s `MODULE_HREFS` but missing from `lib/auth/module-routes.ts`'s `STAFF_MODULE_PREFIXES` and from the assignable list in `StaffPage.tsx`'s `MODULE_GROUPS` — any staff member with a restricted (non-empty) `allowedModules` list was unconditionally blocked from `/payment-settings` with no way for an owner to grant it back; now assignable. (2) `manager`/`cashier` NAV entries in `StandardSidebarLayout.tsx` used a flat `/pos` item instead of `posGroup`, so their sidebar never showed a "ประวัติชำระเงิน" (`/pos/history`) link at all even though the route itself was already reachable — both now use `posGroup`, matching `owner`.
 
 Historical V2 plan: `docs/reui-v2/00_MASTER_PLAN.md` (completed; kept for reference).

@@ -15,11 +15,12 @@
  * adding new staff-accessible route sections.
  */
 export const STAFF_MODULE_PREFIXES: Record<string, string[]> = {
-  pos:      ['/pos'],
-  kds:      ['/kds'],
-  queue:    ['/queue'],
-  tables:   ['/tables'],
-  printers: ['/printers'],
+  pos:               ['/pos'],
+  kds:               ['/kds'],
+  queue:             ['/queue'],
+  tables:            ['/tables'],
+  printers:          ['/printers'],
+  'payment-settings': ['/payment-settings'],
 };
 
 /**

@@ -119,10 +119,12 @@ export const MODULE_GROUPS = [
   {
     label: 'ตั้งค่า / Admin',
     modules: [
-      { id: 'settings', label: 'ตั้งค่าบิล' },
-      { id: 'users',    label: 'บัญชีผู้ใช้' },
-      { id: 'printers', label: 'เครื่องพิมพ์' },
-      { id: 'system',   label: 'ข้อมูลระบบ' },
+      { id: 'settings',          label: 'ตั้งค่าบิล' },
+      { id: 'users',             label: 'บัญชีผู้ใช้' },
+      { id: 'approval-code',     label: 'รหัสอนุมัติ' },
+      { id: 'printers',          label: 'เครื่องพิมพ์' },
+      { id: 'payment-settings',  label: 'ตั้งค่าการชำระเงิน' },
+      { id: 'system',            label: 'ข้อมูลระบบ' },
     ],
   },
 ];

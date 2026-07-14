@@ -36,6 +36,7 @@ import {
   Clock,
   Wallet,
   BookOpen,
+  KeyRound,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -161,6 +162,7 @@ const NAV: Record<Role, NavSection[]> = {
       items: [
         { href: '/settings',         label: 'ตั้งค่าบิล',      Icon: Settings },
         { href: '/payment-settings', label: 'Payment Settings', Icon: CreditCard },
+        { href: '/approval-code',    label: 'รหัสอนุมัติ',     Icon: KeyRound },
         { href: '/users',            label: 'บัญชีผู้ใช้',     Icon: Users },
         { href: '/printers',         label: 'เครื่องพิมพ์',    Icon: Printer },
         { href: '/system',           label: 'ข้อมูลระบบ',      Icon: Info },
@@ -170,11 +172,12 @@ const NAV: Record<Role, NavSection[]> = {
   manager: [
     {
       items: [
-        { href: '/pos',   label: 'POS',  Icon: ShoppingCart },
+        posGroup,
         kdsGroup,
         queueGroup,
         tableGroup,
         { href: '/payment-settings', label: 'Payment Settings', Icon: CreditCard },
+        { href: '/approval-code',    label: 'รหัสอนุมัติ',     Icon: KeyRound },
         { href: '/printers', label: 'เครื่องพิมพ์', Icon: Printer },
       ],
     },
@@ -182,7 +185,7 @@ const NAV: Record<Role, NavSection[]> = {
   cashier: [
     {
       items: [
-        { href: '/pos',      label: 'POS',          Icon: ShoppingCart },
+        posGroup,
         { href: '/kds',      label: 'ครัว',          Icon: ChefHat },
         tableGroup,
         queueGroup,
