@@ -72,20 +72,25 @@ function formatElapsedClock(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/* Status color lives in the border + header strip + urgency bar only —
+   the item list stays on the card surface so names are readable at
+   kitchen-viewing distance. */
 const CARD_TONE = {
   waiting: {
-    card: 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)]',
+    card: 'border-[var(--status-warning-border)]',
     header: 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)]',
     accent: 'text-[var(--status-warning-fg)]',
-    media: 'border-[var(--status-warning-border)] bg-card',
-    divide: 'divide-[var(--status-warning-border)]/45',
+    bar: 'bg-[var(--status-warning-fg)]',
+    media: 'border-border/60 bg-[var(--surface-2)]',
+    divide: 'divide-border/60',
   },
   late: {
-    card: 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)]',
+    card: 'border-[var(--status-danger-border)]',
     header: 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)]',
     accent: 'text-[var(--status-danger-fg)]',
-    media: 'border-[var(--status-danger-border)] bg-card',
-    divide: 'divide-[var(--status-danger-border)]/45',
+    bar: 'bg-[var(--status-danger-fg)]',
+    media: 'border-border/60 bg-[var(--surface-2)]',
+    divide: 'divide-border/60',
   },
 } as const;
 
@@ -115,64 +120,73 @@ const KdsCard = memo(function KdsCard({
   const tone = isLate ? CARD_TONE.late : CARD_TONE.waiting;
 
   return (
-    <div className={cn('flex flex-col overflow-hidden rounded-xl border-2 shadow-[var(--shadow-card)]', tone.card)}>
-      {/* Card header */}
-      <div className={cn('flex items-center justify-between border-b px-3 py-2.5', tone.header)}>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-bold text-foreground">โต๊ะ {group.tableNumber}</p>
-          <p className={cn('mt-0.5 text-[11px] font-semibold', tone.accent)}>
-            {STATION_LABEL[group.station]}
+    <div className={cn('flex flex-col overflow-hidden rounded-xl border-2 bg-card shadow-[var(--shadow-card)]', tone.card)}>
+      {/* Card header — table number + timer readable across the kitchen */}
+      <div className={cn('border-b px-3.5 pb-2.5 pt-2.5', tone.header)}>
+        <div className="flex items-center justify-between gap-3">
+          <p className="min-w-0 truncate text-lg font-bold leading-tight text-foreground">
+            โต๊ะ {group.tableNumber}
           </p>
-        </div>
-        <div className="ml-3 shrink-0 text-right">
-          <p className={cn('inline-flex items-center gap-1 text-sm font-bold tabular-nums', tone.accent)}>
-            <Clock className="size-3.5" />
+          <p className={cn('inline-flex shrink-0 items-center gap-1 text-lg font-bold tabular-nums leading-none', tone.accent)}>
+            <Clock className="size-4" />
             {formatElapsedClock(seconds)}
           </p>
+        </div>
+        <div className="mt-0.5 flex items-center justify-between gap-2">
+          <p className={cn('text-xs font-bold', tone.accent)}>{STATION_LABEL[group.station]}</p>
           {isLate && (
-            <p className="mt-0.5 text-[11px] font-bold text-[var(--status-danger-fg)]">เสิร์ฟช้า</p>
+            <span className="animate-pulse rounded-full bg-[var(--status-danger-fg)] px-2 py-0.5 text-[10px] font-bold leading-none text-white">
+              เสิร์ฟช้า
+            </span>
           )}
+        </div>
+        {/* Urgency bar — fills over 10 minutes, then the card flips to red */}
+        <div className="mt-2 h-1 overflow-hidden rounded-full bg-foreground/10">
+          <div
+            className={cn('h-full rounded-full transition-[width] duration-1000', tone.bar)}
+            style={{ width: `${Math.min(100, (seconds / LATE_SEC) * 100)}%` }}
+          />
         </div>
       </div>
 
       {/* Item list */}
-      <ul className={cn('flex-1 divide-y px-2 py-1', tone.divide)}>
+      <ul className={cn('flex-1 divide-y px-3 py-1', tone.divide)}>
         {group.items.map((item) => (
-          <li key={item.id} className="flex items-center gap-1.5 py-1.5">
+          <li key={item.id} className="flex items-center gap-2.5 py-2">
             {item.imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={item.imageUrl}
                 alt={item.menuItemName}
-                className={cn('h-7 w-7 shrink-0 rounded border object-cover', tone.media)}
+                className={cn('size-10 shrink-0 rounded-lg border object-cover', tone.media)}
               />
             ) : (
-              <div className={cn('h-7 w-7 shrink-0 rounded border', tone.media)} />
+              <div className={cn('size-10 shrink-0 rounded-lg border', tone.media)} />
             )}
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-semibold leading-tight text-foreground">
+              <p className="truncate text-sm font-semibold leading-tight text-foreground">
                 {item.menuItemName}
               </p>
               {item.notes && (
-                <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{item.notes}</p>
+                <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{item.notes}</p>
               )}
             </div>
-            <span className="shrink-0 text-sm font-bold tabular-nums text-foreground">
+            <span className="shrink-0 text-base font-bold tabular-nums text-foreground">
               ×{item.quantity}
             </span>
           </li>
         ))}
       </ul>
 
-      {/* Action buttons */}
-      <div className="flex gap-1.5 px-2 pb-2">
+      {/* Action buttons — เสิร์ฟ is THE action, solid and unmissable */}
+      <div className="flex gap-2 px-3 pb-3 pt-1">
         <button
           type="button"
           disabled={isPending}
           onClick={onServe}
-          className="flex min-h-10 flex-1 items-center justify-center gap-1 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] py-2 text-xs font-bold text-[var(--status-success-fg)] transition-colors hover:border-[var(--status-success-fg)] disabled:opacity-50"
+          className="flex min-h-12 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[var(--status-success-fg)] text-sm font-bold text-white transition-colors hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
         >
-          {isPending ? <Loader2 className="size-3 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+          {isPending ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
           เสิร์ฟ
         </button>
         {confirming ? (
@@ -180,7 +194,7 @@ const KdsCard = memo(function KdsCard({
             type="button"
             disabled={isPending}
             onClick={() => { setConfirming(false); onCancel(); }}
-            className="min-h-10 flex-1 rounded-lg border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] py-2 text-xs font-bold text-[var(--status-danger-fg)] transition-colors hover:border-[var(--status-danger-fg)] disabled:opacity-50"
+            className="min-h-12 flex-1 rounded-xl border-2 border-[var(--status-danger-fg)] bg-[var(--status-danger-bg)] text-sm font-bold text-[var(--status-danger-fg)] transition-colors disabled:opacity-50"
           >
             ยืนยัน?
           </button>
@@ -190,7 +204,7 @@ const KdsCard = memo(function KdsCard({
             disabled={isPending}
             onClick={() => setConfirming(true)}
             onBlur={() => setConfirming(false)}
-            className="flex min-h-10 items-center justify-center gap-1 rounded-lg border border-border/70 px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-[var(--status-danger-border)] hover:bg-[var(--status-danger-bg)] hover:text-[var(--status-danger-fg)] disabled:opacity-50"
+            className="flex min-h-12 items-center justify-center gap-1 rounded-xl border border-border/70 px-3 text-xs font-semibold text-muted-foreground transition-colors hover:border-[var(--status-danger-border)] hover:bg-[var(--status-danger-bg)] hover:text-[var(--status-danger-fg)] disabled:opacity-50"
           >
             <XCircle className="size-3.5" />
             ยกเลิก
@@ -271,13 +285,13 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
             <p className="text-xs text-muted-foreground">{groups.length} ออเดอร์ที่รอเสิร์ฟ</p>
           </div>
         </div>
-        {/* Station tabs */}
-        <div className="flex items-center justify-end gap-1.5 overflow-x-auto py-1">
+        {/* Station tabs — larger touch targets, scrollable when many stations */}
+        <div className="flex items-center justify-end gap-2 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <button
             type="button"
             onClick={() => setActiveStation('all')}
             className={cn(
-              'min-h-9 shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+              'min-h-10 shrink-0 rounded-full border px-4 text-sm font-semibold transition-colors active:scale-95',
               activeStation === 'all'
                 ? 'border-primary/30 bg-primary text-primary-foreground shadow-[var(--shadow-subtle)]'
                 : 'border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -294,7 +308,7 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
               type="button"
               onClick={() => setActiveStation(s)}
               className={cn(
-                'min-h-9 shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+                'min-h-10 shrink-0 rounded-full border px-4 text-sm font-semibold transition-colors active:scale-95',
                 activeStation === s
                   ? 'border-primary/30 bg-primary text-primary-foreground shadow-[var(--shadow-subtle)]'
                   : 'border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -318,7 +332,7 @@ export function KdsBoard({ initialItems }: KdsBoardProps) {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {visibleGroups.map((group) => (
               <KdsCard
                 key={group.groupKey}

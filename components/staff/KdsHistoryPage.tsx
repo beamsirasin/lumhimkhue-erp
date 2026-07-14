@@ -89,20 +89,27 @@ function HistoryTable({ rows, date }: { rows: KdsHistoryRow[]; date: string }) {
       {stations.map((station) => {
         const stationRows = rows.filter((r) => r.station === station);
         const stTotal = stationRows.reduce((s, r) => s + r.totalQty, 0);
+        const stServed = stationRows.reduce((s, r) => s + r.servedQty, 0);
+        const stCancelled = stationRows.reduce((s, r) => s + r.cancelledQty, 0);
+        const allServed = stTotal > 0 && stServed + stCancelled === stTotal;
         return (
           <DataCard
             key={station}
             title={STATION_LABEL[station] ?? station}
             subtitle={`รวม ${stTotal} รายการ`}
             actions={(
-              <StatusBadge
-                label={STATION_LABEL[station] ?? station}
-                variant={STATION_VARIANT[station] ?? 'neutral'}
-                dot
-              />
+              <div className="flex flex-wrap items-center justify-end gap-1.5">
+                <StatusBadge
+                  label={`เสิร์ฟ ${stServed}/${stTotal}`}
+                  variant={allServed ? 'success' : (STATION_VARIANT[station] ?? 'neutral')}
+                  dot
+                />
+                {stCancelled > 0 && <StatusBadge label={`ยกเลิก ${stCancelled}`} variant="danger" />}
+              </div>
             )}
             noPadding
           >
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="border-border bg-[var(--surface-2)] hover:bg-[var(--surface-2)]">
@@ -125,6 +132,7 @@ function HistoryTable({ rows, date }: { rows: KdsHistoryRow[]; date: string }) {
                 ))}
               </TableBody>
             </Table>
+            </div>
           </DataCard>
         );
       })}

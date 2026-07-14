@@ -109,7 +109,9 @@ const SOUP_STYLE: Record<SoupOption, { sel: string; unsel: string }> = {
 
 /* ─── Row status tones ───────────────────────────────────────────── */
 
-type DisplayStatus = 'waiting' | 'waiting_suitable_table' | 'called' | 'admitted' | 'billed';
+type DisplayStatus =
+  | 'waiting' | 'waiting_suitable_table' | 'called' | 'admitted' | 'billed'
+  | 'skipped' | 'cancelled';
 
 const ROW_TONE: Record<DisplayStatus, { label: string; badge: string; accentColor: string }> = {
   waiting: {
@@ -137,6 +139,16 @@ const ROW_TONE: Record<DisplayStatus, { label: string; badge: string; accentColo
     badge:       'border-[var(--status-neutral-border)] bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
     accentColor: 'var(--status-neutral-fg)',
   },
+  skipped: {
+    label:       'ข้ามแล้ว',
+    badge:       'border-[var(--status-orange-border)] bg-[var(--status-orange-bg)] text-[var(--status-orange-fg)]',
+    accentColor: 'var(--status-orange-fg)',
+  },
+  cancelled: {
+    label:       'ยกเลิกแล้ว',
+    badge:       'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]',
+    accentColor: 'var(--status-danger-fg)',
+  },
 };
 
 /* ─── Helpers ────────────────────────────────────────────────────── */
@@ -144,11 +156,7 @@ const ROW_TONE: Record<DisplayStatus, { label: string; badge: string; accentColo
 function soupSummary(pots: Array<{ soups: string[] }> | null | undefined): string {
   if (!pots?.length) return '';
   return pots
-    .map(p => {
-      if (!p.soups?.length) return '';
-      if (p.soups.length === 2 && p.soups[0] === p.soups[1]) return `${p.soups[0]} ×2`;
-      return p.soups.join(' + ');
-    })
+    .map(p => (p.soups?.length ? p.soups.join(' + ') : ''))
     .filter(Boolean)
     .join(' · ');
 }
@@ -183,13 +191,9 @@ function SoupChips({ pots }: { pots: Array<{ soups: string[] }> | null | undefin
   const chips: { label: string; style: string }[] = [];
   for (const p of pots) {
     if (!p.soups?.length) continue;
-    if (p.soups.length === 2 && p.soups[0] === p.soups[1]) {
-      const short = SOUP_SHORT_LABEL[p.soups[0]] ?? p.soups[0];
-      chips.push({ label: `${short} ×2`, style: SOUP_CHIP_STYLE[p.soups[0]] ?? SOUP_CHIP_STYLE['น้ำดำ'] });
-    } else {
-      for (const soup of p.soups) {
-        chips.push({ label: SOUP_SHORT_LABEL[soup] ?? soup, style: SOUP_CHIP_STYLE[soup] ?? SOUP_CHIP_STYLE['น้ำดำ'] });
-      }
+    // Duplicates render as two separate chips ("ใส ใส"), never "ใส ×2".
+    for (const soup of p.soups) {
+      chips.push({ label: SOUP_SHORT_LABEL[soup] ?? soup, style: SOUP_CHIP_STYLE[soup] ?? SOUP_CHIP_STYLE['น้ำดำ'] });
     }
   }
   if (!chips.length) return null;
@@ -242,6 +246,14 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
+
+  // Skipped/cancelled queues stay on the board (muted, read-only) instead of
+  // vanishing into history — appended after the active list, oldest first.
+  const terminalToday = useMemo(
+    () => todayHistory.filter(e => e.status === 'skipped' || e.status === 'cancelled'),
+    [todayHistory],
+  );
+  const boardEntries = useMemo(() => [...entries, ...terminalToday], [entries, terminalToday]);
 
   // Counter computations — entries now includes all admitted (billed and not-billed)
   const waitingCount   = entries.filter(e => e.status !== 'admitted').length;
@@ -296,69 +308,79 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
     <div className="flex h-dvh flex-col overflow-hidden bg-[var(--surface-0)]">
 
       {/* ── Header ─────────────────────────────────────────────── */}
-      <header className="shrink-0 border-b border-border bg-[var(--surface-1)] px-4 py-3 shadow-[var(--shadow-card)]">
-        <div className="flex items-center gap-3">
-          <ClipboardList className="size-5 shrink-0 text-primary" />
-          <span className="text-lg font-bold text-foreground">คิว</span>
-          <span className="shrink-0 text-xs text-muted-foreground" suppressHydrationWarning>
-            วันนี้ {format(new Date(), 'd MMM', { locale: th })}
-          </span>
+      <header className="shrink-0 border-b border-border bg-[var(--surface-1)] shadow-[var(--shadow-card)]">
+        <div className="mx-auto w-full max-w-5xl px-3 pb-2.5 pt-3 sm:px-4">
+          {/* Row 1: identity + primary actions */}
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-primary-subtle)]">
+              <ClipboardList className="size-5 text-primary" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-base font-bold leading-tight text-foreground sm:text-lg">จัดการคิว</h1>
+              <p className="text-[11px] text-muted-foreground" suppressHydrationWarning>
+                วันนี้ {format(new Date(), 'd MMMM', { locale: th })}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => router.push('/queue/history')}
+                aria-label="ประวัติคิว"
+                className="flex min-h-10 items-center gap-1.5 rounded-xl border border-border bg-[var(--surface-2)] px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+              >
+                <History className="size-4" />
+                <span className="hidden sm:inline">ประวัติ</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setEditingEntry(null); setFormMode('add'); }}
+                className="flex min-h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 sm:px-5"
+              >
+                <Plus className="size-4" />
+                เพิ่มคิว
+              </button>
+            </div>
+          </div>
 
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-xs">
-            <Counter label="รอ"        count={waitingCount}   cls="text-[var(--status-warning-fg)] bg-[var(--status-warning-bg)] border-[var(--status-warning-border)]" />
+          {/* Row 2: status counters — horizontally scrollable on narrow screens */}
+          <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <Counter label="รอ"       count={waitingCount}   cls="text-[var(--status-warning-fg)] bg-[var(--status-warning-bg)] border-[var(--status-warning-border)]" />
             <Counter label="รับเข้า"  count={admittedCount}  cls="text-[var(--status-success-fg)] bg-[var(--status-success-bg)] border-[var(--status-success-border)]" />
             <Counter label="ออกบิล"   count={billedCount}    cls="text-[var(--status-neutral-fg)] bg-[var(--status-neutral-bg)] border-[var(--status-neutral-border)]" />
             <Counter label="ข้าม"     count={skippedToday}   cls="text-muted-foreground bg-muted/30 border-border" />
             <Counter label="ยกเลิก"   count={cancelledToday} cls="text-muted-foreground bg-muted/30 border-border" />
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={() => router.push('/queue/history')}
-              className="flex min-h-9 items-center gap-1.5 rounded-lg border border-border bg-[var(--surface-2)] px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-            >
-              <History className="size-3.5" />
-              ประวัติ
-            </button>
-            <button
-              type="button"
-              onClick={() => { setEditingEntry(null); setFormMode('add'); }}
-              className="flex min-h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95"
-            >
-              <Plus className="size-4" />
-              เพิ่มคิว
-            </button>
           </div>
         </div>
       </header>
 
       {/* ── Last-added notice ──────────────────────────────────── */}
       {lastAdded && (
-        <div className="mx-3 mt-2 flex items-center justify-between gap-3 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2">
-          <span className="text-sm font-semibold text-[var(--status-success-fg)]">
-            คิว {lastAdded.queueNumber} เพิ่มสำเร็จ
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => void printQueueQr({ type: 'queue_qr', queueEntry: lastAdded })}
-              className="flex min-h-8 items-center gap-1 rounded-lg border border-[var(--status-success-border)] px-2.5 text-xs font-semibold text-[var(--status-success-fg)] hover:bg-[var(--surface-1)]"
-            >
-              <Printer className="size-3" />
-              พิมพ์ซ้ำ
-            </button>
-            <button type="button" aria-label="ปิด" onClick={() => setLastAdded(null)}
-              className="flex size-8 items-center justify-center rounded-lg text-[var(--status-success-fg)] hover:bg-[var(--surface-1)]">
-              <X className="size-3.5" />
-            </button>
+        <div className="mx-auto mt-2 w-full max-w-5xl px-3 sm:px-4">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2">
+            <span className="min-w-0 truncate text-sm font-semibold text-[var(--status-success-fg)]">
+              คิว {lastAdded.queueNumber} เพิ่มสำเร็จ
+            </span>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => void printQueueQr({ type: 'queue_qr', queueEntry: lastAdded })}
+                className="flex min-h-9 items-center gap-1 rounded-lg border border-[var(--status-success-border)] px-2.5 text-xs font-semibold text-[var(--status-success-fg)] hover:bg-[var(--surface-1)]"
+              >
+                <Printer className="size-3" />
+                พิมพ์ซ้ำ
+              </button>
+              <button type="button" aria-label="ปิด" onClick={() => setLastAdded(null)}
+                className="flex size-9 items-center justify-center rounded-lg text-[var(--status-success-fg)] hover:bg-[var(--surface-1)]">
+                <X className="size-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* ── Single-sequence board ──────────────────────────────── */}
       <main className="flex-1 min-h-0 overflow-y-auto">
-        {entries.length === 0 ? (
+        {boardEntries.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
             <div className="flex size-14 items-center justify-center rounded-full bg-[var(--surface-2)]">
               <ClipboardList className="size-6 text-muted-foreground/60" />
@@ -377,8 +399,8 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
             </button>
           </div>
         ) : (
-          <div className="space-y-2 px-3 pb-8 pt-2">
-            {entries.map(entry => (
+          <div className="mx-auto w-full max-w-5xl space-y-2 px-3 pb-8 pt-2.5 sm:px-4">
+            {boardEntries.map(entry => (
               <ActiveQueueRow
                 key={entry.id}
                 entry={entry}
@@ -449,8 +471,15 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
 
 function Counter({ label, count, cls }: { label: string; count: number; cls: string }) {
   return (
-    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-semibold', cls)}>
-      {label} {count}
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium leading-none',
+        cls,
+        count === 0 && 'opacity-55',
+      )}
+    >
+      {label}
+      <span className="text-sm font-bold tabular-nums leading-none">{count}</span>
     </span>
   );
 }
@@ -470,22 +499,17 @@ interface ActiveQueueRowProps {
   onShowQr: () => void;
 }
 
-function ActiveQueueRow({
-  entry, onEdit, onPickTable, onAdmit, onSkip, billPending, onBillIssued, onCancel, onPrint, onShowQr,
-}: ActiveQueueRowProps) {
+/* Overflow menu (แสดง QR / พิมพ์ซ้ำ / ยกเลิก) — its own component so the
+   card can render one instance for the desktop action column and one for
+   the mobile action bar. Portal keeps it clear of overflow-hidden/scroll. */
+function RowOverflowMenu({
+  onShowQr, onPrint, onCancel, className,
+}: {
+  onShowQr: () => void; onPrint: () => void; onCancel: () => void; className?: string;
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const [menuFixed, setMenuFixed] = useState<{ top: number; right: number } | null>(null);
-
-  const isBilled   = entry.status === 'admitted' && !!entry.billIssued;
-  const isAdmitted = entry.status === 'admitted';
-  const displayStatus: DisplayStatus = isBilled ? 'billed' : (entry.status as DisplayStatus);
-  const tone       = ROW_TONE[displayStatus] ?? ROW_TONE.waiting;
-  const seating    = seatingDisplayLabel(entry.seatingFit);
-  const isNonNormal = entry.customerType && entry.customerType !== 'normal';
-  const tableNote  = (entry.plannedTableNote && entry.plannedTableNote !== '-')
-    ? entry.plannedTableNote : null;
-  const timeRef    = (isAdmitted && entry.admittedAt) ? entry.admittedAt : entry.createdAt;
 
   function openMenu() {
     const rect = menuBtnRef.current?.getBoundingClientRect();
@@ -498,8 +522,68 @@ function ActiveQueueRow({
     setMenuOpen(true);
   }
 
+  return (
+    <>
+      <button
+        ref={menuBtnRef}
+        type="button"
+        aria-label="เมนูเพิ่มเติม"
+        onClick={openMenu}
+        className={cn(
+          'flex items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted',
+          className,
+        )}
+      >
+        <MoreVertical className="size-4" />
+      </button>
+      {menuOpen && menuFixed && createPortal(
+        <>
+          <div className="fixed inset-0 z-50" onClick={() => setMenuOpen(false)} />
+          <div
+            className="fixed z-50 w-44 overflow-hidden rounded-xl border border-border bg-[var(--surface-raised)] shadow-[var(--shadow-raised)]"
+            style={{ top: menuFixed.top, right: menuFixed.right }}
+          >
+            <button type="button" onClick={() => { setMenuOpen(false); onShowQr(); }}
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-muted">
+              <QrCode className="size-3.5 text-muted-foreground" />แสดง QR
+            </button>
+            <div className="border-t border-border" />
+            <button type="button" onClick={() => { setMenuOpen(false); onPrint(); }}
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-muted">
+              <Printer className="size-3.5 text-muted-foreground" />พิมพ์ตั๋วซ้ำ
+            </button>
+            <div className="border-t border-border" />
+            <button type="button" onClick={() => { setMenuOpen(false); onCancel(); }}
+              className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)]">
+              <Trash2 className="size-3.5" />ยกเลิกคิว
+            </button>
+          </div>
+        </>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+function ActiveQueueRow({
+  entry, onEdit, onPickTable, onAdmit, onSkip, billPending, onBillIssued, onCancel, onPrint, onShowQr,
+}: ActiveQueueRowProps) {
+  const isBilled   = entry.status === 'admitted' && !!entry.billIssued;
+  const isAdmitted = entry.status === 'admitted';
+  // Skipped/cancelled entries stay on the board as muted, read-only cards.
+  const isTerminal = entry.status === 'skipped' || entry.status === 'cancelled';
+  const displayStatus: DisplayStatus = isTerminal
+    ? (entry.status as DisplayStatus)
+    : isBilled ? 'billed' : (entry.status as DisplayStatus);
+  const tone       = ROW_TONE[displayStatus] ?? ROW_TONE.waiting;
+  const seating    = seatingDisplayLabel(entry.seatingFit);
+  const isNonNormal = entry.customerType && entry.customerType !== 'normal';
+  const tableNote  = (entry.plannedTableNote && entry.plannedTableNote !== '-')
+    ? entry.plannedTableNote : null;
+  const timeRef    = (isAdmitted && entry.admittedAt) ? entry.admittedAt : entry.createdAt;
+
   // Card surface changes subtly per status
-  const cardCls = isBilled
+  const cardCls = isBilled || isTerminal
     ? 'border-border/40 bg-[var(--surface-2)]/60 opacity-75'
     : isAdmitted
       ? 'border-[var(--status-success-border)]/50 bg-[var(--status-success-bg)]/15'
@@ -512,69 +596,22 @@ function ActiveQueueRow({
       : 'border-[var(--status-info-border)] bg-[var(--status-info-bg)] text-[var(--status-info-fg)]')
     : 'border-border bg-[var(--surface-2)] text-muted-foreground hover:border-primary/40 hover:text-foreground';
 
-  const tableButtonActiveCls = tableNote
-    ? (isAdmitted
-      ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'
-      : 'border-[var(--status-info-border)] bg-[var(--status-info-bg)] text-[var(--status-info-fg)]')
-    : 'border-border bg-[var(--surface-2)] text-muted-foreground hover:border-primary/40 hover:text-foreground';
-
-  return (
-    <div className={cn('relative flex items-stretch overflow-hidden rounded-xl border shadow-[var(--shadow-card)] transition-colors', cardCls)}>
-      {/* Accent bar */}
-      <div className="w-[3px] shrink-0" style={{ backgroundColor: tone.accentColor }} aria-hidden="true" />
-
-      {/* Tappable info area → opens edit */}
-      <button
-        type="button"
-        onClick={onEdit}
-        className="flex flex-1 flex-col justify-center gap-1.5 px-3 py-3.5 text-left transition-colors hover:bg-foreground/[0.02]"
-      >
-        {/* Line 1: number · status badge · time */}
-        <div className="flex items-center gap-2">
-          <span className="w-[4.5rem] shrink-0 text-2xl font-black tabular-nums leading-none text-foreground">
-            {entry.queueNumber}
-          </span>
-          <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold leading-none', tone.badge)}>
-            {tone.label}
-          </span>
-          <span className="flex items-center gap-0.5 text-xs text-muted-foreground" suppressHydrationWarning>
-            <Clock className="size-3 shrink-0" />
-            {formatDistanceToNowStrict(new Date(timeRef as string | Date), { locale: th, addSuffix: true })}
-          </span>
-        </div>
-
-        {/* Line 2: count · soup chips · seating · table chip · type chip */}
-        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
-          <span className="shrink-0 font-semibold text-foreground">
-            ผู้ใหญ่ {entry.adultCount ?? 0} · เด็ก {entry.childCount ?? 0}
-          </span>
-          <SoupChips pots={entry.soupPots as Array<{ soups: string[] }> | null} />
-          {seating && <span className="shrink-0 text-muted-foreground">{seating}</span>}
-          {tableNote && (
-            <span className={cn('inline-flex shrink-0 items-center gap-0.5 rounded border px-1.5 py-0.5 font-semibold', tableChipCls)}>
-              <MapPin className="size-2.5" />
-              {tableNote}
-            </span>
-          )}
-          {isNonNormal && (
-            <span className="shrink-0 rounded border border-border bg-[var(--surface-2)] px-1.5 py-0.5 font-medium text-muted-foreground">
-              {CUSTOMER_TYPE_SHORT[entry.customerType as CustomerType]}
-            </span>
-          )}
-        </div>
-      </button>
-
-      {/* Actions — stop propagation so taps don't trigger edit */}
-      <div className="flex shrink-0 items-center gap-1.5 pr-2.5" onClick={e => e.stopPropagation()}>
-
+  /* Action buttons — rendered twice: side column (sm+) and bottom bar (mobile).
+     `mobile` only changes sizing/stretch classes, never behavior. */
+  function renderActions(mobile: boolean) {
+    const base   = mobile ? 'min-h-11 flex-1 justify-center' : 'min-h-10';
+    const square = mobile ? 'size-11' : 'size-10';
+    return (
+      <>
         {/* เลือกโต๊ะ — always shown */}
         <button
           type="button"
           onClick={onPickTable}
           aria-label="เลือกโต๊ะ"
           className={cn(
-            'flex min-h-9 items-center gap-1 rounded-lg border px-2 text-xs font-semibold transition-colors active:scale-95',
-            tableButtonActiveCls,
+            'flex items-center gap-1 rounded-lg border px-2.5 text-xs font-semibold transition-colors active:scale-95',
+            base,
+            tableChipCls,
           )}
         >
           <MapPin className="size-3.5 shrink-0" />
@@ -588,7 +625,10 @@ function ActiveQueueRow({
               type="button"
               disabled={billPending}
               onClick={onBillIssued}
-              className="flex min-h-9 items-center gap-1 rounded-lg border border-primary bg-primary px-2.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:pointer-events-none disabled:opacity-60"
+              className={cn(
+                'flex items-center gap-1 rounded-lg border border-primary bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:pointer-events-none disabled:opacity-60',
+                base,
+              )}
             >
               {billPending
                 ? <Loader2 className="size-3.5 shrink-0 animate-spin" />
@@ -600,7 +640,10 @@ function ActiveQueueRow({
               <button
                 type="button"
                 onClick={onAdmit}
-                className="flex min-h-9 items-center gap-1 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-2.5 text-xs font-semibold text-[var(--status-success-fg)] transition-colors hover:border-[var(--status-success-fg)] active:scale-95"
+                className={cn(
+                  'flex items-center gap-1 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 text-xs font-semibold text-[var(--status-success-fg)] transition-colors hover:border-[var(--status-success-fg)] active:scale-95',
+                  base,
+                )}
               >
                 <UserCheck className="size-3.5 shrink-0" />
                 รับเข้า
@@ -611,7 +654,10 @@ function ActiveQueueRow({
                 type="button"
                 onClick={onSkip}
                 aria-label="ข้ามคิว"
-                className="flex size-9 items-center justify-center rounded-lg border border-[var(--status-warning-border)] text-[var(--status-warning-fg)] transition-colors hover:bg-[var(--status-warning-bg)] active:scale-95"
+                className={cn(
+                  'flex shrink-0 items-center justify-center rounded-lg border border-[var(--status-warning-border)] text-[var(--status-warning-fg)] transition-colors hover:bg-[var(--status-warning-bg)] active:scale-95',
+                  square,
+                )}
               >
                 <SkipForward className="size-4" />
               </button>
@@ -619,44 +665,84 @@ function ActiveQueueRow({
           )
         )}
 
-        {/* Overflow menu — rendered in a portal so overflow-hidden/scroll cannot clip it */}
-        <div>
-          <button
-            ref={menuBtnRef}
-            type="button"
-            aria-label="เมนูเพิ่มเติม"
-            onClick={openMenu}
-            className="flex size-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted"
-          >
-            <MoreVertical className="size-4" />
-          </button>
-          {menuOpen && menuFixed && createPortal(
-            <>
-              <div className="fixed inset-0 z-50" onClick={() => setMenuOpen(false)} />
-              <div
-                className="fixed z-50 w-44 overflow-hidden rounded-xl border border-border bg-[var(--surface-raised)] shadow-[var(--shadow-raised)]"
-                style={{ top: menuFixed.top, right: menuFixed.right }}
-              >
-                <button type="button" onClick={() => { setMenuOpen(false); onShowQr(); }}
-                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-muted">
-                  <QrCode className="size-3.5 text-muted-foreground" />แสดง QR
-                </button>
-                <div className="border-t border-border" />
-                <button type="button" onClick={() => { setMenuOpen(false); onPrint(); }}
-                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-muted">
-                  <Printer className="size-3.5 text-muted-foreground" />พิมพ์ตั๋วซ้ำ
-                </button>
-                <div className="border-t border-border" />
-                <button type="button" onClick={() => { setMenuOpen(false); onCancel(); }}
-                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)]">
-                  <Trash2 className="size-3.5" />ยกเลิกคิว
-                </button>
-              </div>
-            </>,
-            document.body,
+        <RowOverflowMenu
+          onShowQr={onShowQr}
+          onPrint={onPrint}
+          onCancel={onCancel}
+          className={cn('shrink-0', square)}
+        />
+      </>
+    );
+  }
+
+  return (
+    <div className={cn('relative overflow-hidden rounded-xl border shadow-[var(--shadow-card)] transition-colors', cardCls)}>
+      <div className="flex items-stretch">
+        {/* Accent bar */}
+        <div className="w-1 shrink-0" style={{ backgroundColor: tone.accentColor }} aria-hidden="true" />
+
+        {/* Tappable info area → opens edit (read-only for terminal entries) */}
+        <button
+          type="button"
+          disabled={isTerminal}
+          onClick={isTerminal ? undefined : onEdit}
+          className={cn(
+            'flex min-w-0 flex-1 flex-col justify-center gap-1.5 px-3 py-3 text-left transition-colors sm:py-3.5',
+            !isTerminal && 'hover:bg-foreground/[0.02]',
           )}
-        </div>
+        >
+          {/* Line 1: number · status badge · time */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="shrink-0 text-2xl font-black tabular-nums leading-none text-foreground sm:min-w-[4.5rem] sm:text-[1.75rem]">
+              {entry.queueNumber}
+            </span>
+            <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold leading-none', tone.badge)}>
+              {tone.label}
+            </span>
+            <span className="flex items-center gap-0.5 text-xs text-muted-foreground" suppressHydrationWarning>
+              <Clock className="size-3 shrink-0" />
+              {formatDistanceToNowStrict(new Date(timeRef as string | Date), { locale: th, addSuffix: true })}
+            </span>
+          </div>
+
+          {/* Line 2: count · soup chips · seating · table chip · type chip */}
+          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
+            <span className="shrink-0 font-semibold text-foreground">
+              ผู้ใหญ่ {entry.adultCount ?? 0} · เด็ก {entry.childCount ?? 0}
+            </span>
+            <SoupChips pots={entry.soupPots as Array<{ soups: string[] }> | null} />
+            {seating && <span className="shrink-0 text-muted-foreground">{seating}</span>}
+            {tableNote && (
+              <span className={cn('inline-flex shrink-0 items-center gap-0.5 rounded border px-1.5 py-0.5 font-semibold', tableChipCls)}>
+                <MapPin className="size-2.5" />
+                {tableNote}
+              </span>
+            )}
+            {isNonNormal && (
+              <span className="shrink-0 rounded border border-border bg-[var(--surface-2)] px-1.5 py-0.5 font-medium text-muted-foreground">
+                {CUSTOMER_TYPE_SHORT[entry.customerType as CustomerType]}
+              </span>
+            )}
+            {isTerminal && entry.skipReason && (
+              <span className="shrink-0 text-muted-foreground">เหตุผล: {entry.skipReason}</span>
+            )}
+          </div>
+        </button>
+
+        {/* Actions — tablet/desktop side column (terminal cards are read-only) */}
+        {!isTerminal && (
+          <div className="hidden shrink-0 items-center gap-1.5 pr-3 sm:flex" onClick={e => e.stopPropagation()}>
+            {renderActions(false)}
+          </div>
+        )}
       </div>
+
+      {/* Actions — mobile bottom bar (full-width touch targets) */}
+      {!isTerminal && (
+        <div className="flex items-center gap-2 border-t border-border/50 px-3 py-2 sm:hidden" onClick={e => e.stopPropagation()}>
+          {renderActions(true)}
+        </div>
+      )}
     </div>
   );
 }
@@ -747,6 +833,13 @@ function TableMapPickerModal({
     });
   }
 
+  // Mobile list is sorted numerically ("2" before "10"); the DB orders by
+  // label as a string, which is fine for map positions but wrong for a list.
+  const sortedTables = useMemo(
+    () => [...layout].sort((a, b) => a.label.localeCompare(b.label, 'th', { numeric: true })),
+    [layout],
+  );
+
   const notePreview = formatTableNote(selected, layout);
   const hasExisting = entry.plannedTableNote && entry.plannedTableNote !== '-';
 
@@ -819,10 +912,40 @@ function TableMapPickerModal({
             ยังไม่มีโต๊ะในระบบ
           </div>
         ) : (
-          /* ref measures BOTH dimensions; overflow-hidden because fit-all avoids overflow */
+          <>
+          {/* Mobile (<md): tappable table list — the floor plan is too small to
+              hit reliably on a phone; same toggle/selection state as the map */}
+          <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--surface-2)] p-3 md:hidden">
+            <div className="grid grid-cols-4 gap-2">
+              {sortedTables.map(t => {
+                const isSelected = selected.has(t.id);
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => toggle(t.id)}
+                    className={cn(
+                      'flex min-h-12 flex-col items-center justify-center rounded-xl border-2 font-bold transition-all active:scale-95 select-none',
+                      isSelected
+                        ? 'border-primary bg-primary text-primary-foreground shadow-md'
+                        : 'border-border/60 bg-[var(--surface-1)] text-foreground',
+                    )}
+                  >
+                    <span className="flex items-center gap-1 text-base leading-tight tabular-nums">
+                      {isSelected && <Check className="size-3.5 opacity-80" />}
+                      {t.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Tablet+ (md+): floor-plan map — fit-all scale, no scroll needed.
+              ref measures BOTH dimensions; overflow-hidden because fit-all avoids overflow */}
           <div
             ref={containerRef}
-            className="flex flex-1 items-center justify-center overflow-hidden bg-[var(--surface-2)]"
+            className="hidden flex-1 items-center justify-center overflow-hidden bg-[var(--surface-2)] md:flex"
           >
             {/* Wrapper sized to the exact rendered cropped-canvas dimensions */}
             <div
@@ -879,11 +1002,13 @@ function TableMapPickerModal({
               </div>
             </div>
           </div>
+          </>
         )}
 
-        {/* Footer — always visible; never overlays map because it's below flex-1 */}
+        {/* Footer — always visible; never overlays map because it's below flex-1.
+            Stacks summary above buttons on mobile so nothing overlaps. */}
         <div className="shrink-0 border-t border-border bg-[var(--surface-1)] px-4 py-3">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3">
             {/* Selection summary */}
             <div className="flex min-w-0 flex-1 items-center gap-2">
               {selected.size > 0 ? (
@@ -898,11 +1023,11 @@ function TableMapPickerModal({
                   </span>
                 </>
               ) : (
-                <span className="text-sm text-muted-foreground">แตะโต๊ะบนแผนผังเพื่อเลือก (เลือกได้มากกว่า 1)</span>
+                <span className="text-sm text-muted-foreground">แตะโต๊ะเพื่อเลือก (เลือกได้มากกว่า 1)</span>
               )}
             </div>
 
-            {/* Action buttons */}
+            {/* Action buttons — full-width row on mobile */}
             <div className="flex shrink-0 items-center gap-2">
               {hasExisting && (
                 <button
@@ -918,7 +1043,7 @@ function TableMapPickerModal({
                 type="button"
                 onClick={onClose}
                 disabled={submitting}
-                className="flex min-h-11 items-center justify-center rounded-xl border border-border bg-[var(--surface-2)] px-4 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-60"
+                className="flex min-h-11 flex-1 items-center justify-center rounded-xl border border-border bg-[var(--surface-2)] px-4 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-60 sm:flex-none"
               >
                 ยกเลิก
               </button>
@@ -926,7 +1051,7 @@ function TableMapPickerModal({
                 type="button"
                 onClick={handleConfirm}
                 disabled={submitting || selected.size === 0}
-                className="flex min-h-11 min-w-[5.5rem] items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:opacity-60"
+                className="flex min-h-11 min-w-[5.5rem] flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:opacity-60 sm:flex-none"
               >
                 {submitting && <Loader2 className="size-4 animate-spin" />}
                 ยืนยัน

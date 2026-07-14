@@ -214,35 +214,50 @@ export function PaymentHistoryTable({ rows, date }: PaymentHistoryTableProps) {
                           </div>
                         )}
                       </TableCell>
-                      <TableCell className="px-4 py-3 text-right tabular-nums font-semibold text-foreground">
-                        <div className="text-xs font-normal text-muted-foreground">ยอดบิล {fmtThb(row.billTotal || row.totalRevenue)}</div>
-                        <div className="text-xs font-normal text-[var(--status-success-fg)]">รับรวม {fmtThb(row.paidTotal ?? row.totalRevenue)}</div>
-                        <div className={row.remaining > 0 ? 'text-xs font-normal text-[var(--status-danger-fg)]' : 'text-xs font-normal text-muted-foreground'}>
-                          คงเหลือ {fmtThb(row.remaining ?? 0)}
+                      <TableCell className="px-4 py-3 text-right">
+                        <div className="text-base font-bold tabular-nums text-foreground">
+                          {fmtThb(row.paidTotal ?? row.totalRevenue)}
                         </div>
-                        {fmtThb(row.totalRevenue)}
+                        <div className="text-[11px] tabular-nums text-muted-foreground">
+                          ยอดบิล {fmtThb(row.billTotal || row.totalRevenue)}
+                        </div>
+                        {row.remaining > 0 ? (
+                          <span className="mt-1 inline-flex rounded-full border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[var(--status-danger-fg)]">
+                            ค้าง {fmtThb(row.remaining)}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-medium text-[var(--status-success-fg)]">ชำระครบ ✓</span>
+                        )}
                       </TableCell>
                       <TableCell className="px-4 py-3 text-xs text-muted-foreground">
-                        {events.length > 0 ? (
+                        {events.length > 1 ? (
                           <div className="space-y-1">
-                            {events.length > 1 && (
-                              <StatusBadge label={`รับชำระ ${events.length} ครั้ง`} variant="warning" />
-                            )}
-                            {events.map((event, idx) => (
-                              <div key={event.id} className="rounded-md border border-border/70 bg-background/70 px-2 py-1">
-                                <div className="flex items-center justify-between gap-2">
-                                  <StatusBadge
-                                    label={`${idx + 1}. ${SETTLEMENT_LABEL[event.settlementType] ?? event.settlementType}`}
-                                    variant={event.settlementType === 'partial' ? 'warning' : 'success'}
+                            <StatusBadge label={`แบ่งชำระ ${events.length} ครั้ง`} variant="warning" />
+                            {events.map((event, idx) => {
+                              const isPartial = event.settlementType === 'partial';
+                              return (
+                                <div key={event.id} className="flex items-center gap-1.5 whitespace-nowrap text-[11px]">
+                                  <span
+                                    aria-hidden="true"
+                                    className={`size-1.5 shrink-0 rounded-full ${isPartial ? 'bg-[var(--status-warning-fg)]' : 'bg-[var(--status-success-fg)]'}`}
                                   />
-                                  <span className="tabular-nums font-semibold text-foreground">{fmtThb(event.total)}</span>
+                                  <span className="font-semibold text-foreground">{idx + 1}.</span>
+                                  <span className="tabular-nums">{format(new Date(event.paidAt), 'HH:mm', { locale: th })}</span>
+                                  <span>{METHOD_LABEL[event.methodSummary] ?? event.methodSummary}</span>
+                                  <span className="ml-auto pl-2 font-semibold tabular-nums text-foreground">{fmtThb(event.total)}</span>
                                 </div>
-                                <div className="mt-1 flex justify-between gap-2 text-[11px]">
-                                  <span>{format(new Date(event.paidAt), 'HH:mm', { locale: th })} · {METHOD_LABEL[event.methodSummary] ?? event.methodSummary}</span>
-                                  <span className="tabular-nums">คงเหลือ {fmtThb(event.remainingAfter)}</span>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
+                          </div>
+                        ) : events.length === 1 ? (
+                          <div className="space-y-0.5">
+                            <StatusBadge
+                              label={SETTLEMENT_LABEL[events[0].settlementType] ?? events[0].settlementType}
+                              variant={events[0].settlementType === 'partial' ? 'warning' : 'success'}
+                            />
+                            <div className="text-[11px]">
+                              {format(new Date(events[0].paidAt), 'HH:mm', { locale: th })} · {METHOD_LABEL[events[0].methodSummary] ?? events[0].methodSummary}
+                            </div>
                           </div>
                         ) : row.paymentMethod === 'cash_qr' ? (
                           <div className="space-y-0.5">

@@ -106,24 +106,39 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
               size="lg"
             />
           ) : (
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="border-border bg-[var(--surface-2)] hover:bg-[var(--surface-2)]">
                   <TableHead className="px-4 py-3 text-xs font-semibold text-muted-foreground">โต๊ะ</TableHead>
                   <TableHead className="px-4 py-3 text-xs font-semibold text-muted-foreground">เริ่ม</TableHead>
                   <TableHead className="px-4 py-3 text-xs font-semibold text-muted-foreground">สิ้นสุด</TableHead>
-                  <TableHead className="px-4 py-3 text-xs font-semibold text-muted-foreground">เวลา</TableHead>
+                  <TableHead className="px-4 py-3 text-xs font-semibold text-muted-foreground">เวลาที่ใช้</TableHead>
                   <TableHead className="px-4 py-3 text-xs font-semibold text-muted-foreground">ผู้เข้าใช้</TableHead>
                   <TableHead className="px-4 py-3" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rows.map((row) => {
+                  const isOpen = row.status !== 'closed';
                   const durationMin = row.closedAt
                     ? differenceInMinutes(new Date(row.closedAt), new Date(row.startedAt))
-                    : null;
-                  const isOpen = row.status !== 'closed';
+                    : isOpen
+                      ? differenceInMinutes(new Date(), new Date(row.startedAt))
+                      : null;
+                  const durationText = durationMin !== null
+                    ? durationMin >= 60
+                      ? `${Math.floor(durationMin / 60)} ชม. ${durationMin % 60} น.`
+                      : `${durationMin} น.`
+                    : '—';
                   const link = linkInfo.get(row.sessionId);
+                  const guestParts = [
+                    row.adultCount > 0 && `ผู้ใหญ่ ${row.adultCount}`,
+                    row.childCount > 0 && `เด็ก ${row.childCount}`,
+                    row.toddlerCount > 0 && `เด็กเล็ก ${row.toddlerCount}`,
+                    row.staffCount > 0 && `พนักงาน ${row.staffCount}`,
+                    row.staffGuestCount > 0 && `พนักงานพา ${row.staffGuestCount}`,
+                  ].filter(Boolean) as string[];
 
                   return (
                     <TableRow
@@ -147,8 +162,8 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
                               )}
                             </span>
                             {link && !link.isSplit && (
-                              <span className={`self-start rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${link.badge}`}>
-                                {`⊞ ${link.peers.join(', ')}`}
+                              <span className={`self-start whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${link.badge}`}>
+                                เชื่อมกับโต๊ะ {link.peers.join(', ')}
                               </span>
                             )}
                           </div>
@@ -166,24 +181,17 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
                           '—'
                         )}
                       </TableCell>
-                      <TableCell className="px-4 py-3 tabular-nums text-xs text-muted-foreground">
-                        {durationMin !== null
-                          ? durationMin >= 60
-                            ? `${Math.floor(durationMin / 60)}ชม. ${durationMin % 60}น.`
-                            : `${durationMin}น.`
-                          : '—'}
+                      <TableCell className="px-4 py-3 whitespace-nowrap tabular-nums text-xs text-muted-foreground">
+                        {durationText}
+                        {isOpen && durationMin !== null && (
+                          <span className="ml-1 text-[10px] text-muted-foreground/70">(กำลังใช้งาน)</span>
+                        )}
                       </TableCell>
-                      <TableCell className="px-4 py-3 text-xs text-muted-foreground">
-                        {row.guestCount === 0 ? (
+                      <TableCell className="px-4 py-3 text-xs text-foreground">
+                        {guestParts.length === 0 ? (
                           <span className="text-muted-foreground">—</span>
                         ) : (
-                          <div className="space-y-0.5">
-                            {row.adultCount > 0 && <div>ผู้ใหญ่ {row.adultCount}</div>}
-                            {row.childCount > 0 && <div>เด็ก {row.childCount}</div>}
-                            {row.toddlerCount > 0 && <div>เด็กเล็ก {row.toddlerCount}</div>}
-                            {row.staffCount > 0 && <div>พนักงาน {row.staffCount}</div>}
-                            {row.staffGuestCount > 0 && <div>พนักงานพา {row.staffGuestCount}</div>}
-                          </div>
+                          guestParts.join(' · ')
                         )}
                       </TableCell>
                       <TableCell className="px-4 py-3">
@@ -194,6 +202,7 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
                 })}
               </TableBody>
             </Table>
+            </div>
           )}
         </DataCard>
       </div>
