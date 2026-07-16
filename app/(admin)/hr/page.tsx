@@ -1,16 +1,14 @@
 import Link from 'next/link';
 import { getHrDashboardStats } from '@/lib/actions/hr';
 import { Users, Clock, Wallet, ChevronRight } from 'lucide-react';
-import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { formatThaiDate } from '@/lib/date-time';
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card';
 import { SectionCard } from '@/components/ui/section-card';
 import { StatusBadge } from '@/components/ui/status-badge';
 import type { BadgeVariant } from '@/components/ui/status-badge';
 
 function fmtDate(d: string) {
-  try { return format(new Date(d + 'T00:00'), 'd MMM yy', { locale: th }); }
-  catch { return d; }
+  return formatThaiDate(d, d);
 }
 
 const STATUS_LABELS: Record<string, string> = { draft: 'ร่าง', finalized: 'อนุมัติ', paid: 'จ่ายแล้ว' };

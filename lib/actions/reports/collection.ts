@@ -237,3 +237,98 @@ export async function getPaymentCollectionReport(fromDate: string, toDate: strin
 export type PaymentCollectionReportResult = NonNullable<
   Extract<Awaited<ReturnType<typeof getPaymentCollectionReport>>, { ok: true }>['data']
 >;
+
+// ─── POS history: single-day revenue per receiving account ──────────────────
+// Powers the "รายได้รวม" breakdown popup on /pos/history. Unlike the owner-only
+// collection report above, this is gated like getSessionHistory so manager and
+// cashier (manage_tables) can see the same page-level breakdown.
+
+export type PosAccountRevenue = {
+  date: string;
+  total: number;
+  accounts: Array<{
+    accountId: string;
+    accountCode: string;
+    accountName: string;
+    accountType: string;
+    amount: number;
+    rowCount: number;
+    methods: Array<{ methodName: string; amount: number }>;
+  }>;
+};
+
+export async function getPosAccountRevenue(dateStr: string) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+  if (!can(authSession.user.role, 'view_reports') && !can(authSession.user.role, 'manage_tables'))
+    return { ok: false as const, error: 'ไม่มีสิทธิ์ดำเนินการ' };
+
+  try {
+    const from        = fromZonedTime(startOfDay(toZonedTime(new Date(dateStr), TZ)), TZ);
+    const toExclusive = fromZonedTime(addDays(startOfDay(toZonedTime(new Date(dateStr), TZ)), 1), TZ);
+
+    const raw = await db
+      .select({
+        accountId:   receivingAccounts.id,
+        accountCode: receivingAccounts.code,
+        accountName: receivingAccounts.name,
+        accountType: receivingAccounts.type,
+        methodName:  paymentMethods.name,
+        amount:      sql<number>`coalesce(sum(${paymentRows.amount}::numeric), 0)`,
+        rowCount:    sql<number>`count(*)::int`,
+      })
+      .from(paymentRows)
+      .innerJoin(paymentMethods, eq(paymentRows.paymentMethodId, paymentMethods.id))
+      .innerJoin(receivingAccounts, eq(paymentRows.receivingAccountId, receivingAccounts.id))
+      .where(and(
+        eq(paymentRows.status, 'completed'),
+        gte(paymentRows.paidAt, from),
+        lt(paymentRows.paidAt, toExclusive),
+      ))
+      .groupBy(
+        receivingAccounts.id,
+        receivingAccounts.code,
+        receivingAccounts.name,
+        receivingAccounts.type,
+        receivingAccounts.sortOrder,
+        paymentMethods.name,
+        paymentMethods.sortOrder,
+      )
+      .orderBy(
+        receivingAccounts.sortOrder,
+        receivingAccounts.name,
+        paymentMethods.sortOrder,
+        paymentMethods.name,
+      );
+
+    const accountMap = new Map<string, PosAccountRevenue['accounts'][number]>();
+    for (const r of raw) {
+      if (!accountMap.has(r.accountId)) {
+        accountMap.set(r.accountId, {
+          accountId:   r.accountId,
+          accountCode: r.accountCode,
+          accountName: r.accountName,
+          accountType: r.accountType,
+          amount:      0,
+          rowCount:    0,
+          methods:     [],
+        });
+      }
+      const entry = accountMap.get(r.accountId)!;
+      const amount = roundMoney(Number(r.amount));
+      entry.methods.push({ methodName: r.methodName, amount });
+      entry.amount = roundMoney(entry.amount + amount);
+      entry.rowCount += r.rowCount;
+    }
+    const accounts = Array.from(accountMap.values());
+    const total = roundMoney(accounts.reduce((s, a) => s + a.amount, 0));
+
+    return {
+      ok: true as const,
+      data: { date: dateStr, total, accounts } satisfies PosAccountRevenue,
+    };
+  } catch (e) {
+    console.error('[getPosAccountRevenue]', e);
+    return { ok: false as const, error: 'เกิดข้อผิดพลาด' };
+  }
+}

@@ -28,7 +28,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { DataCard } from '@/components/ui/section-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ThaiDateInput } from '@/components/ui/thai-date-input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
@@ -199,13 +199,13 @@ function RevenueReport() {
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs font-medium text-muted-foreground">วันเริ่มต้น</Label>
-              <Input type="date" value={fromDate} max={today}
-                onChange={(e) => setFromDate(e.target.value)} className="h-10 w-40" />
+              <ThaiDateInput value={fromDate} max={today}
+                onValueChange={setFromDate} className="h-10 w-40" />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs font-medium text-muted-foreground">วันสิ้นสุด</Label>
-              <Input type="date" value={toDate} max={today}
-                onChange={(e) => setToDate(e.target.value)} className="h-10 w-40" />
+              <ThaiDateInput value={toDate} max={today}
+                onValueChange={setToDate} className="h-10 w-40" />
             </div>
             {loading && <span className="pb-2 text-xs text-muted-foreground">กำลังโหลด…</span>}
           </div>
@@ -454,11 +454,11 @@ function FoodCostReport() {
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs font-medium text-muted-foreground">วันเริ่มต้น</Label>
-            <Input type="date" value={fromDate} max={today} onChange={(e) => setFromDate(e.target.value)} className="h-10 w-40" />
+            <ThaiDateInput value={fromDate} max={today} onValueChange={setFromDate} className="h-10 w-40" />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs font-medium text-muted-foreground">วันสิ้นสุด</Label>
-            <Input type="date" value={toDate} max={today} onChange={(e) => setToDate(e.target.value)} className="h-10 w-40" />
+            <ThaiDateInput value={toDate} max={today} onValueChange={setToDate} className="h-10 w-40" />
           </div>
           {loading && <span className="pb-2 text-xs text-muted-foreground">กำลังโหลด…</span>}
         </div>
@@ -598,13 +598,13 @@ function CollectionReport() {
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs font-medium text-muted-foreground">วันเริ่มต้น</Label>
-            <Input type="date" value={fromDate} max={today}
-              onChange={(e) => setFromDate(e.target.value)} className="h-10 w-40" />
+            <ThaiDateInput value={fromDate} max={today}
+              onValueChange={setFromDate} className="h-10 w-40" />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs font-medium text-muted-foreground">วันสิ้นสุด</Label>
-            <Input type="date" value={toDate} max={today}
-              onChange={(e) => setToDate(e.target.value)} className="h-10 w-40" />
+            <ThaiDateInput value={toDate} max={today}
+              onValueChange={setToDate} className="h-10 w-40" />
           </div>
           {loading && <span className="pb-2 text-xs text-muted-foreground">กำลังโหลด…</span>}
         </div>

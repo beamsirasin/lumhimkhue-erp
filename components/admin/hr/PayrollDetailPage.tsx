@@ -2,24 +2,24 @@
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
-import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ThaiDateInput } from '@/components/ui/thai-date-input';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AppShell } from '@/components/ui/app-shell';
 import { PageHeader } from '@/components/ui/page-header';
 import { DataCard } from '@/components/ui/section-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card';
-import { ChevronLeft, Trash2, Printer, CheckCircle2, Users, Banknote, X } from 'lucide-react';
+import { useConfirm } from '@/components/shared/ConfirmDialog';
+import { ChevronLeft, Trash2, Printer, CheckCircle2, Users, Banknote, Plus, BadgeCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatThaiDate, formatThaiDateTime, formatThaiShortDate } from '@/lib/date-time';
 import {
   addDeduction,
   removeDeduction,
@@ -52,8 +52,7 @@ function fmtMoney(n: number | string) {
 }
 
 function fmtDate(d: string) {
-  try { return format(new Date(d + 'T00:00'), 'd MMM yy', { locale: th }); }
-  catch { return d; }
+  return formatThaiDate(d, d);
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -76,7 +75,9 @@ function PayslipContent({ item, cycle, settings }: { item: EnrichedItem; cycle: 
   return (
     <div className="payslip-print text-sm space-y-3">
       <div className="text-center font-bold text-base mb-1">ใบจ่ายเงินเดือน</div>
-      <div className="text-center text-xs text-muted-foreground mb-3">งวด: {cycle.name}</div>
+      <div className="text-center text-xs text-muted-foreground mb-3">
+        งวดจ่ายวันที่ {formatThaiDate(cycle.payDate)} · ช่วงงาน {formatThaiDate(cycle.workStartDate)} – {formatThaiDate(cycle.workEndDate)}
+      </div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-3">
         <span className="text-muted-foreground">ชื่อ-สกุล:</span>
         <span className="font-medium">{emp?.firstName} {emp?.lastName}</span>
@@ -139,7 +140,7 @@ function PayslipContent({ item, cycle, settings }: { item: EnrichedItem; cycle: 
       {item.isPaid && (
         <p className="text-xs text-[var(--status-success-fg)] text-center">
           จ่ายแล้ว ({item.paidMethod === 'cash' ? 'เงินสด' : 'โอน'}) เมื่อ{' '}
-          {item.paidAt ? format(new Date(item.paidAt), 'd MMM yy HH:mm', { locale: th }) : '-'}
+          {formatThaiDateTime(item.paidAt)}
         </p>
       )}
     </div>
@@ -272,14 +273,23 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">หักเงิน</p>
           {!locked && (
-            <div className="flex gap-1 text-xs">
-              <button onClick={() => openAdd('advance')} className="text-primary hover:underline">+เบิก</button>
-              <span className="text-muted-foreground/60">|</span>
-              <button onClick={() => openAdd('damage')} className="text-primary hover:underline">+เสียหาย</button>
-              <span className="text-muted-foreground/60">|</span>
-              <button onClick={() => openAdd('absence')} className="text-primary hover:underline">+ขาด</button>
-              <span className="text-muted-foreground/60">|</span>
-              <button onClick={() => openAdd('late')} className="text-primary hover:underline">+สาย</button>
+            <div className="flex flex-wrap gap-1.5">
+              {([
+                ['advance', 'เบิก'],
+                ['damage', 'เสียหาย'],
+                ['absence', 'ขาด'],
+                ['late', 'สาย'],
+              ] as const).map(([type, label]) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => openAdd(type)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-[var(--surface-primary-subtle)] hover:text-primary"
+                >
+                  <Plus className="size-3" />
+                  {label}
+                </button>
+              ))}
             </div>
           )}
         </div>
@@ -347,12 +357,10 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
         )}
       </div>
 
-      <Separator />
-
       {/* สุทธิ */}
-      <div className="flex justify-between font-bold text-lg">
-        <span>เงินสุทธิ</span>
-        <span className="tabular-nums text-foreground">฿{fmtMoney(item.netPay)}</span>
+      <div className="flex items-center justify-between rounded-xl border border-primary/20 bg-[var(--surface-primary-subtle)] px-4 py-3.5">
+        <span className="font-semibold text-foreground">เงินสุทธิที่ต้องจ่าย</span>
+        <span className="text-xl font-bold tabular-nums text-primary">฿{fmtMoney(item.netPay)}</span>
       </div>
 
       {/* Payment status */}
@@ -362,7 +370,7 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
             <CheckCircle2 className="size-4" /> จ่ายแล้ว
           </div>
           <p>วิธี: {item.paidMethod === 'cash' ? 'เงินสด' : 'โอน'}</p>
-          {item.paidAt && <p>เมื่อ: {format(new Date(item.paidAt), 'd MMM yy HH:mm', { locale: th })}</p>}
+          {item.paidAt && <p>เมื่อ: {formatThaiDateTime(item.paidAt)}</p>}
           {item.paymentProofUrl && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={item.paymentProofUrl} alt="สลิป" className="max-h-32 rounded mt-1" />
@@ -370,32 +378,30 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
         </div>
       ) : (
         !locked && (
-          <Button size="sm" className="w-full" onClick={() => setPayOpen(true)}>
+          <Button className="w-full" onClick={() => setPayOpen(true)}>
+            <Banknote className="size-4" />
             บันทึกการจ่าย
           </Button>
         )
       )}
 
-      <Button variant="outline" size="sm" className="w-full" onClick={() => setPrintSlip(true)}>
+      <Button variant="outline" className="w-full" onClick={() => setPrintSlip(true)}>
         <Printer className="size-4 mr-1.5" />
         พิมพ์สลิป
       </Button>
 
-      {/* Add deduction / absence Sheet */}
-      <Sheet open={addOpen} onOpenChange={setAddOpen}>
-        <SheetContent side="right" showCloseButton={false} className="flex flex-col gap-0 p-0 sm:max-w-[380px]">
-          <div className="flex items-center justify-between border-b border-border px-6 py-4">
-            <div>
-              <p className="text-base font-semibold text-foreground">
-                {addType === 'advance' ? 'เพิ่มรายการเบิก' : addType === 'damage' ? 'เพิ่มรายการเสียหาย' : addType === 'absence' ? 'บันทึกขาด' : 'บันทึกสาย'}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">{emp?.firstName} {emp?.lastName}</p>
-            </div>
-            <Button variant="ghost" size="icon" aria-label="ปิด" onClick={() => setAddOpen(false)}>
-              <X className="size-4" />
-            </Button>
-          </div>
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+      {/* Add deduction / absence — centered dialog */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
+          <DialogHeader className="border-b border-border bg-muted/30 px-6 py-4">
+            <DialogTitle className="text-base font-semibold">
+              {addType === 'advance' ? 'เพิ่มรายการเบิก' : addType === 'damage' ? 'เพิ่มรายการเสียหาย' : addType === 'absence' ? 'บันทึกขาด' : 'บันทึกสาย'}
+            </DialogTitle>
+            <DialogDescription className="mt-0.5 text-xs">
+              {emp?.firstName} {emp?.lastName}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 px-6 py-5">
             {(addType === 'advance' || addType === 'damage') && (
               <>
                 <div className="space-y-1.5">
@@ -408,21 +414,21 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
                 </div>
                 <div className="space-y-1.5">
                   <Label>วันที่เกิด</Label>
-                  <Input type="date" value={addForm.occurredDate} onChange={(e) => setAddForm((p) => ({ ...p, occurredDate: e.target.value }))} />
+                  <ThaiDateInput value={addForm.occurredDate} onValueChange={(occurredDate) => setAddForm((p) => ({ ...p, occurredDate }))} ariaLabel="เลือกวันที่เกิดรายการ" />
                 </div>
               </>
             )}
             {addType === 'absence' && (
               <div className="space-y-1.5">
                 <Label>วันที่ขาด *</Label>
-                <Input type="date" value={addForm.occurredDate} onChange={(e) => setAddForm((p) => ({ ...p, occurredDate: e.target.value }))} />
+                <ThaiDateInput value={addForm.occurredDate} onValueChange={(occurredDate) => setAddForm((p) => ({ ...p, occurredDate }))} ariaLabel="เลือกวันที่ขาด" />
               </div>
             )}
             {addType === 'late' && (
               <>
                 <div className="space-y-1.5">
                   <Label>วันที่สาย *</Label>
-                  <Input type="date" value={addForm.occurredDate} onChange={(e) => setAddForm((p) => ({ ...p, occurredDate: e.target.value }))} />
+                  <ThaiDateInput value={addForm.occurredDate} onValueChange={(occurredDate) => setAddForm((p) => ({ ...p, occurredDate }))} ariaLabel="เลือกวันที่มาสาย" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>นาทีสาย *</Label>
@@ -431,28 +437,23 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
               </>
             )}
           </div>
-          <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
+          <DialogFooter className="mx-0 mb-0 rounded-none border-t border-border bg-muted/30 px-6 py-4">
             <Button variant="outline" onClick={() => setAddOpen(false)}>ยกเลิก</Button>
             <Button onClick={submitAdd} disabled={pending}>บันทึก</Button>
-          </div>
-        </SheetContent>
-      </Sheet>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* Mark as paid Sheet */}
-      <Sheet open={payOpen} onOpenChange={setPayOpen}>
-        <SheetContent side="right" showCloseButton={false} className="flex flex-col gap-0 p-0 sm:max-w-[380px]">
-          <div className="flex items-center justify-between border-b border-border px-6 py-4">
-            <div>
-              <p className="text-base font-semibold text-foreground">บันทึกการจ่ายเงินเดือน</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {emp?.firstName} {emp?.lastName} — <strong>฿{fmtMoney(item.netPay)}</strong>
-              </p>
-            </div>
-            <Button variant="ghost" size="icon" aria-label="ปิด" onClick={() => setPayOpen(false)}>
-              <X className="size-4" />
-            </Button>
-          </div>
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+      {/* Mark as paid — centered dialog */}
+      <Dialog open={payOpen} onOpenChange={setPayOpen}>
+        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
+          <DialogHeader className="border-b border-border bg-muted/30 px-6 py-4">
+            <DialogTitle className="text-base font-semibold">บันทึกการจ่ายเงินเดือน</DialogTitle>
+            <DialogDescription className="mt-0.5 text-xs">
+              {emp?.firstName} {emp?.lastName} — ยอดสุทธิ <strong className="text-foreground">฿{fmtMoney(item.netPay)}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 px-6 py-5">
             <div className="space-y-1.5">
               <Label>วิธีจ่าย</Label>
               <Select value={payForm.paidMethod} onValueChange={(v) => { if (v) setPayForm((p) => ({ ...p, paidMethod: v as 'cash' | 'transfer' })); }}>
@@ -474,12 +475,15 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
               )}
             </div>
           </div>
-          <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
+          <DialogFooter className="mx-0 mb-0 rounded-none border-t border-border bg-muted/30 px-6 py-4">
             <Button variant="outline" onClick={() => setPayOpen(false)}>ยกเลิก</Button>
-            <Button onClick={submitPay} disabled={pending}>ยืนยันจ่าย</Button>
-          </div>
-        </SheetContent>
-      </Sheet>
+            <Button onClick={submitPay} disabled={pending}>
+              <Banknote className="size-4" />
+              ยืนยันจ่าย
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Payslip print dialog */}
       <Dialog open={printSlip} onOpenChange={setPrintSlip}>
@@ -505,6 +509,7 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
   const [detail, setDetail] = useState(initialDetail);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(detail.items[0]?.id ?? null);
   const [pending, startTransition] = useTransition();
+  const { openConfirm, dialog: confirmDialog } = useConfirm();
 
   const selectedItem = detail.items.find((i) => i.id === selectedItemId);
   const paidCount = detail.items.filter((i) => i.isPaid).length;
@@ -517,16 +522,24 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
   }
 
   function handleFinalize() {
-    startTransition(async () => {
-      const result = await finalizePayrollCycle(detail.cycle.id);
-      if (!result.ok) { toast.error(result.error); return; }
-      toast.success('อนุมัติรอบจ่ายแล้ว');
-      router.refresh();
-    });
+    openConfirm(
+      'อนุมัติรอบจ่ายนี้? หลังอนุมัติจะไม่สามารถเพิ่ม/ลบรายการหักได้อีก',
+      () => {
+        startTransition(async () => {
+          const result = await finalizePayrollCycle(detail.cycle.id);
+          if (!result.ok) { toast.error(result.error); return; }
+          toast.success('อนุมัติรอบจ่ายแล้ว');
+          router.refresh();
+        });
+      },
+      { confirmLabel: 'อนุมัติ', variant: 'default' },
+    );
   }
 
   return (
     <AppShell>
+      {confirmDialog}
+
       {/* Back navigation */}
       <div>
         <Link
@@ -539,8 +552,8 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
       </div>
 
       <PageHeader
-        title={detail.cycle.name}
-        subtitle={`ช่วงงาน ${fmtDate(detail.cycle.workStartDate)} – ${fmtDate(detail.cycle.workEndDate)} · วันจ่าย ${fmtDate(detail.cycle.payDate)}`}
+        title={`จ่ายวันที่ ${formatThaiShortDate(detail.cycle.payDate)}`}
+        subtitle={`ช่วงงาน ${fmtDate(detail.cycle.workStartDate)} – ${fmtDate(detail.cycle.workEndDate)}${detail.cycle.notes ? ` · ${detail.cycle.notes}` : ''}`}
         actions={
           <div className="flex items-center gap-2">
             <StatusBadge
@@ -549,7 +562,8 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
               dot
             />
             {detail.cycle.status === 'draft' && (
-              <Button variant="outline" size="sm" onClick={handleFinalize} disabled={pending}>
+              <Button size="sm" onClick={handleFinalize} disabled={pending}>
+                <BadgeCheck className="size-4" />
                 อนุมัติรอบนี้
               </Button>
             )}
@@ -583,16 +597,16 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
         </StatCardGrid>
       )}
 
-      {/* Master-detail layout */}
-      <div className="flex gap-6">
+      {/* Master-detail layout — list stacks on top for tablet portrait */}
+      <div className="flex flex-col gap-5 lg:flex-row">
         {/* Left: employee list */}
-        <div className="w-72 shrink-0">
-          <DataCard noPadding title="พนักงาน" subtitle={`${detail.items.length} คน`}>
+        <div className="w-full shrink-0 lg:w-80">
+          <DataCard noPadding title="พนักงาน" subtitle={`${detail.items.length} คน · แตะเพื่อดูรายละเอียด`}>
             {detail.items.length === 0 ? (
               <EmptyState
                 icon={<Users className="size-5" />}
                 title="ไม่มีข้อมูลพนักงาน"
-                description="ยังไม่มี payroll item ในรอบนี้"
+                description="ยังไม่มีรายการเงินเดือนในรอบนี้"
                 size="sm"
               />
             ) : (
@@ -604,18 +618,27 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
                     key={item.id}
                     onClick={() => setSelectedItemId(item.id)}
                     className={cn(
-                      'w-full text-left px-3 py-2.5 border-t border-border transition-colors',
-                      isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/30',
+                      'w-full border-t border-border px-4 py-3 text-left transition-colors',
+                      isSelected
+                        ? 'border-l-2 border-l-primary bg-[var(--surface-primary-subtle)]'
+                        : 'border-l-2 border-l-transparent hover:bg-muted/30',
                     )}
                   >
-                    <div className={cn('text-sm font-medium', isSelected ? 'text-primary-foreground' : 'text-foreground')}>
-                      {emp?.firstName} {emp?.lastName}
-                    </div>
-                    <div className={cn('text-xs flex items-center justify-between mt-0.5', isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
-                      <span>฿{fmtMoney(item.netPay)}</span>
-                      {item.isPaid && (
-                        <CheckCircle2 className={cn('size-3', isSelected ? 'text-primary-foreground/70' : 'text-[var(--status-success-fg)]')} />
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={cn('truncate text-sm font-semibold', isSelected ? 'text-primary' : 'text-foreground')}>
+                        {emp?.firstName} {emp?.lastName}
+                      </span>
+                      {item.isPaid ? (
+                        <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-[var(--status-success-fg)]">
+                          <CheckCircle2 className="size-3" />
+                          จ่ายแล้ว
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-[11px] text-muted-foreground">ยังไม่จ่าย</span>
                       )}
+                    </div>
+                    <div className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+                      ฿{fmtMoney(item.netPay)}
                     </div>
                   </button>
                 );

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { formatThaiDate, formatThaiTime } from '@/lib/date-time';
 import { Armchair, ListOrdered, SkipForward } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { getQueueHistory } from '@/lib/actions/queue';
@@ -49,7 +49,7 @@ const STATUS_VARIANT: Record<string, BadgeVariant> = {
 
 function fmtTime(d: Date | string | null | undefined): string {
   if (!d) return '—';
-  return format(new Date(d as string), 'HH:mm', { locale: th });
+  return formatThaiTime(d as string);
 }
 
 function soupText(pots: unknown): string {
@@ -75,7 +75,7 @@ function QueueHistoryTable({ rows, date }: { rows: QueueHistoryEntry[]; date: st
         <EmptyState
           icon={<ListOrdered className="size-5" />}
           title="ไม่มีประวัติคิว"
-          description={`ไม่พบข้อมูลในวันที่ ${format(new Date(date), 'd MMMM yyyy', { locale: th })}`}
+          description={`ไม่พบข้อมูลในวันที่ ${formatThaiDate(date)}`}
           size="lg"
         />
       </DataCard>
@@ -110,7 +110,7 @@ function QueueHistoryTable({ rows, date }: { rows: QueueHistoryEntry[]; date: st
 
       <DataCard
         title="รายการคิว"
-        subtitle={`${format(new Date(date), 'd MMMM yyyy', { locale: th })} · ${total} รายการ`}
+        subtitle={`${formatThaiDate(date)} · ${total} รายการ`}
         noPadding
       >
         <Table>
@@ -194,7 +194,7 @@ export function QueueHistoryPage() {
     <AppShell className="flex h-full flex-col overflow-hidden space-y-4">
       <PageHeader
         title="ประวัติคิว"
-        subtitle={format(new Date(selectedDate), 'EEEE d MMMM yyyy', { locale: th })}
+        subtitle={formatThaiDate(selectedDate)}
         actions={<HistoryCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />}
       />
 

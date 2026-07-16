@@ -5,6 +5,7 @@ import { renderReceiptHTML } from '@/lib/printer/templates';
 import { buildPrintCSS } from '@/lib/printer/transports/browser';
 import type { ReceiptData } from '@/lib/printer/types';
 import type { BillTypeLabel } from '@/lib/db/schema';
+import { formatThaiDateTime } from '@/lib/date-time';
 
 const SAMPLE_ITEMS: ReceiptData['items'] = [
   { name: 'ผู้ใหญ่', quantity: 2, total: 532 },
@@ -61,7 +62,7 @@ function buildSampleData(props: Props): ReceiptData {
     receiptNo:     hidden.has('receiptNo') ? undefined : (props.receiptNo || 'LHK03060001'),
     tableNumber:   hidden.has('tableNo')   ? '' : 'T1',
     cashierName:   hidden.has('cashier')   ? '' : 'พนักงาน',
-    paidAt:        hidden.has('date')      ? '' : new Date().toLocaleDateString('th-TH', { dateStyle: 'short' }) + ' 12:00',
+    paidAt:        hidden.has('date')      ? '' : formatThaiDateTime(new Date()),
     sessionId:     'preview',
     items:         SAMPLE_ITEMS,
     subtotal:      SAMPLE_SUBTOTAL,

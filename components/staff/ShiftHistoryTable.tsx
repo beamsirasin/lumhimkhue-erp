@@ -1,11 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { Loader2, CheckCircle2, ChevronDown, ChevronUp, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatThaiDateTime, formatThaiTime } from '@/lib/date-time';
 import { reviewShift, getShiftCollectionBreakdown } from '@/lib/actions/shifts';
 import type { listShifts, ShiftCollectionBreakdown } from '@/lib/actions/shifts';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -142,13 +141,13 @@ export function ShiftHistoryTable({ rows, canReview, onRefresh }: Props) {
             <React.Fragment key={row.id}>
               <TableRow className="border-border hover:bg-muted/30">
                 <TableCell className="px-4 py-3 whitespace-nowrap">
-                  {format(new Date(row.openedAt), 'd MMM yy HH:mm', { locale: th })}
+                  {formatThaiDateTime(row.openedAt)}
                 </TableCell>
                 <TableCell className="px-4 py-3 whitespace-nowrap text-foreground">
                   {row.cashierName ?? '—'}
                 </TableCell>
                 <TableCell className="px-4 py-3 whitespace-nowrap text-muted-foreground">
-                  {row.closedAt ? format(new Date(row.closedAt), 'HH:mm น.') : '—'}
+                  {row.closedAt ? `${formatThaiTime(row.closedAt)} น.` : '—'}
                 </TableCell>
                 <TableCell className="px-4 py-3 text-right tabular-nums">
                   ฿{Number(row.openingFloat).toLocaleString('th-TH')}

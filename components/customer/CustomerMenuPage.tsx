@@ -103,13 +103,13 @@ function ElapsedTimer({ startedAt }: { startedAt: Date }) {
 
 function LangSwitch({ lang, onChange }: { lang: Lang; onChange: (l: Lang) => void }) {
   return (
-    <div className="flex items-center overflow-hidden rounded-full border border-border text-xs font-medium">
+    <div className="flex items-center overflow-hidden rounded-full border border-border text-xs font-semibold">
       {(['th', 'en'] as const).map((l) => (
         <button
           key={l}
           type="button"
           onClick={() => onChange(l)}
-          className={`px-2.5 py-1 transition-colors ${
+          className={`min-h-9 px-3 transition-colors ${
             lang === l
               ? 'bg-primary text-primary-foreground'
               : 'bg-card text-muted-foreground hover:bg-muted/50'
@@ -190,31 +190,32 @@ export function CustomerMenuPage({
     <div className="min-h-screen bg-muted/30 pt-[96px] pb-[calc(8rem+env(safe-area-inset-bottom))]">
       {/* Header */}
       <header className="fixed inset-x-0 top-0 z-10 border-b border-border bg-card/95 shadow-[var(--shadow-subtle)] backdrop-blur">
-        <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-3">
           {/* Logo + table */}
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex min-w-0 items-center gap-2.5">
             <Image
               src="/images/logo.png"
               alt="Logo"
-              width={36}
-              height={36}
-              className="rounded-md object-contain shrink-0"
+              width={38}
+              height={38}
+              className="shrink-0 rounded-md object-contain"
             />
             <div className="min-w-0">
-              <p className="text-[10px] text-muted-foreground leading-none">{t.table}</p>
-              <p className="text-sm font-semibold text-foreground leading-tight">{table.label}</p>
+              <p className="text-[10px] leading-none text-muted-foreground">{t.table}</p>
+              <p className="truncate text-lg font-bold leading-tight text-foreground">{table.label}</p>
+            </div>
+            {/* Timer chip */}
+            <div className="ml-1 shrink-0 rounded-lg bg-muted/60 px-2 py-1 text-center">
+              <p className="text-[9px] leading-none text-muted-foreground">{t.timeLabel}</p>
+              <ElapsedTimer startedAt={session.startedAt} />
             </div>
           </div>
 
-          {/* Right: timer + my orders + lang switch */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="text-right">
-              <p className="text-[10px] text-muted-foreground leading-none">{t.timeLabel}</p>
-              <ElapsedTimer startedAt={session.startedAt} />
-            </div>
+          {/* Right: my orders + lang switch */}
+          <div className="flex shrink-0 items-center gap-2">
             <a
               href={`/t/${table.qrToken}/s/${sessionToken}/orders`}
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground shadow-[var(--shadow-card)] whitespace-nowrap"
+              className="inline-flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-background px-3 text-xs font-semibold text-foreground shadow-[var(--shadow-card)] active:scale-95"
             >
               <ReceiptText className="size-3.5" />
               {t.myOrders}
@@ -237,16 +238,23 @@ export function CustomerMenuPage({
                 key={cat.id}
                 type="button"
                 onClick={() => setActiveCategoryId(cat.id)}
-                className={`flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-semibold shadow-[var(--shadow-subtle)] transition-colors ${
+                className={`flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-semibold shadow-[var(--shadow-subtle)] transition-colors active:scale-95 ${
                   activeCategoryId === cat.id
                     ? 'border-primary bg-primary text-primary-foreground'
                     : 'border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`}
               >
-                <Utensils className="size-3.5" />
                 {catName}
                 {catLimit !== null && (
-                  <span className={`ml-1 text-[10px] ${isAtMax ? 'text-[var(--status-danger-fg)]' : 'opacity-60'}`}>
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none tabular-nums ${
+                      activeCategoryId === cat.id
+                        ? 'bg-primary-foreground/20 text-primary-foreground'
+                        : isAtMax
+                          ? 'bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]'
+                          : 'bg-muted text-muted-foreground'
+                    }`}
+                  >
                     {cartQtyForCat}/{catLimit}
                   </span>
                 )}
@@ -275,7 +283,12 @@ export function CustomerMenuPage({
       {/* Menu grid */}
       <main className="p-4">
         {activeCategory && activeCategory.menuItems.length === 0 && (
-          <p className="py-12 text-center text-sm text-muted-foreground">{t.noItems}</p>
+          <div className="flex flex-col items-center gap-3 py-14 text-center">
+            <div className="flex size-12 items-center justify-center rounded-full bg-muted/60">
+              <Utensils className="size-5 text-muted-foreground/60" />
+            </div>
+            <p className="text-sm text-muted-foreground">{t.noItems}</p>
+          </div>
         )}
         <div className="grid grid-cols-2 gap-3.5">
           {activeCategory?.menuItems.map((mi) => {
@@ -306,9 +319,9 @@ export function CustomerMenuPage({
                 key={mi.id}
                 className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)]"
               >
-                {/* Image */}
-                {mi.hasImage ? (
-                  <div className="relative aspect-square w-full">
+                {/* Image — type badge + extra price float on top to keep the card short */}
+                <div className="relative aspect-square w-full">
+                  {mi.hasImage ? (
                     <Image
                       src={`/api/img/${mi.id}`}
                       alt={displayName}
@@ -317,42 +330,35 @@ export function CustomerMenuPage({
                       className="object-cover"
                       unoptimized
                     />
-                  </div>
-                ) : (
-                  <div className="flex aspect-square w-full items-center justify-center bg-muted/50 text-muted-foreground">
-                    <Utensils className="size-8 opacity-45" />
-                  </div>
-                )}
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-muted/50 text-muted-foreground">
+                      <Utensils className="size-8 opacity-45" />
+                    </div>
+                  )}
+                  <span className={`absolute left-2 top-2 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none shadow-[var(--shadow-subtle)] ${
+                    mi.isBuffet
+                      ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'
+                      : 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]'
+                  }`}>
+                    {mi.isBuffet ? t.buffet : t.extra}
+                  </span>
+                  {!mi.isBuffet && (
+                    <span className="absolute right-2 top-2 rounded-full border border-border bg-card/95 px-2 py-0.5 text-[11px] font-bold leading-none text-[var(--status-danger-fg)] shadow-[var(--shadow-subtle)] backdrop-blur-sm">
+                      +฿{Number(mi.extraPrice).toLocaleString('th-TH')}
+                    </span>
+                  )}
+                </div>
 
                 {/* Info */}
-                <div className="flex flex-1 flex-col gap-2 p-2.5">
-                  {/* Name + type badge */}
-                  <div className="space-y-1.5">
-                    <p className="text-sm font-semibold leading-tight text-foreground">
-                      {displayName}
-                    </p>
-                    <div>
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none ${
-                        mi.isBuffet
-                          ? 'bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'
-                          : 'bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]'
-                      }`}>
-                        {mi.isBuffet ? t.buffet : t.extra}
-                      </span>
-                    </div>
-                  </div>
+                <div className="flex flex-1 flex-col gap-1.5 p-2.5">
+                  <p className="text-sm font-semibold leading-tight text-foreground">
+                    {displayName}
+                  </p>
 
                   {/* Description */}
                   {description && (
                     <p className="text-[11px] leading-snug text-muted-foreground line-clamp-2">
                       {description}
-                    </p>
-                  )}
-
-                  {/* Extra price */}
-                  {!mi.isBuffet && (
-                    <p className="text-xs font-semibold text-[var(--status-danger-fg)]">
-                      +฿{Number(mi.extraPrice).toLocaleString('th-TH')}
                     </p>
                   )}
 
@@ -363,27 +369,28 @@ export function CustomerMenuPage({
                         type="button"
                         disabled={isClosed || atCatMax}
                         onClick={() => setQuantity(cartItem, 1)}
-                        className="min-h-10 w-full rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground shadow-[var(--shadow-subtle)] hover:bg-primary/90 disabled:opacity-40"
+                        className="flex min-h-11 w-full items-center justify-center gap-1 rounded-xl bg-primary text-sm font-semibold text-primary-foreground shadow-[var(--shadow-subtle)] transition-colors hover:bg-primary/90 active:scale-[0.98] disabled:opacity-40"
                       >
+                        {!atCatMax && <Plus className="size-4" />}
                         {atCatMax ? t.full : t.add}
                       </button>
                     ) : (
-                      <div className="flex min-h-10 items-center justify-between rounded-lg border border-border bg-background px-1.5">
+                      <div className="flex min-h-11 items-center justify-between rounded-xl border border-border bg-background px-1">
                         <button
                           type="button"
                           aria-label={t.decreaseQty}
                           onClick={() => setQuantity(cartItem, qty - 1)}
-                          className="flex size-8 items-center justify-center rounded-full bg-muted text-foreground hover:bg-muted/80"
+                          className="flex size-9 items-center justify-center rounded-lg bg-muted text-foreground active:scale-95 hover:bg-muted/80"
                         >
                           <Minus className="size-4" />
                         </button>
-                        <span className="tabular-nums text-sm font-semibold">{qty}</span>
+                        <span className="text-base font-bold tabular-nums">{qty}</span>
                         <button
                           type="button"
                           aria-label={t.increaseQty}
                           disabled={atMax || atCatMax}
                           onClick={() => setQuantity(cartItem, qty + 1)}
-                          className="flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                          className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground active:scale-95 hover:bg-primary/90 disabled:opacity-40"
                         >
                           <Plus className="size-4" />
                         </button>
@@ -484,7 +491,7 @@ export function CustomerMenuPage({
                         </div>
                       </div>
 
-                      <div className="flex min-h-10 shrink-0 items-center gap-3 rounded-full border border-border bg-background px-1.5">
+                      <div className="flex min-h-11 shrink-0 items-center gap-2.5 rounded-full border border-border bg-background px-1">
                         <button
                           type="button"
                           aria-label={t.decreaseQty}
@@ -492,11 +499,11 @@ export function CustomerMenuPage({
                             if (totalItems <= 1) setCartOpen(false);
                             setQuantity(item, item.quantity - 1);
                           }}
-                          className="flex size-8 items-center justify-center rounded-full bg-muted text-foreground hover:bg-muted/80"
+                          className="flex size-9 items-center justify-center rounded-full bg-muted text-foreground active:scale-95 hover:bg-muted/80"
                         >
                           <Minus className="size-4" />
                         </button>
-                        <span className="min-w-5 text-center text-sm font-semibold tabular-nums">
+                        <span className="min-w-5 text-center text-base font-bold tabular-nums">
                           {item.quantity}
                         </span>
                         <button
@@ -504,7 +511,7 @@ export function CustomerMenuPage({
                           aria-label={t.increaseQty}
                           disabled={atMax || atCatMax}
                           onClick={() => setQuantity(item, item.quantity + 1)}
-                          className="flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                          className="flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground active:scale-95 hover:bg-primary/90 disabled:opacity-40"
                         >
                           <Plus className="size-4" />
                         </button>

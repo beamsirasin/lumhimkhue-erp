@@ -3,9 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { format, differenceInMinutes } from 'date-fns';
-import { th } from 'date-fns/locale';
-import { Pencil, Trash2, Loader2, AlertTriangle, Printer } from 'lucide-react';
+import { differenceInMinutes } from 'date-fns';
+import { Pencil, Trash2, Loader2, AlertTriangle, Printer, ShieldCheck, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -15,9 +14,11 @@ import {
   getPaymentReceiptData,
   getFullBillReceiptData,
 } from '@/lib/actions/history';
+import { getSessionApprovalHistory } from '@/lib/actions/session-approval-history';
 import { print as printReceipt } from '@/lib/printer/service';
 import { ManagerApprovalModal } from '@/components/shared/ManagerApprovalModal';
 import { cn } from '@/lib/utils';
+import { formatThaiDateTime } from '@/lib/date-time';
 
 const METHOD_LABEL: Record<string, string> = {
   cash:         'เงินสด',
@@ -30,6 +31,14 @@ const METHOD_LABEL: Record<string, string> = {
 const SETTLEMENT_LABEL: Record<string, string> = {
   partial: 'รับชำระบางส่วน',
   final:   'ปิดบิลทั้งหมด',
+};
+
+const ROLE_LABEL: Record<string, string> = {
+  owner: 'เจ้าของ',
+  manager: 'ผู้จัดการ',
+  cashier: 'แคชเชียร์',
+  kitchen: 'ครัว',
+  staff: 'พนักงาน',
 };
 
 function fmtThb(value: number | string | null | undefined) {
@@ -51,6 +60,22 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
     queryFn: () => getSessionDetail(sessionId!).then((r) => (r.ok ? r.data : null)),
     enabled: !!sessionId,
     staleTime: 60_000,
+  });
+
+  const {
+    data: approvalHistory = [],
+    isLoading: approvalHistoryLoading,
+    isError: approvalHistoryError,
+  } = useQuery({
+    queryKey: ['session-approval-history', sessionId],
+    queryFn: async () => {
+      const result = await getSessionApprovalHistory(sessionId!);
+      if (!result.ok) throw new Error(result.error);
+      return result.data;
+    },
+    enabled: !!sessionId,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const [delConfirm,  setDelConfirm]  = useState(false);
@@ -110,6 +135,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
     toast.success('ลบประวัติการชำระเงินแล้ว');
     queryClient.invalidateQueries({ queryKey: ['payment-history'] });
     queryClient.invalidateQueries({ queryKey: ['session-history'] });
+    queryClient.invalidateQueries({ queryKey: ['session-approval-history', sessionId] });
     setApprovalAction(null);
     setDelConfirm(false);
     setSelectedMutationPaymentId(null);
@@ -125,6 +151,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
     toast.success('เปิดบิลใหม่แล้ว — กำลังไปหน้า POS');
     queryClient.invalidateQueries({ queryKey: ['payment-history'] });
     queryClient.invalidateQueries({ queryKey: ['pos-sessions'] });
+    queryClient.invalidateQueries({ queryKey: ['session-approval-history', sessionId] });
     setApprovalAction(null);
     setEditConfirm(false);
     setSelectedMutationPaymentId(null);
@@ -189,7 +216,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
               <div className="flex justify-between">
                 <span className="text-muted-foreground">เริ่มต้น</span>
                 <span className="tabular-nums text-foreground">
-                  {format(new Date(data.session.startedAt), 'HH:mm น. (d MMM yy)', { locale: th })}
+                  {formatThaiDateTime(data.session.startedAt)}
                 </span>
               </div>
               {data.session.closedAt && (
@@ -197,7 +224,7 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">สิ้นสุด</span>
                     <span className="tabular-nums text-foreground">
-                      {format(new Date(data.session.closedAt), 'HH:mm น. (d MMM yy)', { locale: th })}
+                      {formatThaiDateTime(data.session.closedAt)}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -250,6 +277,102 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                 </div>
               </div>
             )}
+
+            {/* Durable approval-code audit trail */}
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="size-4 text-[var(--status-purple-fg)]" />
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    ประวัติการแก้ไขด้วยรหัสอนุมัติ
+                  </p>
+                </div>
+                {!approvalHistoryLoading && approvalHistory.length > 0 && (
+                  <span className="rounded-full border border-[var(--status-purple-border)] bg-[var(--status-purple-bg)] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[var(--status-purple-fg)]">
+                    {approvalHistory.length} ครั้ง
+                  </span>
+                )}
+              </div>
+
+              {approvalHistoryLoading ? (
+                <div className="flex items-center gap-2 rounded-xl border border-border bg-[var(--surface-2)] px-4 py-4 text-xs text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" /> กำลังโหลดประวัติการอนุมัติ...
+                </div>
+              ) : approvalHistoryError ? (
+                <div className="rounded-xl border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-4 py-3 text-xs text-[var(--status-danger-fg)]">
+                  ไม่สามารถโหลดประวัติการอนุมัติได้
+                </div>
+              ) : approvalHistory.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-3 text-xs text-muted-foreground">
+                  Session นี้ยังไม่มีการแก้ไขที่ใช้รหัสอนุมัติ
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {approvalHistory.map((event) => (
+                    <article
+                      key={event.id}
+                      className="overflow-hidden rounded-xl border border-[var(--status-purple-border)] bg-[var(--surface-1)]"
+                    >
+                      <div className="flex items-start gap-3 border-b border-border bg-[var(--status-purple-bg)]/55 px-4 py-3">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-[var(--status-purple-border)] bg-[var(--surface-1)] text-[var(--status-purple-fg)]">
+                          <ShieldCheck className="size-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                            <p className="text-sm font-semibold text-foreground">{event.actionLabel}</p>
+                            <time className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                              {formatThaiDateTime(event.createdAt)}
+                            </time>
+                          </div>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            แก้ไขโดย {event.actorName ?? 'ไม่พบชื่อผู้ใช้'}
+                            {event.actorRole && ` (${ROLE_LABEL[event.actorRole] ?? event.actorRole})`}
+                          </p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {event.selfApproved
+                              ? 'ใช้รหัสที่ออกโดยผู้แก้ไขเอง'
+                              : `รหัสออกโดย ${event.codeOwnerName ?? 'ไม่พบชื่อผู้ออกรหัส'}`}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 px-4 py-3.5">
+                        {event.reason && (
+                          <div className="rounded-lg bg-muted/45 px-3 py-2 text-xs">
+                            <span className="font-medium text-muted-foreground">เหตุผล: </span>
+                            <span className="text-foreground">{event.reason}</span>
+                          </div>
+                        )}
+
+                        {event.changes.length > 0 ? (
+                          <div className="space-y-2">
+                            {event.changes.map((change, index) => (
+                              <div
+                                key={`${event.id}-${change.label}-${index}`}
+                                className="grid gap-2 rounded-lg border border-border bg-[var(--surface-2)] px-3 py-2.5 sm:grid-cols-[minmax(8rem,1fr)_minmax(7rem,0.8fr)_auto_minmax(7rem,0.8fr)] sm:items-center"
+                              >
+                                <p className="text-xs font-medium text-foreground">{change.label}</p>
+                                <div className="rounded-md border border-border bg-background px-2.5 py-1.5 text-xs tabular-nums text-muted-foreground">
+                                  <span className="mr-1 text-[10px] font-medium uppercase">เดิม</span>
+                                  {change.before}
+                                </div>
+                                <ArrowRight className="hidden size-4 text-muted-foreground sm:block" aria-hidden="true" />
+                                <div className="rounded-md border border-[var(--status-purple-border)] bg-[var(--status-purple-bg)] px-2.5 py-1.5 text-xs font-semibold tabular-nums text-[var(--status-purple-fg)]">
+                                  <span className="mr-1 text-[10px] font-medium uppercase">ใหม่</span>
+                                  {change.after}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">ไม่มีรายละเอียดค่าก่อนและหลังใน audit เดิม</p>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Payments */}
             {showPayment && (() => {
@@ -350,8 +473,22 @@ export function SessionDetailDialog({ sessionId, onClose, showPayment = false }:
                                   {SETTLEMENT_LABEL[payment.settlementType] ?? payment.settlementType}
                                 </span>
                                 <p className="mt-1 text-xs text-muted-foreground">
-                                  ครั้งที่ {idx + 1} · {format(new Date(payment.paidAt), 'HH:mm น. (d MMM yy)', { locale: th })}
+                                  ครั้งที่ {idx + 1} · {formatThaiDateTime(payment.paidAt)}
                                 </p>
+                                {payment.receiptNo && (
+                                  <p className="mt-0.5 text-xs text-muted-foreground">
+                                    เลขที่ใบเสร็จ: <span className="tabular-nums font-medium text-foreground">{payment.receiptNo}</span>
+                                  </p>
+                                )}
+                                {payment.processedByUser && (
+                                  <p className="mt-0.5 text-xs text-muted-foreground">
+                                    ทำรายการโดย:{' '}
+                                    <span className="font-medium text-foreground">{payment.processedByUser.name}</span>
+                                    {payment.processedByUser.role && (
+                                      <span> ({ROLE_LABEL[payment.processedByUser.role] ?? payment.processedByUser.role})</span>
+                                    )}
+                                  </p>
+                                )}
                               </div>
                               <span className={cn(
                                 'tabular-nums text-lg font-bold',

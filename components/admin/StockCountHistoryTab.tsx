@@ -1,8 +1,6 @@
 'use client';
 
 import { useState, useEffect, useTransition, useMemo } from 'react';
-import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
@@ -26,7 +24,7 @@ import {
   type StockCountDetail,
 } from '@/lib/actions/inventory';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ThaiDateInput } from '@/components/ui/thai-date-input';
 import { Label } from '@/components/ui/label';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -47,6 +45,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { formatThaiDate, formatThaiDateTime, formatThaiTime } from '@/lib/date-time';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -55,7 +54,7 @@ function fmtNum(n: number | string) {
 }
 
 function fmtDate(dateStr: string) {
-  return format(new Date(dateStr + 'T00:00:00'), 'd MMM yyyy', { locale: th });
+  return formatThaiDate(dateStr);
 }
 
 // ── Detail Modal ──────────────────────────────────────────────────────────────
@@ -103,7 +102,7 @@ function DetailModal({
             <p className="text-xs text-muted-foreground mt-0.5">
               ผู้นับ: {data.countedByUser?.name ?? '—'}
               {data.submittedAt &&
-                ` • ส่งเมื่อ ${format(new Date(data.submittedAt), 'HH:mm น.', { locale: th })}`}
+                ` • ส่งเมื่อ ${formatThaiTime(data.submittedAt)} น.`}
             </p>
           )}
         </DialogHeader>
@@ -216,7 +215,7 @@ function DetailModal({
                             <TableCell className="px-3 py-2 text-xs text-muted-foreground">{adj.reason}</TableCell>
                             <TableCell className="px-3 py-2 text-xs text-muted-foreground">{adj.createdByUser?.name ?? '—'}</TableCell>
                             <TableCell className="px-3 py-2 text-xs text-muted-foreground">
-                              {format(new Date(adj.createdAt), 'HH:mm', { locale: th })}
+                              {formatThaiTime(adj.createdAt)}
                             </TableCell>
                           </TableRow>
                         );
@@ -380,12 +379,11 @@ export function StockCountHistoryTab() {
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <Label htmlFor="history-date" className="text-xs text-muted-foreground whitespace-nowrap">วันที่</Label>
-          <Input
-            id="history-date"
-            type="date"
+          <ThaiDateInput
             value={filterDate}
-            onChange={(e) => setFilterDate(e.target.value)}
+            onValueChange={setFilterDate}
             className="w-40"
+            ariaLabel="วันที่"
           />
         </div>
         {filterDate && (
@@ -448,7 +446,7 @@ export function StockCountHistoryTab() {
                   </TableCell>
                   <TableCell className="px-3 py-3 text-xs text-muted-foreground">
                     {count.submittedAt
-                      ? format(new Date(count.submittedAt), 'HH:mm น. d MMM', { locale: th })
+                      ? `${formatThaiDateTime(count.submittedAt)} น.`
                       : '—'}
                   </TableCell>
                   <TableCell className="px-3 py-3">

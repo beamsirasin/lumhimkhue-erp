@@ -21,6 +21,9 @@ export const employeeSchema = z
     firstName: z.string().min(1, 'กรุณากรอกชื่อ'),
     lastName: z.string().min(1, 'กรุณากรอกนามสกุล'),
     phone: z.string().optional(),
+    // Built-in codes (kitchen/service/dishwash/cashier/icecream) or a custom
+    // label added via hr_lookup_options — validated as bounded free text.
+    department: z.string().trim().min(1).max(50).optional().nullable(),
     bankName: z.string().optional(),
     bankAccountNumber: z.string().optional(),
     nationalId: z.string().max(13).optional().nullable(),

@@ -11,6 +11,11 @@ export const closeShiftSchema = z.object({
   differenceReason: z.string().max(500).optional(),
 });
 
+export const storeDayApprovalSchema = z.object({
+  approvalCode: z.string().trim().min(1).max(20),
+  reason: z.string().trim().min(1).max(500),
+});
+
 export const reviewShiftSchema = z.object({
   shiftId: z.string().uuid(),
   reviewNotes: z.string().max(1000).optional(),
@@ -25,5 +30,6 @@ export const listShiftsSchema = z.object({
 
 export type OpenShiftInput = z.infer<typeof openShiftSchema>;
 export type CloseShiftInput = z.infer<typeof closeShiftSchema>;
+export type StoreDayApprovalInput = z.infer<typeof storeDayApprovalSchema>;
 export type ReviewShiftInput = z.infer<typeof reviewShiftSchema>;
 export type ListShiftsInput = z.infer<typeof listShiftsSchema>;

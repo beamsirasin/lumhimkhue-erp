@@ -1,8 +1,6 @@
 'use client';
 
 import { useState, useMemo, useTransition } from 'react';
-import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
@@ -48,6 +46,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { formatThaiDate, formatThaiDateTime } from '@/lib/date-time';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -252,7 +251,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
       {/* Page header with V2 tab switcher */}
       <PageHeader
         title={activeTab === 'daily' ? 'นับสต็อกรายวัน' : 'ผลการนับสต็อก'}
-        subtitle={activeTab === 'daily' ? format(new Date(today + 'T00:00:00'), 'd MMMM yyyy', { locale: th }) : undefined}
+        subtitle={activeTab === 'daily' ? formatThaiDate(today) : undefined}
         actions={
           <div className="flex items-center gap-3">
             {activeTab === 'daily' && guestCount > 0 && (
@@ -589,7 +588,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
             <p className="text-sm font-medium text-[var(--status-success-fg)]">ส่งผลการนับเรียบร้อย</p>
             {existing.submittedAt && (
               <p className="text-xs text-[var(--status-success-fg)] opacity-80 mt-0.5">
-                เมื่อ {format(new Date(existing.submittedAt), 'HH:mm น. d MMM yyyy', { locale: th })}
+                เมื่อ {formatThaiDateTime(existing.submittedAt)} น.
               </p>
             )}
             {guestCount > 0 && (

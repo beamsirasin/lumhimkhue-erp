@@ -1,13 +1,14 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { eq, and, or, isNull, desc, lte, gt } from 'drizzle-orm';
+import { eq, and, or, isNull, inArray, desc, lte, gt } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { BatchItem } from 'drizzle-orm/batch';
+import { formatInTimeZone } from 'date-fns-tz';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { db } from '@/lib/db';
-import { managerApprovalCodes, users } from '@/lib/db/schema';
+import { managerApprovalCodes, users, payments, paymentAdjustments, sessions } from '@/lib/db/schema';
 import { writeAuditLog } from '@/lib/actions/audit';
 import {
   generateApprovalCode,
@@ -112,13 +113,73 @@ export async function getManagerApprovalCodeState() {
 
     const activeRow = rows.find((r) => r.code.status === 'active') ?? null;
 
+    // Resolve each used code's target bill so the UI can deep-link into
+    // /pos/history. Payment ids are looked up in payments first, then in the
+    // payment_adjustments void ledger (which survives a hard delete).
+    const usedPaymentIds = [...new Set(
+      rows
+        .filter((r) => r.code.usedEntityType === 'payment' && r.code.usedEntityId)
+        .map((r) => r.code.usedEntityId!),
+    )];
+    const [paymentTargets, adjustmentTargets] = usedPaymentIds.length
+      ? await Promise.all([
+          db
+            .select({ id: payments.id, sessionId: payments.sessionId })
+            .from(payments)
+            .where(inArray(payments.id, usedPaymentIds)),
+          db
+            .select({ paymentId: paymentAdjustments.paymentId, sessionId: paymentAdjustments.sessionId })
+            .from(paymentAdjustments)
+            .where(inArray(paymentAdjustments.paymentId, usedPaymentIds)),
+        ])
+      : [[], []];
+    const sessionIdByPaymentId = new Map<string, string>();
+    for (const a of adjustmentTargets) {
+      if (a.sessionId) sessionIdByPaymentId.set(a.paymentId, a.sessionId);
+    }
+    for (const p of paymentTargets) {
+      if (p.sessionId) sessionIdByPaymentId.set(p.id, p.sessionId);
+    }
+
+    const targetSessionIds = new Set<string>(sessionIdByPaymentId.values());
+    for (const r of rows) {
+      if (r.code.usedEntityType === 'session' && r.code.usedEntityId) {
+        targetSessionIds.add(r.code.usedEntityId);
+      }
+    }
+    const sessionRows = targetSessionIds.size
+      ? await db
+          .select({ id: sessions.id, startedAt: sessions.startedAt })
+          .from(sessions)
+          .where(inArray(sessions.id, [...targetSessionIds]))
+      : [];
+    const sessionStartById = new Map(sessionRows.map((s) => [s.id, s.startedAt]));
+
+    // /pos/history buckets bills under the Bangkok day of sessions.startedAt.
+    const resolveTarget = (row: CodeRow): { sessionId: string; date: string } | null => {
+      if (!row.usedEntityId) return null;
+      const sessionId =
+        row.usedEntityType === 'session'
+          ? row.usedEntityId
+          : row.usedEntityType === 'payment'
+            ? sessionIdByPaymentId.get(row.usedEntityId) ?? null
+            : null;
+      if (!sessionId) return null;
+      const startedAt = sessionStartById.get(sessionId);
+      if (!startedAt) return null;
+      return { sessionId, date: formatInTimeZone(startedAt, 'Asia/Bangkok', 'yyyy-MM-dd') };
+    };
+
     return {
       ok: true as const,
       data: {
         activeCode: activeRow
           ? toDisplayCode(activeRow.code, activeRow.generatedByName, activeRow.usedByName, activeRow.revokedByName)
           : null,
-        history: rows.map((r) => toDisplayCode(r.code, r.generatedByName, r.usedByName, r.revokedByName)),
+        history: rows.map((r) => ({
+          ...toDisplayCode(r.code, r.generatedByName, r.usedByName, r.revokedByName),
+          target: resolveTarget(r.code),
+        })),
       },
     };
   } catch (e) {

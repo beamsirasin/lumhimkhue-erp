@@ -91,8 +91,9 @@ const posGroup: NavGroup = {
   Icon: ShoppingCart,
   matchPrefix: '/pos',
   children: [
-    { href: '/pos',         label: 'หน้า POS',         Icon: ShoppingCart },
-    { href: '/pos/history', label: 'ประวัติชำระเงิน',  Icon: CreditCard },
+    { href: '/pos',         label: 'หน้า POS',          Icon: ShoppingCart },
+    { href: '/pos/shifts',  label: 'รอบแคชเชียร์',      Icon: Clock },
+    { href: '/pos/history', label: 'ประวัติชำระเงิน',   Icon: CreditCard },
   ],
 };
 
@@ -283,6 +284,10 @@ function NavGroupItem({
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { Icon } = group;
   const totalGroupBadge = group.children.reduce((s, c) => s + (badgeCounts?.[c.href] ?? 0), 0);
+  const isChildActive = (href: string) =>
+    href === group.matchPrefix
+      ? pathname === href
+      : pathname === href || pathname.startsWith(href + '/');
 
   if (collapsed) {
     return (
@@ -338,10 +343,7 @@ function NavGroupItem({
           </p>
           <div className="p-1.5 space-y-0.5">
             {group.children.map(({ href, label, Icon: ChildIcon }) => {
-              const isActive =
-                href === '/tables'
-                  ? pathname === '/tables'
-                  : pathname === href || pathname.startsWith(href + '/');
+              const isActive = isChildActive(href);
               return (
                 <Link
                   key={href}
@@ -397,10 +399,7 @@ function NavGroupItem({
       <CollapsibleContent>
         <div className="mt-0.5 ml-4 border-l border-sidebar-border/60 pl-3 space-y-px">
           {group.children.map(({ href, label, Icon: ChildIcon }) => {
-            const isActive =
-              href === '/tables'
-                ? pathname === '/tables'
-                : pathname === href || pathname.startsWith(href + '/');
+            const isActive = isChildActive(href);
             const badge = badgeCounts?.[href] ?? 0;
             return (
               <Link

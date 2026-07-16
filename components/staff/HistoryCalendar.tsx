@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Calendar, CalendarDayButton } from '@/components/ui/calendar';
 import { getHistoryCalendarDates } from '@/lib/actions/history';
+import { formatThaiDate } from '@/lib/date-time';
 import { cn } from '@/lib/utils';
 
 interface HistoryCalendarProps {
@@ -35,7 +36,7 @@ export function HistoryCalendar({ selectedDate, onSelectDate }: HistoryCalendarP
     staleTime: 60_000,
   });
 
-  const selectedLabel = format(selected, 'd MMMM yyyy', { locale: th });
+  const selectedLabel = formatThaiDate(selectedDate);
 
   function handleOpen() {
     const d = new Date(selectedDate);
@@ -114,6 +115,12 @@ export function HistoryCalendar({ selectedDate, onSelectDate }: HistoryCalendarP
                 disabled={{ after: today }}
                 showOutsideDays={false}
                 className="w-full bg-transparent p-0"
+                formatters={{
+                  formatCaption: (date) => new Intl.DateTimeFormat('th-TH-u-ca-buddhist-nu-latn', {
+                    month: 'long',
+                    year: 'numeric',
+                  }).format(date),
+                }}
                 components={{
                   DayButton: ({ day, modifiers, children, ...props }) => {
                     const dateStr = format(day.date, 'yyyy-MM-dd');

@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Time24Select } from '@/components/ui/time-24-select';
 import { Button } from '@/components/ui/button';
 import { AppShell } from '@/components/ui/app-shell';
 import { PageHeader } from '@/components/ui/page-header';
@@ -98,34 +99,34 @@ export function HrSettingsForm({ initialData }: Props) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>กะเช้า เริ่ม</Label>
-                <Input
-                  type="time"
+                <Time24Select
+                  label="กะเช้า เริ่ม"
                   value={form.morningShiftStart}
-                  onChange={(e) => setField('morningShiftStart', e.target.value)}
+                  onValueChange={(value) => setField('morningShiftStart', value)}
                 />
               </div>
               <div className="space-y-1.5">
                 <Label>กะเช้า สิ้นสุด</Label>
-                <Input
-                  type="time"
+                <Time24Select
+                  label="กะเช้า สิ้นสุด"
                   value={form.morningShiftEnd}
-                  onChange={(e) => setField('morningShiftEnd', e.target.value)}
+                  onValueChange={(value) => setField('morningShiftEnd', value)}
                 />
               </div>
               <div className="space-y-1.5">
                 <Label>กะบ่าย เริ่ม</Label>
-                <Input
-                  type="time"
+                <Time24Select
+                  label="กะบ่าย เริ่ม"
                   value={form.afternoonShiftStart}
-                  onChange={(e) => setField('afternoonShiftStart', e.target.value)}
+                  onValueChange={(value) => setField('afternoonShiftStart', value)}
                 />
               </div>
               <div className="space-y-1.5">
                 <Label>กะบ่าย สิ้นสุด</Label>
-                <Input
-                  type="time"
+                <Time24Select
+                  label="กะบ่าย สิ้นสุด"
                   value={form.afternoonShiftEnd}
-                  onChange={(e) => setField('afternoonShiftEnd', e.target.value)}
+                  onValueChange={(value) => setField('afternoonShiftEnd', value)}
                 />
               </div>
             </div>

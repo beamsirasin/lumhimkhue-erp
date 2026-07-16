@@ -2,21 +2,20 @@
 
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { formatThaiDate } from '@/lib/date-time';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CashShiftBackfillSheet } from '@/components/staff/CashShiftBackfillSheet';
 import { HistoryCalendar } from '@/components/staff/HistoryCalendar';
+import { ShiftWidget } from '@/components/staff/ShiftWidget';
 import { ShiftHistoryTable } from '@/components/staff/ShiftHistoryTable';
 import { AppShell } from '@/components/ui/app-shell';
 import { DataCard } from '@/components/ui/section-card';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { listShifts } from '@/lib/actions/shifts';
-import type { Role } from '@/lib/auth/permissions';
 
 interface Props {
-  role: Role;
   canReview: boolean;
+  canManageShift: boolean;
 }
 
 function ShiftTableSkeleton() {
@@ -39,7 +38,7 @@ function ShiftTableSkeleton() {
   );
 }
 
-export function ShiftsHistoryClient({ canReview }: Props) {
+export function ShiftsHistoryClient({ canReview, canManageShift }: Props) {
   const today = format(new Date(), 'yyyy-MM-dd');
   const [selectedDate, setSelectedDate] = useState(today);
   const queryClient = useQueryClient();
@@ -52,6 +51,7 @@ export function ShiftsHistoryClient({ canReview }: Props) {
         dateTo: `${selectedDate}T23:59:59`,
       }).then((r) => (r.ok ? r.data : [])),
     staleTime: 30_000,
+    enabled: canReview,
   });
 
   function refresh() {
@@ -59,28 +59,35 @@ export function ShiftsHistoryClient({ canReview }: Props) {
   }
 
   return (
-    <AppShell className="flex h-full flex-col overflow-hidden space-y-4">
+    <AppShell className="flex h-full min-h-0 flex-col overflow-hidden space-y-4">
       <PageHeader
         title="รอบแคชเชียร์"
-        subtitle={format(new Date(selectedDate), 'EEEE d MMMM yyyy', { locale: th })}
-        actions={
+        subtitle={canReview
+          ? 'เปิด–ปิดรอบ ตรวจนับเงินสด และตรวจสอบประวัติในที่เดียว'
+          : canManageShift
+            ? 'เปิดรอบ รับชำระ และปิดรอบเพื่อส่งต่องานหรือจบวัน'
+            : 'ตรวจสอบสถานะและปิดรอบวันระดับร้านด้วย Approval Code'}
+        actions={canReview ? (
           <div className="flex items-center gap-2">
-            {/* Phase 16G-A: owner/manager-only correction tool (canReview = owner/manager) */}
-            {canReview && (
-              <CashShiftBackfillSheet initialDate={selectedDate} onAssigned={refresh} />
-            )}
             <HistoryCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
           </div>
-        }
+        ) : undefined}
       />
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <DataCard title="ประวัติและตรวจสอบรอบการรับเงิน" subtitle={`${rows.length} รอบ`} noPadding>
-          {isLoading ? (
-            <ShiftTableSkeleton />
-          ) : (
-            <ShiftHistoryTable rows={rows} canReview={canReview} onRefresh={refresh} />
-          )}
-        </DataCard>
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-2">
+        <ShiftWidget canManageShift={canManageShift} />
+        {canReview && (
+          <DataCard
+            title="ประวัติและตรวจสอบรอบการรับเงิน"
+            subtitle={`${formatThaiDate(selectedDate)} · ${rows.length.toLocaleString('th-TH')} รอบ`}
+            noPadding
+          >
+            {isLoading ? (
+              <ShiftTableSkeleton />
+            ) : (
+              <ShiftHistoryTable rows={rows} canReview={canReview} onRefresh={refresh} />
+            )}
+          </DataCard>
+        )}
       </div>
     </AppShell>
   );

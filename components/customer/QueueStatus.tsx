@@ -3,8 +3,7 @@
 import Image from 'next/image';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { formatThaiDateTime } from '@/lib/date-time';
 import {
   BellRing,
   CheckCircle2,
@@ -208,12 +207,7 @@ export function QueueStatus({ token, initialData }: QueueStatusProps) {
 
   const showName = !!entry.customerName && entry.customerName !== '-';
 
-  // Date + time: "22 มิ.ย. 2026 • 21:20 น."
-  const registeredAt = format(
-    new Date(entry.createdAt),
-    "d MMM yyyy '•' HH:mm 'น.'",
-    { locale: th },
-  );
+  const registeredAt = `${formatThaiDateTime(entry.createdAt)} น.`;
 
   return (
     <div className={cn('flex min-h-dvh flex-col items-center px-4 py-5 sm:justify-center sm:py-8', PAGE_BG)}>

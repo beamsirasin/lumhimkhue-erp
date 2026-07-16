@@ -2,11 +2,12 @@
 
 import { useState, useTransition } from 'react';
 import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ThaiDateInput } from '@/components/ui/thai-date-input';
+import { Time24Select } from '@/components/ui/time-24-select';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import {
@@ -22,6 +23,7 @@ import { DataCard } from '@/components/ui/section-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Plus, MoreHorizontal, Clock, X } from 'lucide-react';
 import { getTimeEntries, createTimeEntry, updateTimeEntry, deleteTimeEntry } from '@/lib/actions/hr';
+import { formatThaiDate } from '@/lib/date-time';
 import type { Employee, TimeEntry } from '@/lib/db/schema';
 
 interface Props {
@@ -167,18 +169,19 @@ export function TimeEntriesPage({ initialEmployees }: Props) {
             ))}
           </SelectContent>
         </Select>
-        <Input
-          type="date"
+        <ThaiDateInput
           value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
+          onValueChange={setStartDate}
           className="w-40"
+          ariaLabel="เลือกวันเริ่มต้น"
         />
         <span className="self-center text-muted-foreground text-sm">–</span>
-        <Input
-          type="date"
+        <ThaiDateInput
           value={endDate}
-          onChange={(e) => setEndDate(e.target.value)}
+          onValueChange={setEndDate}
           className="w-40"
+          min={startDate}
+          ariaLabel="เลือกวันสิ้นสุด"
         />
         <Button variant="outline" onClick={loadEntries} disabled={pending}>
           แสดง
@@ -212,7 +215,7 @@ export function TimeEntriesPage({ initialEmployees }: Props) {
                   {entries.map((entry) => (
                     <tr key={entry.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3 text-foreground">
-                        {format(new Date(entry.workDate + 'T00:00'), 'd MMM yyyy', { locale: th })}
+                        {formatThaiDate(entry.workDate)}
                       </td>
                       <td className="px-4 py-3 text-center text-muted-foreground">{entry.clockIn}</td>
                       <td className="px-4 py-3 text-center text-muted-foreground">{entry.clockOut}</td>
@@ -326,27 +329,27 @@ export function TimeEntriesPage({ initialEmployees }: Props) {
             )}
             <div className="space-y-1.5">
               <Label>วันที่</Label>
-              <Input
-                type="date"
+              <ThaiDateInput
                 value={form.workDate}
-                onChange={(e) => setForm((p) => ({ ...p, workDate: e.target.value }))}
+                onValueChange={(workDate) => setForm((p) => ({ ...p, workDate }))}
+                ariaLabel="เลือกวันที่ลงเวลา"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>เวลาเข้า</Label>
-                <Input
-                  type="time"
+                <Time24Select
+                  label="เวลาเข้า"
                   value={form.clockIn}
-                  onChange={(e) => setForm((p) => ({ ...p, clockIn: e.target.value }))}
+                  onValueChange={(clockIn) => setForm((p) => ({ ...p, clockIn }))}
                 />
               </div>
               <div className="space-y-1.5">
                 <Label>เวลาออก</Label>
-                <Input
-                  type="time"
+                <Time24Select
+                  label="เวลาออก"
                   value={form.clockOut}
-                  onChange={(e) => setForm((p) => ({ ...p, clockOut: e.target.value }))}
+                  onValueChange={(clockOut) => setForm((p) => ({ ...p, clockOut }))}
                 />
               </div>
             </div>

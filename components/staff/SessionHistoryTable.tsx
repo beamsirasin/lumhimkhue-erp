@@ -1,8 +1,8 @@
 ﻿'use client';
 
 import { useMemo, useState } from 'react';
-import { differenceInMinutes, format } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { differenceInMinutes } from 'date-fns';
+import { formatThaiDate, formatThaiTime } from '@/lib/date-time';
 import { ChevronRight, Timer, UsersRound } from 'lucide-react';
 import type { SessionHistoryRow } from '@/lib/actions/history';
 import { DataCard } from '@/components/ui/section-card';
@@ -97,12 +97,12 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <DataCard title="รายการ Session" subtitle={`${format(new Date(date), 'd MMMM yyyy', { locale: th })} · ${rows.length} รายการ`} noPadding>
+        <DataCard title="รายการ Session" subtitle={`${formatThaiDate(date)} · ${rows.length} รายการ`} noPadding>
           {rows.length === 0 ? (
             <EmptyState
               icon={<Timer className="size-5" />}
               title="ไม่มีข้อมูล Session"
-              description={`ไม่พบข้อมูลในวันที่ ${format(new Date(date), 'd MMMM yyyy', { locale: th })}`}
+              description={`ไม่พบข้อมูลในวันที่ ${formatThaiDate(date)}`}
               size="lg"
             />
           ) : (
@@ -170,11 +170,11 @@ export function SessionHistoryTable({ rows, date }: SessionHistoryTableProps) {
                         </div>
                       </TableCell>
                       <TableCell className="px-4 py-3 tabular-nums text-muted-foreground">
-                        {format(new Date(row.startedAt), 'HH:mm', { locale: th })}
+                        {formatThaiTime(row.startedAt)}
                       </TableCell>
                       <TableCell className="px-4 py-3 tabular-nums text-muted-foreground">
                         {row.closedAt ? (
-                          format(new Date(row.closedAt), 'HH:mm', { locale: th })
+                          formatThaiTime(row.closedAt)
                         ) : isOpen ? (
                           <StatusBadge label="ยังเปิดอยู่" variant="success" dot />
                         ) : (

@@ -875,6 +875,33 @@ export const managerApprovalCodes = pgTable(
   ],
 );
 
+/** Phase 17POS-AUTH-A5 — store-wide business-day state.
+ *  Absence of a row means the Bangkok calendar day is open. A closed row
+ *  blocks new payments and new cashier shifts until it is explicitly reopened
+ *  with another approval code or the Bangkok calendar date changes. */
+export const storeBusinessDays = pgTable(
+  'store_business_days',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    businessDate: date('business_date').notNull(),
+    status: varchar('status', { length: 16 }).notNull().default('open'),
+    closedAt: timestamp('closed_at'),
+    closedByUserId: uuid('closed_by_user_id').references(() => users.id),
+    closeApprovalCodeId: uuid('close_approval_code_id').references(() => managerApprovalCodes.id),
+    closeReason: text('close_reason'),
+    reopenedAt: timestamp('reopened_at'),
+    reopenedByUserId: uuid('reopened_by_user_id').references(() => users.id),
+    reopenApprovalCodeId: uuid('reopen_approval_code_id').references(() => managerApprovalCodes.id),
+    reopenReason: text('reopen_reason'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('store_business_days_business_date_uq').on(t.businessDate),
+    index('store_business_days_status_idx').on(t.status),
+  ],
+);
+
 // ─── Inventory Tables ─────────────────────────────────────────────────────────
 
 export const ingredientCategories = pgTable('ingredient_categories', {
@@ -1129,6 +1156,10 @@ export const employees = pgTable(
     firstName: text('first_name').notNull(),
     lastName: text('last_name').notNull(),
     phone: text('phone'),
+    // Free-text department code (kitchen/service/dishwash/cashier/icecream) —
+    // deliberately NOT a pg enum to avoid ALTER TYPE friction (see
+    // manager_approval_codes.status precedent). Validated in lib/validations/hr.ts.
+    department: text('department'),
     bankName: text('bank_name'),
     bankAccountNumber: text('bank_account_number'),
     type: employeeTypeEnum('type').notNull(),
@@ -1142,6 +1173,8 @@ export const employees = pgTable(
     taxId: varchar('tax_id', { length: 13 }),
     socialSecurityNumber: varchar('social_security_number', { length: 15 }),
     ssfRegistered: boolean('ssf_registered').notNull().default(true),
+    // Manual display order within the schedule/employee lists (Phase 17UI-EMP)
+    sortOrder: integer('sort_order').notNull().default(0),
     notes: text('notes'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -1149,6 +1182,25 @@ export const employees = pgTable(
   (t) => [
     index('employees_type_idx').on(t.type),
     index('employees_status_idx').on(t.status),
+  ],
+);
+
+// User-extensible option lists for HR forms (Phase 17UI-EMP) — e.g. extra
+// departments or banks beyond the built-in defaults hardcoded in the UI.
+// kind: 'department' | 'bank' (free text so future lists need no migration).
+export const hrLookupOptions = pgTable(
+  'hr_lookup_options',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    kind: text('kind').notNull(),
+    label: text('label').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('hr_lookup_options_kind_label_uq').on(t.kind, t.label),
+    index('hr_lookup_options_kind_idx').on(t.kind),
   ],
 );
 

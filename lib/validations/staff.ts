@@ -6,8 +6,18 @@ const navLayoutSchema = z.object({
   sections: z.array(z.object({ heading: z.string(), modules: z.array(z.string()) })),
 });
 
+// Login identifier: plain username or email — stored in users.email either way.
+// Lowercased at create AND at login (lib/validations/auth.ts) so lookups match.
+const usernameSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(3, 'Username ต้องมีอย่างน้อย 3 ตัวอักษร')
+  .max(255)
+  .regex(/^[a-z0-9._@-]+$/, 'Username ใช้ได้เฉพาะ a-z, 0-9, จุด (.), ขีด (-), _ และ @');
+
 export const createStaffSchema = z.object({
-  email: z.string().email('อีเมลไม่ถูกต้อง'),
+  email: usernameSchema,
   name: z.string().min(1, 'กรุณากรอกชื่อ').max(255),
   role: roleEnum,
   password: z.string().min(8, 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร'),
@@ -18,7 +28,7 @@ export const createStaffSchema = z.object({
 
 export const updateStaffSchema = z.object({
   id: z.string().uuid(),
-  email: z.string().email('อีเมลไม่ถูกต้อง'),
+  email: usernameSchema,
   name: z.string().min(1, 'กรุณากรอกชื่อ').max(255),
   role: roleEnum,
   uiLayout: uiLayoutEnum,

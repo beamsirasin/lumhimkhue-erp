@@ -5,18 +5,201 @@ import { z } from 'zod';
 import { auth } from '@/auth';
 import { can } from '@/lib/auth/permissions';
 import { writeAuditLog } from '@/lib/actions/audit';
+import { consumeManagerApprovalCode } from '@/lib/actions/manager-approval';
 import { db } from '@/lib/db';
-import { cashierShifts, paymentRows, paymentMethods, receivingAccounts, users } from '@/lib/db/schema';
+import {
+  cashierShifts,
+  paymentRows,
+  paymentMethods,
+  receivingAccounts,
+  storeBusinessDays,
+  users,
+} from '@/lib/db/schema';
 import {
   openShiftSchema,
   closeShiftSchema,
   reviewShiftSchema,
   listShiftsSchema,
+  storeDayApprovalSchema,
 } from '@/lib/validations/shifts';
 import { computeShiftCashSummary } from '@/lib/payments/money-math';
+import {
+  getBangkokBusinessDate,
+  getStoreBusinessDayState,
+  STORE_DAY_CLOSED_ERROR,
+} from '@/lib/business-day';
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+/* ─── Store business day (Phase 17POS-AUTH-A5) ────────────────────────────── */
+
+export async function getStoreDayStatus() {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+
+  try {
+    return { ok: true as const, data: await getStoreBusinessDayState() };
+  } catch (error) {
+    console.error('[getStoreDayStatus]', error);
+    return { ok: false as const, error: 'โหลดสถานะวันทำการไม่สำเร็จ' };
+  }
+}
+
+export async function closeStoreDay(input: unknown) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+
+  const parsed = storeDayApprovalSchema.safeParse(input);
+  if (!parsed.success) return { ok: false as const, error: 'กรุณาระบุรหัสอนุมัติและเหตุผล' };
+
+  const { approvalCode, reason } = parsed.data;
+  const businessDate = getBangkokBusinessDate();
+  const userId = authSession.user.id;
+  const role = authSession.user.role;
+
+  try {
+    const current = await getStoreBusinessDayState();
+    if (current.status === 'closed')
+      return { ok: false as const, error: 'ร้านปิดรอบวันสำหรับวันนี้แล้ว' };
+
+    const approval = await consumeManagerApprovalCode({
+      code: approvalCode,
+      action: 'pos_store_day_close',
+      entityType: 'store_business_days',
+      entityId: businessDate,
+      requestedByUserId: userId,
+      requestedByRole: role,
+      requestedByBranchId: authSession.user.branchId ?? null,
+      reason,
+    });
+    if (!approval.ok) return approval;
+
+    const now = new Date();
+    const [day] = await db
+      .insert(storeBusinessDays)
+      .values({
+        businessDate,
+        status: 'closed',
+        closedAt: now,
+        closedByUserId: userId,
+        closeApprovalCodeId: approval.codeId,
+        closeReason: reason,
+      })
+      .onConflictDoUpdate({
+        target: storeBusinessDays.businessDate,
+        set: {
+          status: 'closed',
+          closedAt: now,
+          closedByUserId: userId,
+          closeApprovalCodeId: approval.codeId,
+          closeReason: reason,
+          reopenedAt: null,
+          reopenedByUserId: null,
+          reopenApprovalCodeId: null,
+          reopenReason: null,
+          updatedAt: now,
+        },
+      })
+      .returning({ id: storeBusinessDays.id });
+
+    writeAuditLog({
+      userId,
+      role,
+      action: 'sensitive_action_approved_by_code',
+      entity: 'store_business_days',
+      entityId: day.id,
+      before: { status: 'open', businessDate },
+      after: {
+        actionKey: 'pos_store_day_close',
+        status: 'closed',
+        businessDate,
+        reason,
+        approvalCodeId: approval.codeId,
+        generatedByUserId: approval.generatedByUserId,
+        selfApproved: approval.generatedByUserId === userId,
+      },
+    });
+
+    return { ok: true as const, data: { businessDate, status: 'closed' as const, closedAt: now } };
+  } catch (error) {
+    console.error('[closeStoreDay]', error);
+    return { ok: false as const, error: 'ปิดรอบวันไม่สำเร็จ' };
+  }
+}
+
+export async function reopenStoreDay(input: unknown) {
+  const authSession = await auth();
+  if (!authSession?.user) return { ok: false as const, error: 'กรุณาเข้าสู่ระบบ' };
+
+  const parsed = storeDayApprovalSchema.safeParse(input);
+  if (!parsed.success) return { ok: false as const, error: 'กรุณาระบุรหัสอนุมัติและเหตุผล' };
+
+  const { approvalCode, reason } = parsed.data;
+  const businessDate = getBangkokBusinessDate();
+  const userId = authSession.user.id;
+  const role = authSession.user.role;
+
+  try {
+    const current = await getStoreBusinessDayState();
+    if (current.status === 'open')
+      return { ok: false as const, error: 'ร้านเปิดรับชำระสำหรับวันนี้อยู่แล้ว' };
+
+    const approval = await consumeManagerApprovalCode({
+      code: approvalCode,
+      action: 'pos_store_day_reopen',
+      entityType: 'store_business_days',
+      entityId: businessDate,
+      requestedByUserId: userId,
+      requestedByRole: role,
+      requestedByBranchId: authSession.user.branchId ?? null,
+      reason,
+    });
+    if (!approval.ok) return approval;
+
+    const now = new Date();
+    const [day] = await db
+      .update(storeBusinessDays)
+      .set({
+        status: 'open',
+        reopenedAt: now,
+        reopenedByUserId: userId,
+        reopenApprovalCodeId: approval.codeId,
+        reopenReason: reason,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(storeBusinessDays.businessDate, businessDate),
+        eq(storeBusinessDays.status, 'closed'),
+      ))
+      .returning({ id: storeBusinessDays.id });
+
+    if (!day) return { ok: false as const, error: 'สถานะวันทำการเปลี่ยนไปแล้ว กรุณาลองใหม่' };
+
+    writeAuditLog({
+      userId,
+      role,
+      action: 'sensitive_action_approved_by_code',
+      entity: 'store_business_days',
+      entityId: day.id,
+      before: { status: 'closed', businessDate },
+      after: {
+        actionKey: 'pos_store_day_reopen',
+        status: 'open',
+        businessDate,
+        reason,
+        approvalCodeId: approval.codeId,
+        generatedByUserId: approval.generatedByUserId,
+        selfApproved: approval.generatedByUserId === userId,
+      },
+    });
+
+    return { ok: true as const, data: { businessDate, status: 'open' as const, reopenedAt: now } };
+  } catch (error) {
+    console.error('[reopenStoreDay]', error);
+    return { ok: false as const, error: 'เปิดวันทำการอีกครั้งไม่สำเร็จ' };
+  }
 }
 
 /* ─── getActiveShift ──────────────────────────────────────────────────────────
@@ -78,6 +261,9 @@ export async function openShift(input: unknown) {
   const userId = authSession.user.id;
 
   try {
+    const dayState = await getStoreBusinessDayState();
+    if (dayState.status === 'closed') return { ok: false as const, error: STORE_DAY_CLOSED_ERROR };
+
     // Reject if a shift is already open for this cashier
     const [existing] = await db
       .select({ id: cashierShifts.id })

@@ -2,11 +2,9 @@
 
 import { useState, useMemo, useTransition } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
 import {
   Plus,
   Trash2,
@@ -56,6 +54,7 @@ import { AppShell } from '@/components/ui/app-shell';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ThaiDateInput } from '@/components/ui/thai-date-input';
 import { EmptyState } from '@/components/ui/empty-state';
 import { DataCard } from '@/components/ui/section-card';
 import { DataTable } from '@/components/ui/data-table';
@@ -71,6 +70,7 @@ import {
   Sheet,
   SheetContent,
 } from '@/components/ui/sheet';
+import { formatThaiDate } from '@/lib/date-time';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -112,8 +112,7 @@ function fmt(n: string | number) {
 }
 
 function fmtDate(d: string) {
-  try { return format(new Date(d + 'T00:00:00'), 'd MMM yyyy', { locale: th }); }
-  catch { return d; }
+  return formatThaiDate(d, d);
 }
 
 type Modal =
@@ -661,11 +660,23 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
           </div>
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">วันที่สั่ง</label>
-            <input type="date" {...register('orderDate')} className={INPUT} />
+            <Controller
+              control={control}
+              name="orderDate"
+              render={({ field }) => (
+                <ThaiDateInput value={field.value} onValueChange={field.onChange} className="w-full" />
+              )}
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">วันที่คาดรับ</label>
-            <input type="date" {...register('expectedDate')} className={INPUT} />
+            <Controller
+              control={control}
+              name="expectedDate"
+              render={({ field }) => (
+                <ThaiDateInput value={field.value ?? ''} onValueChange={field.onChange} className="w-full" />
+              )}
+            />
           </div>
         </div>
 
@@ -698,7 +709,7 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
                   นำเข้าจากผลนับสต็อก
                   {importPanel.countDate && (
                     <span className="ml-1.5 font-normal text-[var(--status-info-fg)] opacity-80">
-                      (วันที่ {format(new Date(importPanel.countDate + 'T00:00:00'), 'd MMM yyyy', { locale: th })})
+                      (วันที่ {formatThaiDate(importPanel.countDate)})
                     </span>
                   )}
                 </p>
@@ -1001,6 +1012,7 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
     register,
     handleSubmit,
     watch,
+    control,
     formState: { isSubmitting },
   } = useForm<ReceivePurchaseOrderInput>({
     resolver: zodResolver(receivePurchaseOrderSchema) as Resolver<ReceivePurchaseOrderInput>,
@@ -1051,7 +1063,13 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
         {/* Received date */}
         <div>
           <label className="block text-xs font-medium text-muted-foreground mb-1">วันที่รับของ</label>
-          <input type="date" {...register('receivedDate')} className={INPUT} />
+          <Controller
+            control={control}
+            name="receivedDate"
+            render={({ field }) => (
+              <ThaiDateInput value={field.value} onValueChange={field.onChange} className="w-full" />
+            )}
+          />
         </div>
 
         {/* Line items with discrepancy */}

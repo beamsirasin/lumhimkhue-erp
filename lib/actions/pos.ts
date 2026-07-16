@@ -32,6 +32,7 @@ import {
   validateCheckoutPaymentRowsForTotal,
 } from '@/lib/payments/foundation';
 import { hasMixedAccountGroups } from '@/lib/payments/account-group';
+import { getStoreBusinessDayState, STORE_DAY_CLOSED_ERROR } from '@/lib/business-day';
 import {
   toCents,
   fromCents,
@@ -425,6 +426,12 @@ export async function processPayment(input: unknown) {
       });
       if (existingByKey) return alreadyProcessedPaymentResult(existingByKey);
     }
+
+    // Phase 17POS-AUTH-A5: store-wide gate. Idempotent retries that already
+    // succeeded are returned above; every genuinely new payment is blocked.
+    const initialDayState = await getStoreBusinessDayState();
+    if (initialDayState.status === 'closed')
+      return { ok: false as const, error: STORE_DAY_CLOSED_ERROR };
 
     // Parallel: session fetch + store settings + active shift + canonical saved bill
     const [session, [settings], activeShiftRows, savedChargeLineRows] = await Promise.all([
@@ -909,6 +916,12 @@ export async function processPayment(input: unknown) {
         db.update(tables).set({ status: 'paid' }).where(inArray(tables.id, allTableIds)),
       );
     }
+
+    // Recheck immediately before the atomic money write to narrow the window
+    // where a manager closes the store while a cashier is preparing payment.
+    const finalDayState = await getStoreBusinessDayState();
+    if (finalDayState.status === 'closed')
+      return { ok: false as const, error: STORE_DAY_CLOSED_ERROR };
 
     try {
       await db.batch(batchStatements);

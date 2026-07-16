@@ -169,6 +169,7 @@ export async function getSessionHistory(dateStr: string) {
       remainingAfter: number;
       paidAt: Date;
       methodSummary: string;
+      receiptNo: string | null;
     }>>();
     for (const payment of eventPayments) {
       const list = paymentEventsBySession.get(payment.sessionId) ?? [];
@@ -180,6 +181,7 @@ export async function getSessionHistory(dateStr: string) {
         remainingAfter: Number(payment.remainingAfter),
         paidAt: payment.paidAt,
         methodSummary: payment.paymentMethod,
+        receiptNo: payment.receiptNo,
       });
       paymentEventsBySession.set(payment.sessionId, list);
     }
@@ -258,6 +260,8 @@ export async function getSessionDetail(sessionId: string) {
             receivingAccount: true,
           },
         },
+        // เลือกเฉพาะคอลัมน์ที่ปลอดภัย — ห้ามส่ง passwordHash/email ไป client
+        processedByUser: { columns: { id: true, name: true, role: true } },
       },
     });
     const shiftIds = [...new Set(eventPayments.map((payment) => payment.shiftId).filter((id): id is string => id !== null))];

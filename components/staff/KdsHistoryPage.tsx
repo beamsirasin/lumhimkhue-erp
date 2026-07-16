@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { formatThaiDate } from '@/lib/date-time';
 import { CheckCircle2, CookingPot, ListChecks, XCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { getKdsHistory } from '@/lib/actions/kds';
@@ -58,7 +58,7 @@ function HistoryTable({ rows, date }: { rows: KdsHistoryRow[]; date: string }) {
         <EmptyState
           icon={<CookingPot className="size-5" />}
           title="ไม่มีประวัติครัว"
-          description={`ไม่พบข้อมูลในวันที่ ${format(new Date(date), 'd MMMM yyyy', { locale: th })}`}
+          description={`ไม่พบข้อมูลในวันที่ ${formatThaiDate(date)}`}
           size="lg"
         />
       </DataCard>
@@ -158,7 +158,7 @@ export function KdsHistoryPage() {
     <AppShell className="flex h-full flex-col overflow-hidden space-y-4">
       <PageHeader
         title="ประวัติครัว"
-        subtitle={format(new Date(selectedDate), 'EEEE d MMMM yyyy', { locale: th })}
+        subtitle={formatThaiDate(selectedDate)}
         actions={<HistoryCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />}
       />
 

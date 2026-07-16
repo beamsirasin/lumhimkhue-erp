@@ -31,13 +31,13 @@ export function LoginForm() {
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
       <div className="space-y-1.5">
         <Label htmlFor="email" className="text-xs font-semibold text-foreground">
-          อีเมล / Username
+          Username / อีเมล
         </Label>
         <Input
           id="email"
-          type="email"
-          placeholder="owner@shabu.local"
-          autoComplete="email"
+          type="text"
+          placeholder="username หรือ email"
+          autoComplete="username"
           aria-invalid={!!errors.email}
           className="h-10"
           {...register('email')}

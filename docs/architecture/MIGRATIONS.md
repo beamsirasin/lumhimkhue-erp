@@ -103,7 +103,22 @@ arrived via dev-time `db:push` (no script) — present and verified.
   application-level policy changes reusing the existing `generatedByUserId`/`usedByUserId`
   columns — no data model change.
 
-### 4.3 `payments.idempotency_key` — applied here, **verify per environment**
+### 4.3 `store_business_days` table — PENDING (Phase 17POS-AUTH-A5)
+
+- **Introduced by:** Phase 17POS-AUTH-A5 (Store Day Closing). The table stores
+  one row per Bangkok calendar date and records close/reopen approval ownership,
+  timestamps, and reasons. A missing row means the date is open.
+- **Required before deploy:** create a Neon snapshot, then run
+  `npm run db:migrate-phase17pos-auth-a5` against the target `DATABASE_URL`
+  and verify `phase17pos-auth-a5-store-business-days` with
+  `npm run db:check-migrations`.
+- The migration is additive and idempotent: one table, one unique index, one
+  status index, and nullable foreign keys to users/approval-code history.
+  It does not rewrite payment, session, or cashier-shift data.
+- Rollback after disabling the A5 application code:
+  `DROP TABLE store_business_days`. This removes only day-close history.
+
+### 4.4 `payments.idempotency_key` — applied here, **verify per environment**
 
 - Applied on the current `DATABASE_URL` (verified). If the Vercel production deployment
   points at a **different** database, run `npm run db:migrate-phase16b` there (after a
@@ -116,6 +131,9 @@ arrived via dev-time `db:push` (no script) — present and verified.
 |---|---|---|---|---|
 | ≤ 2026-07-01 | phases v12 → 15BILL + 16B (historical; exact dates unrecorded) | ep-noisy-sun-…/neondb | owner (pre-governance) | Verified applied via `db:check-migrations` 2026-07-03 |
 | 2026-07-14 | `migrate-phase17pos-auth-a1.ts` (`manager_approval_codes`) | ep-noisy-sun-…/neondb | Claude (agent, explicit approval given) | Applied; verified via `db:check-migrations` same day |
+| 2026-07-16 | `migrate-phase17ui-emp-dept.ts` (`employees.department`, additive text column) | ep-noisy-sun-…/neondb | Claude (agent, explicit approval given via AskUserQuestion) | Applied; `db:check-migrations` green (penalty-enum warning only, pre-existing) |
+| 2026-07-16 | `migrate-phase17ui-hr-options.ts` (`hr_lookup_options` table + 2 indexes, additive) | ep-noisy-sun-…/neondb | Claude (agent, explicit approval given via AskUserQuestion) | Applied; `db:check-migrations` green (penalty-enum warning only, pre-existing) |
+| 2026-07-16 | `migrate-phase17ui-emp-sort.ts` (`employees.sort_order`, additive integer column) | ep-noisy-sun-…/neondb | Claude (agent, explicit approval given via AskUserQuestion) | Applied; `db:check-migrations` green (penalty-enum warning only, pre-existing) |
 
 *(Append a row here for every future production migration run.)*
 

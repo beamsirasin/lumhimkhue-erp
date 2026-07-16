@@ -3,8 +3,6 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
 import {
   ChartContainer,
   ChartTooltip,
@@ -47,6 +45,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CHART_COLORS } from '@/lib/tokens';
+import { formatThaiDate, formatThaiDateTime, formatThaiMonthDay } from '@/lib/date-time';
 
 type Period = 'today' | 'week' | 'month';
 
@@ -106,7 +105,7 @@ function getTableCount(tableSummary: DashboardData['tableSummary'], status: Tabl
 
 export function DashboardPage({ initialData }: DashboardPageProps) {
   const [period, setPeriod] = useState<Period>('today');
-  const currentDateLabel = format(new Date(), 'EEEE d MMMM yyyy, HH:mm', { locale: th });
+  const currentDateLabel = formatThaiDateTime(new Date());
 
   const { data: chartsData } = useQuery({
     queryKey: ['dashboard'],
@@ -302,9 +301,9 @@ export function DashboardPage({ initialData }: DashboardPageProps) {
               <ChartContainer height={244}>
                 <BarChart data={revenueByDay} barSize={30}>
                   <CartesianGrid vertical={false} strokeDasharray="3 3" stroke={CHART_GRID} />
-                  <ChartXAxis dataKey="date" tick={CHART_TICK} tickFormatter={(v) => format(new Date(v + 'T00:00:00'), 'd/M', { locale: th })} />
+                  <ChartXAxis dataKey="date" tick={CHART_TICK} tickFormatter={(v) => formatThaiMonthDay(v)} />
                   <ChartYAxis tick={CHART_TICK} tickFormatter={(v) => `฿${(v / 1000).toFixed(0)}k`} width={48} />
-                  <ChartTooltip formatter={(v) => [formatBaht(Number(v)), 'รายได้']} labelFormatter={(v) => format(new Date(v + 'T00:00:00'), 'd MMMM', { locale: th })} />
+                  <ChartTooltip formatter={(v) => [formatBaht(Number(v)), 'รายได้']} labelFormatter={(v) => formatThaiDate(String(v))} />
                   <Bar dataKey="revenue" fill="var(--chart-1)" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ChartContainer>

@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { KeyRound, ShieldAlert, RotateCcw, Plus, Copy, Check, Clock } from 'lucide-react';
+import { KeyRound, ShieldAlert, RotateCcw, Plus, Copy, Check, Clock, ReceiptText } from 'lucide-react';
 import { AppShell } from '@/components/ui/app-shell';
 import { PageHeader } from '@/components/ui/page-header';
 import { DataCard } from '@/components/ui/section-card';
@@ -24,6 +25,7 @@ import {
   generateManagerApprovalCode,
   revokeManagerApprovalCode,
 } from '@/lib/actions/manager-approval';
+import { formatThaiDateTime } from '@/lib/date-time';
 
 type StateResult = Awaited<ReturnType<typeof getManagerApprovalCodeState>>;
 type StateData = Extract<StateResult, { ok: true }>['data'];
@@ -44,11 +46,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 function formatDateTime(d: Date | string) {
-  return new Date(d).toLocaleString('th-TH', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Asia/Bangkok',
-  });
+  return formatThaiDateTime(d);
 }
 
 function formatCountdown(ms: number) {
@@ -83,6 +81,22 @@ function usageInfo(row: HistoryRow): { who: string; when: string } | null {
 function actionLabel(row: HistoryRow): string | null {
   if (!row.usedForAction) return null;
   return ACTION_LABELS[row.usedForAction] ?? row.usedForAction;
+}
+
+/** "ใช้ทำอะไร" cell — links to the actual bill in /pos/history when resolvable. */
+function ActionCell({ row }: { row: HistoryRow }) {
+  const action = actionLabel(row);
+  if (!action) return <span className="text-muted-foreground">—</span>;
+  if (!row.target) return <>{action}</>;
+  return (
+    <Link
+      href={`/pos/history?date=${row.target.date}&session=${row.target.sessionId}`}
+      className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
+    >
+      <ReceiptText className="size-3.5 shrink-0" />
+      {action}
+    </Link>
+  );
 }
 
 export function ManagerApprovalCodePage({ initialData }: { initialData: StateData }) {
@@ -289,7 +303,6 @@ export function ManagerApprovalCodePage({ initialData }: { initialData: StateDat
                   {data.history.map((row) => {
                     const cfg = STATUS_LABELS[row.status] ?? STATUS_LABELS.expired;
                     const usage = usageInfo(row);
-                    const action = actionLabel(row);
                     return (
                       <TableRow key={row.id}>
                         <TableCell>
@@ -310,7 +323,7 @@ export function ManagerApprovalCodePage({ initialData }: { initialData: StateDat
                           )}
                         </TableCell>
                         <TableCell>
-                          {action ?? <span className="text-muted-foreground">—</span>}
+                          <ActionCell row={row} />
                         </TableCell>
                         <TableCell className="text-muted-foreground">{formatDateTime(row.expiresAt)}</TableCell>
                       </TableRow>
@@ -325,12 +338,15 @@ export function ManagerApprovalCodePage({ initialData }: { initialData: StateDat
               {data.history.map((row) => {
                 const cfg = STATUS_LABELS[row.status] ?? STATUS_LABELS.expired;
                 const usage = usageInfo(row);
-                const action = actionLabel(row);
                 return (
                   <div key={row.id} className="space-y-2 px-4 py-3.5">
                     <div className="flex items-center justify-between gap-2">
                       <StatusBadge label={cfg.label} variant={cfg.variant} dot />
-                      {action && <span className="truncate text-xs text-muted-foreground">{action}</span>}
+                      {actionLabel(row) && (
+                        <span className="min-w-0 truncate text-xs">
+                          <ActionCell row={row} />
+                        </span>
+                      )}
                     </div>
                     <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
                       <div>

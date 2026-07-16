@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { formatThaiDate } from '@/lib/date-time';
 import { useQuery } from '@tanstack/react-query';
 import { HistoryCalendar } from '@/components/staff/HistoryCalendar';
 import { SessionHistoryTable } from '@/components/staff/SessionHistoryTable';
@@ -25,7 +25,7 @@ export default function HistoryPage() {
     <AppShell className="flex h-full flex-col overflow-hidden space-y-4">
       <PageHeader
         title="ประวัติ Session"
-        subtitle={format(new Date(selectedDate), 'EEEE d MMMM yyyy', { locale: th })}
+        subtitle={formatThaiDate(selectedDate)}
         actions={<HistoryCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />}
       />
       <div className="min-h-0 flex-1 overflow-hidden">

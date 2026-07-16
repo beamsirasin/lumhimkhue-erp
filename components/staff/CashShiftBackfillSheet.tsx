@@ -11,6 +11,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Banknote, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
+import { ThaiDateInput } from '@/components/ui/thai-date-input';
+import { formatThaiTime } from '@/lib/date-time';
 import {
   Sheet,
   SheetContent,
@@ -136,13 +138,12 @@ export function CashShiftBackfillSheet({
             <label htmlFor="bf-date" className="block text-xs font-semibold text-foreground">
               วันที่ (ตามวันทำการ)
             </label>
-            <input
-              id="bf-date"
-              type="date"
+            <ThaiDateInput
               value={date}
               max={format(new Date(), 'yyyy-MM-dd')}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+              onValueChange={setDate}
+              className="w-full"
+              ariaLabel="วันที่ตามวันทำการ"
             />
           </div>
 
@@ -179,7 +180,7 @@ export function CashShiftBackfillSheet({
                     />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-foreground">
-                        {format(new Date(r.paidAt), 'HH:mm')}
+                        {formatThaiTime(r.paidAt)}
                         {r.tableLabel ? ` · โต๊ะ ${r.tableLabel}` : ''}
                         {r.receiptNo ? ` · ${r.receiptNo}` : ''}
                       </p>
@@ -208,7 +209,7 @@ export function CashShiftBackfillSheet({
               <option value="">— เลือกรอบ —</option>
               {shifts.map((s) => (
                 <option key={s.id} value={s.id} disabled={s.status === 'reviewed'}>
-                  {format(new Date(s.openedAt), 'HH:mm')} · {s.cashierName} ·{' '}
+                  {formatThaiTime(s.openedAt)} · {s.cashierName} ·{' '}
                   {SHIFT_STATUS_LABEL[s.status] ?? s.status}
                   {s.status === 'reviewed' ? ' (ผูกไม่ได้)' : ''}
                 </option>

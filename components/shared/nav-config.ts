@@ -27,7 +27,7 @@ export function isNavGroup(item: NavItem | NavGroup): item is NavGroup {
 /* ─── Module → hrefs mapping ─────────────────────────────────── */
 
 export const MODULE_HREFS: Record<string, string[]> = {
-  pos:             ['/pos', '/pos/history'],
+  pos:             ['/pos', '/pos/shifts', '/pos/history'],
   kds:             ['/kds', '/kds/history'],
   queue:           ['/queue', '/queue/history'],
   tables:          ['/tables', '/tables/history'],
@@ -59,6 +59,7 @@ export const TOUCHSCREEN_TAB_MODULE: Record<string, string> = {
 export const PAGE_TITLES: Record<string, string> = {
   '/dashboard':             'แดชบอร์ด',
   '/pos':                   'POS / แคชเชียร์',
+  '/pos/shifts':            'รอบแคชเชียร์',
   '/pos/history':           'ประวัติชำระเงิน',
   '/kds':                   'ครัว (KDS)',
   '/kds/history':           'ประวัติครัว',

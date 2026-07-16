@@ -16,6 +16,7 @@ import {
   Minimize2,
   MoreHorizontal,
   LogOut,
+  Clock,
 } from 'lucide-react';
 import { logoutAction } from '@/lib/actions/auth';
 import type { Role } from '@/lib/auth/permissions';
@@ -46,6 +47,7 @@ const ROLE_TABS: Record<'cashier' | 'kitchen', TabItem[]> = {
 
 const ROLE_MORE: Record<'cashier' | 'kitchen', MoreItem[]> = {
   cashier: [
+    { href: '/pos/shifts',     label: 'รอบแคชเชียร์',     Icon: Clock },
     { href: '/kds/history',    label: 'ประวัติครัว',     Icon: ChefHat },
     { href: '/tables/history', label: 'ประวัติโต๊ะ',    Icon: History },
     { href: '/queue/history',  label: 'ประวัติคิว',      Icon: UsersRound },
@@ -53,6 +55,7 @@ const ROLE_MORE: Record<'cashier' | 'kitchen', MoreItem[]> = {
     { href: '/printers',       label: 'เครื่องพิมพ์',    Icon: Printer },
   ],
   kitchen: [
+    { href: '/pos/shifts',     label: 'รอบแคชเชียร์',  Icon: Clock },
     { href: '/kds/history',    label: 'ประวัติครัว',   Icon: ChefHat },
     { href: '/tables/history', label: 'ประวัติโต๊ะ',  Icon: History },
     { href: '/queue/history',  label: 'ประวัติคิว',    Icon: UsersRound },
@@ -68,6 +71,7 @@ const ALL_TABS: TabItem[] = [
 ];
 
 const ALL_MORE: MoreItem[] = [
+  { href: '/pos/shifts',     label: 'รอบแคชเชียร์',     Icon: Clock },
   { href: '/kds/history',    label: 'ประวัติครัว',     Icon: ChefHat },
   { href: '/tables/history', label: 'ประวัติโต๊ะ',    Icon: History },
   { href: '/queue/history',  label: 'ประวัติคิว',      Icon: UsersRound },

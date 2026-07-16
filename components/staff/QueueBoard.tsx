@@ -2,18 +2,17 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNowStrict, format } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { formatThaiDate, formatThaiDateTime } from '@/lib/date-time';
 import {
   Check,
   ClipboardList,
   Clock,
   Copy,
   ExternalLink,
-  History,
   Loader2,
   MapPin,
   Minus,
@@ -91,20 +90,13 @@ const SOUP_CHIP_STYLE: Record<string, string> = {
 };
 
 /* ─── Soup selector styles (form buttons) ───────────────────────── */
+/* Same color language as SOUP_CHIP_STYLE on the board — ดำ is filled dark,
+   ใส is plain white, หมาล่า is filled red. Selection = primary ring + check. */
 
-const SOUP_STYLE: Record<SoupOption, { sel: string; unsel: string }> = {
-  'น้ำดำ': {
-    sel:   'border-foreground/70 bg-foreground text-background',
-    unsel: 'border-border bg-[var(--surface-2)] text-foreground',
-  },
-  'น้ำใส': {
-    sel:   'border-[var(--status-info-border)] bg-[var(--status-info-fg)] text-white',
-    unsel: 'border-[var(--status-info-border)] bg-[var(--status-info-bg)] text-[var(--status-info-fg)]',
-  },
-  'หมาล่า': {
-    sel:   'border-[var(--status-danger-border)] bg-[var(--status-danger-fg)] text-white',
-    unsel: 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]',
-  },
+const SOUP_STYLE: Record<SoupOption, string> = {
+  'น้ำดำ':  'border-foreground/40 bg-foreground text-background',
+  'น้ำใส':  'border-foreground/25 bg-background text-foreground',
+  'หมาล่า': 'border-[var(--status-danger-border)] bg-[var(--status-danger-fg)] text-white',
 };
 
 /* ─── Row status tones ───────────────────────────────────────────── */
@@ -218,7 +210,6 @@ interface QueueBoardProps {
 }
 
 export function QueueBoard({ initialEntries }: QueueBoardProps) {
-  const router = useRouter();
   const [formMode, setFormMode]         = useState<'add' | 'edit' | null>(null);
   const [editingEntry, setEditingEntry] = useState<QueueEntry | null>(null);
   const [admitTarget, setAdmitTarget]   = useState<QueueEntry | null>(null);
@@ -248,12 +239,17 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
   });
 
   // Skipped/cancelled queues stay on the board (muted, read-only) instead of
-  // vanishing into history — appended after the active list, oldest first.
+  // vanishing into history. The whole board renders as one sequence sorted by
+  // queue number (Q001, Q002, …) regardless of status.
   const terminalToday = useMemo(
     () => todayHistory.filter(e => e.status === 'skipped' || e.status === 'cancelled'),
     [todayHistory],
   );
-  const boardEntries = useMemo(() => [...entries, ...terminalToday], [entries, terminalToday]);
+  const boardEntries = useMemo(
+    () => [...entries, ...terminalToday].sort((a, b) =>
+      a.queueNumber.localeCompare(b.queueNumber, undefined, { numeric: true })),
+    [entries, terminalToday],
+  );
 
   // Counter computations — entries now includes all admitted (billed and not-billed)
   const waitingCount   = entries.filter(e => e.status !== 'admitted').length;
@@ -286,9 +282,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
   ) {
     invalidate();
     if (data) {
-      const createdAt = new Date().toLocaleString('th-TH', {
-        dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Bangkok',
-      });
+      const createdAt = `${formatThaiDateTime(new Date())} น.`;
       const qrData = buildQrData(data, createdAt, appUrl);
       setLastAdded(qrData);
       void printQueueQr({ type: 'queue_qr', queueEntry: qrData });
@@ -299,7 +293,7 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
 
   function getPrintHandler(entry: QueueEntry) {
     return () => {
-      const createdAt = format(new Date(entry.createdAt), 'dd/MM/yy HH:mm น.', { locale: th });
+      const createdAt = `${formatThaiDateTime(entry.createdAt)} น.`;
       void printQueueQr({ type: 'queue_qr', queueEntry: buildQrData(entry, createdAt, appUrl) });
     };
   }
@@ -307,49 +301,40 @@ export function QueueBoard({ initialEntries }: QueueBoardProps) {
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[var(--surface-0)]">
 
-      {/* ── Header ─────────────────────────────────────────────── */}
+      {/* ── Header — single compact row on tablet+, counters wrap below on mobile ── */}
       <header className="shrink-0 border-b border-border bg-[var(--surface-1)] shadow-[var(--shadow-card)]">
-        <div className="mx-auto w-full max-w-5xl px-3 pb-2.5 pt-3 sm:px-4">
-          {/* Row 1: identity + primary actions */}
-          <div className="flex items-center gap-2.5">
+        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5 sm:px-4">
+          {/* Identity */}
+          <div className="flex min-w-0 items-center gap-2.5">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-primary-subtle)]">
               <ClipboardList className="size-5 text-primary" />
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0">
               <h1 className="text-base font-bold leading-tight text-foreground sm:text-lg">จัดการคิว</h1>
               <p className="text-[11px] text-muted-foreground" suppressHydrationWarning>
-                วันนี้ {format(new Date(), 'd MMMM', { locale: th })}
+                วันนี้ {formatThaiDate(new Date())}
               </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => router.push('/queue/history')}
-                aria-label="ประวัติคิว"
-                className="flex min-h-10 items-center gap-1.5 rounded-xl border border-border bg-[var(--surface-2)] px-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-              >
-                <History className="size-4" />
-                <span className="hidden sm:inline">ประวัติ</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => { setEditingEntry(null); setFormMode('add'); }}
-                className="flex min-h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 sm:px-5"
-              >
-                <Plus className="size-4" />
-                เพิ่มคิว
-              </button>
             </div>
           </div>
 
-          {/* Row 2: status counters — horizontally scrollable on narrow screens */}
-          <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {/* Status counters — inline in the same row on tablet+, own row on mobile */}
+          <div className="order-last flex w-full items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:order-none sm:w-auto sm:flex-1 sm:pb-0">
             <Counter label="รอ"       count={waitingCount}   cls="text-[var(--status-warning-fg)] bg-[var(--status-warning-bg)] border-[var(--status-warning-border)]" />
             <Counter label="รับเข้า"  count={admittedCount}  cls="text-[var(--status-success-fg)] bg-[var(--status-success-bg)] border-[var(--status-success-border)]" />
             <Counter label="ออกบิล"   count={billedCount}    cls="text-[var(--status-neutral-fg)] bg-[var(--status-neutral-bg)] border-[var(--status-neutral-border)]" />
             <Counter label="ข้าม"     count={skippedToday}   cls="text-muted-foreground bg-muted/30 border-border" />
             <Counter label="ยกเลิก"   count={cancelledToday} cls="text-muted-foreground bg-muted/30 border-border" />
           </div>
+
+          {/* เพิ่มคิว — primary action, large touch target */}
+          <button
+            type="button"
+            onClick={() => { setEditingEntry(null); setFormMode('add'); }}
+            className="ml-auto flex min-h-12 shrink-0 items-center gap-2 rounded-xl bg-primary px-5 text-base font-bold text-primary-foreground shadow-[var(--shadow-raised)] transition-colors hover:bg-primary/90 active:scale-95 sm:ml-0 sm:px-6"
+          >
+            <Plus className="size-5" />
+            เพิ่มคิว
+          </button>
         </div>
       </header>
 
@@ -473,7 +458,7 @@ function Counter({ label, count, cls }: { label: string; count: number; cls: str
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium leading-none',
+        'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium leading-none',
         cls,
         count === 0 && 'opacity-55',
       )}
@@ -1076,15 +1061,15 @@ function Stepper({ label, value, onChange, min = 0 }: {
         <button type="button" aria-label={`ลด ${label}`}
           onClick={() => onChange(Math.max(min, value - 1))}
           disabled={value <= min}
-          className="flex size-11 items-center justify-center rounded-xl border border-border bg-[var(--surface-2)] text-foreground transition-colors active:scale-95 disabled:opacity-40">
-          <Minus className="size-4" />
+          className="flex size-12 items-center justify-center rounded-xl border border-border bg-[var(--surface-1)] text-foreground shadow-[var(--shadow-card)] transition-colors active:scale-95 disabled:opacity-40 disabled:shadow-none">
+          <Minus className="size-5" />
         </button>
-        <span className="w-9 text-center text-2xl font-bold tabular-nums text-foreground">{value}</span>
+        <span className="w-10 text-center text-3xl font-bold tabular-nums text-foreground">{value}</span>
         <button type="button" aria-label={`เพิ่ม ${label}`}
           onClick={() => onChange(Math.min(99, value + 1))}
           disabled={value >= 99}
-          className="flex size-11 items-center justify-center rounded-xl border border-border bg-[var(--surface-2)] text-foreground transition-colors active:scale-95 disabled:opacity-40">
-          <Plus className="size-4" />
+          className="flex size-12 items-center justify-center rounded-xl border border-border bg-[var(--surface-1)] text-foreground shadow-[var(--shadow-card)] transition-colors active:scale-95 disabled:opacity-40 disabled:shadow-none">
+          <Plus className="size-5" />
         </button>
       </div>
     </div>
@@ -1111,7 +1096,7 @@ function SoupPotSelector({
   return (
     <div className="space-y-3">
       {pots.map((pot, potIdx) => (
-        <div key={potIdx} className="space-y-2">
+        <div key={potIdx} className="space-y-2.5 rounded-xl border border-border bg-[var(--surface-2)] p-3">
           {/* Pot header — only shown when there are multiple pots */}
           {pots.length > 1 && (
             <div className="flex items-center justify-between">
@@ -1120,7 +1105,7 @@ function SoupPotSelector({
                 type="button"
                 aria-label={`ลบหม้อ ${potIdx + 1}`}
                 onClick={() => onChange(pots.filter((_, i) => i !== potIdx))}
-                className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-[var(--status-danger-fg)]"
+                className="flex min-h-8 items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-[var(--status-danger-bg)] hover:text-[var(--status-danger-fg)]"
               >
                 <X className="size-3" />ลบหม้อ
               </button>
@@ -1137,10 +1122,12 @@ function SoupPotSelector({
                   type="button"
                   onClick={() => selectSlot(potIdx, 's1', soup)}
                   className={cn(
-                    'flex min-h-11 flex-1 items-center justify-center rounded-xl border text-sm font-semibold transition-colors active:scale-95',
-                    pot.s1 === soup ? SOUP_STYLE[soup].sel : SOUP_STYLE[soup].unsel,
+                    'flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border text-sm font-semibold transition-all active:scale-95',
+                    SOUP_STYLE[soup],
+                    pot.s1 === soup && 'ring-2 ring-primary ring-offset-2 ring-offset-[var(--surface-2)]',
                   )}
                 >
+                  {pot.s1 === soup && <Check className="size-3.5 shrink-0" />}
                   {soup}
                 </button>
               ))}
@@ -1159,20 +1146,18 @@ function SoupPotSelector({
                   type="button"
                   onClick={() => selectSlot(potIdx, 's2', soup)}
                   className={cn(
-                    'flex min-h-11 flex-1 items-center justify-center rounded-xl border text-sm font-semibold transition-colors active:scale-95',
-                    pot.s2 === soup ? SOUP_STYLE[soup].sel : SOUP_STYLE[soup].unsel,
+                    'flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border text-sm font-semibold transition-all active:scale-95',
+                    SOUP_STYLE[soup],
+                    pot.s2 === soup && 'ring-2 ring-primary ring-offset-2 ring-offset-[var(--surface-2)]',
                   )}
                 >
+                  {pot.s2 === soup && <Check className="size-3.5 shrink-0" />}
                   {soup}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Divider between pots */}
-          {pots.length > 1 && potIdx < pots.length - 1 && (
-            <div className="border-t border-border pt-1" />
-          )}
         </div>
       ))}
 
@@ -1180,9 +1165,9 @@ function SoupPotSelector({
         <button
           type="button"
           onClick={() => onChange([...pots, { s1: null, s2: null }])}
-          className="flex min-h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-primary/50 bg-[var(--surface-primary-subtle)] text-sm font-medium text-primary transition-colors hover:bg-[var(--surface-primary-muted)]"
+          className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-primary/50 bg-[var(--surface-primary-subtle)] text-sm font-medium text-primary transition-colors hover:bg-[var(--surface-primary-muted)] active:scale-[0.99]"
         >
-          <Plus className="size-3.5" />เพิ่มหม้อ
+          <Plus className="size-4" />เพิ่มหม้อ
         </button>
       )}
     </div>
@@ -1251,57 +1236,68 @@ function QueueFormModal({ mode, entry, onClose, onSuccess }: QueueFormModalProps
 
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-foreground/30 backdrop-blur-[2px] sm:items-center" onClick={onClose}>
-      <div className="w-full max-w-md overflow-y-auto rounded-t-2xl border border-border bg-[var(--surface-1)] shadow-[var(--shadow-dialog)] sm:rounded-2xl"
-        style={{ maxHeight: '92dvh' }} onClick={e => e.stopPropagation()}>
-        <div className="flex justify-center pt-2.5 sm:hidden">
+      {/* flex-col shell: header (fixed) → fields (scroll) → CTA footer (always visible) */}
+      <div className="flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl border border-border bg-[var(--surface-1)] shadow-[var(--shadow-dialog)] sm:rounded-2xl"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex shrink-0 justify-center pt-2.5 sm:hidden">
           <div className="h-1 w-10 rounded-full bg-muted-foreground/20" />
         </div>
-        <div className="sticky top-0 flex items-center justify-between border-b border-border bg-[var(--surface-1)] px-5 py-3.5">
-          <h2 className="text-base font-bold text-foreground">{mode === 'add' ? 'เพิ่มคิวใหม่' : 'แก้ไขคิว'}</h2>
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3.5">
+          <h2 className="text-lg font-bold text-foreground">{mode === 'add' ? 'เพิ่มคิวใหม่' : 'แก้ไขคิว'}</h2>
           <button type="button" aria-label="ปิด" onClick={onClose}
             className="flex size-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted">
             <X className="size-5" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4 px-5 pb-6 pt-4">
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">จำนวนคน · รวม {total} คน</p>
-            <div className="flex gap-4 rounded-xl border border-border bg-[var(--surface-2)] px-4 py-3">
-              <Stepper label="ผู้ใหญ่" value={adultCount} onChange={setAdultCount} />
-              <div className="w-px bg-border" />
-              <Stepper label="เด็ก"    value={childCount}  onChange={setChildCount} />
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 pb-5 pt-4">
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-sm font-semibold text-foreground">จำนวนคน</p>
+                <span className="rounded-full bg-[var(--surface-primary-subtle)] px-2.5 py-1 text-xs font-bold tabular-nums text-primary">
+                  รวม {total} คน
+                </span>
+              </div>
+              <div className="flex gap-4 rounded-xl border border-border bg-[var(--surface-2)] px-4 py-3.5">
+                <Stepper label="ผู้ใหญ่" value={adultCount} onChange={setAdultCount} />
+                <div className="w-px bg-border" />
+                <Stepper label="เด็ก"    value={childCount}  onChange={setChildCount} />
+              </div>
             </div>
-          </div>
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">ประเภทลูกค้า</p>
-            <div className="flex gap-2">
-              {(['normal', 'foreigner', 'staff'] as CustomerType[]).map(type => (
-                <button key={type} type="button" onClick={() => setCustomerType(type)}
-                  className={cn(
-                    'flex min-h-10 flex-1 items-center justify-center rounded-xl border text-sm font-semibold transition-colors active:scale-95',
-                    customerType === type
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border bg-[var(--surface-2)] text-foreground hover:border-primary/50',
-                  )}>
-                  {CUSTOMER_TYPE_LABELS[type]}
-                </button>
-              ))}
+            <div>
+              <p className="mb-2 text-sm font-semibold text-foreground">ประเภทลูกค้า</p>
+              <div className="flex gap-2">
+                {(['normal', 'foreigner', 'staff'] as CustomerType[]).map(type => (
+                  <button key={type} type="button" onClick={() => setCustomerType(type)}
+                    className={cn(
+                      'flex min-h-11 flex-1 items-center justify-center rounded-xl border text-sm font-semibold transition-colors active:scale-95',
+                      customerType === type
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border bg-[var(--surface-2)] text-foreground hover:border-primary/50',
+                    )}>
+                    {CUSTOMER_TYPE_LABELS[type]}
+                  </button>
+                ))}
+              </div>
             </div>
+            <div>
+              <p className="mb-2 text-sm font-semibold text-foreground">น้ำซุป</p>
+              <SoupPotSelector pots={soupPots} onChange={setSoupPots} />
+            </div>
+            {error && (
+              <p className="rounded-lg bg-[var(--status-danger-bg)] px-3 py-2.5 text-sm font-medium text-[var(--status-danger-fg)]">
+                {error}
+              </p>
+            )}
           </div>
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">น้ำซุป</p>
-            <SoupPotSelector pots={soupPots} onChange={setSoupPots} />
+          {/* CTA footer — stays visible while fields scroll */}
+          <div className="shrink-0 border-t border-border bg-[var(--surface-1)] px-5 py-3">
+            <button type="submit" disabled={submitting}
+              className="flex min-h-13 w-full items-center justify-center gap-2 rounded-xl bg-primary text-base font-bold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:opacity-60">
+              {submitting && <Loader2 className="size-4 animate-spin" />}
+              {submitting ? 'กำลังบันทึก…' : mode === 'add' ? `เพิ่มคิว${total > 0 ? ` · ${total} คน` : ''}` : 'บันทึกการแก้ไข'}
+            </button>
           </div>
-          {error && (
-            <p className="rounded-lg bg-[var(--status-danger-bg)] px-3 py-2.5 text-sm font-medium text-[var(--status-danger-fg)]">
-              {error}
-            </p>
-          )}
-          <button type="submit" disabled={submitting}
-            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary text-base font-bold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 disabled:opacity-60">
-            {submitting && <Loader2 className="size-4 animate-spin" />}
-            {submitting ? 'กำลังบันทึก…' : mode === 'add' ? `เพิ่มคิว${total > 0 ? ` · ${total} คน` : ''}` : 'บันทึกการแก้ไข'}
-          </button>
         </form>
       </div>
     </div>

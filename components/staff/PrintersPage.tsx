@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useConfirm } from '@/components/shared/ConfirmDialog';
 import { nanoid } from 'nanoid';
 import { toast } from 'sonner';
 import {
-  Printer, Star, StarOff, Usb, Wifi, Monitor, Smartphone,
-  Trash2, Pencil, FlaskConical, Plus, ChevronLeft,
+  Printer, Star, Usb, Wifi, Monitor, Smartphone,
+  Trash2, Pencil, FlaskConical, Plus, ChevronLeft, Info,
 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -16,11 +16,10 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { StatusBadge, type BadgeVariant } from '@/components/ui/status-badge';
-import { DataCard } from '@/components/ui/section-card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getAllPrinters, savePrinter, deletePrinter, setDefaultPrinter } from '@/lib/printer/store';
+import { getAllPrinters, getDefaultPrinter, savePrinter, deletePrinter, setDefaultPrinter } from '@/lib/printer/store';
 import { getCapabilities, isLocalhost } from '@/lib/printer/capabilities';
-import { requestUSBDevice } from '@/lib/printer/transports/usb';
+import { requestUSBDevice, findPairedDevice } from '@/lib/printer/transports/usb';
 import { isAndroidBridgeAvailable } from '@/lib/printer/transports/android-bridge';
 import { testPrint } from '@/lib/printer/service';
 import type { PrinterConfig, PrinterType, AndroidBridgeTarget } from '@/lib/printer/types';
@@ -40,6 +39,64 @@ const TYPE_BADGE_VARIANT: Record<PrinterType, BadgeVariant> = {
   browser:        'neutral',
   android_bridge: 'purple',
 };
+
+const TYPE_ICON: Record<PrinterType, React.ReactNode> = {
+  usb:            <Usb className="size-5" />,
+  network:        <Wifi className="size-5" />,
+  browser:        <Monitor className="size-5" />,
+  android_bridge: <Smartphone className="size-5" />,
+};
+
+/* ─── Connection status ──────────────────────────────────────────────────── */
+
+type StatusTone = 'success' | 'warning' | 'danger' | 'neutral';
+
+function printerStatus(
+  p: PrinterConfig,
+  opts: { usbSupported: boolean; usbPaired?: boolean; bridgeAvailable: boolean; onLocalhost: boolean },
+): { label: string; tone: StatusTone } {
+  switch (p.type) {
+    case 'browser':
+      return { label: 'พร้อมใช้งาน — พิมพ์ผ่านหน้าต่าง Print ของอุปกรณ์', tone: 'success' };
+    case 'android_bridge':
+      return opts.bridgeAvailable
+        ? { label: 'พร้อมใช้งานผ่านแอป Android POS', tone: 'success' }
+        : { label: 'พิมพ์ได้เฉพาะเมื่อเปิดจากแอป Android POS', tone: 'warning' };
+    case 'usb':
+      if (!opts.usbSupported) return { label: 'เบราว์เซอร์นี้ไม่รองรับ WebUSB', tone: 'danger' };
+      if (opts.usbPaired === undefined) return { label: 'กำลังตรวจสอบการเชื่อมต่อ…', tone: 'neutral' };
+      return opts.usbPaired
+        ? { label: 'เชื่อมต่ออยู่', tone: 'success' }
+        : { label: 'ไม่พบอุปกรณ์ — ตรวจสอบสาย USB/OTG', tone: 'danger' };
+    case 'network':
+      return opts.onLocalhost
+        ? { label: 'กด "ทดสอบ" เพื่อตรวจการเชื่อมต่อ', tone: 'neutral' }
+        : { label: 'ใช้ไม่ได้บน production — แนะนำ Android POS App', tone: 'warning' };
+  }
+}
+
+const TONE_TEXT: Record<StatusTone, string> = {
+  success: 'text-[var(--status-success-fg)]',
+  warning: 'text-[var(--status-warning-fg)]',
+  danger:  'text-[var(--status-danger-fg)]',
+  neutral: 'text-muted-foreground',
+};
+
+const TONE_DOT: Record<StatusTone, string> = {
+  success: 'bg-[var(--status-success-fg)]',
+  warning: 'bg-[var(--status-warning-fg)]',
+  danger:  'bg-[var(--status-danger-fg)]',
+  neutral: 'bg-muted-foreground/60',
+};
+
+function StatusDot({ tone, label }: { tone: StatusTone; label: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${TONE_TEXT[tone]}`}>
+      <span className={`size-1.5 shrink-0 rounded-full ${TONE_DOT[tone]}`} />
+      {label}
+    </span>
+  );
+}
 
 /* ─── Form state ─────────────────────────────────────────────────────────── */
 
@@ -105,6 +162,10 @@ function defaultForm(mode: 'add' | 'edit', existing?: PrinterConfig): FormState 
 
 export function PrintersPage() {
   const [printers, setPrinters] = useState<PrinterConfig[]>([]);
+  // Actual default = the printer:__default__ key that print() resolves — the
+  // per-config isDefault flag is only a form convenience and can go stale.
+  const [defaultId, setDefaultId] = useState<string | null>(null);
+  const [usbPaired, setUsbPaired] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState<FormState>(defaultForm('add'));
@@ -113,16 +174,42 @@ export function PrintersPage() {
 
   const caps = getCapabilities();
   const onLocalhost = isLocalhost();
+  const bridgeAvailable = isAndroidBridgeAvailable();
   const { openConfirm, dialog: confirmDialog } = useConfirm();
 
   /* Load from IndexedDB */
-  useEffect(() => {
-    getAllPrinters().then((list) => { setPrinters(list); setLoading(false); });
+  const refresh = useCallback(async () => {
+    const [list, def] = await Promise.all([getAllPrinters(), getDefaultPrinter()]);
+    setPrinters(list);
+    setDefaultId(def?.id ?? null);
   }, []);
 
-  function refresh() {
-    getAllPrinters().then(setPrinters);
-  }
+  useEffect(() => {
+    Promise.all([getAllPrinters(), getDefaultPrinter()]).then(([list, def]) => {
+      setPrinters(list);
+      setDefaultId(def?.id ?? null);
+      setLoading(false);
+    });
+  }, []);
+
+  /* Check which paired USB devices are actually connected right now */
+  useEffect(() => {
+    if (!caps.usb) return;
+    let cancelled = false;
+    (async () => {
+      const map: Record<string, boolean> = {};
+      for (const p of printers) {
+        if (p.type !== 'usb' || !p.usbVendorId || !p.usbProductId) continue;
+        try {
+          map[p.id] = !!(await findPairedDevice(p.usbVendorId, p.usbProductId));
+        } catch {
+          map[p.id] = false;
+        }
+      }
+      if (!cancelled) setUsbPaired(map);
+    })();
+    return () => { cancelled = true; };
+  }, [printers, caps.usb]);
 
   function openAdd() {
     setForm(defaultForm('add'));
@@ -130,22 +217,23 @@ export function PrintersPage() {
   }
 
   function openEdit(p: PrinterConfig) {
-    setForm(defaultForm('edit', p));
+    // isDefault in the form must reflect the real default key, not the stale flag
+    setForm({ ...defaultForm('edit', p), isDefault: p.id === defaultId });
     setModalOpen(true);
   }
 
   function handleDelete(p: PrinterConfig) {
     openConfirm(`ลบ "${p.name}" ออกจากรายการ?`, async () => {
       await deletePrinter(p.id);
-      refresh();
+      await refresh();
       toast.success('ลบเครื่องพิมพ์แล้ว');
     });
   }
 
   async function handleSetDefault(p: PrinterConfig) {
     await setDefaultPrinter(p.id);
-    refresh();
-    toast.success(`ตั้ง "${p.name}" เป็นค่าเริ่มต้นแล้ว`);
+    await refresh();
+    toast.success(`ตั้ง "${p.name}" เป็นเครื่องพิมพ์หลักของเครื่องนี้แล้ว`);
   }
 
   async function handleTest(p: PrinterConfig) {
@@ -200,7 +288,7 @@ export function PrintersPage() {
     await savePrinter(config);
     if (isDefault) await setDefaultPrinter(config.id);
     setSaving(false);
-    refresh();
+    await refresh();
     setModalOpen(false);
     toast.success(form.mode === 'edit' ? 'แก้ไขข้อมูลแล้ว' : 'เพิ่มเครื่องพิมพ์แล้ว');
 
@@ -215,7 +303,7 @@ export function PrintersPage() {
 
       <PageHeader
         title="เครื่องพิมพ์"
-        subtitle="จัดการเครื่องพิมพ์ใบเสร็จและสลิปครัว"
+        subtitle="จัดการเครื่องพิมพ์ใบเสร็จและสลิปครัว — ตั้งค่าครั้งเดียวต่อเครื่อง ไม่ต้องตั้งใหม่เมื่อเข้า-ออกระบบ"
         actions={
           <Button onClick={openAdd}>
             <Plus className="size-4 mr-1.5" />
@@ -224,18 +312,19 @@ export function PrintersPage() {
         }
       />
 
-      {/* Printer list */}
       {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-14 rounded-xl" />
-          ))}
+        <div className="space-y-3">
+          <Skeleton className="h-32 rounded-2xl" />
+          <div className="grid gap-3 md:grid-cols-2">
+            <Skeleton className="h-36 rounded-xl" />
+            <Skeleton className="h-36 rounded-xl" />
+          </div>
         </div>
       ) : printers.length === 0 ? (
         <EmptyState
           icon={<Printer className="size-5" />}
           title="ยังไม่มีเครื่องพิมพ์"
-          description="เพิ่มเครื่องพิมพ์เพื่อเริ่มพิมพ์ใบเสร็จและสลิปครัว"
+          description="เพิ่มเครื่องพิมพ์เพื่อเริ่มพิมพ์ใบเสร็จและสลิปครัว — เครื่องแรกที่เพิ่มจะเป็นเครื่องหลักโดยอัตโนมัติ"
           action={
             <Button size="sm" onClick={openAdd}>
               <Plus className="size-4 mr-1.5" />
@@ -244,69 +333,153 @@ export function PrintersPage() {
           }
         />
       ) : (
-        <DataCard noPadding>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-[var(--surface-2)]">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">ชื่อ</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">ประเภท</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground">กระดาษ</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-muted-foreground">ค่าเริ่มต้น</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {printers.map((p) => (
-                <tr key={p.id} className="hover:bg-muted/30">
-                  <td className="px-4 py-3 font-medium text-foreground">{p.name}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge label={TYPE_LABEL[p.type]} variant={TYPE_BADGE_VARIANT[p.type]} />
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{p.paperWidth} mm</td>
-                  <td className="px-4 py-3 text-center">
-                    <button
-                      type="button"
-                      aria-label={p.isDefault ? 'ค่าเริ่มต้น' : 'ตั้งเป็นค่าเริ่มต้น'}
-                      onClick={() => !p.isDefault && handleSetDefault(p)}
-                      className={p.isDefault ? 'text-amber-500' : 'text-muted-foreground/60 hover:text-amber-400'}
+        (() => {
+          const defaultPrinter = printers.find((p) => p.id === defaultId) ?? null;
+          const others = printers.filter((p) => p.id !== defaultId);
+          return (
+            <div className="space-y-5">
+              {/* ── Active (default) printer hero ── */}
+              {defaultPrinter ? (
+                (() => {
+                  const status = printerStatus(defaultPrinter, {
+                    usbSupported: caps.usb,
+                    usbPaired: usbPaired[defaultPrinter.id],
+                    bridgeAvailable,
+                    onLocalhost,
+                  });
+                  return (
+                    <section
+                      aria-label="เครื่องพิมพ์ที่ใช้งานอยู่"
+                      className="rounded-2xl border border-primary/25 bg-[var(--surface-primary-subtle)] p-5 shadow-[var(--shadow-card)]"
                     >
-                      {p.isDefault ? <Star className="size-4 fill-current" /> : <StarOff className="size-4" />}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleTest(p)}
-                        disabled={!!testing}
-                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-                      >
-                        <FlaskConical className="size-3" />
-                        {testing === p.id ? 'ทดสอบ…' : 'ทดสอบ'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openEdit(p)}
-                        aria-label="แก้ไข"
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <Pencil className="size-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(p)}
-                        aria-label="ลบ"
-                        className="text-muted-foreground hover:text-[var(--status-danger-fg)]"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </DataCard>
+                      <div className="flex flex-wrap items-start gap-4">
+                        <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                          {TYPE_ICON[defaultPrinter.type]}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-primary">
+                            <Star className="size-3 fill-current" />
+                            เครื่องพิมพ์หลักของเครื่องนี้
+                          </p>
+                          <h2 className="mt-1 truncate text-lg font-bold text-foreground">{defaultPrinter.name}</h2>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                            <StatusBadge label={TYPE_LABEL[defaultPrinter.type]} variant={TYPE_BADGE_VARIANT[defaultPrinter.type]} />
+                            <span className="text-xs text-muted-foreground">กระดาษ {defaultPrinter.paperWidth} mm</span>
+                            {defaultPrinter.thaiImageMode && (
+                              <span className="text-xs text-muted-foreground">พิมพ์ไทยแบบ Bitmap</span>
+                            )}
+                            <StatusDot tone={status.tone} label={status.label} />
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 gap-2">
+                          <Button variant="outline" size="sm" onClick={() => openEdit(defaultPrinter)}>
+                            <Pencil className="size-3.5 mr-1" />
+                            แก้ไข
+                          </Button>
+                          <Button size="sm" disabled={!!testing} onClick={() => handleTest(defaultPrinter)}>
+                            <FlaskConical className="size-3.5 mr-1" />
+                            {testing === defaultPrinter.id ? 'กำลังทดสอบ…' : 'ทดสอบพิมพ์'}
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="mt-3.5 border-t border-primary/15 pt-3 text-xs leading-relaxed text-muted-foreground">
+                        ใบเสร็จและสลิปครัวที่สั่งจากเครื่องนี้จะพิมพ์ออกที่เครื่องพิมพ์นี้โดยอัตโนมัติ
+                      </p>
+                    </section>
+                  );
+                })()
+              ) : (
+                <div className="flex items-start gap-2.5 rounded-xl border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] p-4 text-sm text-[var(--status-warning-fg)]">
+                  <Info className="mt-0.5 size-4 shrink-0" />
+                  <p>
+                    ยังไม่ได้เลือกเครื่องพิมพ์หลัก — กด &ldquo;ตั้งเป็นเครื่องหลัก&rdquo; ที่เครื่องพิมพ์ด้านล่าง
+                    เพื่อให้ระบบรู้ว่าต้องพิมพ์ออกเครื่องไหน
+                  </p>
+                </div>
+              )}
+
+              {/* ── Other printers ── */}
+              {others.length > 0 && (
+                <section aria-label="เครื่องพิมพ์อื่น">
+                  <h3 className="mb-2.5 text-sm font-semibold text-foreground">
+                    เครื่องพิมพ์อื่น <span className="font-normal text-muted-foreground">({others.length})</span>
+                  </h3>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {others.map((p) => {
+                      const status = printerStatus(p, {
+                        usbSupported: caps.usb,
+                        usbPaired: usbPaired[p.id],
+                        bridgeAvailable,
+                        onLocalhost,
+                      });
+                      return (
+                        <div
+                          key={p.id}
+                          className="flex flex-col rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-card)]"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-2)] text-muted-foreground">
+                              {TYPE_ICON[p.type]}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-semibold text-foreground">{p.name}</p>
+                              <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                                <StatusBadge label={TYPE_LABEL[p.type]} variant={TYPE_BADGE_VARIANT[p.type]} />
+                                <span className="text-xs text-muted-foreground">{p.paperWidth} mm</span>
+                                {p.thaiImageMode && <span className="text-xs text-muted-foreground">Bitmap ไทย</span>}
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => openEdit(p)}
+                                aria-label={`แก้ไข ${p.name}`}
+                                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                              >
+                                <Pencil className="size-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(p)}
+                                aria-label={`ลบ ${p.name}`}
+                                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-[var(--status-danger-bg)] hover:text-[var(--status-danger-fg)]"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="mt-2.5">
+                            <StatusDot tone={status.tone} label={status.label} />
+                          </div>
+                          <div className="mt-3 flex gap-2 border-t border-border pt-3">
+                            <Button variant="outline" size="sm" className="flex-1" onClick={() => handleSetDefault(p)}>
+                              <Star className="size-3.5 mr-1" />
+                              ตั้งเป็นเครื่องหลัก
+                            </Button>
+                            <Button variant="ghost" size="sm" disabled={!!testing} onClick={() => handleTest(p)}>
+                              <FlaskConical className="size-3.5 mr-1" />
+                              {testing === p.id ? 'ทดสอบ…' : 'ทดสอบ'}
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {/* ── Device-local note ── */}
+              <div className="flex items-start gap-2.5 rounded-xl border border-border bg-[var(--surface-1)] p-3.5 text-xs leading-relaxed text-muted-foreground">
+                <Info className="mt-0.5 size-4 shrink-0" />
+                <p>
+                  การตั้งค่าเครื่องพิมพ์และเครื่องหลักถูกบันทึกไว้กับ<span className="font-semibold text-foreground">เครื่องนี้</span>{' '}
+                  ไม่ผูกกับบัญชีผู้ใช้ — เข้า-ออกระบบหรือสลับผู้ใช้ ค่าเดิมยังอยู่ครบ
+                  แต่หากเปลี่ยนเครื่องหรือเบราว์เซอร์ใหม่จะต้องตั้งค่าอีกครั้ง
+                </p>
+              </div>
+            </div>
+          );
+        })()
       )}
 
       {/* Printer config wizard — Dialog kept for multi-step flow */}
@@ -855,7 +1028,7 @@ function StepGeneral({
           onChange={(e) => onDefaultChange(e.target.checked)}
           className="rounded accent-slate-800"
         />
-        <span className="text-sm text-foreground">ตั้งเป็นเครื่องพิมพ์เริ่มต้น</span>
+        <span className="text-sm text-foreground">ตั้งเป็นเครื่องพิมพ์หลักของเครื่องนี้ (ใช้พิมพ์อัตโนมัติ)</span>
       </label>
 
       <div className="flex gap-2 pt-1">

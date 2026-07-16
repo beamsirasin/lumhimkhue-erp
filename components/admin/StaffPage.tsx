@@ -4,8 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { formatThaiDate } from '@/lib/date-time';
 import { toast } from 'sonner';
 import {
   GripVertical, Pencil, Plus, X,
@@ -238,7 +237,7 @@ export function StaffPage({ initialData, initialMenuLabels = {} }: StaffPageProp
       header: 'สมัครเมื่อ',
       render: (m: StaffMember) => (
         <span className="text-[12px] text-muted-foreground whitespace-nowrap">
-          {format(new Date(m.createdAt), 'd MMM yy', { locale: th })}
+          {formatThaiDate(m.createdAt)}
         </span>
       ),
     },
@@ -1052,8 +1051,8 @@ function StaffForm({
             </select>
           </div>
           <div className="col-span-2">
-            <label className="mb-1.5 block text-xs font-medium text-foreground">Username (Email)</label>
-            <input {...register('email')} type="email" className={FIELD_INPUT} placeholder="user@example.com" />
+            <label className="mb-1.5 block text-xs font-medium text-foreground">Username / อีเมล</label>
+            <input {...register('email')} type="text" className={FIELD_INPUT} placeholder="เช่น cashier1 หรือ user@example.com" />
             {errors.email && <p className="mt-1 text-xs text-destructive">{errors.email.message}</p>}
           </div>
           {!initial && (

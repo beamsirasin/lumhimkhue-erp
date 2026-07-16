@@ -7,6 +7,8 @@ interface ManagerApprovalModalProps {
   description: string;
   contextLines?: string[];
   reasonRequired?: boolean;
+  confirmLabel?: string;
+  reasonPlaceholder?: string;
   onCancel: () => void;
   onConfirm: (params: { code: string; reason: string }) => Promise<{ ok: boolean; error?: string }>;
 }
@@ -26,6 +28,8 @@ export function ManagerApprovalModal({
   description,
   contextLines = [],
   reasonRequired = true,
+  confirmLabel = 'ยืนยันการแก้ไข',
+  reasonPlaceholder = 'เหตุผลในการแก้ไข',
   onCancel,
   onConfirm,
 }: ManagerApprovalModalProps) {
@@ -106,7 +110,7 @@ export function ManagerApprovalModal({
             rows={2}
             disabled={submitting}
             className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
-            placeholder="เหตุผลในการแก้ไข"
+            placeholder={reasonPlaceholder}
           />
         </label>
 
@@ -131,7 +135,7 @@ export function ManagerApprovalModal({
             disabled={!canSubmit}
             className="rounded-xl bg-primary px-6 py-3.5 text-base font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {submitting ? 'กำลังตรวจสอบ...' : 'ยืนยันการแก้ไข'}
+            {submitting ? 'กำลังตรวจสอบ...' : confirmLabel}
           </button>
         </div>
       </div>

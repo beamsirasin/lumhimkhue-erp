@@ -30,10 +30,11 @@ import { PageHeader } from '@/components/ui/page-header';
 import { DataCard } from '@/components/ui/section-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ThaiDateInput } from '@/components/ui/thai-date-input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { formatThaiDate, formatThaiDateTime, formatThaiMonthDay, formatThaiTime } from '@/lib/date-time';
 
 const TZ = 'Asia/Bangkok';
 
@@ -44,7 +45,9 @@ function todayBKK() {
 }
 
 function fmtBKK(iso: string, fmt = 'dd/MM HH:mm') {
-  return format(toZonedTime(new Date(iso), TZ), fmt);
+  if (fmt === 'HH:mm') return formatThaiTime(iso);
+  if (fmt === 'dd/MM/yyyy') return formatThaiDate(iso);
+  return formatThaiDateTime(iso);
 }
 
 function fmtDuration(minutes: number | null): string {
@@ -359,21 +362,19 @@ export function KitchenReportPage() {
             <div className="flex flex-wrap items-end gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-medium text-muted-foreground">วันเริ่มต้น</Label>
-                <Input
-                  type="date"
+                <ThaiDateInput
                   value={fromDate}
                   max={todayStr}
-                  onChange={(e) => setFromDate(e.target.value)}
+                  onValueChange={setFromDate}
                   className="h-10 w-40"
                 />
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-medium text-muted-foreground">วันสิ้นสุด</Label>
-                <Input
-                  type="date"
+                <ThaiDateInput
                   value={toDate}
                   max={todayStr}
-                  onChange={(e) => setToDate(e.target.value)}
+                  onValueChange={setToDate}
                   className="h-10 w-40"
                 />
               </div>
@@ -492,7 +493,7 @@ export function KitchenReportPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                   <XAxis
                     dataKey="date"
-                    tickFormatter={(v: string) => format(new Date(v + 'T00:00:00'), 'dd/MM')}
+                    tickFormatter={(v: string) => formatThaiMonthDay(v)}
                     tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
                     axisLine={false}
                     tickLine={false}

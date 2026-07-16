@@ -1,8 +1,7 @@
 ﻿'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
+import { formatThaiTime } from '@/lib/date-time';
 import { getSessionOrders } from '@/lib/actions/orders';
 import type { SessionOrdersData } from '@/lib/actions/orders';
 
@@ -63,7 +62,7 @@ export function OrderList({ sessionToken, initialOrders }: OrderListProps) {
             <div>
               <p className="text-[11px] font-medium text-muted-foreground">สั่งเมื่อ</p>
               <p className="text-sm font-semibold text-foreground">
-                {format(new Date(order.createdAt), 'HH:mm', { locale: th })}
+                {formatThaiTime(order.createdAt)}
               </p>
             </div>
             <span className="rounded-full border border-border bg-background px-3 py-1 text-xs font-semibold text-muted-foreground">

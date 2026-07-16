@@ -18,11 +18,15 @@ import {
   ChevronRight,
   Users,
   Clock,
+  Check,
   CheckCircle2,
+  Copy,
+  ExternalLink,
   Pencil,
   Loader2,
-  Eye,
+  QrCode,
   Receipt,
+  CalendarClock,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import {
@@ -49,6 +53,7 @@ import {
   updateTablePosition,
   updateTableMeta,
   softDeleteTable,
+  setTableReserved,
 } from '@/lib/actions/tables';
 import {
   openSession,
@@ -63,6 +68,7 @@ import { print as printTableQr } from '@/lib/printer/service';
 import type { TableQrData } from '@/lib/printer/types';
 import { differenceInSeconds, formatDistanceToNowStrict } from 'date-fns';
 import { th } from 'date-fns/locale';
+import { formatThaiDateTime, formatThaiTime } from '@/lib/date-time';
 import { PricingTile } from '@/components/staff/PricingTile';
 import { CashierHeaderSlotContext } from '@/components/shared/SidebarLayout';
 import { cn } from '@/lib/utils';
@@ -403,18 +409,40 @@ interface SessionOpenResult {
 }
 
 /* ─── QR View Modal (show on screen) ──────────────────────────────── */
+/* Same template as the queue QR preview: framed QR, big label, then
+   เปิดลิงก์ / คัดลอกลิงก์ / ปิด — replaces the old separate Link + eye buttons. */
 
 function QrViewModal({ url, label, onClose }: { url: string | null; label: string; onClose: () => void }) {
   const [qrSrc, setQrSrc] = useState('');
+  const [copied, setCopied] = useState<'idle' | 'ok' | 'fail'>('idle');
+
+  // Reset stale QR/copy state when the target url changes (render-time adjustment)
+  const [lastUrl, setLastUrl] = useState(url);
+  if (url !== lastUrl) {
+    setLastUrl(url);
+    setQrSrc('');
+    setCopied('idle');
+  }
 
   useEffect(() => {
     if (!url) return;
-    QRCode.toDataURL(url, { width: 280, margin: 2, color: { dark: '#1e293b', light: '#ffffff' } })
+    QRCode.toDataURL(url, { width: 280, margin: 2, color: { dark: '#000000', light: '#ffffff' } })
       .then(setQrSrc)
       .catch(() => {});
   }, [url]);
 
   if (!url) return null;
+
+  async function handleCopy() {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied('ok');
+    } catch {
+      setCopied('fail');
+    }
+    setTimeout(() => setCopied('idle'), 2500);
+  }
 
   return (
     <div
@@ -422,24 +450,73 @@ function QrViewModal({ url, label, onClose }: { url: string | null; label: strin
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-2xl border border-border bg-[var(--surface-1)] p-6 text-center shadow-[var(--shadow-dialog)]"
+        className="w-full max-w-sm overflow-y-auto rounded-2xl border border-border bg-[var(--surface-1)] shadow-[var(--shadow-dialog)]"
+        style={{ maxHeight: '92dvh' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-5">
-          <p className="text-lg font-semibold text-foreground">QR โต๊ะ {label}</p>
-          <button type="button" onClick={onClose} aria-label="ปิด" className="text-muted-foreground hover:text-foreground transition-colors p-1">
-            <X className="size-6" />
+        {/* Header */}
+        <div className="sticky top-0 flex items-center justify-between border-b border-border bg-[var(--surface-1)] px-5 py-3.5">
+          <h2 className="text-base font-bold text-foreground">QR โต๊ะ {label}</h2>
+          <button type="button" aria-label="ปิด" onClick={onClose}
+            className="flex size-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted">
+            <X className="size-5" />
           </button>
         </div>
-        {qrSrc ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={qrSrc} alt={`QR โต๊ะ ${label}`} className="mx-auto rounded-xl" width={280} height={280} />
-        ) : (
-          <div className="flex h-72 w-72 mx-auto items-center justify-center">
-            <Loader2 className="size-8 animate-spin text-muted-foreground" />
+
+        {/* Body */}
+        <div className="flex flex-col items-center gap-5 px-6 pb-6 pt-5">
+          {/* QR code */}
+          <div className="rounded-2xl border border-border bg-white p-4 shadow-[var(--shadow-card)]">
+            {qrSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={qrSrc} alt={`QR โต๊ะ ${label}`} width={280} height={280} />
+            ) : (
+              <div className="flex size-[280px] items-center justify-center">
+                <Loader2 className="size-8 animate-spin text-muted-foreground" />
+              </div>
+            )}
           </div>
-        )}
-        <p className="mt-3 text-xs text-muted-foreground break-all line-clamp-2">{url}</p>
+
+          {/* Table info */}
+          <div className="text-center">
+            <p className="text-3xl font-black text-foreground">โต๊ะ {label}</p>
+            <p className="mt-1 text-xs text-muted-foreground">ให้ลูกค้าสแกนเพื่อเปิดเมนูและสั่งอาหาร</p>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex w-full gap-2">
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border bg-[var(--surface-2)] text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+            >
+              <ExternalLink className="size-4" />เปิดลิงก์
+            </a>
+            <button
+              type="button"
+              onClick={handleCopy}
+              className={cn(
+                'flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border text-sm font-semibold transition-colors',
+                copied === 'ok'
+                  ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-fg)]'
+                  : copied === 'fail'
+                    ? 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]'
+                    : 'border-border bg-[var(--surface-2)] text-foreground hover:bg-muted',
+              )}
+            >
+              {copied === 'ok' ? <Check className="size-4" /> : <Copy className="size-4" />}
+              {copied === 'ok' ? 'คัดลอกแล้ว' : copied === 'fail' ? 'คัดลอกไม่สำเร็จ' : 'คัดลอกลิงก์'}
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex min-h-10 w-full items-center justify-center rounded-xl bg-primary text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95"
+          >
+            ปิด
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -457,14 +534,16 @@ interface OpenTableFlowProps {
   prefillGuests?: Record<string, number>;
   onClose: () => void;
   onSuccess: (data: SessionOpenResult) => void | Promise<void>;
+  onReserved: () => void;
 }
 
-function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, onClose, onSuccess }: OpenTableFlowProps) {
+function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, onClose, onSuccess, onReserved }: OpenTableFlowProps) {
   const [step, setStep] = useState<OpenStep>('tiles');
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [linkedIds, setLinkedIds] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [reserving, setReserving] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -507,6 +586,26 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
       toast.error('เปิดโต๊ะไม่สำเร็จ กรุณาลองใหม่');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleReserve = async () => {
+    if (!table || submitting || reserving) return;
+    setReserving(true);
+    try {
+      const result = await setTableReserved({ tableId: table.id });
+      if (result.ok) {
+        toast.success(`จองโต๊ะ ${table.label} แล้ว`);
+        onClose();
+        onReserved();
+      } else {
+        toast.error(result.error);
+      }
+    } catch (error) {
+      console.error('[OpenTableFlow] Reserve error', error);
+      toast.error('จองโต๊ะไม่สำเร็จ กรุณาลองใหม่');
+    } finally {
+      setReserving(false);
     }
   };
 
@@ -628,10 +727,22 @@ function OpenTableFlow({ open, table, allTables, pricingTiles, prefillGuests, on
               </div>
               <div className="flex shrink-0 gap-2">
                 <button type="button" onClick={onClose} className="min-h-11 rounded-xl border border-border px-4 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">ยกเลิก</button>
+                {table.status === 'available' && (
+                  <button
+                    type="button"
+                    onClick={handleReserve}
+                    disabled={submitting || reserving}
+                    className="flex min-h-11 items-center gap-1.5 rounded-xl border border-border px-4 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-50 transition-colors"
+                  >
+                    {reserving ? <Loader2 className="size-4 animate-spin" /> : <CalendarClock className="size-4" />}
+                    {reserving ? 'กำลังจอง...' : 'จองโต๊ะ'}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setStep('link')}
-                  className="flex min-h-11 items-center gap-1.5 rounded-xl border border-border px-4 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
+                  disabled={submitting || reserving}
+                  className="flex min-h-11 items-center gap-1.5 rounded-xl border border-border px-4 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-50 transition-colors"
                 >
                   <Link2 className="size-4" />เชื่อมโต๊ะ
                 </button>
@@ -980,7 +1091,7 @@ function TableSheet({
                 const displayTable = primaryTable ?? table;
 
                 const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
-                const startedAtStr = new Date(displaySess.startedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Bangkok' });
+                const startedAtStr = formatThaiDateTime(displaySess.startedAt);
 
                 // Build Link/QR entries: primary first, then all linked children
                 const linkedChildren = allTables.filter(
@@ -1002,7 +1113,7 @@ function TableSheet({
                     <div className="rounded-xl bg-muted/50 border border-border p-4 space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="flex items-center gap-1.5 text-muted-foreground"><Clock className="size-3.5" />เริ่ม</span>
-                        <span className="font-medium tabular-nums">{new Date(displaySess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
+                        <span className="font-medium tabular-nums">{formatThaiTime(displaySess.startedAt)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">เวลาที่ผ่านมา</span>
@@ -1039,18 +1150,10 @@ function TableSheet({
                             )}
                             <button
                               type="button"
-                              onClick={() => window.open(url, '_blank')}
+                              onClick={() => setQrView({ url, label: entry.label })}
                               className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
                             >
-                              <Link2 className="size-4" />Link
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setQrView({ url, label: entry.label })}
-                              aria-label="ดู QR"
-                              className="flex min-h-11 items-center justify-center rounded-xl border border-border px-3.5 py-2.5 text-foreground hover:bg-muted/50 transition-colors"
-                            >
-                              <Eye className="size-4" />
+                              <QrCode className="size-4" />แสดง QR
                             </button>
                             <button
                               type="button"
@@ -1191,7 +1294,7 @@ function TableSheet({
             );
             const hasGroup = paidLinked.length > 0;
             const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
-            const startedAtStr = new Date(sess.startedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Bangkok' });
+            const startedAtStr = formatThaiDateTime(sess.startedAt);
             const paidUrl = `${appUrl}/t/${table.qrToken}/s/${sess.sessionToken}`;
             return (
               <>
@@ -1202,7 +1305,7 @@ function TableSheet({
                   </div>
                   <div className="flex justify-between text-xs">
                     <span className="text-muted-foreground">เริ่ม</span>
-                    <span className="font-medium">{new Date(sess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
+                    <span className="font-medium">{formatThaiTime(sess.startedAt)}</span>
                   </div>
                   <div className="flex justify-between text-xs">
                     <span className="text-muted-foreground">จำนวนคน</span>
@@ -1227,18 +1330,10 @@ function TableSheet({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={async () => { await navigator.clipboard.writeText(paidUrl).catch(() => {}); toast.success('คัดลอก URL แล้ว'); }}
+                    onClick={() => setQrView({ url: paidUrl, label: table.label })}
                     className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
                   >
-                    <Link2 className="size-3.5" />Link
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="ดู QR"
-                    onClick={() => setQrView({ url: paidUrl, label: table.label })}
-                    className="flex items-center justify-center rounded-xl border border-border px-3 py-2.5 text-foreground hover:bg-muted/50 transition-colors"
-                  >
-                    <Eye className="size-3.5" />
+                    <QrCode className="size-3.5" />แสดง QR
                   </button>
                   <button
                     type="button"
@@ -1290,7 +1385,7 @@ function TableSheet({
                 const displayTable = primaryTable ?? table;
 
                 const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
-                const startedAtStr = new Date(displaySess.startedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Bangkok' });
+                const startedAtStr = formatThaiDateTime(displaySess.startedAt);
                 const linkedChildren = allTables.filter((t) => t.activeSession?.parentSessionId === displaySess.id);
                 const entries = [
                   { label: displayTable.label, qrToken: displayTable.qrToken, sessionToken: displaySess.sessionToken },
@@ -1303,7 +1398,7 @@ function TableSheet({
                     <div className="rounded-xl bg-muted/50 border border-border p-4 space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="flex items-center gap-1.5 text-muted-foreground"><Clock className="size-3.5" />เริ่ม</span>
-                        <span className="font-medium tabular-nums">{new Date(displaySess.startedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</span>
+                        <span className="font-medium tabular-nums">{formatThaiTime(displaySess.startedAt)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">เวลาที่ผ่านมา</span>
@@ -1333,9 +1428,9 @@ function TableSheet({
                         return (
                           <div key={entry.sessionToken} className="flex items-center gap-2">
                             {isMultiple && <span className="w-12 shrink-0 text-xs font-medium text-muted-foreground">โต๊ะ {entry.label}</span>}
-                            <button type="button" onClick={() => window.open(url, '_blank')}
+                            <button type="button" onClick={() => setQrView({ url, label: entry.label })}
                               className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">
-                              <Link2 className="size-4" />Link
+                              <QrCode className="size-4" />แสดง QR
                             </button>
                             <button type="button" onClick={() => { const qr: TableQrData = { tableNumber: entry.label, url, startedAt: startedAtStr }; void printTableQr({ type: 'table_qr', table: qr }); }}
                               className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">
@@ -1984,6 +2079,7 @@ export function TableGrid({ initialTables, pricingTiles }: TableGridProps) {
         pricingTiles={pricingTiles}
         prefillGuests={openFlowPrefill}
         onClose={() => { setOpenFlowOpen(false); setOpenFlowTable(null); }}
+        onReserved={refetch}
         onSuccess={async (data) => {
           try {
             const freshTables = await fetchFreshTables();

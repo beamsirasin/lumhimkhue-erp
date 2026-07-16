@@ -2,8 +2,6 @@
 
 import { useState, useTransition } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
@@ -22,7 +20,7 @@ import { AppShell } from '@/components/ui/app-shell';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { DataCard } from '@/components/ui/section-card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Input } from '@/components/ui/input';
+import { ThaiDateInput } from '@/components/ui/thai-date-input';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card';
@@ -39,6 +37,7 @@ import { getInventoryDashboard, type InventoryDashboardData } from '@/lib/action
 import { getDailyVariance, type VarianceRow } from '@/lib/actions/inventory-variance';
 import { checkReorderNeeded, createDraftPOFromReorder, type ReorderItem } from '@/lib/actions/reorder';
 import { cn } from '@/lib/utils';
+import { formatThaiDate, formatThaiLongDate } from '@/lib/date-time';
 
 interface Props {
   initialData: InventoryDashboardData;
@@ -71,11 +70,7 @@ function fmtCompact(n: string | number) {
 }
 
 function fmtDate(d: string) {
-  try {
-    return format(new Date(`${d}T00:00:00`), 'd MMM yyyy', { locale: th });
-  } catch {
-    return d;
-  }
+  return formatThaiDate(d, d);
 }
 
 function getStatusConfig(status: string) {
@@ -419,13 +414,12 @@ function VarianceTab() {
             <label htmlFor="variance-date" className="text-label">
               วันที่
             </label>
-            <Input
-              id="variance-date"
-              type="date"
+            <ThaiDateInput
               value={date}
               max={today}
-              onChange={(e) => setDate(e.target.value)}
+              onValueChange={setDate}
               className="mt-1.5"
+              ariaLabel="วันที่"
             />
           </div>
           <Button type="button" onClick={handleQuery} disabled={loading}>
@@ -728,7 +722,7 @@ export function InventoryDashboard({ initialData }: Props) {
     <AppShell>
       <PageHeader
         title="ภาพรวมสต็อก"
-        subtitle={format(new Date(), 'EEEE d MMMM yyyy', { locale: th })}
+        subtitle={formatThaiLongDate(new Date())}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {isFetching && (

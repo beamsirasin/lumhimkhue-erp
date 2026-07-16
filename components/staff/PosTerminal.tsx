@@ -24,12 +24,12 @@ import type { PosSession, PosSessionDetail } from '@/lib/actions/pos';
 import { Printer, CheckCircle2, Tag, Package, X, Loader2, Receipt, Save, AlertCircle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PricingTile as PricingTileCard } from '@/components/staff/PricingTile';
-import { ShiftWidget } from '@/components/staff/ShiftWidget';
 import { ManagerApprovalModal } from '@/components/shared/ManagerApprovalModal';
 import { print as printReceipt } from '@/lib/printer/service';
 import type { ReceiptData } from '@/lib/printer/types';
 import type { PricingTile } from '@/lib/db/schema';
 import { getAccountGroup } from '@/lib/payments/account-group';
+import { formatThaiDateTime, formatThaiTime } from '@/lib/date-time';
 
 type PosPaymentOption = NonNullable<
   Extract<Awaited<ReturnType<typeof getActivePaymentOptionsForPos>>, { ok: true }>['data']
@@ -52,6 +52,19 @@ function formatElapsed(startedAt: Date | string): string {
 
 function fallbackReceiptNo() {
   return Date.now().toString().slice(-8);
+}
+
+/**
+ * เลขที่บิล toggled off in this bill type's config → the payment must not
+ * consume a running receipt number at all (not merely hide it when printing),
+ * so the next numbered payment continues the sequence uninterrupted.
+ */
+function receiptNumberingDisabled(
+  settings: StoreSettingsData | null | undefined,
+  billType: BillTypeKey,
+): boolean {
+  if (!settings) return false;
+  return (resolveBillConfig(settings, billType).hiddenFields ?? []).includes('receiptNo');
 }
 
 /* ─── Numpad ────────────────────────────────────────────────────────── */
@@ -178,12 +191,6 @@ export function PosTerminal({
           </span>
         </div>
       </div>
-
-      {/* Cashier shift banner */}
-      <div className="mb-4">
-        <ShiftWidget />
-      </div>
-
 
       {/* Session grid */}
       {primarySessions.length === 0 ? (
@@ -889,7 +896,7 @@ function PaymentPanel({
       accountLabel: accountLabel || undefined,
       paidAtLabel: Number.isNaN(paidAtDate.getTime())
         ? ''
-        : paidAtDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' }),
+        : formatThaiTime(paidAtDate),
       settlementType: entry.settlementType ?? 'final',
     };
   });
@@ -1039,8 +1046,8 @@ function PaymentPanel({
     return lines;
   }
 
-  const now = () => new Date().toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Bangkok' });
-  const paymentHistoryTime = () => new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' });
+  const now = () => formatThaiDateTime(new Date());
+  const paymentHistoryTime = () => formatThaiTime(new Date());
 
   function buildShopInfo(billType: BillTypeKey, s?: StoreSettingsData | null) {
     const src = s ?? storeSettings;
@@ -1207,8 +1214,19 @@ function PaymentPanel({
         taxInvoice ? `[ใบกำกับภาษี: ${taxInvoice.companyName} ${taxInvoice.taxId}]` : '',
       ].filter(Boolean).join(' ') || undefined;
 
-      const counterResult = await incrementReceiptCounter();
-      const receiptNo = counterResult.ok ? counterResult.receiptNo : fallbackReceiptNo();
+      const primaryAccountCode = paymentRowsDraft[0]?.receivingAccountCode;
+      const billType: BillTypeKey = taxInvoice
+        ? 'taxInvoice'
+        : primaryAccountCode
+          ? (`account:${primaryAccountCode}` as BillTypeKey)
+          : 'main';
+      const freshRes = await getStoreSettings();
+      const fresh = freshRes.ok ? freshRes.data : storeSettings;
+      const skipReceiptNo = receiptNumberingDisabled(fresh, billType);
+      const counterResult = skipReceiptNo ? null : await incrementReceiptCounter();
+      const receiptNo = counterResult
+        ? (counterResult.ok ? counterResult.receiptNo : fallbackReceiptNo())
+        : undefined;
 
       // Compute safe legacy placeholder values — backend derives the real values from paymentRows
       const rowTypes = new Set(paymentRowsDraft.map((r) => r.paymentMethodType));
@@ -1268,14 +1286,6 @@ function PaymentPanel({
         const qty = addonQty[t.id] ?? 0;
         if (qty > 0) receiptItems.push({ name: t.name, quantity: qty, total: Number(t.price) * qty });
       }
-      const primaryAccountCode = paymentRowsDraft[0]?.receivingAccountCode;
-      const billType: BillTypeKey = taxInvoice
-        ? 'taxInvoice'
-        : primaryAccountCode
-          ? (`account:${primaryAccountCode}` as BillTypeKey)
-          : 'main';
-      const freshRes = await getStoreSettings();
-      const fresh = freshRes.ok ? freshRes.data : storeSettings;
       const { cfg, ...shopInfo } = buildShopInfo(billType, fresh);
       const hidden = new Set(cfg?.hiddenFields ?? []);
       const finalReceiptNo = result.data.receiptNo ?? receiptNo;
@@ -1383,8 +1393,16 @@ function PaymentPanel({
       taxInvoice ? `[ใบกำกับภาษี: ${taxInvoice.companyName} ${taxInvoice.taxId}]` : '',
     ].filter(Boolean).join(' ');
 
-    const counterResult = await incrementReceiptCounter();
-    const receiptNo = counterResult.ok ? counterResult.receiptNo : fallbackReceiptNo();
+    const billType: BillTypeKey = taxInvoice
+      ? 'taxInvoice'
+      : (bankAccount === 'main' ? 'account:bank_cash_a' : 'account:bank_cash_b');
+    const freshRes = await getStoreSettings();
+    const fresh = freshRes.ok ? freshRes.data : storeSettings;
+    const skipReceiptNo = receiptNumberingDisabled(fresh, billType);
+    const counterResult = skipReceiptNo ? null : await incrementReceiptCounter();
+    const receiptNo = counterResult
+      ? (counterResult.ok ? counterResult.receiptNo : fallbackReceiptNo())
+      : undefined;
 
     const result = await processPayment({
       sessionId: session.id,
@@ -1415,11 +1433,6 @@ function PaymentPanel({
       const qty = addonQty[t.id] ?? 0;
       if (qty > 0) receiptItems.push({ name: t.name, quantity: qty, total: Number(t.price) * qty });
     }
-    const billType: BillTypeKey = taxInvoice
-      ? 'taxInvoice'
-      : (bankAccount === 'main' ? 'account:bank_cash_a' : 'account:bank_cash_b');
-    const freshRes = await getStoreSettings();
-    const fresh = freshRes.ok ? freshRes.data : storeSettings;
     const { cfg, ...shopInfo } = buildShopInfo(billType, fresh);
     const hidden = new Set(cfg?.hiddenFields ?? []);
     const finalReceiptNo = result.data.receiptNo ?? receiptNo;
@@ -1475,26 +1488,75 @@ function PaymentPanel({
     }
 
     return (
-      <div className="p-6 space-y-6">
-        <div className="rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-8 text-center space-y-3">
-          <CheckCircle2 className="mx-auto size-12 text-[var(--status-success-fg)]" />
-          <h2 className="text-xl font-bold text-[var(--status-success-fg)]">ชำระเงินสำเร็จ</h2>
-          <p className="text-3xl font-bold tabular-nums text-foreground">฿{lastReceipt.total.toLocaleString('th-TH')}</p>
-          {lastReceipt.changeAmount > 0 && <p className="text-base text-muted-foreground">เงินทอน ฿{lastReceipt.changeAmount.toLocaleString('th-TH')}</p>}
-          <p className="text-sm text-muted-foreground">โต๊ะ {lastReceipt.tableNumber} · ชำระด้วย {lastReceipt.paymentMethod}</p>
-          <p className="text-xs text-muted-foreground">โต๊ะยังแสดงสถานะ &quot;จ่ายแล้ว&quot; — ปิดโต๊ะได้ที่ จัดการโต๊ะ</p>
-        </div>
-        <div className="flex gap-3">
-          <button type="button" onClick={() => void (lastPaymentId ? printPaymentEventReceipt(lastPaymentId, lastReceipt) : printReceipt({ type: 'receipt', payment: lastReceipt }))}
-            className="flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 transition-colors">
-            <Printer className="size-4" />พิมพ์ซ้ำ
+      <div className="flex min-h-full items-center justify-center overflow-y-auto p-4 sm:p-6">
+        <div className="w-full max-w-xl space-y-4">
+          {/* Hero — outcome + amount, change called out for the cashier */}
+          <div className="rounded-2xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-6 py-8 text-center">
+            <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-[var(--status-success-fg)]/10">
+              <CheckCircle2 className="size-9 text-[var(--status-success-fg)]" />
+            </div>
+            <h2 className="mt-3 text-lg font-semibold text-[var(--status-success-fg)]">ชำระเงินสำเร็จ</h2>
+            <p className="mt-1 text-4xl font-bold tabular-nums text-foreground sm:text-5xl">
+              ฿{lastReceipt.total.toLocaleString('th-TH')}
+            </p>
+            {lastReceipt.changeAmount > 0 && (
+              <div className="mt-4 inline-flex items-baseline gap-2 rounded-xl border border-[var(--status-success-border)] bg-[var(--surface-raised)] px-5 py-2.5">
+                <span className="text-sm text-muted-foreground">เงินทอน</span>
+                <span className="text-2xl font-bold tabular-nums text-foreground">
+                  ฿{lastReceipt.changeAmount.toLocaleString('th-TH')}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Details */}
+          <div className="divide-y divide-border rounded-xl border border-border bg-[var(--surface-1)] text-sm">
+            <div className="flex items-center justify-between px-4 py-3">
+              <span className="text-muted-foreground">โต๊ะ</span>
+              <span className="font-semibold text-foreground">{lastReceipt.tableNumber || session.table.label}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 px-4 py-3">
+              <span className="shrink-0 text-muted-foreground">ชำระด้วย</span>
+              <span className="text-right font-medium text-foreground">{lastReceipt.paymentMethod}</span>
+            </div>
+            {lastReceipt.receiptNo && (
+              <div className="flex items-center justify-between px-4 py-3">
+                <span className="text-muted-foreground">เลขที่ใบเสร็จ</span>
+                <span className="font-medium tabular-nums text-foreground">{lastReceipt.receiptNo}</span>
+              </div>
+            )}
+          </div>
+
+          <p className="text-center text-xs text-muted-foreground">
+            โต๊ะยังแสดงสถานะ &quot;จ่ายแล้ว&quot; — ปิดโต๊ะได้ที่ จัดการโต๊ะ
+          </p>
+
+          {/* Actions — primary first, secondary row below */}
+          <button
+            type="button"
+            onClick={onPaid}
+            className="h-14 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            เสร็จสิ้น
           </button>
-          <button type="button" onClick={handleForceClose} disabled={submitting}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--status-danger-border)] py-3 text-sm font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors">
-            {submitting && <Loader2 className="size-3.5 animate-spin" />}
-            {submitting ? 'กำลังปิด…' : 'บังคับปิดโต๊ะ'}
-          </button>
-          <button type="button" onClick={onPaid} className="flex-1 rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">เสร็จสิ้น</button>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => void (lastPaymentId ? printPaymentEventReceipt(lastPaymentId, lastReceipt) : printReceipt({ type: 'receipt', payment: lastReceipt }))}
+              className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-border text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
+            >
+              <Printer className="size-4" />พิมพ์ซ้ำ
+            </button>
+            <button
+              type="button"
+              onClick={handleForceClose}
+              disabled={submitting}
+              className="flex h-12 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[var(--status-danger-border)] text-sm font-medium text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] disabled:opacity-50 transition-colors"
+            >
+              {submitting && <Loader2 className="size-3.5 animate-spin" />}
+              {submitting ? 'กำลังปิด…' : 'บังคับปิดโต๊ะ'}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -2633,9 +2695,16 @@ function PaymentPanel({
               amount: Number(t.price) * partialAddonQty[t.id],
             }));
 
-      const splitCounter = await incrementReceiptCounter();
-      // eslint-disable-next-line react-hooks/purity
-      const splitReceiptNo = splitCounter.ok ? splitCounter.receiptNo : Date.now().toString().slice(-8);
+      const splitBillType: BillTypeKey = taxInvoice
+        ? 'taxInvoice'
+        : (bankAccount === 'main' ? 'account:bank_cash_a' : 'account:bank_cash_b');
+      const splitFreshRes = await getStoreSettings();
+      const splitFresh = splitFreshRes.ok ? splitFreshRes.data : storeSettings;
+      const skipSplitReceiptNo = receiptNumberingDisabled(splitFresh, splitBillType);
+      const splitCounter = skipSplitReceiptNo ? null : await incrementReceiptCounter();
+      const splitReceiptNo = splitCounter
+        ? (splitCounter.ok ? splitCounter.receiptNo : fallbackReceiptNo())
+        : undefined;
 
       const result = await processPayment({
         sessionId: session.id,
@@ -2656,11 +2725,6 @@ function PaymentPanel({
       const receiptItems: ReceiptData['items'] = completedRounds.flatMap((r) =>
         r.items.map((x) => ({ name: x.name, quantity: x.qty, total: x.price * x.qty })),
       );
-      const splitBillType: BillTypeKey = taxInvoice
-        ? 'taxInvoice'
-        : (bankAccount === 'main' ? 'account:bank_cash_a' : 'account:bank_cash_b');
-      const splitFreshRes = await getStoreSettings();
-      const splitFresh = splitFreshRes.ok ? splitFreshRes.data : storeSettings;
       const { cfg: splitCfg, ...splitShopInfo } = buildShopInfo(splitBillType, splitFresh);
       const splitHidden = new Set(splitCfg?.hiddenFields ?? []);
       const finalSplitReceiptNo = result.data.receiptNo ?? splitReceiptNo;

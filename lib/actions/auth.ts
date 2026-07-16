@@ -32,7 +32,7 @@ export async function loginAction(
     });
   } catch (error) {
     if (error instanceof AuthError) {
-      return { ok: false, error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' };
+      return { ok: false, error: 'Username หรือรหัสผ่านไม่ถูกต้อง' };
     }
     throw error;
   }

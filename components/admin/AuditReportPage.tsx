@@ -3,11 +3,9 @@
 import Link from 'next/link';
 import { useState, Fragment } from 'react';
 import { format } from 'date-fns';
-import { th } from 'date-fns/locale';
 import { useQuery } from '@tanstack/react-query';
 import {
   AlertCircle,
-  CalendarRange,
   ChevronDown,
   ChevronLeft,
   ChevronUp,
@@ -41,9 +39,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Input } from '@/components/ui/input';
+import { ThaiDateInput } from '@/components/ui/thai-date-input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { formatThaiDateTime } from '@/lib/date-time';
 
 type Tab = 'audit' | 'shifts' | 'adjustments';
 
@@ -132,7 +131,7 @@ function AuditActionBadge({ action }: { action: string }) {
 
 function fmt(d: Date | string | null | undefined) {
   if (!d) return '—';
-  return format(new Date(d), 'd MMM yy HH:mm', { locale: th });
+  return formatThaiDateTime(d);
 }
 
 function thb(n: number | null | undefined) {
@@ -182,25 +181,21 @@ function FilterBar({ filters, onChange }: { filters: Filters; onChange: (f: Filt
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(10rem,12rem)_minmax(10rem,12rem)_minmax(14rem,1fr)]">
         <div className="flex flex-col gap-1.5">
           <Label className="text-xs font-medium text-muted-foreground">ตั้งแต่</Label>
-          <div className="relative">
-            <CalendarRange className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="date"
+          <div>
+            <ThaiDateInput
               value={filters.dateFrom}
-              onChange={(e) => onChange({ ...filters, dateFrom: e.target.value })}
-              className="h-10 w-full pl-9"
+              onValueChange={(dateFrom) => onChange({ ...filters, dateFrom })}
+              className="h-10 w-full"
             />
           </div>
         </div>
         <div className="flex flex-col gap-1.5">
           <Label className="text-xs font-medium text-muted-foreground">ถึง</Label>
-          <div className="relative">
-            <CalendarRange className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="date"
+          <div>
+            <ThaiDateInput
               value={filters.dateTo}
-              onChange={(e) => onChange({ ...filters, dateTo: e.target.value })}
-              className="h-10 w-full pl-9"
+              onValueChange={(dateTo) => onChange({ ...filters, dateTo })}
+              className="h-10 w-full"
             />
           </div>
         </div>

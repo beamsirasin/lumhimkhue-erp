@@ -173,6 +173,27 @@ const GROUPS: Group[] = [
     reqs: [{ kind: 'enum', type: 'tile_category', value: 'penalty' }],
   },
   {
+    id: 'phase17ui-employee-department',
+    source: 'lib/db/migrate-phase17ui-emp-dept.ts — employees.department; Drizzle selects it on every employees query',
+    severity: 'CRITICAL',
+    reqs: [{ kind: 'column', table: 'employees', column: 'department' }],
+  },
+  {
+    id: 'phase17ui-employee-sort-order',
+    source: 'lib/db/migrate-phase17ui-emp-sort.ts — employees.sort_order; Drizzle selects it on every employees query',
+    severity: 'CRITICAL',
+    reqs: [{ kind: 'column', table: 'employees', column: 'sort_order' }],
+  },
+  {
+    id: 'phase17ui-hr-lookup-options',
+    source: 'lib/db/migrate-phase17ui-hr-options.ts — hr_lookup_options; queried by /hr/employees on load',
+    severity: 'CRITICAL',
+    reqs: [
+      { kind: 'table', table: 'hr_lookup_options' },
+      { kind: 'index', index: 'hr_lookup_options_kind_label_uq' },
+    ],
+  },
+  {
     id: 'phase17pos-auth-a1-approval-codes',
     source: 'lib/db/migrate-phase17pos-auth-a1.ts — REQUIRED for /approval-code page + manager-approval.ts actions',
     severity: 'CRITICAL',
@@ -185,6 +206,18 @@ const GROUPS: Group[] = [
       { kind: 'index', index: 'manager_approval_codes_branch_status_idx' },
       { kind: 'index', index: 'manager_approval_codes_expires_at_idx' },
       { kind: 'index', index: 'manager_approval_codes_generated_at_idx' },
+    ],
+  },
+  {
+    id: 'phase17pos-auth-a5-store-business-days',
+    source: 'lib/db/migrate-phase17pos-auth-a5.ts — REQUIRED for store-wide day closing and POS/shift gates',
+    severity: 'CRITICAL',
+    reqs: [
+      { kind: 'table', table: 'store_business_days' },
+      { kind: 'column', table: 'store_business_days', column: 'business_date' },
+      { kind: 'column', table: 'store_business_days', column: 'status' },
+      { kind: 'index', index: 'store_business_days_business_date_uq' },
+      { kind: 'index', index: 'store_business_days_status_idx' },
     ],
   },
 ];
