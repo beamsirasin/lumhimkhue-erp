@@ -21,6 +21,8 @@ export const STAFF_MODULE_PREFIXES: Record<string, string[]> = {
   tables:            ['/tables'],
   printers:          ['/printers'],
   'payment-settings': ['/payment-settings'],
+  'approval-code':    ['/approval-code'],
+  'hr-incidents':     ['/hr-incidents'],
 };
 
 /**

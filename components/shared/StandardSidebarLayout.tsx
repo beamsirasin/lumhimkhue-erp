@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard,
@@ -69,6 +69,7 @@ const hrGroup: NavGroup = {
     { href: '/hr/schedule',  label: 'ตารางงาน',        Icon: Calendar },
     { href: '/hr/time',      label: 'บันทึกเวลา',      Icon: Clock },
     { href: '/hr/payroll',   label: 'เงินเดือน',        Icon: Wallet },
+    { href: '/hr-incidents', label: 'รายงานพนักงาน',   Icon: ClipboardList },
     { href: '/hr/settings',  label: 'ตั้งค่า HR',       Icon: Settings },
   ],
 };
@@ -179,6 +180,7 @@ const NAV: Record<Role, NavSection[]> = {
         tableGroup,
         { href: '/payment-settings', label: 'Payment Settings', Icon: CreditCard },
         { href: '/approval-code',    label: 'รหัสอนุมัติ',     Icon: KeyRound },
+        { href: '/hr-incidents',     label: 'รายงานพนักงาน',   Icon: ClipboardList },
         { href: '/printers', label: 'เครื่องพิมพ์', Icon: Printer },
       ],
     },
@@ -225,32 +227,34 @@ function NavBadge({ count }: { count: number }) {
 
 /* ─── Tooltip for collapsed sidebar ─────────────────────────── */
 
+/**
+ * State-driven (not imperative DOM style mutation) so an unrelated re-render
+ * of the sidebar — polling, badge updates, revalidation — can never wipe the
+ * tooltip/flyout mid-hover. This was the root cause of "เมนูเด้งหายเอง".
+ */
 function SidebarTooltip({ label, children }: { label: string; children: React.ReactNode }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const tipRef = useRef<HTMLDivElement>(null);
+  const [top, setTop] = useState<number | null>(null);
 
   return (
     <div
       ref={wrapperRef}
       className="w-full"
       onMouseEnter={() => {
-        if (!wrapperRef.current || !tipRef.current) return;
-        const rect = wrapperRef.current.getBoundingClientRect();
-        tipRef.current.style.top = `${rect.top + rect.height / 2}px`;
-        tipRef.current.style.display = 'block';
+        const rect = wrapperRef.current?.getBoundingClientRect();
+        if (rect) setTop(rect.top + rect.height / 2);
       }}
-      onMouseLeave={() => {
-        if (tipRef.current) tipRef.current.style.display = 'none';
-      }}
+      onMouseLeave={() => setTop(null)}
     >
       {children}
-      <div
-        ref={tipRef}
-        style={{ position: 'fixed', left: 'calc(4rem + 10px)', display: 'none', transform: 'translateY(-50%)' }}
-        className="pointer-events-none z-50 whitespace-nowrap rounded-lg border border-border bg-popover px-3 py-1.5 text-xs font-medium text-popover-foreground shadow-[var(--shadow-raised)]"
-      >
-        {label}
-      </div>
+      {top !== null && (
+        <div
+          style={{ position: 'fixed', left: 'calc(4rem + 10px)', top, transform: 'translateY(-50%)' }}
+          className="pointer-events-none z-50 whitespace-nowrap rounded-lg border border-border bg-popover px-3 py-1.5 text-xs font-medium text-popover-foreground shadow-[var(--shadow-raised)]"
+        >
+          {label}
+        </div>
+      )}
     </div>
   );
 }
@@ -278,10 +282,12 @@ function NavGroupItem({
     group.children.some(
       (c) => pathname === c.href || (c.href.length > 1 && pathname.startsWith(c.href + '/')),
     );
+  const router = useRouter();
   const [open, setOpen] = useState(isGroupActive);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const flyoutRef = useRef<HTMLDivElement>(null);
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // State-driven flyout (see SidebarTooltip note): survives unrelated re-renders.
+  const [flyoutTop, setFlyoutTop] = useState<number | null>(null);
   const { Icon } = group;
   const totalGroupBadge = group.children.reduce((s, c) => s + (badgeCounts?.[c.href] ?? 0), 0);
   const isChildActive = (href: string) =>
@@ -289,26 +295,57 @@ function NavGroupItem({
       ? pathname === href
       : pathname === href || pathname.startsWith(href + '/');
 
+  // Keep the expanded group in sync when the user navigates into it
+  // (state-adjustment-during-render pattern — no effect, no extra paint).
+  const [prevGroupActive, setPrevGroupActive] = useState(isGroupActive);
+  if (isGroupActive !== prevGroupActive) {
+    setPrevGroupActive(isGroupActive);
+    if (isGroupActive) setOpen(true);
+  }
+
+  const cancelClose = () => {
+    if (leaveTimer.current) clearTimeout(leaveTimer.current);
+    leaveTimer.current = null;
+  };
+  const openFlyout = () => {
+    cancelClose();
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    // Clamp so a group near the bottom of the rail never renders off-screen.
+    const estimatedHeight = 44 + group.children.length * 38;
+    setFlyoutTop(Math.max(8, Math.min(rect.top, window.innerHeight - estimatedHeight - 8)));
+  };
+  const scheduleClose = () => {
+    cancelClose();
+    leaveTimer.current = setTimeout(() => setFlyoutTop(null), 300);
+  };
+
+  // Close on tap/click outside — the only reliable dismissal on touch screens.
+  useEffect(() => {
+    if (flyoutTop === null) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!wrapperRef.current?.contains(e.target as Node)) setFlyoutTop(null);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [flyoutTop]);
+
+  useEffect(() => cancelClose, []);
+
   if (collapsed) {
     return (
       <div
         ref={wrapperRef}
         className="w-full"
-        onMouseEnter={() => {
-          if (leaveTimer.current) clearTimeout(leaveTimer.current);
-          if (!wrapperRef.current || !flyoutRef.current) return;
-          const rect = wrapperRef.current.getBoundingClientRect();
-          flyoutRef.current.style.top = `${rect.top}px`;
-          flyoutRef.current.style.display = 'block';
-        }}
-        onMouseLeave={() => {
-          leaveTimer.current = setTimeout(() => {
-            if (flyoutRef.current) flyoutRef.current.style.display = 'none';
-          }, 150);
-        }}
+        onMouseEnter={openFlyout}
+        onMouseLeave={scheduleClose}
       >
         <button
           type="button"
+          aria-haspopup="menu"
+          aria-expanded={flyoutTop !== null}
+          aria-label={group.label}
+          onClick={openFlyout}
           className={`relative flex w-full items-center justify-center rounded-lg p-3 transition-colors duration-150 ${
             isGroupActive ? ACTIVE_CLS : INACTIVE_CLS
           }`}
@@ -319,48 +356,50 @@ function NavGroupItem({
           )}
         </button>
 
-        <div
-          ref={flyoutRef}
-          style={{
-            position: 'fixed',
-            left: 'calc(4rem + 8px)',
-            top: 0,
-            display: 'none',
-            background: 'var(--sidebar-accent)',
-          }}
-          className="z-50 min-w-[188px] overflow-hidden rounded-xl border border-white/10 shadow-[var(--shadow-raised)]"
-          onMouseEnter={() => {
-            if (leaveTimer.current) clearTimeout(leaveTimer.current);
-          }}
-          onMouseLeave={() => {
-            leaveTimer.current = setTimeout(() => {
-              if (flyoutRef.current) flyoutRef.current.style.display = 'none';
-            }, 150);
-          }}
-        >
-          <p className="border-b border-white/8 px-3.5 py-2 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
-            {group.label}
-          </p>
-          <div className="p-1.5 space-y-0.5">
-            {group.children.map(({ href, label, Icon: ChildIcon }) => {
-              const isActive = isChildActive(href);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  prefetch={false}
-                  onClick={onNavigate}
-                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150 ${
-                    isActive ? ACTIVE_CLS : INACTIVE_CLS
-                  }`}
-                >
-                  <ChildIcon className="size-4 shrink-0" />
-                  {label}
-                </Link>
-              );
-            })}
+        {flyoutTop !== null && (
+          // Outer wrapper starts flush at the rail edge (left: 4rem) with an
+          // invisible 8px bridge, so the pointer never crosses a dead gap that
+          // would fire mouseleave on the way to the flyout.
+          <div
+            style={{ position: 'fixed', left: '4rem', top: flyoutTop, paddingLeft: 8 }}
+            className="z-50"
+            onMouseEnter={cancelClose}
+            onMouseLeave={scheduleClose}
+          >
+            <div
+              style={{ background: 'var(--sidebar-accent)' }}
+              className="min-w-[188px] overflow-hidden rounded-xl border border-white/10 shadow-[var(--shadow-raised)]"
+            >
+              <p className="border-b border-white/8 px-3.5 py-2 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
+                {group.label}
+              </p>
+              <div className="p-1.5 space-y-0.5">
+                {group.children.map(({ href, label, Icon: ChildIcon }) => {
+                  const isActive = isChildActive(href);
+                  return (
+                    <Link
+                      key={href}
+                      href={href}
+                      prefetch={false}
+                      onMouseEnter={() => router.prefetch(href)}
+                      onTouchStart={() => router.prefetch(href)}
+                      onClick={() => {
+                        setFlyoutTop(null);
+                        onNavigate?.();
+                      }}
+                      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150 ${
+                        isActive ? ACTIVE_CLS : INACTIVE_CLS
+                      }`}
+                    >
+                      <ChildIcon className="size-4 shrink-0" />
+                      {label}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }
@@ -406,6 +445,8 @@ function NavGroupItem({
                 key={href}
                 href={href}
                 prefetch={false}
+                onMouseEnter={() => router.prefetch(href)}
+                onTouchStart={() => router.prefetch(href)}
                 onClick={onNavigate}
                 className={`${childCls} ${
                   isActive
@@ -442,6 +483,7 @@ function NavItems({
   size?: 'default' | 'large';
   collapsed?: boolean;
 }) {
+  const router = useRouter();
   const itemCls =
     size === 'large'
       ? 'flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors duration-150'
@@ -474,6 +516,8 @@ function NavItems({
               <Link
                 href={href}
                 prefetch={false}
+                onMouseEnter={() => router.prefetch(href)}
+                onTouchStart={() => router.prefetch(href)}
                 onClick={onNavigate}
                 className={`relative flex items-center justify-center rounded-lg p-3 transition-colors duration-150 ${
                   isActive ? ACTIVE_CLS : INACTIVE_CLS
@@ -522,6 +566,8 @@ function NavItems({
                   key={href}
                   href={href}
                   prefetch={false}
+                  onMouseEnter={() => router.prefetch(href)}
+                  onTouchStart={() => router.prefetch(href)}
                   onClick={onNavigate}
                   className={`${itemCls} ${
                     isActive

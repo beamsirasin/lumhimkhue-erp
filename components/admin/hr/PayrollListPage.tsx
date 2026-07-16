@@ -238,9 +238,9 @@ export function PayrollListPage({ initialCycles }: Props) {
       >
         <DialogContent
           showCloseButton={!pending}
-          className="max-h-[min(90vh,720px)] gap-0 overflow-hidden p-0 sm:max-w-[640px]"
+          className="flex max-h-[min(90vh,720px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[640px]"
         >
-          <DialogHeader className="border-b border-border bg-muted/30 px-6 py-5 sm:px-7">
+          <DialogHeader className="shrink-0 border-b border-border bg-muted/30 px-6 py-5 sm:px-7">
             <div className="flex items-start gap-3.5 pr-10">
               <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-[var(--surface-primary-subtle)] text-primary shadow-sm">
                 <Banknote className="size-5" />
@@ -254,7 +254,7 @@ export function PayrollListPage({ initialCycles }: Props) {
             </div>
           </DialogHeader>
 
-          <div className="min-h-0 space-y-5 overflow-y-auto px-6 py-6 sm:px-7">
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-6 sm:px-7">
             {/* Work range */}
             <section className="space-y-3">
               <p className="text-sm font-semibold text-foreground">ช่วงวันทำงานที่จะคำนวณ</p>
@@ -353,7 +353,7 @@ export function PayrollListPage({ initialCycles }: Props) {
             </p>
           </div>
 
-          <DialogFooter className="mx-0 mb-0 rounded-none border-t border-border bg-muted/30 px-6 py-4 sm:px-7">
+          <DialogFooter className="mx-0 mb-0 shrink-0 rounded-none border-t border-border bg-muted/30 px-6 py-4 sm:px-7">
             <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
               ยกเลิก
             </Button>

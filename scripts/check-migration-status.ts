@@ -209,6 +209,29 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    id: 'phase17ui-payroll-pay',
+    source: 'lib/db/migrate-phase17ui-payroll-pay.ts — payroll_items.payment_proof_url_2 (Drizzle selects it on every payroll_items query) + hr_payment_method \'mixed\'',
+    severity: 'CRITICAL',
+    reqs: [
+      { kind: 'column', table: 'payroll_items', column: 'payment_proof_url_2' },
+      { kind: 'column', table: 'payroll_items', column: 'paid_cash_amount' },
+      { kind: 'column', table: 'payroll_items', column: 'paid_transfer_amount' },
+      { kind: 'enum', type: 'hr_payment_method', value: 'mixed' },
+    ],
+  },
+  {
+    id: 'phase17ui-hr-incidents',
+    source: 'lib/db/migrate-phase17ui-hr-incidents.ts — employee_incidents; queried by /hr-incidents (รายงานพนักงาน)',
+    severity: 'CRITICAL',
+    reqs: [
+      { kind: 'table', table: 'employee_incidents' },
+      { kind: 'column', table: 'employee_incidents', column: 'type' },
+      { kind: 'column', table: 'employee_incidents', column: 'reported_by' },
+      { kind: 'index', index: 'employee_incidents_emp_idx' },
+      { kind: 'index', index: 'employee_incidents_date_idx' },
+    ],
+  },
+  {
     id: 'phase17pos-auth-a5-store-business-days',
     source: 'lib/db/migrate-phase17pos-auth-a5.ts — REQUIRED for store-wide day closing and POS/shift gates',
     severity: 'CRITICAL',

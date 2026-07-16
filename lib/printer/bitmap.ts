@@ -198,6 +198,15 @@ async function render(lines: ThermalLine[], paperWidth: 58 | 80): Promise<Uint8A
   return encodeToEscpos(canvas, paperWidth);
 }
 
+/**
+ * Render arbitrary ThermalLine[] to ESC/POS raster bytes.
+ * Generic entry point for jobs outside the fixed PrintJob union (e.g. HR payslips)
+ * that need the Thai-safe bitmap path without duplicating the canvas renderer.
+ */
+export async function buildBitmapFromLines(lines: ThermalLine[], paperWidth: 58 | 80): Promise<Uint8Array> {
+  return render(lines, paperWidth);
+}
+
 /* ─── Receipt ────────────────────────────────────────────────────────────── */
 
 export async function buildBitmapReceipt(data: ReceiptData, paperWidth: 58 | 80): Promise<Uint8Array> {

@@ -32,7 +32,8 @@ export type Action =
   | 'order:cancel:approve'   // approve a cancel requested by cashier
   | 'cashier_shift:manage'   // open / close cashier shift
   | 'printer:network_print'  // relay a print job to a LAN TCP printer
-  | 'approval_code:manage';  // view/generate/revoke the manager approval code (Phase 17POS-AUTH-A1)
+  | 'approval_code:manage'   // view/generate/revoke the manager approval code (Phase 17POS-AUTH-A1)
+  | 'hr:incident:manage';    // report/view employee incidents — late/absence/damage/behavior (รายงานพนักงาน)
 
 const PERMISSIONS: Record<Role, Action[]> = {
   owner: [
@@ -68,6 +69,7 @@ const PERMISSIONS: Record<Role, Action[]> = {
     'cashier_shift:manage',
     'printer:network_print',
     'approval_code:manage',
+    'hr:incident:manage',
   ],
   manager: [
     // legacy
@@ -96,6 +98,7 @@ const PERMISSIONS: Record<Role, Action[]> = {
     'cashier_shift:manage',
     'printer:network_print',
     'approval_code:manage',
+    'hr:incident:manage',
   ],
   cashier: [
     'process_payment',

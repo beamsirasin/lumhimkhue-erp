@@ -26,6 +26,8 @@
     "db:migrate-phase17ui-emp-dept": "tsx lib/db/migrate-phase17ui-emp-dept.ts",
     "db:migrate-phase17ui-hr-options": "tsx lib/db/migrate-phase17ui-hr-options.ts",
     "db:migrate-phase17ui-emp-sort": "tsx lib/db/migrate-phase17ui-emp-sort.ts",
+    "db:migrate-phase17ui-payroll-pay": "tsx lib/db/migrate-phase17ui-payroll-pay.ts",
+    "db:migrate-phase17ui-hr-incidents": "tsx lib/db/migrate-phase17ui-hr-incidents.ts",
     "payments:backfill": "tsx scripts/backfill-payment-rows.ts",
     "payments:verify": "tsx scripts/verify-payment-foundation.ts",
     "reconcile:payments": "tsx scripts/reconcile-payments.ts",

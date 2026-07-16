@@ -17,7 +17,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { StatCard, StatCardGrid } from '@/components/ui/stat-card';
 import { useConfirm } from '@/components/shared/ConfirmDialog';
-import { ChevronLeft, Trash2, Printer, CheckCircle2, Users, Banknote, Plus, BadgeCheck } from 'lucide-react';
+import { ChevronLeft, Trash2, Printer, CheckCircle2, Users, Banknote, Plus, BadgeCheck, Undo2, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatThaiDate, formatThaiDateTime, formatThaiShortDate } from '@/lib/date-time';
 import {
@@ -27,7 +27,12 @@ import {
   removeAbsence,
   markAsPaid,
   finalizePayrollCycle,
+  unfinalizePayrollCycle,
+  updatePayrollItemEarnings,
+  deletePayrollCycle,
 } from '@/lib/actions/hr';
+import { printPayslip, paidChannelLabel } from '@/lib/hr/payslip-print';
+import { deptLabelOf } from '@/lib/hr/departments';
 import { useRouter } from 'next/navigation';
 import type { PayrollCycle, PayrollItem, PayrollDeduction, PayrollAbsence, Employee, HrSettings } from '@/lib/db/schema';
 
@@ -68,6 +73,124 @@ const STATUS_BADGE: Record<string, BadgeVariant> = {
   paid: 'success',
 };
 
+const PAID_METHOD_LABELS: Record<string, string> = {
+  cash: 'เงินสด',
+  transfer: 'โอน',
+  mixed: 'เงินสด+โอน',
+};
+
+/**
+ * Compress a proof image client-side before it travels as a base64 data-URL
+ * through a Server Action. Next.js caps the action body at ~1MB, so large
+ * camera photos must be resized/re-encoded — target ≤ ~450KB per image so
+ * two images plus the rest of the payload stay under the limit.
+ */
+async function compressImageFile(file: File): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
+    reader.readAsDataURL(file);
+  });
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('ไฟล์รูปไม่ถูกต้อง'));
+    image.src = dataUrl;
+  });
+
+  const render = (maxSide: number, quality: number): string => {
+    const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.width * scale));
+    canvas.height = Math.max(1, Math.round(img.height * scale));
+    canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', quality);
+  };
+
+  const MAX_CHARS = 450_000;
+  let out = render(1600, 0.8);
+  if (out.length > MAX_CHARS) out = render(1200, 0.7);
+  if (out.length > MAX_CHARS) out = render(900, 0.55);
+  return out;
+}
+
+// ── 80mm thermal payslip template ────────────────────────────────────────────
+
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function slipRow(label: string, value: string, bold = false): string {
+  return `<div class="row${bold ? ' bold' : ''}"><span class="name">${escHtml(label)}</span><span class="value">${escHtml(value)}</span></div>`;
+}
+
+function buildPayslipHtml(item: EnrichedItem, cycle: PayrollCycle, settings: HrSettings): string {
+  const emp = item.employee;
+  const parts: string[] = [];
+
+  parts.push('<div class="center bold" style="font-size:16px;">ใบจ่ายเงินเดือน</div>');
+  parts.push(`<div class="center small">งวดจ่ายวันที่ ${escHtml(formatThaiDate(cycle.payDate))}</div>`);
+  parts.push(`<div class="center small">ช่วงงาน ${escHtml(formatThaiDate(cycle.workStartDate))} – ${escHtml(formatThaiDate(cycle.workEndDate))}</div>`);
+  parts.push('<hr />');
+
+  parts.push(slipRow('ชื่อ-สกุล', `${emp?.firstName ?? ''} ${emp?.lastName ?? ''}`.trim()));
+  parts.push(slipRow('แผนก', deptLabelOf(emp?.department)));
+  parts.push(slipRow('ประเภท', item.employeeType === 'full_time' ? 'พนักงานประจำ' : 'พาร์ทไทม์'));
+  parts.push(slipRow('ช่องทางจ่าย', paidChannelLabel(item)));
+  parts.push('<hr />');
+
+  parts.push('<div class="bold">รายได้</div>');
+  if (item.employeeType === 'full_time') {
+    parts.push(slipRow('เงินเดือนฐาน', `฿${fmtMoney(item.baseSalary)}`));
+    parts.push(slipRow(`Incentive (${item.workDays} วัน × ฿${fmtMoney(item.incentivePerDay)})`, `฿${fmtMoney(item.incentiveTotal)}`));
+  } else {
+    parts.push(slipRow(`ชั่วโมง (${Number(item.totalHours).toFixed(2)} ชม. × ฿${fmtMoney(item.hourlyRate)})`, `฿${fmtMoney(item.hourlyTotal)}`));
+  }
+  parts.push(slipRow('รวมรายได้', `฿${fmtMoney(item.gross)}`, true));
+
+  if (Number(item.totalDeduction) > 0) {
+    parts.push('<hr />');
+    parts.push('<div class="bold">รายการหัก</div>');
+    for (const d of item.deductions.filter((d) => d.type === 'advance')) {
+      parts.push(slipRow(`เบิก: ${d.reason}`, `-฿${fmtMoney(d.amount)}`));
+    }
+    for (const d of item.deductions.filter((d) => d.type === 'damage')) {
+      parts.push(slipRow(`เสียหาย: ${d.reason}`, `-฿${fmtMoney(d.amount)}`));
+    }
+    if (Number(item.absenceDeduction) > 0) {
+      parts.push(slipRow(`ขาด ${item.absenceDays} วัน × ฿${fmtMoney(settings.absenceRatePerDay)}`, `-฿${fmtMoney(item.absenceDeduction)}`));
+    }
+    if (Number(item.lateDeduction) > 0) {
+      parts.push(slipRow(`สาย ${item.lateMinutes} นาที × ฿${fmtMoney(settings.lateRatePerMinute)}`, `-฿${fmtMoney(item.lateDeduction)}`));
+    }
+    parts.push(slipRow('รวมหัก', `-฿${fmtMoney(item.totalDeduction)}`, true));
+  }
+
+  parts.push('<hr />');
+  parts.push(`<div class="row bold" style="font-size:16px;"><span class="name">เงินสุทธิ</span><span class="value">฿${escHtml(fmtMoney(item.netPay))}</span></div>`);
+
+  if (item.isPaid) {
+    parts.push(
+      `<div class="center small" style="margin-top:4px;">จ่ายแล้ว (${escHtml(PAID_METHOD_LABELS[item.paidMethod ?? ''] ?? '-')})${item.paidAt ? ` เมื่อ ${escHtml(formatThaiDateTime(item.paidAt))}` : ''}</div>`,
+    );
+  }
+
+  parts.push(`
+<div style="display:flex;gap:16px;margin-top:44px;">
+  <div style="flex:1;text-align:center;">
+    <div style="border-bottom:1px dotted #000;height:52px;"></div>
+    <div style="margin-top:6px;">ผู้จ่ายเงิน</div>
+  </div>
+  <div style="flex:1;text-align:center;">
+    <div style="border-bottom:1px dotted #000;height:52px;"></div>
+    <div style="margin-top:6px;">ผู้รับเงิน</div>
+  </div>
+</div>`);
+
+  return parts.join('\n');
+}
+
 // ── Payslip print ─────────────────────────────────────────────────────────────
 
 function PayslipContent({ item, cycle, settings }: { item: EnrichedItem; cycle: PayrollCycle; settings: HrSettings }) {
@@ -81,10 +204,12 @@ function PayslipContent({ item, cycle, settings }: { item: EnrichedItem; cycle: 
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-3">
         <span className="text-muted-foreground">ชื่อ-สกุล:</span>
         <span className="font-medium">{emp?.firstName} {emp?.lastName}</span>
+        <span className="text-muted-foreground">แผนก:</span>
+        <span>{deptLabelOf(emp?.department)}</span>
         <span className="text-muted-foreground">ประเภท:</span>
         <span>{item.employeeType === 'full_time' ? 'พนักงานประจำ' : 'พาร์ทไทม์'}</span>
-        <span className="text-muted-foreground">ธนาคาร:</span>
-        <span>{emp?.bankName ?? '-'} {emp?.bankAccountNumber ? `(${emp.bankAccountNumber})` : ''}</span>
+        <span className="text-muted-foreground">ช่องทางจ่าย:</span>
+        <span>{paidChannelLabel(item)}</span>
       </div>
       <Separator />
       <div className="space-y-1 text-xs">
@@ -139,7 +264,7 @@ function PayslipContent({ item, cycle, settings }: { item: EnrichedItem; cycle: 
       </div>
       {item.isPaid && (
         <p className="text-xs text-[var(--status-success-fg)] text-center">
-          จ่ายแล้ว ({item.paidMethod === 'cash' ? 'เงินสด' : 'โอน'}) เมื่อ{' '}
+          จ่ายแล้ว ({PAID_METHOD_LABELS[item.paidMethod ?? ''] ?? '-'}) เมื่อ{' '}
           {formatThaiDateTime(item.paidAt)}
         </p>
       )}
@@ -161,8 +286,17 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
   const [addType, setAddType] = useState<'advance' | 'damage' | 'absence' | 'late'>('advance');
   const [addForm, setAddForm] = useState({ amount: '', reason: '', occurredDate: '', lateMinutes: '', notes: '' });
   const [payOpen, setPayOpen] = useState(false);
-  const [payForm, setPayForm] = useState({ paidMethod: 'cash' as 'cash' | 'transfer', proofFile: '' });
+  const [payEditing, setPayEditing] = useState(false);
+  const [payForm, setPayForm] = useState({
+    paidMethod: 'cash' as 'cash' | 'transfer' | 'mixed',
+    cashAmount: '',
+    transferAmount: '',
+    proofFile: '',
+    proofFile2: '',
+  });
   const [printSlip, setPrintSlip] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ baseSalary: '', workDays: '', incentivePerDay: '' });
 
   const emp = item.employee;
   const locked = cycleStatus === 'finalized' || cycleStatus === 'paid';
@@ -216,33 +350,103 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
     });
   }
 
+  function openPay(editing: boolean) {
+    setPayEditing(editing);
+    const net = String(Number(item.netPay));
+    setPayForm(
+      editing
+        ? {
+            paidMethod: (item.paidMethod ?? 'cash') as 'cash' | 'transfer' | 'mixed',
+            cashAmount: item.paidCashAmount != null ? String(Number(item.paidCashAmount)) : net,
+            transferAmount: item.paidTransferAmount != null ? String(Number(item.paidTransferAmount)) : net,
+            proofFile: item.paymentProofUrl ?? '',
+            proofFile2: item.paymentProofUrl2 ?? '',
+          }
+        : { paidMethod: 'cash', cashAmount: net, transferAmount: net, proofFile: '', proofFile2: '' },
+    );
+    setPayOpen(true);
+  }
+
   function submitPay() {
     startTransition(async () => {
       const result = await markAsPaid({
         payrollItemId: item.id,
         paidMethod: payForm.paidMethod,
+        paidCashAmount: payForm.paidMethod !== 'transfer' ? Number(payForm.cashAmount) || null : null,
+        paidTransferAmount: payForm.paidMethod !== 'cash' ? Number(payForm.transferAmount) || null : null,
         paymentProofUrl: payForm.proofFile || null,
+        // Slot 2 is only meaningful for mixed payments — never submit a stale image.
+        paymentProofUrl2: payForm.paidMethod === 'mixed' ? (payForm.proofFile2 || null) : null,
       });
       if (!result.ok) { toast.error(result.error); return; }
-      toast.success('บันทึกการจ่ายแล้ว');
+      toast.success(payEditing ? 'อัปเดตการจ่ายแล้ว' : 'บันทึกการจ่ายแล้ว');
       setPayOpen(false);
       onRefresh();
     });
   }
 
-  function handleProofUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setPayForm((p) => ({ ...p, proofFile: ev.target?.result as string ?? '' }));
-    reader.readAsDataURL(file);
+  function handleProofUpload(slot: 'proofFile' | 'proofFile2') {
+    return async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const compressed = await compressImageFile(file);
+        setPayForm((p) => ({ ...p, [slot]: compressed }));
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'อัปโหลดรูปไม่สำเร็จ');
+      }
+    };
+  }
+
+  function openEdit() {
+    setEditForm({
+      baseSalary: String(Number(item.baseSalary)),
+      workDays: String(item.workDays),
+      incentivePerDay: String(Number(item.incentivePerDay)),
+    });
+    setEditOpen(true);
+  }
+
+  function submitEdit() {
+    startTransition(async () => {
+      const result = await updatePayrollItemEarnings({
+        payrollItemId: item.id,
+        baseSalary: Number(editForm.baseSalary),
+        workDays: Number(editForm.workDays),
+        incentivePerDay: Number(editForm.incentivePerDay),
+      });
+      if (!result.ok) { toast.error(result.error); return; }
+      toast.success('บันทึกรายได้แล้ว');
+      setEditOpen(false);
+      onRefresh();
+    });
+  }
+
+  function handlePrintSlip() {
+    startTransition(async () => {
+      const result = await printPayslip(item, cycle, settings, buildPayslipHtml(item, cycle, settings));
+      if (!result.ok) { toast.error(result.error); return; }
+      toast.success('ส่งพิมพ์สลิปแล้ว');
+    });
   }
 
   return (
     <div className="space-y-5">
       {/* รายได้ */}
       <div className="space-y-1.5 text-sm">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">รายได้</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">รายได้</p>
+          {!locked && item.employeeType === 'full_time' && (
+            <button
+              type="button"
+              onClick={openEdit}
+              className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-[var(--surface-primary-subtle)] hover:text-primary"
+            >
+              <Pencil className="size-3" />
+              แก้ไข
+            </button>
+          )}
+        </div>
         {item.employeeType === 'full_time' ? (
           <>
             <div className="flex justify-between">
@@ -365,20 +569,58 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
 
       {/* Payment status */}
       {item.isPaid ? (
-        <div className="rounded-lg bg-[var(--status-success-bg)] border border-[var(--status-success-border)] px-4 py-3 text-xs text-[var(--status-success-fg)] space-y-1">
-          <div className="flex items-center gap-1.5 font-semibold">
-            <CheckCircle2 className="size-4" /> จ่ายแล้ว
+        <div className="rounded-lg bg-[var(--status-success-bg)] border border-[var(--status-success-border)] px-4 py-3 text-xs text-[var(--status-success-fg)] space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 font-semibold">
+              <CheckCircle2 className="size-4" /> จ่ายแล้ว
+            </div>
+            {!locked && (
+              <button
+                type="button"
+                onClick={() => openPay(true)}
+                className="inline-flex items-center gap-1 rounded-md border border-[var(--status-success-border)] bg-background/60 px-2 py-1 text-[11px] font-medium text-[var(--status-success-fg)] transition-colors hover:bg-background"
+              >
+                <Pencil className="size-3" />
+                แก้ไข
+              </button>
+            )}
           </div>
-          <p>วิธี: {item.paidMethod === 'cash' ? 'เงินสด' : 'โอน'}</p>
-          {item.paidAt && <p>เมื่อ: {formatThaiDateTime(item.paidAt)}</p>}
-          {item.paymentProofUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.paymentProofUrl} alt="สลิป" className="max-h-32 rounded mt-1" />
-          )}
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+            <span className="opacity-80">ช่องทาง:</span>
+            <span className="font-medium">{paidChannelLabel(item)}</span>
+            <span className="opacity-80">ยอดที่จ่าย:</span>
+            <span className="font-semibold tabular-nums">
+              ฿{fmtMoney(
+                (Number(item.paidCashAmount ?? 0) + Number(item.paidTransferAmount ?? 0)) || Number(item.netPay),
+              )}
+            </span>
+            {item.paidAt && (
+              <>
+                <span className="opacity-80">เมื่อ:</span>
+                <span>{formatThaiDateTime(item.paidAt)}</span>
+              </>
+            )}
+            <span className="opacity-80">หลักฐาน:</span>
+            <span>
+              {item.paymentProofUrl || item.paymentProofUrl2
+                ? `${[item.paymentProofUrl, item.paymentProofUrl2].filter(Boolean).length} รูป`
+                : 'ไม่มีรูปแนบ'}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {item.paymentProofUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={item.paymentProofUrl} alt="หลักฐานรูปที่ 1" className="max-h-32 rounded mt-1 border border-[var(--status-success-border)]" />
+            )}
+            {item.paymentProofUrl2 && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={item.paymentProofUrl2} alt="หลักฐานรูปที่ 2" className="max-h-32 rounded mt-1 border border-[var(--status-success-border)]" />
+            )}
+          </div>
         </div>
       ) : (
         !locked && (
-          <Button className="w-full" onClick={() => setPayOpen(true)}>
+          <Button className="w-full" onClick={() => openPay(false)}>
             <Banknote className="size-4" />
             บันทึกการจ่าย
           </Button>
@@ -389,6 +631,59 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
         <Printer className="size-4 mr-1.5" />
         พิมพ์สลิป
       </Button>
+
+      {/* Edit earnings — centered dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
+          <DialogHeader className="border-b border-border bg-muted/30 px-6 py-4">
+            <DialogTitle className="text-base font-semibold">แก้ไขรายได้</DialogTitle>
+            <DialogDescription className="mt-0.5 text-xs">
+              {emp?.firstName} {emp?.lastName} — ระบบจะคำนวณยอดสุทธิใหม่อัตโนมัติ
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 px-6 py-5">
+            <div className="space-y-1.5">
+              <Label>เงินเดือนฐาน (฿) *</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={editForm.baseSalary}
+                onChange={(e) => setEditForm((p) => ({ ...p, baseSalary: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>จำนวนวันทำงาน (วัน) *</Label>
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                value={editForm.workDays}
+                onChange={(e) => setEditForm((p) => ({ ...p, workDays: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Incentive ต่อวัน (฿) *</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={editForm.incentivePerDay}
+                onChange={(e) => setEditForm((p) => ({ ...p, incentivePerDay: e.target.value }))}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground tabular-nums">
+              Incentive รวม: ฿{fmtMoney((Number(editForm.workDays) || 0) * (Number(editForm.incentivePerDay) || 0))}
+              {' · '}
+              รวมรายได้ใหม่: ฿{fmtMoney((Number(editForm.baseSalary) || 0) + (Number(editForm.workDays) || 0) * (Number(editForm.incentivePerDay) || 0))}
+            </p>
+          </div>
+          <DialogFooter className="mx-0 mb-0 rounded-none border-t border-border bg-muted/30 px-6 py-4">
+            <Button variant="outline" onClick={() => setEditOpen(false)}>ยกเลิก</Button>
+            <Button onClick={submitEdit} disabled={pending}>บันทึก</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add deduction / absence — centered dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
@@ -448,7 +743,9 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
       <Dialog open={payOpen} onOpenChange={setPayOpen}>
         <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
           <DialogHeader className="border-b border-border bg-muted/30 px-6 py-4">
-            <DialogTitle className="text-base font-semibold">บันทึกการจ่ายเงินเดือน</DialogTitle>
+            <DialogTitle className="text-base font-semibold">
+              {payEditing ? 'แก้ไขการจ่ายเงินเดือน' : 'บันทึกการจ่ายเงินเดือน'}
+            </DialogTitle>
             <DialogDescription className="mt-0.5 text-xs">
               {emp?.firstName} {emp?.lastName} — ยอดสุทธิ <strong className="text-foreground">฿{fmtMoney(item.netPay)}</strong>
             </DialogDescription>
@@ -456,30 +753,96 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
           <div className="space-y-4 px-6 py-5">
             <div className="space-y-1.5">
               <Label>วิธีจ่าย</Label>
-              <Select value={payForm.paidMethod} onValueChange={(v) => { if (v) setPayForm((p) => ({ ...p, paidMethod: v as 'cash' | 'transfer' })); }}>
+              <Select value={payForm.paidMethod} onValueChange={(v) => { if (v) setPayForm((p) => ({ ...p, paidMethod: v as 'cash' | 'transfer' | 'mixed' })); }}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>{PAID_METHOD_LABELS[payForm.paidMethod]}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="cash">เงินสด</SelectItem>
                   <SelectItem value="transfer">โอน</SelectItem>
+                  <SelectItem value="mixed">เงินสด+โอน</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            {payForm.paidMethod === 'mixed' ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>เงินสด (฿) *</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={payForm.cashAmount}
+                      onChange={(e) => setPayForm((p) => ({ ...p, cashAmount: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>โอน (฿) *</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={payForm.transferAmount}
+                      onChange={(e) => setPayForm((p) => ({ ...p, transferAmount: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                {(() => {
+                  const sum = (Number(payForm.cashAmount) || 0) + (Number(payForm.transferAmount) || 0);
+                  const net = Number(item.netPay);
+                  return (
+                    <p className={cn('text-xs tabular-nums', Math.abs(sum - net) < 0.005 ? 'text-muted-foreground' : 'text-[var(--status-warning-fg)]')}>
+                      รวม ฿{fmtMoney(sum)} / ยอดสุทธิ ฿{fmtMoney(net)}
+                      {Math.abs(sum - net) >= 0.005 && ' — ยอดรวมไม่เท่ายอดสุทธิ'}
+                    </p>
+                  );
+                })()}
+              </>
+            ) : (
+              <div className="space-y-1.5">
+                <Label>จำนวนเงิน (฿) *</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={payForm.paidMethod === 'cash' ? payForm.cashAmount : payForm.transferAmount}
+                  onChange={(e) =>
+                    setPayForm((p) =>
+                      p.paidMethod === 'cash'
+                        ? { ...p, cashAmount: e.target.value }
+                        : { ...p, transferAmount: e.target.value },
+                    )
+                  }
+                />
+              </div>
+            )}
             <div className="space-y-1.5">
-              <Label>รูปสลิป / หลักฐาน (ถ้ามี)</Label>
-              <Input type="file" accept="image/*" onChange={handleProofUpload} />
+              <Label>
+                {payForm.paidMethod === 'mixed' ? 'รูปสลิป / หลักฐาน รูปที่ 1 (ถ้ามี)' : 'รูปสลิป / หลักฐาน (ถ้ามี)'}
+              </Label>
+              <Input type="file" accept="image/*" onChange={handleProofUpload('proofFile')} />
               {payForm.proofFile && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={payForm.proofFile} alt="preview" className="max-h-24 rounded border" />
               )}
             </div>
+            {payForm.paidMethod === 'mixed' && (
+              <div className="space-y-1.5">
+                <Label>รูปสลิป / หลักฐาน รูปที่ 2 (ถ้ามี)</Label>
+                <Input type="file" accept="image/*" onChange={handleProofUpload('proofFile2')} />
+                {payForm.proofFile2 && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={payForm.proofFile2} alt="preview 2" className="max-h-24 rounded border" />
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter className="mx-0 mb-0 rounded-none border-t border-border bg-muted/30 px-6 py-4">
             <Button variant="outline" onClick={() => setPayOpen(false)}>ยกเลิก</Button>
             <Button onClick={submitPay} disabled={pending}>
               <Banknote className="size-4" />
-              ยืนยันจ่าย
+              {payEditing ? 'บันทึกการแก้ไข' : 'ยืนยันจ่าย'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -494,7 +857,7 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
           <PayslipContent item={item} cycle={cycle} settings={settings} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setPrintSlip(false)}>ปิด</Button>
-            <Button onClick={() => window.print()}><Printer className="size-4 mr-1.5" />พิมพ์</Button>
+            <Button onClick={handlePrintSlip} disabled={pending}><Printer className="size-4 mr-1.5" />พิมพ์สลิป</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -536,6 +899,37 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
     );
   }
 
+  function handleDeleteCycle() {
+    openConfirm(
+      'ลบรอบจ่ายนี้? รายการเงินเดือนและรายการหักทั้งหมดในรอบจะถูกลบถาวร',
+      () => {
+        startTransition(async () => {
+          const result = await deletePayrollCycle(detail.cycle.id);
+          if (!result.ok) { toast.error(result.error); return; }
+          toast.success('ลบรอบจ่ายแล้ว');
+          router.push('/hr/payroll');
+          router.refresh();
+        });
+      },
+      { confirmLabel: 'ลบรอบจ่าย', variant: 'danger' },
+    );
+  }
+
+  function handleUnfinalize() {
+    openConfirm(
+      'ยกเลิกการอนุมัติรอบจ่ายนี้? รอบจะกลับเป็นสถานะร่างและแก้ไขรายการหักได้อีกครั้ง',
+      () => {
+        startTransition(async () => {
+          const result = await unfinalizePayrollCycle(detail.cycle.id);
+          if (!result.ok) { toast.error(result.error); return; }
+          toast.success('ยกเลิกการอนุมัติแล้ว');
+          router.refresh();
+        });
+      },
+      { confirmLabel: 'ยกเลิกการอนุมัติ', variant: 'danger' },
+    );
+  }
+
   return (
     <AppShell>
       {confirmDialog}
@@ -562,9 +956,29 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
               dot
             />
             {detail.cycle.status === 'draft' && (
-              <Button size="sm" onClick={handleFinalize} disabled={pending}>
-                <BadgeCheck className="size-4" />
-                อนุมัติรอบนี้
+              <>
+                {paidCount === 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleDeleteCycle}
+                    disabled={pending}
+                    className="text-[var(--status-danger-fg)] hover:text-[var(--status-danger-fg)]"
+                  >
+                    <Trash2 className="size-4" />
+                    ลบรอบนี้
+                  </Button>
+                )}
+                <Button size="sm" onClick={handleFinalize} disabled={pending}>
+                  <BadgeCheck className="size-4" />
+                  อนุมัติรอบนี้
+                </Button>
+              </>
+            )}
+            {detail.cycle.status === 'finalized' && paidCount === 0 && (
+              <Button size="sm" variant="outline" onClick={handleUnfinalize} disabled={pending}>
+                <Undo2 className="size-4" />
+                ยกเลิกการอนุมัติ
               </Button>
             )}
           </div>

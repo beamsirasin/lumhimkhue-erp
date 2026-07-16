@@ -113,6 +113,7 @@ export const MODULE_GROUPS = [
       { id: 'inventory',      label: 'สต็อก/วัตถุดิบ' },
       { id: 'reports',        label: 'รายงาน' },
       { id: 'hr',             label: 'HR / พนักงาน' },
+      { id: 'hr-incidents',   label: 'รายงานพนักงาน' },
     ],
   },
   {

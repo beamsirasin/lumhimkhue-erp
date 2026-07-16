@@ -15,6 +15,7 @@ import {
   payrollCycleSchema,
   payrollDeductionSchema,
   payrollAbsenceSchema,
+  payrollEarningsSchema,
   markPaidSchema,
 } from '@/lib/validations/hr';
 import { eq, and, gte, lte, inArray, sql } from 'drizzle-orm';
@@ -753,6 +754,77 @@ export async function removeAbsence(absenceId: string) {
   return { ok: true } as const;
 }
 
+// ─── Delete Payroll Cycle ─────────────────────────────────────────────────────
+
+export async function deletePayrollCycle(cycleId: string) {
+  const auth = await requireHr();
+  if (!auth.ok) return auth;
+
+  const [cycle] = await db
+    .select()
+    .from(schema.payrollCycles)
+    .where(eq(schema.payrollCycles.id, cycleId));
+  if (!cycle) return { ok: false, error: 'ไม่พบรอบเงินเดือน' } as const;
+  if (cycle.status !== 'draft')
+    return { ok: false, error: 'ลบได้เฉพาะรอบสถานะร่าง — ยกเลิกการอนุมัติก่อน' } as const;
+
+  // Paid items are money-out records — never delete them with the cycle.
+  const [paidItem] = await db
+    .select({ id: schema.payrollItems.id })
+    .from(schema.payrollItems)
+    .where(and(eq(schema.payrollItems.payrollCycleId, cycleId), eq(schema.payrollItems.isPaid, true)))
+    .limit(1);
+  if (paidItem)
+    return { ok: false, error: 'มีพนักงานที่บันทึกการจ่ายแล้วในรอบนี้ ไม่สามารถลบได้' } as const;
+
+  // payroll_items cascade from the cycle; deductions/absences cascade from items.
+  await db.delete(schema.payrollCycles).where(eq(schema.payrollCycles.id, cycleId));
+
+  revalidatePath('/hr/payroll');
+  return { ok: true } as const;
+}
+
+// ─── Payroll Item Earnings ────────────────────────────────────────────────────
+
+export async function updatePayrollItemEarnings(raw: unknown) {
+  const auth = await requireHr();
+  if (!auth.ok) return auth;
+
+  const parsed = payrollEarningsSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message } as const;
+  const data = parsed.data;
+
+  const [item] = await db
+    .select()
+    .from(schema.payrollItems)
+    .where(eq(schema.payrollItems.id, data.payrollItemId));
+  if (!item) return { ok: false, error: 'ไม่พบรายการเงินเดือน' } as const;
+  if (item.isPaid) return { ok: false, error: 'รายการนี้จ่ายเงินแล้ว ไม่สามารถแก้ไขได้' } as const;
+
+  const [cycle] = await db
+    .select({ status: schema.payrollCycles.status })
+    .from(schema.payrollCycles)
+    .where(eq(schema.payrollCycles.id, item.payrollCycleId));
+  if (!cycle) return { ok: false, error: 'ไม่พบรอบเงินเดือน' } as const;
+  if (cycle.status !== 'draft')
+    return { ok: false, error: 'แก้ไขได้เฉพาะรอบสถานะร่าง — ยกเลิกการอนุมัติก่อน' } as const;
+
+  await db
+    .update(schema.payrollItems)
+    .set({
+      baseSalary: String(data.baseSalary),
+      workDays: data.workDays,
+      incentivePerDay: String(data.incentivePerDay),
+    })
+    .where(eq(schema.payrollItems.id, data.payrollItemId));
+
+  const settings = await getHrSettings();
+  await recalcPayrollItem(data.payrollItemId, settings);
+
+  revalidatePath('/hr/payroll');
+  return { ok: true } as const;
+}
+
 // ─── Mark Paid ────────────────────────────────────────────────────────────────
 
 export async function markAsPaid(raw: unknown) {
@@ -763,13 +835,23 @@ export async function markAsPaid(raw: unknown) {
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message } as const;
   const data = parsed.data;
 
+  const [existing] = await db
+    .select({ isPaid: schema.payrollItems.isPaid, paidAt: schema.payrollItems.paidAt })
+    .from(schema.payrollItems)
+    .where(eq(schema.payrollItems.id, data.payrollItemId));
+  if (!existing) return { ok: false, error: 'ไม่พบรายการเงินเดือน' } as const;
+
   await db
     .update(schema.payrollItems)
     .set({
       isPaid: true,
       paidMethod: data.paidMethod,
-      paidAt: new Date(),
+      paidCashAmount: data.paidMethod !== 'transfer' ? String(data.paidCashAmount ?? 0) : null,
+      paidTransferAmount: data.paidMethod !== 'cash' ? String(data.paidTransferAmount ?? 0) : null,
+      // Editing an already-paid record keeps the original payout time.
+      paidAt: existing.isPaid && existing.paidAt ? existing.paidAt : new Date(),
       paymentProofUrl: data.paymentProofUrl ?? null,
+      paymentProofUrl2: data.paymentProofUrl2 ?? null,
     })
     .where(eq(schema.payrollItems.id, data.payrollItemId));
 
@@ -784,6 +866,36 @@ export async function finalizePayrollCycle(cycleId: string) {
   await db
     .update(schema.payrollCycles)
     .set({ status: 'finalized' })
+    .where(eq(schema.payrollCycles.id, cycleId));
+
+  revalidatePath('/hr/payroll');
+  return { ok: true } as const;
+}
+
+export async function unfinalizePayrollCycle(cycleId: string) {
+  const auth = await requireHr();
+  if (!auth.ok) return auth;
+
+  const [cycle] = await db
+    .select()
+    .from(schema.payrollCycles)
+    .where(eq(schema.payrollCycles.id, cycleId));
+  if (!cycle) return { ok: false, error: 'ไม่พบรอบเงินเดือน' } as const;
+  if (cycle.status !== 'finalized')
+    return { ok: false, error: 'ยกเลิกได้เฉพาะรอบที่อนุมัติแล้วและยังไม่จ่ายเงินเท่านั้น' } as const;
+
+  // Unlocking would allow editing deductions of items already paid out — block it.
+  const [paidItem] = await db
+    .select({ id: schema.payrollItems.id })
+    .from(schema.payrollItems)
+    .where(and(eq(schema.payrollItems.payrollCycleId, cycleId), eq(schema.payrollItems.isPaid, true)))
+    .limit(1);
+  if (paidItem)
+    return { ok: false, error: 'มีพนักงานที่บันทึกการจ่ายแล้วในรอบนี้ ไม่สามารถยกเลิกการอนุมัติได้' } as const;
+
+  await db
+    .update(schema.payrollCycles)
+    .set({ status: 'draft' })
     .where(eq(schema.payrollCycles.id, cycleId));
 
   revalidatePath('/hr/payroll');

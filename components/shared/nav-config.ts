@@ -42,6 +42,7 @@ export const MODULE_HREFS: Record<string, string[]> = {
   settings:        ['/settings'],
   users:           ['/users'],
   hr:              ['/hr', '/hr/employees', '/hr/schedule', '/hr/time', '/hr/payroll', '/hr/settings'],
+  'hr-incidents':  ['/hr-incidents'],
   printers:        ['/printers'],
   system:          ['/system'],
 };

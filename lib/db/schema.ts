@@ -177,7 +177,7 @@ export const shiftTypeEnum = pgEnum('shift_type', ['morning', 'afternoon', 'cust
 export const scheduleEntryStatusEnum = pgEnum('schedule_entry_status', ['working', 'day_off', 'leave']);
 export const scheduleCycleStatusEnum = pgEnum('schedule_cycle_status', ['draft', 'published']);
 export const payrollStatusEnum = pgEnum('payroll_status', ['draft', 'finalized', 'paid']);
-export const hrPaymentMethodEnum = pgEnum('hr_payment_method', ['cash', 'transfer']);
+export const hrPaymentMethodEnum = pgEnum('hr_payment_method', ['cash', 'transfer', 'mixed']);
 export const deductionTypeEnum = pgEnum('deduction_type', ['advance', 'damage']);
 export const absenceTypeEnum = pgEnum('absence_type', ['absence', 'late']);
 
@@ -1295,8 +1295,11 @@ export const payrollItems = pgTable(
     netPayAfterTax: numeric('net_pay_after_tax', { precision: 12, scale: 2 }).notNull().default('0'),
     isPaid: boolean('is_paid').notNull().default(false),
     paidMethod: hrPaymentMethodEnum('paid_method'),
+    paidCashAmount: numeric('paid_cash_amount', { precision: 12, scale: 2 }),
+    paidTransferAmount: numeric('paid_transfer_amount', { precision: 12, scale: 2 }),
     paidAt: timestamp('paid_at'),
     paymentProofUrl: text('payment_proof_url'),
+    paymentProofUrl2: text('payment_proof_url_2'),
     notes: text('notes'),
   },
   (t) => [
@@ -1330,6 +1333,27 @@ export const payrollAbsences = pgTable(
     notes: text('notes'),
   },
   (t) => [index('payroll_absences_item_idx').on(t.payrollItemId)],
+);
+
+export const employeeIncidents = pgTable(
+  'employee_incidents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+    // 'late' | 'absence' | 'damage' | 'behavior' — validated in lib/validations/hr.ts,
+    // deliberately NOT a pg enum to avoid ALTER TYPE friction (same precedent as employees.department)
+    type: text('type').notNull(),
+    occurredDate: date('occurred_date').notNull(),
+    lateMinutes: integer('late_minutes'),
+    damageQuantity: integer('damage_quantity'),
+    description: text('description'),
+    reportedBy: uuid('reported_by').notNull().references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('employee_incidents_emp_idx').on(t.employeeId),
+    index('employee_incidents_date_idx').on(t.occurredDate),
+  ],
 );
 
 export const hrSettings = pgTable('hr_settings', {
@@ -2010,6 +2034,8 @@ export type PayrollDeduction = typeof payrollDeductions.$inferSelect;
 export type NewPayrollDeduction = typeof payrollDeductions.$inferInsert;
 export type PayrollAbsence = typeof payrollAbsences.$inferSelect;
 export type NewPayrollAbsence = typeof payrollAbsences.$inferInsert;
+export type EmployeeIncident = typeof employeeIncidents.$inferSelect;
+export type NewEmployeeIncident = typeof employeeIncidents.$inferInsert;
 export type HrSettings = typeof hrSettings.$inferSelect;
 
 // ─── Recipe Types ─────────────────────────────────────────────────────────────

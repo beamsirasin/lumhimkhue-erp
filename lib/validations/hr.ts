@@ -126,12 +126,63 @@ export const payrollAbsenceSchema = z.object({
 
 export type PayrollAbsenceInput = z.infer<typeof payrollAbsenceSchema>;
 
+// ── Payroll Item Earnings ────────────────────────────────────────────────
+
+export const payrollEarningsSchema = z.object({
+  payrollItemId: z.string().uuid(),
+  baseSalary: z.coerce.number().min(0, 'ต้องมากกว่าหรือเท่ากับ 0'),
+  workDays: z.coerce.number().int('ต้องเป็นจำนวนเต็ม').min(0, 'ต้องมากกว่าหรือเท่ากับ 0'),
+  incentivePerDay: z.coerce.number().min(0, 'ต้องมากกว่าหรือเท่ากับ 0'),
+});
+
+export type PayrollEarningsInput = z.infer<typeof payrollEarningsSchema>;
+
+// ── Employee Incident (รายงานพนักงาน) ───────────────────────────────────
+
+export const INCIDENT_TYPES = ['late', 'absence', 'damage', 'behavior'] as const;
+export type IncidentType = (typeof INCIDENT_TYPES)[number];
+
+export const employeeIncidentSchema = z
+  .object({
+    employeeId: z.string().uuid(),
+    type: z.enum(INCIDENT_TYPES),
+    occurredDate: z.string().min(1, 'กรุณาเลือกวันที่'),
+    lateMinutes: z.coerce.number().int('ต้องเป็นจำนวนเต็ม').min(1, 'ต้องมากกว่า 0').optional().nullable(),
+    damageQuantity: z.coerce.number().int('ต้องเป็นจำนวนเต็ม').min(1, 'ต้องมากกว่า 0').optional().nullable(),
+    description: z.string().trim().max(500, 'ไม่เกิน 500 ตัวอักษร').optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === 'late' && !data.lateMinutes) {
+      ctx.addIssue({ code: 'custom', path: ['lateMinutes'], message: 'กรุณาระบุนาทีที่สาย' });
+    }
+    if (data.type === 'damage' && !data.damageQuantity) {
+      ctx.addIssue({ code: 'custom', path: ['damageQuantity'], message: 'กรุณาระบุจำนวนชิ้นที่เสียหาย' });
+    }
+    if ((data.type === 'damage' || data.type === 'behavior') && !data.description?.trim()) {
+      ctx.addIssue({ code: 'custom', path: ['description'], message: 'กรุณากรอกรายละเอียด' });
+    }
+  });
+
+export type EmployeeIncidentInput = z.infer<typeof employeeIncidentSchema>;
+
 // ── Mark Paid ────────────────────────────────────────────────────────────
 
-export const markPaidSchema = z.object({
-  payrollItemId: z.string().uuid(),
-  paidMethod: z.enum(['cash', 'transfer']),
-  paymentProofUrl: z.string().optional().nullable(),
-});
+export const markPaidSchema = z
+  .object({
+    payrollItemId: z.string().uuid(),
+    paidMethod: z.enum(['cash', 'transfer', 'mixed']),
+    paidCashAmount: z.coerce.number().min(0, 'ต้องมากกว่าหรือเท่ากับ 0').optional().nullable(),
+    paidTransferAmount: z.coerce.number().min(0, 'ต้องมากกว่าหรือเท่ากับ 0').optional().nullable(),
+    paymentProofUrl: z.string().optional().nullable(),
+    paymentProofUrl2: z.string().optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if ((data.paidMethod === 'cash' || data.paidMethod === 'mixed') && !data.paidCashAmount) {
+      ctx.addIssue({ code: 'custom', path: ['paidCashAmount'], message: 'กรุณาระบุจำนวนเงินสด' });
+    }
+    if ((data.paidMethod === 'transfer' || data.paidMethod === 'mixed') && !data.paidTransferAmount) {
+      ctx.addIssue({ code: 'custom', path: ['paidTransferAmount'], message: 'กรุณาระบุจำนวนเงินโอน' });
+    }
+  });
 
 export type MarkPaidInput = z.infer<typeof markPaidSchema>;
