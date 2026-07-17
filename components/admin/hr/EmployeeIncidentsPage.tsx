@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ThaiDateInput } from '@/components/ui/thai-date-input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AppShell } from '@/components/ui/app-shell';
@@ -15,20 +16,31 @@ import { DataCard } from '@/components/ui/section-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { StatusBadge, type BadgeVariant } from '@/components/ui/status-badge';
 import { useConfirm } from '@/components/shared/ConfirmDialog';
-import { Users, Plus, Trash2, Clock, CalendarX, PackageX, MessageSquareWarning, ClipboardList } from 'lucide-react';
+import { Users, Plus, Trash2, Clock, CalendarX, PackageX, MessageSquareWarning, ClipboardList, CheckCircle2, Undo2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { deptLabelOf, deptRank } from '@/lib/hr/departments';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-time';
-import { createEmployeeIncident, deleteEmployeeIncident } from '@/lib/actions/hr-incidents';
+import {
+  createEmployeeIncident,
+  deleteEmployeeIncident,
+  resolveEmployeeIncident,
+  unresolveEmployeeIncident,
+} from '@/lib/actions/hr-incidents';
 import type { IncidentEmployee, IncidentRow } from '@/lib/actions/hr-incidents';
 import type { IncidentType } from '@/lib/validations/hr';
 import type { Role } from '@/lib/auth/permissions';
+import type { DamageItem } from '@/lib/db/schema';
 
 interface Props {
   employees: IncidentEmployee[];
   incidents: IncidentRow[];
+  damageItems: DamageItem[];
   currentUserId: string;
   role: Role;
+}
+
+function fmtBaht(n: number): string {
+  return n.toLocaleString('th-TH', { minimumFractionDigits: 2 });
 }
 
 const TYPE_CONFIG: Record<IncidentType, { label: string; badge: BadgeVariant; Icon: typeof Clock }> = {
@@ -40,7 +52,7 @@ const TYPE_CONFIG: Record<IncidentType, { label: string; badge: BadgeVariant; Ic
 
 const INCIDENT_TYPE_ORDER: IncidentType[] = ['late', 'absence', 'damage', 'behavior'];
 
-export function EmployeeIncidentsPage({ employees, incidents, currentUserId, role }: Props) {
+export function EmployeeIncidentsPage({ employees, incidents, damageItems, currentUserId, role }: Props) {
   const router = useRouter();
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(employees[0]?.id ?? null);
   const [pending, startTransition] = useTransition();
@@ -48,7 +60,7 @@ export function EmployeeIncidentsPage({ employees, incidents, currentUserId, rol
 
   const [addOpen, setAddOpen] = useState(false);
   const [addType, setAddType] = useState<IncidentType>('late');
-  const [form, setForm] = useState({ occurredDate: '', lateMinutes: '', damageQuantity: '', description: '' });
+  const [form, setForm] = useState({ occurredDate: '', lateMinutes: '', damageItemId: '', damageQuantity: '', description: '' });
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
 
@@ -92,13 +104,22 @@ export function EmployeeIncidentsPage({ employees, incidents, currentUserId, rol
       absenceCount: absence.length,
       damageCount: damage.length,
       damageQuantity: damage.reduce((s, i) => s + (i.damageQuantity ?? 0), 0),
+      damageTotal: damage.reduce(
+        (s, i) => s + (i.damageQuantity ?? 0) * Number(i.damageUnitPrice ?? 0),
+        0,
+      ),
       behaviorCount: behavior.length,
     };
   }, [selectedIncidents]);
 
+  const selectedDamageItem = damageItems.find((d) => d.id === form.damageItemId) ?? null;
+  const damageTotalPreview = selectedDamageItem
+    ? (Number(form.damageQuantity) || 0) * Number(selectedDamageItem.pricePerUnit)
+    : 0;
+
   function openAdd(type: IncidentType) {
     setAddType(type);
-    setForm({ occurredDate: '', lateMinutes: '', damageQuantity: '', description: '' });
+    setForm({ occurredDate: '', lateMinutes: '', damageItemId: '', damageQuantity: '', description: '' });
     setAddOpen(true);
   }
 
@@ -110,6 +131,7 @@ export function EmployeeIncidentsPage({ employees, incidents, currentUserId, rol
         type: addType,
         occurredDate: form.occurredDate,
         lateMinutes: addType === 'late' ? Number(form.lateMinutes) || null : null,
+        damageItemId: addType === 'damage' ? form.damageItemId || null : null,
         damageQuantity: addType === 'damage' ? Number(form.damageQuantity) || null : null,
         description: form.description || null,
       });
@@ -118,6 +140,36 @@ export function EmployeeIncidentsPage({ employees, incidents, currentUserId, rol
       setAddOpen(false);
       router.refresh();
     });
+  }
+
+  function handleResolve(incident: IncidentRow) {
+    openConfirm(
+      'ทำเครื่องหมายว่ารายการนี้จัดการแล้ว (จัดการเองนอกรอบเงินเดือน)?',
+      () => {
+        startTransition(async () => {
+          const result = await resolveEmployeeIncident(incident.id);
+          if (!result.ok) { toast.error(result.error); return; }
+          toast.success('ทำเครื่องหมายจัดการแล้ว');
+          router.refresh();
+        });
+      },
+      { confirmLabel: 'จัดการแล้ว', variant: 'default' },
+    );
+  }
+
+  function handleUnresolve(incident: IncidentRow) {
+    openConfirm(
+      'ยกเลิกการทำเครื่องหมายจัดการแล้ว? รายการจะกลับเป็นรอจัดการ',
+      () => {
+        startTransition(async () => {
+          const result = await unresolveEmployeeIncident(incident.id);
+          if (!result.ok) { toast.error(result.error); return; }
+          toast.success('ยกเลิกแล้ว — รายการกลับเป็นรอจัดการ');
+          router.refresh();
+        });
+      },
+      { confirmLabel: 'ยกเลิกการจัดการ', variant: 'danger' },
+    );
   }
 
   function handleDelete(incident: IncidentRow) {
@@ -242,6 +294,11 @@ export function EmployeeIncidentsPage({ employees, incidents, currentUserId, rol
                     <p className="mt-0.5 text-sm font-semibold tabular-nums text-foreground">
                       {summary.damageCount} ครั้ง{summary.damageQuantity > 0 ? ` · ${summary.damageQuantity} ชิ้น` : ''}
                     </p>
+                    {summary.damageTotal > 0 && (
+                      <p className="text-[11px] tabular-nums text-[var(--status-danger-fg)]">
+                        รวม ฿{fmtBaht(summary.damageTotal)}
+                      </p>
+                    )}
                   </div>
                   <div className="rounded-lg border border-border bg-[var(--surface-2)] px-3 py-2.5">
                     <p className="text-[11px] font-medium text-muted-foreground">พฤติกรรม</p>
@@ -263,17 +320,38 @@ export function EmployeeIncidentsPage({ employees, incidents, currentUserId, rol
                     <div className="divide-y divide-border rounded-lg border border-border">
                       {selectedIncidents.map((inc) => {
                         const cfg = TYPE_CONFIG[inc.type as IncidentType] ?? TYPE_CONFIG.behavior;
-                        const canDelete = role === 'owner' || inc.reportedBy === currentUserId;
+                        const isPayrollResolved = inc.resolved;
+                        const isManualResolved = !isPayrollResolved && inc.resolvedAt != null;
+                        const isResolved = isPayrollResolved || isManualResolved;
+                        // Pulled into a cycle but not yet paid + approved — intermediate state
+                        const isInPayrollPending = inc.inPayroll && !isPayrollResolved;
+                        const moneyType = inc.type !== 'behavior';
+                        const canDelete =
+                          (role === 'owner' || inc.reportedBy === currentUserId) && !isResolved && !isInPayrollPending;
                         return (
                           <div key={inc.id} className="flex items-start gap-3 px-4 py-3">
-                            <div className="pt-0.5">
+                            <div className="flex flex-col items-start gap-1 pt-0.5">
                               <StatusBadge label={cfg.label} variant={cfg.badge} dot />
+                              {moneyType && (
+                                <StatusBadge
+                                  label={isResolved ? 'จัดการแล้ว' : isInPayrollPending ? 'อยู่ในรอบจ่าย' : 'รอจัดการ'}
+                                  variant={isResolved ? 'success' : isInPayrollPending ? 'info' : 'warning'}
+                                />
+                              )}
                             </div>
                             <div className="min-w-0 flex-1 text-sm">
                               <p className="font-medium text-foreground">
                                 {formatThaiDate(inc.occurredDate, inc.occurredDate)}
                                 {inc.type === 'late' && inc.lateMinutes ? ` · สาย ${inc.lateMinutes} นาที` : ''}
-                                {inc.type === 'damage' && inc.damageQuantity ? ` · ${inc.damageQuantity} ชิ้น` : ''}
+                                {inc.type === 'damage' && inc.damageItemName
+                                  ? ` · ${inc.damageItemName} × ${inc.damageQuantity ?? 0}${
+                                      Number(inc.damageUnitPrice ?? 0) > 0
+                                        ? ` = ฿${fmtBaht((inc.damageQuantity ?? 0) * Number(inc.damageUnitPrice ?? 0))}`
+                                        : ''
+                                    }`
+                                  : inc.type === 'damage' && inc.damageQuantity
+                                    ? ` · ${inc.damageQuantity} ชิ้น`
+                                    : ''}
                               </p>
                               {inc.description && (
                                 <p className="mt-0.5 whitespace-pre-wrap text-xs text-muted-foreground">{inc.description}</p>
@@ -281,18 +359,59 @@ export function EmployeeIncidentsPage({ employees, incidents, currentUserId, rol
                               <p className="mt-1 text-[11px] text-muted-foreground">
                                 แจ้งโดย {inc.reporterName ?? '-'} · {formatThaiDateTime(inc.createdAt)}
                               </p>
+                              {isPayrollResolved && inc.payrollPayDate && (
+                                <p className="mt-0.5 text-[11px] font-medium text-[var(--status-success-fg)]">
+                                  จัดการในรอบจ่ายวันที่ {formatThaiDate(inc.payrollPayDate, inc.payrollPayDate)}
+                                </p>
+                              )}
+                              {isInPayrollPending && (
+                                <p className="mt-0.5 text-[11px] font-medium text-[var(--status-info-fg)]">
+                                  ดึงเข้ารอบจ่ายวันที่ {inc.payrollPayDate ? formatThaiDate(inc.payrollPayDate, inc.payrollPayDate) : '-'} แล้ว — รอจ่ายเงินและอนุมัติรอบ
+                                </p>
+                              )}
+                              {isManualResolved && (
+                                <p className="mt-0.5 text-[11px] font-medium text-[var(--status-success-fg)]">
+                                  จัดการเองโดย {inc.resolverName ?? '-'} · {formatThaiDateTime(inc.resolvedAt)}
+                                </p>
+                              )}
                             </div>
-                            {canDelete && (
-                              <button
-                                type="button"
-                                onClick={() => handleDelete(inc)}
-                                disabled={pending}
-                                aria-label="ลบรายงาน"
-                                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-[var(--status-danger-bg)] hover:text-[var(--status-danger-fg)]"
-                              >
-                                <Trash2 className="size-4" />
-                              </button>
-                            )}
+                            <div className="flex shrink-0 items-center gap-1">
+                              {moneyType && !isResolved && !isInPayrollPending && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleResolve(inc)}
+                                  disabled={pending}
+                                  aria-label="ทำเครื่องหมายจัดการแล้ว"
+                                  title="จัดการแล้ว (นอกรอบเงินเดือน)"
+                                  className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-[var(--status-success-bg)] hover:text-[var(--status-success-fg)]"
+                                >
+                                  <CheckCircle2 className="size-4" />
+                                </button>
+                              )}
+                              {isManualResolved && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleUnresolve(inc)}
+                                  disabled={pending}
+                                  aria-label="ยกเลิกการจัดการ"
+                                  title="ยกเลิก — กลับเป็นรอจัดการ"
+                                  className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                >
+                                  <Undo2 className="size-4" />
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(inc)}
+                                  disabled={pending}
+                                  aria-label="ลบรายงาน"
+                                  className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-[var(--status-danger-bg)] hover:text-[var(--status-danger-fg)]"
+                                >
+                                  <Trash2 className="size-4" />
+                                </button>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
@@ -343,19 +462,57 @@ export function EmployeeIncidentsPage({ employees, incidents, currentUserId, rol
               </div>
             )}
             {addType === 'damage' && (
-              <div className="space-y-1.5">
-                <Label>จำนวนชิ้นที่เสียหาย *</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={form.damageQuantity}
-                  onChange={(e) => setForm((p) => ({ ...p, damageQuantity: e.target.value }))}
-                />
-              </div>
+              damageItems.length === 0 ? (
+                <p className="rounded-lg bg-muted/40 px-3.5 py-3 text-xs leading-relaxed text-muted-foreground">
+                  ยังไม่มีรายการของเสียหายในระบบ — เจ้าของร้านเพิ่มได้ที่เมนู <strong>ตั้งค่า HR</strong> (ระบุชื่อของและราคาต่อชิ้น)
+                </p>
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    <Label>ของที่เสียหาย *</Label>
+                    <Select
+                      value={form.damageItemId}
+                      onValueChange={(v) => { if (v) setForm((p) => ({ ...p, damageItemId: v })); }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="เลือกของที่เสียหาย">
+                          {selectedDamageItem
+                            ? `${selectedDamageItem.name} — ฿${fmtBaht(Number(selectedDamageItem.pricePerUnit))}/ชิ้น`
+                            : undefined}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {damageItems.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name} — ฿{fmtBaht(Number(d.pricePerUnit))}/ชิ้น
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>จำนวนชิ้นที่เสียหาย *</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={form.damageQuantity}
+                      onChange={(e) => setForm((p) => ({ ...p, damageQuantity: e.target.value }))}
+                    />
+                  </div>
+                  {selectedDamageItem && Number(form.damageQuantity) > 0 && (
+                    <p className="rounded-lg bg-[var(--surface-primary-subtle)] px-3.5 py-2.5 text-sm font-medium tabular-nums text-primary">
+                      รวมค่าเสียหาย ฿{fmtBaht(damageTotalPreview)}
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">
+                        ({form.damageQuantity} × ฿{fmtBaht(Number(selectedDamageItem.pricePerUnit))})
+                      </span>
+                    </p>
+                  )}
+                </>
+              )
             )}
             <div className="space-y-1.5">
               <Label>
-                รายละเอียด {addType === 'damage' || addType === 'behavior' ? '*' : <span className="font-normal text-muted-foreground">(ไม่บังคับ)</span>}
+                รายละเอียด {addType === 'behavior' ? '*' : <span className="font-normal text-muted-foreground">(ไม่บังคับ)</span>}
               </Label>
               <Textarea
                 value={form.description}
@@ -374,7 +531,9 @@ export function EmployeeIncidentsPage({ employees, incidents, currentUserId, rol
           </div>
           <DialogFooter className="mx-0 mb-0 rounded-none border-t border-border bg-muted/30 px-6 py-4">
             <Button variant="outline" onClick={() => setAddOpen(false)}>ยกเลิก</Button>
-            <Button onClick={submitAdd} disabled={pending}>บันทึก</Button>
+            <Button onClick={submitAdd} disabled={pending || (addType === 'damage' && damageItems.length === 0)}>
+              บันทึก
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

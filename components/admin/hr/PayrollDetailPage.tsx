@@ -30,11 +30,13 @@ import {
   unfinalizePayrollCycle,
   updatePayrollItemEarnings,
   deletePayrollCycle,
+  applyPendingIncidents,
 } from '@/lib/actions/hr';
+import type { PendingIncident } from '@/lib/actions/hr-incidents';
 import { printPayslip, paidChannelLabel } from '@/lib/hr/payslip-print';
 import { deptLabelOf } from '@/lib/hr/departments';
 import { useRouter } from 'next/navigation';
-import type { PayrollCycle, PayrollItem, PayrollDeduction, PayrollAbsence, Employee, HrSettings } from '@/lib/db/schema';
+import type { PayrollCycle, PayrollItem, PayrollDeduction, PayrollAbsence, Employee, HrSettings, DamageItem } from '@/lib/db/schema';
 
 type EnrichedItem = PayrollItem & {
   employee?: Employee;
@@ -50,6 +52,18 @@ type Detail = {
 interface Props {
   detail: Detail;
   settings: HrSettings;
+  damageItems: DamageItem[];
+  pendingIncidents: Record<string, PendingIncident[]>;
+}
+
+function pendingIncidentLabel(inc: PendingIncident): string {
+  if (inc.type === 'late') return `สาย ${inc.lateMinutes ?? 0} นาที`;
+  if (inc.type === 'absence') return 'ขาดงาน';
+  const qty = inc.damageQuantity ?? 0;
+  const amount = qty * Number(inc.damageUnitPrice ?? 0);
+  return inc.damageItemName
+    ? `${inc.damageItemName} × ${qty}${amount > 0 ? ` = ฿${fmtMoney(amount)}` : ''}`
+    : `เสียหาย${inc.description ? `: ${inc.description}` : ''} (ไม่มีราคา — จะถูกข้าม)`;
 }
 
 function fmtMoney(n: number | string) {
@@ -274,17 +288,19 @@ function PayslipContent({ item, cycle, settings }: { item: EnrichedItem; cycle: 
 
 // ── Item detail panel ─────────────────────────────────────────────────────────
 
-function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
+function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings, damageItems, pendingForEmployee }: {
   item: EnrichedItem;
   cycle: PayrollCycle;
   onRefresh: () => void;
   cycleStatus: string;
   settings: HrSettings;
+  damageItems: DamageItem[];
+  pendingForEmployee: PendingIncident[];
 }) {
   const [pending, startTransition] = useTransition();
   const [addOpen, setAddOpen] = useState(false);
   const [addType, setAddType] = useState<'advance' | 'damage' | 'absence' | 'late'>('advance');
-  const [addForm, setAddForm] = useState({ amount: '', reason: '', occurredDate: '', lateMinutes: '', notes: '' });
+  const [addForm, setAddForm] = useState({ amount: '', reason: '', occurredDate: '', lateMinutes: '', notes: '', damageItemId: '', damageQuantity: '' });
   const [payOpen, setPayOpen] = useState(false);
   const [payEditing, setPayEditing] = useState(false);
   const [payForm, setPayForm] = useState({
@@ -303,14 +319,34 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
 
   function openAdd(type: 'advance' | 'damage' | 'absence' | 'late') {
     setAddType(type);
-    setAddForm({ amount: '', reason: '', occurredDate: '', lateMinutes: '', notes: '' });
+    setAddForm({ amount: '', reason: '', occurredDate: '', lateMinutes: '', notes: '', damageItemId: '', damageQuantity: '' });
     setAddOpen(true);
   }
 
+  const selectedDamageItem = damageItems.find((d) => d.id === addForm.damageItemId) ?? null;
+  const damageTotalPreview = selectedDamageItem
+    ? (Number(addForm.damageQuantity) || 0) * Number(selectedDamageItem.pricePerUnit)
+    : 0;
+
   function submitAdd() {
+    if (addType === 'damage') {
+      if (!selectedDamageItem) { toast.error('กรุณาเลือกของที่เสียหาย'); return; }
+      if (!(Number(addForm.damageQuantity) >= 1)) { toast.error('กรุณาระบุจำนวนชิ้นที่เสียหาย'); return; }
+    }
     startTransition(async () => {
       let result;
-      if (addType === 'advance' || addType === 'damage') {
+      if (addType === 'damage' && selectedDamageItem) {
+        // Same catalog template as the incidents page: item × qty at the
+        // catalog's per-unit price; the free-text field becomes an optional note.
+        const qty = Number(addForm.damageQuantity);
+        result = await addDeduction({
+          payrollItemId: item.id,
+          type: 'damage',
+          amount: qty * Number(selectedDamageItem.pricePerUnit),
+          reason: `${selectedDamageItem.name} × ${qty} ชิ้น${addForm.reason.trim() ? ` — ${addForm.reason.trim()}` : ''}`,
+          occurredDate: addForm.occurredDate || null,
+        });
+      } else if (addType === 'advance') {
         result = await addDeduction({
           payrollItemId: item.id,
           type: addType,
@@ -330,6 +366,18 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
       if (!result.ok) { toast.error(result.error); return; }
       toast.success('เพิ่มรายการแล้ว');
       setAddOpen(false);
+      onRefresh();
+    });
+  }
+
+  function handleApplyPending(incidentIds?: string[]) {
+    startTransition(async () => {
+      const result = await applyPendingIncidents(item.id, incidentIds);
+      if (!result.ok) { toast.error(result.error); return; }
+      const { applied, skipped } = result.data;
+      toast.success(
+        `ดึงเข้ารอบแล้ว ${applied} รายการ${skipped > 0 ? ` (ข้าม ${skipped} รายการที่ไม่มีราคา)` : ''}`,
+      );
       onRefresh();
     });
   }
@@ -497,6 +545,39 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
             </div>
           )}
         </div>
+
+        {/* Pending incident reports — pull all, or pick them one by one */}
+        {!locked && pendingForEmployee.length > 0 && (
+          <div className="space-y-2 rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-3.5 py-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-[var(--status-warning-fg)]">
+                มีรายการค้างจากรายงานพนักงาน {pendingForEmployee.length} รายการ
+              </p>
+              {pendingForEmployee.length > 1 && (
+                <Button size="sm" variant="outline" onClick={() => handleApplyPending()} disabled={pending}>
+                  ดึงทั้งหมด
+                </Button>
+              )}
+            </div>
+            <ul className="space-y-1 text-xs text-[var(--status-warning-fg)]/90">
+              {pendingForEmployee.map((inc) => (
+                <li key={inc.id} className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 flex-1 tabular-nums">
+                    {formatThaiDate(inc.occurredDate, inc.occurredDate)} · {pendingIncidentLabel(inc)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPending([inc.id])}
+                    disabled={pending}
+                    className="shrink-0 rounded-md border border-[var(--status-warning-border)] bg-background/60 px-2 py-0.5 text-[11px] font-medium text-[var(--status-warning-fg)] transition-colors hover:bg-background disabled:opacity-50"
+                  >
+                    ดึง
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {item.deductions.filter((d) => d.type === 'advance').map((d) => (
           <div key={d.id} className="flex justify-between text-[var(--status-danger-fg)]">
@@ -697,7 +778,7 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 px-6 py-5">
-            {(addType === 'advance' || addType === 'damage') && (
+            {addType === 'advance' && (
               <>
                 <div className="space-y-1.5">
                   <Label>จำนวนเงิน (฿) *</Label>
@@ -705,13 +786,65 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
                 </div>
                 <div className="space-y-1.5">
                   <Label>เหตุผล *</Label>
-                  <Input value={addForm.reason} onChange={(e) => setAddForm((p) => ({ ...p, reason: e.target.value }))} placeholder="เช่น เบิกล่วงหน้า / แก้วแตก 3 ใบ" />
+                  <Input value={addForm.reason} onChange={(e) => setAddForm((p) => ({ ...p, reason: e.target.value }))} placeholder="เช่น เบิกล่วงหน้า" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>วันที่เกิด</Label>
                   <ThaiDateInput value={addForm.occurredDate} onValueChange={(occurredDate) => setAddForm((p) => ({ ...p, occurredDate }))} ariaLabel="เลือกวันที่เกิดรายการ" />
                 </div>
               </>
+            )}
+            {addType === 'damage' && (
+              damageItems.length === 0 ? (
+                <p className="rounded-lg bg-muted/40 px-3.5 py-3 text-xs leading-relaxed text-muted-foreground">
+                  ยังไม่มีรายการของเสียหายในระบบ — เพิ่มได้ที่เมนู <strong>ตั้งค่า HR</strong> (ระบุชื่อของและราคาต่อชิ้น)
+                </p>
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    <Label>ของที่เสียหาย *</Label>
+                    <Select
+                      value={addForm.damageItemId}
+                      onValueChange={(v) => { if (v) setAddForm((p) => ({ ...p, damageItemId: v })); }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="เลือกของที่เสียหาย">
+                          {selectedDamageItem
+                            ? `${selectedDamageItem.name} — ฿${fmtMoney(selectedDamageItem.pricePerUnit)}/ชิ้น`
+                            : undefined}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {damageItems.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name} — ฿{fmtMoney(d.pricePerUnit)}/ชิ้น
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>จำนวนชิ้นที่เสียหาย *</Label>
+                    <Input type="number" min="1" value={addForm.damageQuantity} onChange={(e) => setAddForm((p) => ({ ...p, damageQuantity: e.target.value }))} />
+                  </div>
+                  {selectedDamageItem && Number(addForm.damageQuantity) > 0 && (
+                    <p className="rounded-lg bg-[var(--surface-primary-subtle)] px-3.5 py-2.5 text-sm font-medium tabular-nums text-primary">
+                      รวมค่าเสียหาย ฿{fmtMoney(damageTotalPreview)}
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">
+                        ({addForm.damageQuantity} × ฿{fmtMoney(selectedDamageItem.pricePerUnit)})
+                      </span>
+                    </p>
+                  )}
+                  <div className="space-y-1.5">
+                    <Label>หมายเหตุ <span className="font-normal text-muted-foreground">(ไม่บังคับ)</span></Label>
+                    <Input value={addForm.reason} onChange={(e) => setAddForm((p) => ({ ...p, reason: e.target.value }))} placeholder="เช่น แตกระหว่างเก็บโต๊ะ" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>วันที่เกิด</Label>
+                    <ThaiDateInput value={addForm.occurredDate} onValueChange={(occurredDate) => setAddForm((p) => ({ ...p, occurredDate }))} ariaLabel="เลือกวันที่เกิดรายการ" />
+                  </div>
+                </>
+              )
             )}
             {addType === 'absence' && (
               <div className="space-y-1.5">
@@ -734,7 +867,9 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
           </div>
           <DialogFooter className="mx-0 mb-0 rounded-none border-t border-border bg-muted/30 px-6 py-4">
             <Button variant="outline" onClick={() => setAddOpen(false)}>ยกเลิก</Button>
-            <Button onClick={submitAdd} disabled={pending}>บันทึก</Button>
+            <Button onClick={submitAdd} disabled={pending || (addType === 'damage' && damageItems.length === 0)}>
+              บันทึก
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -867,9 +1002,8 @@ function ItemPanel({ item, cycle, onRefresh, cycleStatus, settings }: {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
+export function PayrollDetailPage({ detail, settings, damageItems, pendingIncidents }: Props) {
   const router = useRouter();
-  const [detail, setDetail] = useState(initialDetail);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(detail.items[0]?.id ?? null);
   const [pending, startTransition] = useTransition();
   const { openConfirm, dialog: confirmDialog } = useConfirm();
@@ -877,8 +1011,6 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
   const selectedItem = detail.items.find((i) => i.id === selectedItemId);
   const paidCount = detail.items.filter((i) => i.isPaid).length;
   const totalNet = detail.items.reduce((s, i) => s + Number(i.netPay), 0);
-
-  void setDetail;
 
   function refresh() {
     router.refresh();
@@ -901,7 +1033,9 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
 
   function handleDeleteCycle() {
     openConfirm(
-      'ลบรอบจ่ายนี้? รายการเงินเดือนและรายการหักทั้งหมดในรอบจะถูกลบถาวร',
+      paidCount > 0
+        ? `ลบรอบจ่ายนี้? มีพนักงานที่บันทึกจ่ายเงินแล้ว ${paidCount} คน — ประวัติการจ่ายเงิน รายการเงินเดือน และรายการหักทั้งหมดในรอบจะถูกลบถาวร`
+        : 'ลบรอบจ่ายนี้? รายการเงินเดือนและรายการหักทั้งหมดในรอบจะถูกลบถาวร',
       () => {
         startTransition(async () => {
           const result = await deletePayrollCycle(detail.cycle.id);
@@ -917,7 +1051,9 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
 
   function handleUnfinalize() {
     openConfirm(
-      'ยกเลิกการอนุมัติรอบจ่ายนี้? รอบจะกลับเป็นสถานะร่างและแก้ไขรายการหักได้อีกครั้ง',
+      paidCount > 0
+        ? `ยกเลิกการอนุมัติรอบจ่ายนี้? มีพนักงานที่จ่ายเงินแล้ว ${paidCount} คน (ประวัติการจ่ายยังอยู่ครบ) — รอบจะกลับเป็นร่างและแก้ไขรายการได้อีกครั้ง`
+        : 'ยกเลิกการอนุมัติรอบจ่ายนี้? รอบจะกลับเป็นสถานะร่างและแก้ไขรายการหักได้อีกครั้ง',
       () => {
         startTransition(async () => {
           const result = await unfinalizePayrollCycle(detail.cycle.id);
@@ -957,25 +1093,23 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
             />
             {detail.cycle.status === 'draft' && (
               <>
-                {paidCount === 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleDeleteCycle}
-                    disabled={pending}
-                    className="text-[var(--status-danger-fg)] hover:text-[var(--status-danger-fg)]"
-                  >
-                    <Trash2 className="size-4" />
-                    ลบรอบนี้
-                  </Button>
-                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleDeleteCycle}
+                  disabled={pending}
+                  className="text-[var(--status-danger-fg)] hover:text-[var(--status-danger-fg)]"
+                >
+                  <Trash2 className="size-4" />
+                  ลบรอบนี้
+                </Button>
                 <Button size="sm" onClick={handleFinalize} disabled={pending}>
                   <BadgeCheck className="size-4" />
                   อนุมัติรอบนี้
                 </Button>
               </>
             )}
-            {detail.cycle.status === 'finalized' && paidCount === 0 && (
+            {detail.cycle.status !== 'draft' && (
               <Button size="sm" variant="outline" onClick={handleUnfinalize} disabled={pending}>
                 <Undo2 className="size-4" />
                 ยกเลิกการอนุมัติ
@@ -1081,6 +1215,8 @@ export function PayrollDetailPage({ detail: initialDetail, settings }: Props) {
                 onRefresh={refresh}
                 cycleStatus={detail.cycle.status}
                 settings={settings}
+                damageItems={damageItems}
+                pendingForEmployee={pendingIncidents[selectedItem.employeeId] ?? []}
               />
             </DataCard>
           ) : (

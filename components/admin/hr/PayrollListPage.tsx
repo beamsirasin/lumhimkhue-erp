@@ -58,7 +58,9 @@ const STATUS_BADGE: Record<string, BadgeVariant> = {
 
 export function PayrollListPage({ initialCycles }: Props) {
   const router = useRouter();
-  const [cycles] = useState(initialCycles);
+  // Read straight from props so router.refresh() updates are reflected —
+  // copying into useState would freeze the first render's data.
+  const cycles = initialCycles;
   const [open, setOpen] = useState(false);
   // No manual name — the cycle is identified by its pay date
   const [form, setForm] = useState({ workStartDate: '', workEndDate: '', payDate: '', notes: '' });

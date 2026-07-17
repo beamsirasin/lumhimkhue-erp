@@ -148,6 +148,7 @@ export const employeeIncidentSchema = z
     type: z.enum(INCIDENT_TYPES),
     occurredDate: z.string().min(1, 'กรุณาเลือกวันที่'),
     lateMinutes: z.coerce.number().int('ต้องเป็นจำนวนเต็ม').min(1, 'ต้องมากกว่า 0').optional().nullable(),
+    damageItemId: z.string().uuid().optional().nullable(),
     damageQuantity: z.coerce.number().int('ต้องเป็นจำนวนเต็ม').min(1, 'ต้องมากกว่า 0').optional().nullable(),
     description: z.string().trim().max(500, 'ไม่เกิน 500 ตัวอักษร').optional().nullable(),
   })
@@ -155,15 +156,27 @@ export const employeeIncidentSchema = z
     if (data.type === 'late' && !data.lateMinutes) {
       ctx.addIssue({ code: 'custom', path: ['lateMinutes'], message: 'กรุณาระบุนาทีที่สาย' });
     }
+    if (data.type === 'damage' && !data.damageItemId) {
+      ctx.addIssue({ code: 'custom', path: ['damageItemId'], message: 'กรุณาเลือกรายการของเสียหาย' });
+    }
     if (data.type === 'damage' && !data.damageQuantity) {
       ctx.addIssue({ code: 'custom', path: ['damageQuantity'], message: 'กรุณาระบุจำนวนชิ้นที่เสียหาย' });
     }
-    if ((data.type === 'damage' || data.type === 'behavior') && !data.description?.trim()) {
+    if (data.type === 'behavior' && !data.description?.trim()) {
       ctx.addIssue({ code: 'custom', path: ['description'], message: 'กรุณากรอกรายละเอียด' });
     }
   });
 
 export type EmployeeIncidentInput = z.infer<typeof employeeIncidentSchema>;
+
+// ── Damage Item (แคตตาล็อกของเสียหาย) ───────────────────────────────────
+
+export const damageItemSchema = z.object({
+  name: z.string().trim().min(1, 'กรุณากรอกชื่อรายการ').max(100, 'ไม่เกิน 100 ตัวอักษร'),
+  pricePerUnit: z.coerce.number().min(0, 'ต้องมากกว่าหรือเท่ากับ 0'),
+});
+
+export type DamageItemInput = z.infer<typeof damageItemSchema>;
 
 // ── Mark Paid ────────────────────────────────────────────────────────────
 

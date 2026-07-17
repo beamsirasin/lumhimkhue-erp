@@ -18,7 +18,7 @@ import {
   payrollEarningsSchema,
   markPaidSchema,
 } from '@/lib/validations/hr';
-import { eq, and, gte, lte, inArray, sql } from 'drizzle-orm';
+import { eq, and, gte, lte, inArray, isNull, sql } from 'drizzle-orm';
 
 // ─── Thai progressive income tax (WHT) ───────────────────────────────────────
 
@@ -710,6 +710,104 @@ export async function removeDeduction(deductionId: string) {
   return { ok: true } as const;
 }
 
+// ─── Pull pending incidents into a payroll item (17UI incident link) ─────────
+
+/**
+ * Pulls unresolved employee incident reports (สาย/ขาด/เสียหาย, occurred on or
+ * before the cycle's work end date) into a DRAFT payroll item as deduction/
+ * absence rows carrying incident_id. Resolution state is derived from that
+ * link, so removing the row later reverts the incident to "รอจัดการ".
+ *
+ * Pass `incidentIds` to pull only the selected reports; omit to pull all.
+ */
+export async function applyPendingIncidents(payrollItemId: string, incidentIds?: string[]) {
+  const auth = await requireHr();
+  if (!auth.ok) return auth;
+
+  const [pItem] = await db
+    .select()
+    .from(schema.payrollItems)
+    .where(eq(schema.payrollItems.id, payrollItemId));
+  if (!pItem) return { ok: false, error: 'ไม่พบรายการเงินเดือน' } as const;
+
+  const [cycle] = await db
+    .select()
+    .from(schema.payrollCycles)
+    .where(eq(schema.payrollCycles.id, pItem.payrollCycleId));
+  if (!cycle) return { ok: false, error: 'ไม่พบรอบเงินเดือน' } as const;
+  if (cycle.status !== 'draft')
+    return { ok: false, error: 'ดึงรายการได้เฉพาะรอบสถานะร่างเท่านั้น' } as const;
+
+  const pending = await db
+    .select()
+    .from(schema.employeeIncidents)
+    .where(
+      and(
+        eq(schema.employeeIncidents.employeeId, pItem.employeeId),
+        lte(schema.employeeIncidents.occurredDate, cycle.workEndDate),
+        inArray(schema.employeeIncidents.type, ['late', 'absence', 'damage']),
+        isNull(schema.employeeIncidents.resolvedAt),
+        sql`NOT EXISTS (SELECT 1 FROM payroll_deductions pd WHERE pd.incident_id = ${schema.employeeIncidents.id})`,
+        sql`NOT EXISTS (SELECT 1 FROM payroll_absences pa WHERE pa.incident_id = ${schema.employeeIncidents.id})`,
+        ...(incidentIds && incidentIds.length > 0
+          ? [inArray(schema.employeeIncidents.id, incidentIds)]
+          : []),
+      ),
+    )
+    .orderBy(schema.employeeIncidents.occurredDate);
+
+  let applied = 0;
+  let skipped = 0;
+
+  for (const inc of pending) {
+    if (inc.type === 'damage') {
+      const qty = inc.damageQuantity ?? 0;
+      const amount = qty * Number(inc.damageUnitPrice ?? 0);
+      // Old free-text damage reports have no catalog price — cannot compute an amount.
+      if (!inc.damageItemName || amount <= 0) { skipped++; continue; }
+      await db.insert(schema.payrollDeductions).values({
+        payrollItemId,
+        type: 'damage',
+        amount: String(amount),
+        reason: `${inc.damageItemName} × ${qty} ชิ้น${inc.description ? ` — ${inc.description}` : ''}`,
+        occurredDate: inc.occurredDate,
+        incidentId: inc.id,
+      });
+      applied++;
+    } else if (inc.type === 'late') {
+      if (!inc.lateMinutes) { skipped++; continue; }
+      await db.insert(schema.payrollAbsences).values({
+        payrollItemId,
+        type: 'late',
+        occurredDate: inc.occurredDate,
+        lateMinutes: inc.lateMinutes,
+        notes: inc.description ?? null,
+        incidentId: inc.id,
+      });
+      applied++;
+    } else {
+      await db.insert(schema.payrollAbsences).values({
+        payrollItemId,
+        type: 'absence',
+        occurredDate: inc.occurredDate,
+        lateMinutes: null,
+        notes: inc.description ?? null,
+        incidentId: inc.id,
+      });
+      applied++;
+    }
+  }
+
+  if (applied > 0) {
+    const settings = await getHrSettings();
+    await recalcPayrollItem(payrollItemId, settings);
+  }
+
+  revalidatePath('/hr/payroll');
+  revalidatePath('/hr-incidents');
+  return { ok: true, data: { applied, skipped } } as const;
+}
+
 // ─── Payroll Absences ─────────────────────────────────────────────────────────
 
 export async function addAbsence(raw: unknown) {
@@ -768,16 +866,10 @@ export async function deletePayrollCycle(cycleId: string) {
   if (cycle.status !== 'draft')
     return { ok: false, error: 'ลบได้เฉพาะรอบสถานะร่าง — ยกเลิกการอนุมัติก่อน' } as const;
 
-  // Paid items are money-out records — never delete them with the cycle.
-  const [paidItem] = await db
-    .select({ id: schema.payrollItems.id })
-    .from(schema.payrollItems)
-    .where(and(eq(schema.payrollItems.payrollCycleId, cycleId), eq(schema.payrollItems.isPaid, true)))
-    .limit(1);
-  if (paidItem)
-    return { ok: false, error: 'มีพนักงานที่บันทึกการจ่ายแล้วในรอบนี้ ไม่สามารถลบได้' } as const;
-
-  // payroll_items cascade from the cycle; deductions/absences cascade from items.
+  // Deleting a cycle with paid items erases those payout records permanently —
+  // allowed for owner (explicit per 17UI) but the UI warns with the paid count.
+  // payroll_items cascade from the cycle; deductions/absences cascade from items;
+  // linked incident reports revert to "รอจัดการ" automatically (incident_id SET NULL).
   await db.delete(schema.payrollCycles).where(eq(schema.payrollCycles.id, cycleId));
 
   revalidatePath('/hr/payroll');
@@ -881,18 +973,11 @@ export async function unfinalizePayrollCycle(cycleId: string) {
     .from(schema.payrollCycles)
     .where(eq(schema.payrollCycles.id, cycleId));
   if (!cycle) return { ok: false, error: 'ไม่พบรอบเงินเดือน' } as const;
-  if (cycle.status !== 'finalized')
-    return { ok: false, error: 'ยกเลิกได้เฉพาะรอบที่อนุมัติแล้วและยังไม่จ่ายเงินเท่านั้น' } as const;
+  if (cycle.status === 'draft')
+    return { ok: false, error: 'รอบนี้ยังเป็นสถานะร่างอยู่แล้ว' } as const;
 
-  // Unlocking would allow editing deductions of items already paid out — block it.
-  const [paidItem] = await db
-    .select({ id: schema.payrollItems.id })
-    .from(schema.payrollItems)
-    .where(and(eq(schema.payrollItems.payrollCycleId, cycleId), eq(schema.payrollItems.isPaid, true)))
-    .limit(1);
-  if (paidItem)
-    return { ok: false, error: 'มีพนักงานที่บันทึกการจ่ายแล้วในรอบนี้ ไม่สามารถยกเลิกการอนุมัติได้' } as const;
-
+  // Allowed even when some items are already paid (owner decision, explicit
+  // per 17UI) — paid records stay intact; the cycle just reopens for editing.
   await db
     .update(schema.payrollCycles)
     .set({ status: 'draft' })

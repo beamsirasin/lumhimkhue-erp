@@ -232,6 +232,31 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    id: 'phase17ui-damage-items',
+    source: 'lib/db/migrate-phase17ui-damage-items.ts — damage_items catalog + employee_incidents snapshot columns (queried by /hr-incidents + /hr/settings)',
+    severity: 'CRITICAL',
+    reqs: [
+      { kind: 'table', table: 'damage_items' },
+      { kind: 'column', table: 'damage_items', column: 'price_per_unit' },
+      { kind: 'column', table: 'employee_incidents', column: 'damage_item_name' },
+      { kind: 'column', table: 'employee_incidents', column: 'damage_unit_price' },
+      { kind: 'index', index: 'damage_items_name_uq' },
+    ],
+  },
+  {
+    id: 'phase17ui-incident-link',
+    source: 'lib/db/migrate-phase17ui-incident-link.ts — incident_id on payroll_deductions/payroll_absences (Drizzle selects them on every payroll query; powers ดึงรายการค้าง)',
+    severity: 'CRITICAL',
+    reqs: [
+      { kind: 'column', table: 'payroll_deductions', column: 'incident_id' },
+      { kind: 'column', table: 'payroll_absences', column: 'incident_id' },
+      { kind: 'column', table: 'employee_incidents', column: 'resolved_at' },
+      { kind: 'column', table: 'employee_incidents', column: 'resolved_by' },
+      { kind: 'index', index: 'payroll_deductions_incident_idx' },
+      { kind: 'index', index: 'payroll_absences_incident_idx' },
+    ],
+  },
+  {
     id: 'phase17pos-auth-a5-store-business-days',
     source: 'lib/db/migrate-phase17pos-auth-a5.ts — REQUIRED for store-wide day closing and POS/shift gates',
     severity: 'CRITICAL',

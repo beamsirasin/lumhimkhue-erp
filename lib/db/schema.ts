@@ -1317,9 +1317,15 @@ export const payrollDeductions = pgTable(
     amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
     reason: text('reason').notNull(),
     occurredDate: date('occurred_date'),
+    // Set when this deduction was pulled in from an employee incident report —
+    // its existence marks the incident as "จัดการแล้ว" (derived, self-healing on delete).
+    incidentId: uuid('incident_id').references(() => employeeIncidents.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
-  (t) => [index('payroll_deductions_item_idx').on(t.payrollItemId)],
+  (t) => [
+    index('payroll_deductions_item_idx').on(t.payrollItemId),
+    index('payroll_deductions_incident_idx').on(t.incidentId),
+  ],
 );
 
 export const payrollAbsences = pgTable(
@@ -1331,8 +1337,13 @@ export const payrollAbsences = pgTable(
     occurredDate: date('occurred_date').notNull(),
     lateMinutes: integer('late_minutes'),
     notes: text('notes'),
+    // Same incident linkage as payroll_deductions.incident_id
+    incidentId: uuid('incident_id').references(() => employeeIncidents.id, { onDelete: 'set null' }),
   },
-  (t) => [index('payroll_absences_item_idx').on(t.payrollItemId)],
+  (t) => [
+    index('payroll_absences_item_idx').on(t.payrollItemId),
+    index('payroll_absences_incident_idx').on(t.incidentId),
+  ],
 );
 
 export const employeeIncidents = pgTable(
@@ -1346,14 +1357,34 @@ export const employeeIncidents = pgTable(
     occurredDate: date('occurred_date').notNull(),
     lateMinutes: integer('late_minutes'),
     damageQuantity: integer('damage_quantity'),
+    // Snapshot of the damage catalog item at report time (catalog rows can be deleted/repriced)
+    damageItemName: text('damage_item_name'),
+    damageUnitPrice: numeric('damage_unit_price', { precision: 10, scale: 2 }),
     description: text('description'),
     reportedBy: uuid('reported_by').notNull().references(() => users.id),
+    // Manual resolution ("จัดการเอง" outside payroll). Payroll resolution is
+    // derived from payroll_deductions/absences.incident_id instead.
+    resolvedAt: timestamp('resolved_at'),
+    resolvedBy: uuid('resolved_by').references(() => users.id),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
   (t) => [
     index('employee_incidents_emp_idx').on(t.employeeId),
     index('employee_incidents_date_idx').on(t.occurredDate),
   ],
+);
+
+/** Damage catalog (แคตตาล็อกของเสียหาย) — managed in HR settings; price snapshotted into incidents. */
+export const damageItems = pgTable(
+  'damage_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    pricePerUnit: numeric('price_per_unit', { precision: 10, scale: 2 }).notNull().default('0'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('damage_items_name_uq').on(t.name)],
 );
 
 export const hrSettings = pgTable('hr_settings', {
@@ -2036,6 +2067,8 @@ export type PayrollAbsence = typeof payrollAbsences.$inferSelect;
 export type NewPayrollAbsence = typeof payrollAbsences.$inferInsert;
 export type EmployeeIncident = typeof employeeIncidents.$inferSelect;
 export type NewEmployeeIncident = typeof employeeIncidents.$inferInsert;
+export type DamageItem = typeof damageItems.$inferSelect;
+export type NewDamageItem = typeof damageItems.$inferInsert;
 export type HrSettings = typeof hrSettings.$inferSelect;
 
 // ─── Recipe Types ─────────────────────────────────────────────────────────────

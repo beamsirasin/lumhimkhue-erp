@@ -18,6 +18,7 @@ export default async function HrIncidentsRoute() {
     <EmployeeIncidentsPage
       employees={result.data.employees}
       incidents={result.data.incidents}
+      damageItems={result.data.damageItems}
       currentUserId={result.data.currentUserId}
       role={result.data.role}
     />
