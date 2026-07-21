@@ -5,9 +5,8 @@ import { neon } from '@neondatabase/serverless';
 
 const databaseUrl = process.env.PHASE17A_TEST_DATABASE_URL;
 const disposableAcknowledged = process.env.PHASE17A_DISPOSABLE_DB_ACK === 'I_UNDERSTAND_THIS_DATABASE_IS_DISPOSABLE';
-const configuredApplicationDatabaseUrl = process.env.DATABASE_URL;
-if (databaseUrl && configuredApplicationDatabaseUrl && databaseUrl === configuredApplicationDatabaseUrl) {
-  throw new Error('PHASE17A_TEST_DATABASE_URL must not equal DATABASE_URL');
+if (databaseUrl?.includes('-pooler')) {
+  throw new Error('PHASE17A_TEST_DATABASE_URL must use a direct non-pooler connection');
 }
 const enabled = Boolean(databaseUrl && disposableAcknowledged);
 const suffix = randomUUID().replaceAll('-', '').slice(0, 16);

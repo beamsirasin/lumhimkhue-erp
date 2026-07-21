@@ -20,15 +20,9 @@
  *              value) → deploy works, the specific feature fails
  */
 
-import { config } from 'dotenv';
-config({ path: '.env.local' });
-
 import { neon } from '@neondatabase/serverless';
-
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) throw new Error('DATABASE_URL not set in .env.local');
-
-const sql = neon(DATABASE_URL);
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 type Req =
   | { kind: 'table'; table: string }
@@ -338,14 +332,24 @@ const GROUPS: Group[] = [
   },
 ];
 
-async function main() {
+export async function runMigrationStatusCheck(
+  databaseUrl: string,
+  schema = 'public',
+  options: { redactDatabaseIdentity?: boolean } = {},
+) {
+  if (!databaseUrl) throw new Error('Explicit database URL is required');
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(schema)) throw new Error('Invalid schema name');
+  const sql = neon(databaseUrl);
   // Fetch all metadata in four read-only queries, then evaluate locally.
   const [tables, columns, indexes, enums] = await Promise.all([
-    sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`,
-    sql`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'`,
-    sql`SELECT indexname FROM pg_indexes WHERE schemaname = 'public'`,
+    sql`SELECT table_name FROM information_schema.tables WHERE table_schema = ${schema}`,
+    sql`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = ${schema}`,
+    sql`SELECT indexname FROM pg_indexes WHERE schemaname = ${schema}`,
     sql`SELECT pt.typname AS type, pe.enumlabel AS value
-        FROM pg_enum pe JOIN pg_type pt ON pe.enumtypid = pt.oid`,
+        FROM pg_enum pe
+        JOIN pg_type pt ON pe.enumtypid = pt.oid
+        JOIN pg_namespace pn ON pn.oid = pt.typnamespace
+        WHERE pn.nspname = ${schema}`,
   ]);
 
   const tableSet = new Set(tables.map((r) => r.table_name as string));
@@ -372,7 +376,8 @@ async function main() {
   };
 
   const dbHost = (() => {
-    try { const u = new URL(DATABASE_URL!); return `${u.hostname}${u.pathname}`; }
+    if (options.redactDatabaseIdentity) return '(explicit disposable database)';
+    try { const u = new URL(databaseUrl); return `${u.hostname}${u.pathname}`; }
     catch { return '(unparseable DATABASE_URL)'; }
   })();
 
@@ -410,21 +415,35 @@ async function main() {
     console.log('      DO NOT DEPLOY this code against this database.');
     console.log('      See docs/architecture/MIGRATIONS.md for the pending plan.');
     console.log('════════════════════════════════════════════════════════════');
-    process.exitCode = 1;
   } else if (warningMissing > 0) {
     console.log(`  ⚠️  BASELINE OK WITH WARNINGS — ${warningMissing} feature-gated group(s) pending.`);
     console.log('      Deploy is safe; the flagged features fail until their migration runs.');
     console.log('════════════════════════════════════════════════════════════');
-    process.exitCode = 0;
   } else {
     console.log('  ✅  MIGRATION BASELINE COMPLETE — schema matches current code.');
     console.log('════════════════════════════════════════════════════════════');
-    process.exitCode = 0;
   }
+  return {
+    ok: criticalMissing === 0,
+    criticalMissing,
+    warningMissing,
+  };
 }
 
-main().catch((err) => {
+async function runFromCli() {
+  const { config } = await import('dotenv');
+  config({ path: '.env.local' });
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) throw new Error('DATABASE_URL not set in .env.local');
+  const result = await runMigrationStatusCheck(databaseUrl);
+  process.exitCode = result.ok ? 0 : 1;
+}
+
+const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : null;
+if (invokedPath === import.meta.url) {
+  runFromCli().catch((err) => {
   console.error('');
   console.error('❌ Migration check failed to run:', err instanceof Error ? err.message : err);
   process.exitCode = 1;
-});
+  });
+}

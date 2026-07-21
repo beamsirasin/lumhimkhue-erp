@@ -117,7 +117,7 @@ describe('Phase 17A.1 void concurrency safety', () => {
 describe('Phase 17A.1 conservative all-or-nothing migration', () => {
   it('runs a read-only preflight before one transaction and records a ledger gate', () => {
     assert.match(migration, /async function preflight/);
-    assert.ok(migration.indexOf('await preflight()') < migration.indexOf('await sql.transaction(['));
+    assert.ok(migration.indexOf('await preflight(sql') < migration.indexOf('await sql.transaction(['));
     assert.match(migration, /CREATE TABLE IF NOT EXISTS app_migrations/);
     assert.match(migration, /ON CONFLICT \(migration_key\) DO NOTHING/);
   });

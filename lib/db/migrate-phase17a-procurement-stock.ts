@@ -7,18 +7,15 @@
  * zero/null prices are pending and positive planning prices are estimated.
  */
 
-import { config } from 'dotenv';
-config({ path: '.env.local' });
+import { neon, type NeonQueryFunction } from '@neondatabase/serverless';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-import { neon } from '@neondatabase/serverless';
+type SqlClient = NeonQueryFunction<false, false>;
 
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) throw new Error('DATABASE_URL not set in .env.local');
+export const PHASE17A1_MIGRATION_KEY = 'phase17a1_procurement_stock_integrity';
 
-const sql = neon(DATABASE_URL);
-const MIGRATION_KEY = 'phase17a1_procurement_stock_integrity';
-
-async function preflight() {
+async function preflight(sql: SqlClient, quiet: boolean) {
   const [summary] = await sql`
     SELECT
       COUNT(*) FILTER (WHERE poi.unit_cost IS NULL)::int AS null_price_items,
@@ -50,20 +47,27 @@ async function preflight() {
     ORDER BY gri.id
     LIMIT 20
   `;
-  console.log('Phase 17A.1 preflight (READ-ONLY)', {
-    ...summary,
-    ...receiptSummary,
-    price_sample_ids: priceSamples,
-    receipt_sample_ids: receiptSamples,
-    legacy_price_decision: 'unit_cost > 0 => estimated; unit_cost <= 0/null => pending',
-  });
+  if (!quiet) {
+    console.log('Phase 17A.1 preflight (READ-ONLY)', {
+      ...summary,
+      ...receiptSummary,
+      price_sample_ids: priceSamples,
+      receipt_sample_ids: receiptSamples,
+      legacy_price_decision: 'unit_cost > 0 => estimated; unit_cost <= 0/null => pending',
+    });
+  }
   if (Number(receiptSummary?.invalid_received_quantity ?? 0) > 0) {
     throw new Error('PREFLIGHT_BLOCKED: goods_receipt_items contains received_quantity <= 0');
   }
 }
 
-async function main() {
-  console.log('Phase 17A.1 — Procurement and Stock Integrity');
+export async function runPhase17A1Migration(
+  databaseUrl: string,
+  options: { quiet?: boolean } = {},
+) {
+  if (!databaseUrl) throw new Error('Explicit database URL is required');
+  const sql = neon(databaseUrl);
+  if (!options.quiet) console.log('Phase 17A.1 — Procurement and Stock Integrity');
   const [dependency] = await sql`SELECT to_regclass('public.store_business_days') AS table_name`;
   if (!dependency?.table_name) {
     throw new Error('Missing store_business_days. Run the approved Phase 17POS-AUTH-A5 migration first.');
@@ -72,15 +76,15 @@ async function main() {
   const [ledgerTable] = await sql`SELECT to_regclass('public.app_migrations') AS table_name`;
   if (ledgerTable?.table_name) {
     const [alreadyApplied] = await sql`
-      SELECT migration_key FROM app_migrations WHERE migration_key = ${MIGRATION_KEY} LIMIT 1
+      SELECT migration_key FROM app_migrations WHERE migration_key = ${PHASE17A1_MIGRATION_KEY} LIMIT 1
     `;
     if (alreadyApplied) {
-      console.log('Phase 17A.1 already applied; ledger gate stopped a rerun.');
-      return;
+      if (!options.quiet) console.log('Phase 17A.1 already applied; ledger gate stopped a rerun.');
+      return { applied: false as const };
     }
   }
 
-  await preflight();
+  await preflight(sql, options.quiet ?? false);
 
   await sql.transaction([
     sql`CREATE TABLE IF NOT EXISTS app_migrations (
@@ -377,7 +381,7 @@ async function main() {
     END $$`,
 
     sql`INSERT INTO app_migrations (migration_key, phase, metadata)
-      VALUES (${MIGRATION_KEY}, 'Phase 17A.1', ${JSON.stringify({
+      VALUES (${PHASE17A1_MIGRATION_KEY}, 'Phase 17A.1', ${JSON.stringify({
         priceBackfill: 'conservative',
         quantityChanged: false,
         legacyPositiveUnitCost: 'estimated',
@@ -385,10 +389,24 @@ async function main() {
       ON CONFLICT (migration_key) DO NOTHING`,
   ]);
 
-  console.log('Phase 17A.1 migration committed. Run db:check-migrations next.');
+  if (!options.quiet) console.log('Phase 17A.1 migration committed. Run db:check-migrations next.');
+  return { applied: true as const };
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+async function runFromCli() {
+  // Keep the production CLI contract unchanged. Tests import the function above
+  // and pass PHASE17A_TEST_DATABASE_URL explicitly, so importing never reads dotenv.
+  const { config } = await import('dotenv');
+  config({ path: '.env.local' });
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) throw new Error('DATABASE_URL not set in .env.local');
+  await runPhase17A1Migration(databaseUrl);
+}
+
+const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : null;
+if (invokedPath === import.meta.url) {
+  runFromCli().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
