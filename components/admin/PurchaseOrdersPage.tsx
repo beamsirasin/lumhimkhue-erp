@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useMemo, useTransition } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -15,8 +15,6 @@ import {
   ClipboardList,
   X,
   Copy,
-  ChevronDown,
-  ChevronRight,
   PackagePlus,
   MoreHorizontal,
   Search,
@@ -25,6 +23,7 @@ import {
   Ban,
   Pencil,
   Eye,
+  Siren,
 } from 'lucide-react';
 import type { Resolver } from 'react-hook-form';
 import { cn } from '@/lib/utils';
@@ -35,6 +34,8 @@ import {
   submitForApproval,
   approveOrder,
   receiveOrder,
+  confirmReceiptPrice,
+  voidGoodsReceipt,
   cancelOrder,
   getPurchaseOrderDetail,
   getStockCountReorderItems,
@@ -71,6 +72,7 @@ import {
   SheetContent,
 } from '@/components/ui/sheet';
 import { formatThaiDate } from '@/lib/date-time';
+import { EmergencyPurchaseDialog } from '@/components/admin/EmergencyPurchaseDialog';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -83,6 +85,9 @@ const STATUS_LABEL: Record<string, string> = {
   partial_received: 'รับบางส่วน',
   received: 'รับของแล้ว',
   cancelled: 'ยกเลิก',
+  delayed: 'ล่าช้า',
+  pending_price: 'รอราคา',
+  emergency: 'ซื้อฉุกเฉิน',
 };
 
 
@@ -93,7 +98,7 @@ const DISCREPANCY_LABEL: Record<string, string> = {
   spoiled: 'เสียหาย',
 };
 
-const STATUS_FILTERS = ['all', 'draft', 'pending_approval', 'ordered', 'partial_received', 'received', 'cancelled'] as const;
+const STATUS_FILTERS = ['all', 'draft', 'pending_approval', 'ordered', 'delayed', 'partial_received', 'pending_price', 'emergency', 'received', 'cancelled'] as const;
 
 type StatusFilter = typeof STATUS_FILTERS[number];
 type POListItem = POListData['orders'][number];
@@ -107,7 +112,7 @@ const STATUS_VARIANT: Record<string, BadgeVariant> = {
   cancelled: 'danger',
 };
 
-function fmt(n: string | number) {
+function fmt(n: string | number | null | undefined) {
   return Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
@@ -131,6 +136,7 @@ interface Props {
 
 export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRole }: Props) {
   const [modal, setModal] = useState<Modal | null>(null);
+  const [showEmergency, setShowEmergency] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [supplierFilter, setSupplierFilter] = useState(initialSupplierFilter ?? '');
   const [search, setSearch] = useState('');
@@ -156,6 +162,9 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
     return data.orders.reduce<Record<string, number>>(
       (acc, po) => {
         acc[po.status] = (acc[po.status] ?? 0) + 1;
+        if (po.isDelayed) acc.delayed = (acc.delayed ?? 0) + 1;
+        if (po.hasPendingPrices) acc.pending_price = (acc.pending_price ?? 0) + 1;
+        if (po.purchaseType === 'emergency_direct') acc.emergency = (acc.emergency ?? 0) + 1;
         return acc;
       },
       { all: data.orders.length },
@@ -165,9 +174,12 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return data.orders.filter((po) => {
-      const matchesStatus = statusFilter === 'all' || po.status === statusFilter;
-      const matchesSupplier = !supplierFilter || po.supplier.id === supplierFilter;
-      const matchesSearch = !q || po.poNumber.toLowerCase().includes(q) || po.supplier.name.toLowerCase().includes(q);
+      const matchesStatus = statusFilter === 'all' || po.status === statusFilter
+        || (statusFilter === 'delayed' && po.isDelayed)
+        || (statusFilter === 'pending_price' && po.hasPendingPrices)
+        || (statusFilter === 'emergency' && po.purchaseType === 'emergency_direct');
+      const matchesSupplier = !supplierFilter || po.supplierId === supplierFilter;
+      const matchesSearch = !q || po.poNumber.toLowerCase().includes(q) || po.displaySupplierName.toLowerCase().includes(q);
       return matchesStatus && matchesSupplier && matchesSearch;
     });
   }, [data.orders, statusFilter, supplierFilter, search]);
@@ -177,7 +189,7 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
   const awaitingReceiptCount = (statusCounts.ordered ?? 0) + (statusCounts.partial_received ?? 0);
   const totalValue = data.orders
     .filter((po) => po.status !== 'cancelled')
-    .reduce((sum, po) => sum + Number(po.total), 0);
+    .reduce((sum, po) => sum + Number(po.confirmedTotal ?? 0), 0);
 
   function resetFilters() {
     setSearch('');
@@ -202,14 +214,14 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
   }
 
   function handleCancel(id: string) {
-    if (!confirm('ยืนยันยกเลิกใบสั่งซื้อ?')) return;
+    const reason = window.prompt('ระบุเหตุผลยกเลิกใบสั่งซื้อ/ยอดค้างรับ');
+    if (!reason?.trim()) return;
     startTransition(async () => {
-      const r = await cancelOrder(id);
+      const r = await cancelOrder({ id, reason: reason.trim() });
       if (!r.ok) toast.error(r.error);
       else { toast.success('ยกเลิกแล้ว'); invalidate(); }
     });
   }
-
   const columns = [
     {
       key: 'poNumber',
@@ -229,7 +241,7 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
       header: 'Supplier',
       render: (po: POListItem) => (
         <div className="min-w-[180px]">
-          <p className="font-medium text-foreground">{po.supplier.name}</p>
+          <p className="font-medium text-foreground">{po.supplier?.name ?? po.vendorName ?? 'ไม่ระบุผู้ขาย'}</p>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
             {po.items.length.toLocaleString('th-TH')} รายการ
           </p>
@@ -246,14 +258,18 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
       header: 'สถานะ',
       align: 'center' as const,
       render: (po: POListItem) => (
-        <StatusBadge label={STATUS_LABEL[po.status] ?? po.status} variant={STATUS_VARIANT[po.status] ?? 'neutral'} dot />
+        <div className="space-y-1"><StatusBadge label={STATUS_LABEL[po.status] ?? po.status} variant={STATUS_VARIANT[po.status] ?? 'neutral'} dot />{po.isDelayed && <p className="text-[10px] text-[var(--status-danger-fg)]">ล่าช้า {po.delayedDays} วัน</p>}</div>
       ),
     },
     {
       key: 'total',
       header: 'ยอดรวม',
       align: 'right' as const,
-      render: (po: POListItem) => <span className="tabular-nums font-medium text-foreground">฿{fmt(po.total)}</span>,
+      render: (po: POListItem) => po.priceStatus === 'pending' && Number(po.total) === 0 ? (
+        <span className="text-[var(--status-warning-fg)]">รอราคา</span>
+      ) : (
+        <div><span className="tabular-nums font-medium text-foreground">{po.priceStatus === 'confirmed' ? '฿' : '≈ ฿'}{fmt(po.total)}</span>{po.hasPendingPrices && <p className="text-[10px] text-[var(--status-warning-fg)]">ยอดบางส่วน</p>}</div>
+      ),
     },
     {
       key: 'taxInvoice',
@@ -348,14 +364,19 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
     <AppShell>
       <PageHeader
         title="ใบสั่งซื้อ (PO)"
-        subtitle={`${data.orders.length.toLocaleString('th-TH')} รายการทั้งหมด · มูลค่ารวม ฿${fmt(totalValue)}`}
+        subtitle={`${data.orders.length.toLocaleString('th-TH')} รายการทั้งหมด · ยอดจริงยืนยันแล้ว ฿${fmt(totalValue)}`}
         actions={
-          <Button type="button" onClick={() => setModal({ type: 'new' })}>
-            <Plus className="size-4" />
-            สร้างใบสั่งซื้อ
-          </Button>
-        }
-      />
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => setShowEmergency(true)}>
+              <Siren className="size-4" />
+              ซื้อฉุกเฉิน
+            </Button>
+            <Button type="button" onClick={() => setModal({ type: 'new' })}>
+              <Plus className="size-4" />
+              สร้างใบสั่งซื้อ
+            </Button>
+          </div>
+        }      />
 
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-xl border border-border bg-[var(--surface-1)] p-4 shadow-[var(--shadow-card)]">
@@ -506,6 +527,13 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
           </SheetContent>
         )}
       </Sheet>
+      <EmergencyPurchaseDialog
+        open={showEmergency}
+        onOpenChange={setShowEmergency}
+        suppliers={data.suppliers}
+        orders={data.orders}
+        onSaved={invalidate}
+      />
     </AppShell>
   );
 }
@@ -539,7 +567,14 @@ interface POFormInnerProps {
   onSaved: () => void;
 }
 
-type POFormIngredient = { id: string; name: string; unit: string; lastCost: string };
+type POFormIngredient = {
+  id: string;
+  name: string;
+  unit: string;
+  lastCost: string;
+  orderUnit: string | null;
+  orderUnitConversion: string;
+};
 
 function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, onSaved }: POFormInnerProps) {
   type FormValues = CreatePurchaseOrderInput | UpdatePurchaseOrderInput;
@@ -552,6 +587,7 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
     handleSubmit,
     watch,
     control,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(zodSchema) as Resolver<FormValues>,
@@ -561,13 +597,13 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
           orderDate: today,
           vatRate: 7,
           hasTaxInvoice: false,
-          items: [{ ingredientId: '', quantity: 1, unit: '', unitCost: 0 }],
+          items: [{ ingredientId: '', quantity: 1, unit: '', purchaseQuantity: 1, purchaseUnit: '', conversionFactor: 1, priceStatus: 'estimated', unitCost: 0 }],
         },
   });
 
   const { fields, append, remove, replace } = useFieldArray({ control, name: 'items' as never });
 
-  const watchedItems = watch('items') as Array<{ ingredientId: string; quantity: number; unit: string; unitCost: number }>;
+  const watchedItems = watch('items') as Array<{ ingredientId: string; quantity: number; unit: string; purchaseQuantity?: number; purchaseUnit?: string | null; conversionFactor: number; priceStatus: 'pending' | 'estimated' | 'confirmed'; unitCost: number | null }>;
   const watchedVatRate = watch('vatRate') as number;
 
   const [ingredients, setIngredients] = useState<POFormIngredient[]>([]);
@@ -580,7 +616,10 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
   });
 
   const subtotal = useMemo(
-    () => (watchedItems ?? []).reduce((s, i) => s + (Number(i?.quantity) || 0) * (Number(i?.unitCost) || 0), 0),
+    () => (watchedItems ?? []).reduce((s, i) => {
+      const normalized = (Number(i?.purchaseQuantity ?? i?.quantity) || 0) * (Number(i?.conversionFactor) || 1);
+      return i?.priceStatus === 'pending' ? s : s + normalized * (Number(i?.unitCost) || 0);
+    }, 0),
     [watchedItems],
   );
   const vatAmt = subtotal * ((Number(watchedVatRate) || 7) / 100);
@@ -628,6 +667,10 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
         ingredientId: i.ingredientId,
         quantity: importPanel.qtys[i.ingredientId] ?? i.reorderQty,
         unit: i.unit,
+        purchaseQuantity: importPanel.qtys[i.ingredientId] ?? i.reorderQty,
+        purchaseUnit: i.unit,
+        conversionFactor: 1,
+        priceStatus: 'estimated' as const,
         unitCost: i.lastCost,
       })) as never[],
     );
@@ -694,7 +737,7 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
               </button>
               <button
                 type="button"
-                onClick={() => append({ ingredientId: '', quantity: 1, unit: '', unitCost: 0 } as never)}
+                onClick={() => append({ ingredientId: '', quantity: 1, unit: '', purchaseQuantity: 1, purchaseUnit: '', conversionFactor: 1, priceStatus: 'estimated', unitCost: 0 } as never)}
                 className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
               >
                 <Plus className="size-3.5" /> เพิ่มรายการ
@@ -817,10 +860,12 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
             {fields.map((field, idx) => {
               const ingId = watchedItems?.[idx]?.ingredientId;
               const ing = ingredients.find((i) => i.id === ingId);
-              const lineTotal = (Number(watchedItems?.[idx]?.quantity) || 0) * (Number(watchedItems?.[idx]?.unitCost) || 0);
+              const priceStatus = watchedItems?.[idx]?.priceStatus ?? 'pending';
+              const normalizedQuantity = (Number(watchedItems?.[idx]?.purchaseQuantity ?? watchedItems?.[idx]?.quantity) || 0) * (Number(watchedItems?.[idx]?.conversionFactor) || 1);
+              const lineTotal = priceStatus === 'pending' ? null : normalizedQuantity * (Number(watchedItems?.[idx]?.unitCost) || 0);
               return (
                 <div key={field.id} className="grid grid-cols-12 gap-2 items-start">
-                  <div className="col-span-4">
+                  <div className="col-span-3">
                     <select
                       {...register(`items.${idx}.ingredientId` as never)}
                       className={`${INPUT} text-xs`}
@@ -831,6 +876,11 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
                           const costInput = document.querySelector<HTMLInputElement>(`[name="items.${idx}.unitCost"]`);
                           if (unitInput) unitInput.value = found.unit;
                           if (costInput) costInput.value = found.lastCost;
+                          setValue(`items.${idx}.unit` as never, found.unit as never);
+                          setValue(`items.${idx}.purchaseUnit` as never, (found.orderUnit ?? found.unit) as never);
+                          setValue(`items.${idx}.conversionFactor` as never, Number(found.orderUnitConversion ?? 1) as never);
+                          setValue(`items.${idx}.unitCost` as never, Number(found.lastCost) as never);
+                          setValue(`items.${idx}.priceStatus` as never, 'estimated' as never);
                         }
                       }}
                     >
@@ -840,30 +890,46 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
                       ))}
                     </select>
                   </div>
-                  <div className="col-span-2">
+                  <div className="col-span-1">
                     <input
                       {...register(`items.${idx}.quantity` as never, { valueAsNumber: true })}
                       type="number" step="0.01" min="0.01" placeholder="จำนวน"
                       className={`${INPUT} text-right text-xs`}
                     />
                   </div>
-                  <div className="col-span-2">
+                  <div className="col-span-1">
                     <input
                       {...register(`items.${idx}.unit` as never)}
                       placeholder="หน่วย" defaultValue={ing?.unit ?? ''}
                       className={`${INPUT} text-xs`}
                     />
                   </div>
+                  <div className="col-span-1">
+                    <input {...register(`items.${idx}.purchaseQuantity` as never, { valueAsNumber: true })} type="number" min="0.01" step="0.01" placeholder="จำนวนซื้อ" className={`${INPUT} text-right text-xs`} />
+                  </div>
+                  <div className="col-span-1">
+                    <input {...register(`items.${idx}.purchaseUnit` as never)} placeholder="หน่วยซื้อ" className={`${INPUT} text-xs`} />
+                  </div>
+                  <div className="col-span-1">
+                    <input {...register(`items.${idx}.conversionFactor` as never, { valueAsNumber: true })} type="number" min="0.0001" step="0.0001" title="ตัวคูณเป็น stock unit" className={`${INPUT} text-right text-xs`} />
+                  </div>
+                  <div className="col-span-2">
+                    <select {...register(`items.${idx}.priceStatus` as never)} className={`${INPUT} text-xs`}>
+                      <option value="pending">รอราคา</option>
+                      <option value="estimated">ประมาณการ</option>
+
+                    </select>
+                  </div>
                   <div className="col-span-2">
                     <input
                       {...register(`items.${idx}.unitCost` as never, { valueAsNumber: true })}
-                      type="number" step="0.01" min="0" placeholder="ราคา/หน่วย"
+                      type="number" step="0.01" min="0" placeholder={priceStatus === 'pending' ? 'รอราคา' : `ราคา/${ing?.unit ?? 'หน่วยสต็อก'}`} disabled={priceStatus === 'pending'}
                       defaultValue={ing ? Number(ing.lastCost) : 0}
                       className={`${INPUT} text-right text-xs`}
                     />
                   </div>
-                  <div className="col-span-1 flex items-center justify-end pt-2">
-                    <span className="text-xs tabular-nums text-muted-foreground">{fmt(lineTotal)}</span>
+                  <div className="col-span-2 flex items-center justify-end pt-2">
+                    <span className="text-xs tabular-nums text-muted-foreground">{lineTotal == null ? 'รอราคา' : `${priceStatus === 'confirmed' ? '฿' : '≈ ฿'}${fmt(lineTotal)} · ${fmt(normalizedQuantity)} ${ing?.unit ?? ''}`}</span>
                   </div>
                   <div className="col-span-1 flex items-center justify-center pt-1.5">
                     {fields.length > 1 && (
@@ -954,7 +1020,7 @@ function POFormEdit({ id, suppliers, onClose, onSaved }: { id: string; suppliers
 
   const initialValues: UpdatePurchaseOrderInput = {
     id: data.po.id,
-    supplierId: data.po.supplierId,
+    supplierId: data.po.supplierId ?? '',
     orderDate: data.po.orderDate,
     expectedDate: data.po.expectedDate ?? undefined,
     vatRate: Number(data.po.vatRate),
@@ -965,7 +1031,12 @@ function POFormEdit({ id, suppliers, onClose, onSaved }: { id: string; suppliers
       ingredientId: item.ingredientId,
       quantity: Number(item.quantity),
       unit: item.unit,
-      unitCost: Number(item.unitCost),
+      purchaseQuantity: item.purchaseQuantity == null ? Number(item.quantity) : Number(item.purchaseQuantity),
+      purchaseUnit: item.purchaseUnit ?? item.unit,
+      conversionFactor: Number(item.purchaseUnitConversion ?? 1),
+      priceStatus: item.priceStatus === 'pending' ? 'pending' as const : 'estimated' as const,
+      unitCost: item.unitCost == null ? null : Number(item.unitCost),
+      lastCostSnapshot: item.lastCostSnapshot == null ? null : Number(item.lastCostSnapshot),
     })),
   };
 
@@ -1022,14 +1093,25 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
       hasTaxInvoice: data.po.hasTaxInvoice,
       taxInvoiceNumber: data.po.taxInvoiceNumber ?? '',
       isPartial: false,
+      idempotencyKey: crypto.randomUUID(),
+      overReceiveConfirmed: false,
+      overReceiveReason: '',
+      notes: '',
       items: data.po.items.map((item) => {
         const alreadyReceived = Number(item.receivedQuantity ?? 0);
         const remaining = Math.max(0, Number(item.quantity) - alreadyReceived);
+        const conversionFactor = Number(item.purchaseUnitConversion ?? 1);
         return {
           id: item.id,
           receivedQuantity: remaining,
+          receivedPurchaseQuantity: remaining / conversionFactor,
+          purchaseUnit: item.purchaseUnit ?? item.unit,
+          conversionFactor,
+          stockUnit: item.unit,
           discrepancyType: 'none' as const,
           discrepancyNotes: '',
+          priceStatus: item.priceStatus as 'pending' | 'estimated' | 'confirmed',
+          actualUnitCost: item.priceStatus === 'confirmed' ? Number(item.confirmedUnitCost ?? item.unitCost ?? 0) : null,
         };
       }),
     },
@@ -1037,11 +1119,19 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
 
   const hasTaxInvoice = watch('hasTaxInvoice');
   const isPartialChecked = watch('isPartial');
+  const receiveLines = watch('items');
+  const hasOverReceive = data.po.items.some((item, index) => {
+    const line = receiveLines?.[index];
+    const normalized = line?.receivedPurchaseQuantity == null
+      ? Number(line?.receivedQuantity ?? 0)
+      : Number(line.receivedPurchaseQuantity) * Number(line.conversionFactor ?? 1);
+    return Number(item.receivedQuantity ?? 0) + normalized > Number(item.quantity) + 0.005;
+  });
 
   async function onSubmit(formData: ReceivePurchaseOrderInput) {
     const result = await receiveOrder(formData);
     if (!result.ok) { toast.error(result.error); return; }
-    toast.success(formData.isPartial ? 'บันทึกการรับบางส่วนแล้ว' : 'บันทึกการรับของครบแล้ว — อัปเดตราคาวัตถุดิบแล้ว');
+    toast.success(result.duplicate ? 'รายการนี้ถูกบันทึกแล้ว ระบบไม่รับซ้ำ' : formData.isPartial ? 'บันทึกการรับบางส่วนแล้ว' : 'บันทึกการรับของครบแล้ว');
     onSaved();
   }
 
@@ -1052,7 +1142,7 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
           <h2 className="text-sm font-semibold text-foreground">
             {isPartialStatus ? 'รับของเพิ่ม' : 'รับของ'} — {data.po.poNumber}
           </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">{data.po.supplier.name}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{data.po.supplier?.name ?? data.po.vendorName ?? 'ไม่ระบุผู้ขาย'}</p>
         </div>
         <button type="button" aria-label="ปิด" onClick={onClose} className="text-muted-foreground hover:text-foreground text-lg">×</button>
       </div>
@@ -1079,6 +1169,7 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
             const alreadyReceived = Number(item.receivedQuantity ?? 0);
             const remaining = Math.max(0, Number(item.quantity) - alreadyReceived);
             const discrepancyVal = watch(`items.${idx}.discrepancyType`);
+            const priceStatusVal = watch(`items.${idx}.priceStatus`);
             return (
               <div key={item.id} className="rounded-xl border border-border p-4 space-y-3">
                 <input type="hidden" {...register(`items.${idx}.id`)} value={item.id} />
@@ -1097,12 +1188,17 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
+                    <input type="hidden" {...register(`items.${idx}.receivedQuantity`, { valueAsNumber: true })} />
+                    <input type="hidden" {...register(`items.${idx}.conversionFactor`, { valueAsNumber: true })} />
+                    <input type="hidden" {...register(`items.${idx}.purchaseUnit`)} />
+                    <input type="hidden" {...register(`items.${idx}.stockUnit`)} />
                     <input
-                      {...register(`items.${idx}.receivedQuantity`, { valueAsNumber: true })}
+                      {...register(`items.${idx}.receivedPurchaseQuantity`, { valueAsNumber: true })}
                       type="number" step="0.01" min="0"
                       className="w-24 rounded-lg border border-border bg-background text-foreground px-3 py-1.5 text-sm text-right outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
                     />
-                    <span className="text-sm text-muted-foreground w-8 shrink-0">{item.unit}</span>
+                    <span className="text-sm text-muted-foreground shrink-0">{item.purchaseUnit ?? item.unit}</span>
+                    <span className="text-[10px] text-muted-foreground">× {fmt(item.purchaseUnitConversion ?? 1)} = stock {item.unit}</span>
                   </div>
                 </div>
 
@@ -1132,10 +1228,41 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
                     </div>
                   )}
                 </div>
-              </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">สถานะราคาเมื่อรับ</label>
+                    <select {...register(`items.${idx}.priceStatus`)} className={INPUT}>
+                      <option value="pending">รอราคา</option>
+                      <option value="estimated">ประมาณการ</option>
+                      <option value="confirmed">ราคาจริงยืนยันแล้ว</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">ราคาจริงต่อ {item.unit}</label>
+                    <input
+                      {...register(`items.${idx}.actualUnitCost`, { valueAsNumber: true })}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      disabled={priceStatusVal !== 'confirmed'}
+                      placeholder={priceStatusVal === 'confirmed' ? 'ราคาจริง' : 'ยืนยันภายหลัง'}
+                      className={`${INPUT} text-right disabled:opacity-50`}
+                    />
+                  </div>
+                </div>              </div>
             );
           })}
         </div>
+
+        {hasOverReceive && (
+          <div className="rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] p-3 space-y-2">
+            <label className="flex items-center gap-2 text-sm text-[var(--status-warning-fg)]">
+              <input type="checkbox" {...register('overReceiveConfirmed')} />
+              ยืนยันจำนวนรับเกินใบสั่งซื้อ
+            </label>
+            <input {...register('overReceiveReason')} className={INPUT} placeholder="เหตุผลที่รับเกิน (บังคับ)" />
+          </div>
+        )}
 
         {/* Partial receipt toggle */}
         <div className="rounded-lg bg-muted/30 border border-border px-4 py-3 space-y-1">
@@ -1190,7 +1317,8 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
 // ── PO Detail modal ───────────────────────────────────────────────────────────
 
 function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => void; onReceive: (id: string) => void }) {
-  const { data, isLoading } = useQuery({
+  const queryClient = useQueryClient();
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ['po-detail', id],
     queryFn: async () => {
       const r = await getPurchaseOrderDetail(id);
@@ -1201,7 +1329,7 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
   });
 
   // Must be above the early return to satisfy Rules of Hooks
-  const [showReceipts, setShowReceipts] = useState(false);
+  const [isReceiptPending, startReceiptTransition] = useTransition();
 
   if (isLoading || !data) {
     return (
@@ -1233,8 +1361,8 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
       </head><body>
       <h1>ใบสั่งซื้อ</h1>
       <p><b>เลขที่:</b> ${po.poNumber}</p>
-      <p><b>Supplier:</b> ${po.supplier.name}</p>
-      ${po.supplier.taxId ? `<p><b>เลขภาษี:</b> ${po.supplier.taxId}</p>` : ''}
+      <p><b>Supplier:</b> ${po.supplier?.name ?? po.vendorName ?? 'ไม่ระบุผู้ขาย'}</p>
+      ${po.supplier?.taxId ? `<p><b>เลขภาษี:</b> ${po.supplier?.taxId}</p>` : ''}
       <p><b>วันที่สั่ง:</b> ${fmtDate(po.orderDate)}</p>
       ${po.expectedDate ? `<p><b>คาดรับ:</b> ${fmtDate(po.expectedDate)}</p>` : ''}
       <hr/>
@@ -1264,7 +1392,7 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
   function handleLineCopy() {
     const lines: string[] = [
       `📦 ใบสั่งซื้อ ${po.poNumber}`,
-      `Supplier: ${po.supplier.name}`,
+      `Supplier: ${po.supplier?.name ?? po.vendorName ?? 'ไม่ระบุผู้ขาย'}`,
       `วันที่: ${fmtDate(po.orderDate)}`,
       po.expectedDate ? `คาดรับ: ${fmtDate(po.expectedDate)}` : '',
       '',
@@ -1288,6 +1416,37 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
   }
 
   const receipts = po.goodsReceipts ?? [];
+
+  function handleConfirmReceiptPrice(receiptItemId: string, estimated: string | null) {
+    const rawPrice = window.prompt(`ราคาจริงต่อหน่วย${estimated ? ` (ประมาณไว้ ฿${fmt(estimated)})` : ''}`);
+    if (!rawPrice) return;
+    const actualUnitCost = Number(rawPrice);
+    if (!Number.isFinite(actualUnitCost) || actualUnitCost <= 0) {
+      toast.error('ราคาจริงต้องมากกว่า 0');
+      return;
+    }
+    const reason = window.prompt('ระบุแหล่งที่มาหรือเหตุผลการยืนยันราคา');
+    if (!reason?.trim()) return;
+    startReceiptTransition(async () => {
+      const result = await confirmReceiptPrice({ goodsReceiptItemId: receiptItemId, actualUnitCost, reason: reason.trim() });
+      if (!result.ok) { toast.error(result.error); return; }
+      toast.success('ยืนยันราคาจริงและบันทึกประวัติแล้ว');
+      await refetch();
+      await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    });
+  }
+
+  function handleVoidReceipt(goodsReceiptId: string) {
+    const reason = window.prompt('เหตุผลยกเลิกใบรับของ (ระบบจะย้อนยอดรับ)');
+    if (!reason?.trim()) return;
+    startReceiptTransition(async () => {
+      const result = await voidGoodsReceipt({ goodsReceiptId, reason: reason.trim() });
+      if (!result.ok) { toast.error(result.error); return; }
+      toast.success('ยกเลิกใบรับของและย้อนยอดรับแล้ว');
+      await refetch();
+      await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    });
+  }
 
   return (
     <div className="h-full overflow-y-auto bg-[var(--surface-1)] p-6">
@@ -1321,9 +1480,9 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-xs text-muted-foreground">Supplier</p>
-            <p className="font-medium text-foreground">{po.supplier.name}</p>
-            {po.supplier.taxId && <p className="text-xs text-muted-foreground">เลขภาษี: {po.supplier.taxId}</p>}
-            {po.supplier.phone && <p className="text-xs text-muted-foreground">{po.supplier.phone}</p>}
+            <p className="font-medium text-foreground">{po.supplier?.name ?? po.vendorName ?? 'ไม่ระบุผู้ขาย'}</p>
+            {po.supplier?.taxId && <p className="text-xs text-muted-foreground">เลขภาษี: {po.supplier?.taxId}</p>}
+            {po.supplier?.phone && <p className="text-xs text-muted-foreground">{po.supplier?.phone}</p>}
           </div>
           <div>
             <p className="text-xs text-muted-foreground">วันที่สั่ง</p>
@@ -1406,60 +1565,52 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
 
         {/* Goods receipts history */}
         {receipts.length > 0 && (
-          <div className="rounded-xl border border-border overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setShowReceipts((v) => !v)}
-              className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors"
-            >
-              <span className="text-xs font-semibold text-foreground">
-                ประวัติการรับของ ({receipts.length} ครั้ง)
-              </span>
-              {showReceipts ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
-            </button>
-            {showReceipts && (
-              <div className="divide-y divide-border">
-                {receipts.map((receipt) => (
-                  <div key={receipt.id} className="px-4 py-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-medium text-foreground">
-                        {fmtDate(receipt.receivedDate)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        โดย {receipt.receivedByUser?.name ?? '—'}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      {receipt.items.map((ri) => {
-                        const poItem = po.items.find((pi) => pi.id === ri.purchaseOrderItemId);
-                        return (
-                          <div key={ri.id} className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">{poItem?.ingredient.name ?? '—'}</span>
-                            <div className="flex items-center gap-2">
-                              <span className="tabular-nums text-foreground">
-                                {fmt(ri.receivedQuantity)} {poItem?.unit}
-                              </span>
-                              {ri.discrepancyType !== 'none' && (
-                                <span className="rounded-full bg-[var(--status-warning-bg)] px-1.5 py-0.5 text-[var(--status-warning-fg)] font-medium">
-                                  {DISCREPANCY_LABEL[ri.discrepancyType]}
-                                  {ri.discrepancyNotes && `: ${ri.discrepancyNotes}`}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {receipt.notes && (
-                      <p className="text-xs text-muted-foreground italic">{receipt.notes}</p>
-                    )}
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-foreground">ประวัติการรับของ ({receipts.length} ครั้ง)</p>
+            {receipts.map((receipt) => (
+              <div key={receipt.id} className={cn('rounded-xl border border-border p-3 space-y-2', receipt.voidedAt && 'opacity-60')}>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-medium text-foreground">{fmtDate(receipt.receivedDate)}</p>
+                    <p className="text-xs text-muted-foreground">โดย {receipt.receivedByUser?.name ?? '—'}</p>
                   </div>
-                ))}
+                  {receipt.voidedAt ? (
+                    <StatusBadge label="Void แล้ว" variant="danger" />
+                  ) : (
+                    <Button type="button" size="sm" variant="outline" disabled={isReceiptPending} onClick={() => handleVoidReceipt(receipt.id)}>
+                      <Ban className="size-3.5" /> Void receipt
+                    </Button>
+                  )}
+                </div>
+                {receipt.items.map((ri) => {
+                  const poItem = po.items.find((candidate) => candidate.id === ri.purchaseOrderItemId);
+                  return (
+                    <div key={ri.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/30 p-2 text-xs">
+                      <div>
+                        <span className="font-medium text-foreground">{poItem?.ingredient.name ?? '—'}</span>
+                        <span className="ml-2 text-muted-foreground">{fmt(ri.receivedQuantity)} {poItem?.unit}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {ri.discrepancyType !== 'none' && <StatusBadge label={DISCREPANCY_LABEL[ri.discrepancyType]} variant="warning" />}
+                        {ri.priceStatus === 'confirmed' && ri.actualUnitCost != null ? (
+                          <StatusBadge label={`ราคาจริง ฿${fmt(ri.actualUnitCost)}`} variant="success" />
+                        ) : !receipt.voidedAt ? (
+                          <Button type="button" size="sm" variant="outline" disabled={isReceiptPending} onClick={() => handleConfirmReceiptPrice(ri.id, ri.estimatedUnitCost)}>
+                            ยืนยันราคาจริง
+                          </Button>
+                        ) : (
+                          <StatusBadge label="รอราคา" variant="warning" />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {receipt.notes && <p className="text-xs text-muted-foreground italic">{receipt.notes}</p>}
+                {receipt.voidReason && <p className="text-xs text-[var(--status-danger-fg)]">เหตุผล Void: {receipt.voidReason}</p>}
               </div>
-            )}
+            ))}
           </div>
         )}
-
         {/* Receive more button for partial */}
         {po.status === 'partial_received' && (
           <button
@@ -1476,5 +1627,3 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
     </div>
   );
 }
-
-

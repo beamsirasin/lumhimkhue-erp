@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useTransition } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -136,9 +136,9 @@ function OverviewTab({ data, isRefreshing }: { data: InventoryDashboardData; isR
         />
         <StatCard
           loading={isRefreshing}
-          label="ยอดสั่งซื้อเดือนนี้"
+          label="ยอดจริงยืนยันเดือนนี้"
           value={`฿${fmtCompact(data.monthlySpend)}`}
-          subLabel="ไม่รวม PO ที่ยกเลิก"
+          subLabel={data.monthlyPendingPriceCount > 0 ? `ยังรอราคา ${data.monthlyPendingPriceCount} PO` : 'ไม่มีรายการรอราคา'}
           icon={<TrendingUp className="size-4" />}
           accent="warning"
         />
@@ -147,7 +147,7 @@ function OverviewTab({ data, isRefreshing }: { data: InventoryDashboardData; isR
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <DataCard
           title="สถานะนับสต็อกล่าสุด"
-          subtitle="ใช้เป็นฐานในการเตือนสต็อกต่ำ"
+          subtitle="ใช้เฉพาะผลนับที่ตรวจรับแล้วเป็น stock truth"
           className="lg:col-span-2"
           actions={
             <LinkButton href="/inventory/count" variant="outline" size="sm">
@@ -356,7 +356,7 @@ function OverviewTab({ data, isRefreshing }: { data: InventoryDashboardData; isR
                     <div key={po.id} className="flex items-center gap-3 px-5 py-3">
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-mono text-sm font-medium text-foreground">{po.poNumber}</p>
-                        <p className="truncate text-xs text-muted-foreground">{po.supplier.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">{po.supplier?.name ?? po.vendorName ?? 'ไม่ระบุผู้ขาย'}</p>
                       </div>
                       <div className="shrink-0 text-right">
                         <p className="text-sm font-medium tabular-nums text-foreground">฿{fmt(po.total)}</p>
@@ -774,5 +774,3 @@ export function InventoryDashboard({ initialData }: Props) {
     </AppShell>
   );
 }
-
-

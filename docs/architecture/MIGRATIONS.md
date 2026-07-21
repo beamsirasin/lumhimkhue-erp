@@ -118,7 +118,30 @@ arrived via dev-time `db:push` (no script) — present and verified.
 - Rollback after disabling the A5 application code:
   `DROP TABLE store_business_days`. This removes only day-close history.
 
-### 4.4 `payments.idempotency_key` — applied here, **verify per environment**
+### 4.4 Phase 17A.1 procurement/stock integrity — PENDING, NOT RUN
+
+- **Script:** `lib/db/migrate-phase17a-procurement-stock.ts`.
+- **Dependency:** `store_business_days` from Phase 17POS-AUTH-A5 must exist first; the
+  script aborts before mutation when that dependency is missing.
+- **Safety:** a read-only preflight reports null/zero/positive planning prices, PO states,
+  receipt rows, invalid quantities, and sample record IDs. Schema changes, backfills,
+  constraints, and the migration-ledger write execute in one Neon transaction.
+- **Conservative price backfill:** null/zero planning prices become pending; positive
+  planning prices become estimated. A receipt becomes confirmed only when it already has
+  a positive, provable actual receipt cost. Confirmed totals derive only from non-void
+  receipt-level actual prices; historical quantities and physical counts are unchanged.
+- **Cost metadata decision:** reviewed quantity snapshots are immutable. Late price
+  confirmation recalculates only cached cost status/value/timestamp fields in one batched
+  write with before/after audit evidence. The helper loads affected counts and receipts in
+  bulk to avoid list-page N+1 queries.
+- **Production status:** **not executed by Phase 17A/17A.1 implementation work**. A
+  disposable PostgreSQL concurrency/migration run and manual UAT are required before an
+  explicit staging migration approval. Never use the primary/shared Neon database for
+  this verification.
+- **Rollback:** disable the Phase 17A application code and restore the pre-run database
+  snapshot. Do not drop confirmation history or restore NOT NULL constraints in place
+  without first resolving pending-price/null-supplier rows.
+### 4.5 `payments.idempotency_key` — applied here, **verify per environment**
 
 - Applied on the current `DATABASE_URL` (verified). If the Vercel production deployment
   points at a **different** database, run `npm run db:migrate-phase16b` there (after a

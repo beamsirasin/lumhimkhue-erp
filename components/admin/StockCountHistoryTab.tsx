@@ -342,9 +342,10 @@ export function StockCountHistoryTab() {
   }
 
   function handleReview(count: StockCountListItem) {
-    if (!confirm(`ยืนยันการตรวจสอบผลนับสต็อกวันที่ ${fmtDate(count.countDate)}?`)) return;
+    const reason = window.prompt(`ระบุเหตุผลตรวจรับผลนับวันที่ ${fmtDate(count.countDate)}`);
+    if (!reason?.trim()) return;
     startReviewTransition(async () => {
-      const r = await reviewStockCount(count.id);
+      const r = await reviewStockCount(count.id, reason.trim());
       if (!r.ok) { toast.error(r.error); return; }
       toast.success('ยืนยันการตรวจสอบแล้ว');
       await loadCounts();
@@ -352,15 +353,15 @@ export function StockCountHistoryTab() {
   }
 
   function handleUnreview(count: StockCountListItem) {
-    if (!confirm(`ยกเลิกการยืนยัน และเปิดให้แก้ไขผลนับสต็อกวันที่ ${fmtDate(count.countDate)}?`)) return;
+    const reason = window.prompt(`ระบุเหตุผลยกเลิกการตรวจรับผลนับวันที่ ${fmtDate(count.countDate)}`);
+    if (!reason?.trim()) return;
     startUnreviewTransition(async () => {
-      const r = await unreviewStockCount(count.id);
+      const r = await unreviewStockCount(count.id, reason.trim());
       if (!r.ok) { toast.error(r.error); return; }
-      toast.success('ยกเลิกการยืนยันแล้ว');
+      toast.success('ยกเลิกการตรวจรับแล้ว ระบบบันทึก audit ไว้แล้ว');
       await loadCounts();
     });
   }
-
   function handleDeleteConfirm() {
     if (!deletingCount) return;
     const id = deletingCount.id;
