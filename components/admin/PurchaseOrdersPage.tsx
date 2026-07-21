@@ -73,6 +73,7 @@ import {
 } from '@/components/ui/sheet';
 import { formatThaiDate } from '@/lib/date-time';
 import { EmergencyPurchaseDialog } from '@/components/admin/EmergencyPurchaseDialog';
+import type { InventoryUiPermissions } from '@/lib/auth/inventory-access';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -129,12 +130,12 @@ type Modal =
 interface Props {
   initialData: POListData;
   initialSupplierFilter?: string;
-  userRole?: string;
+  permissions: InventoryUiPermissions;
 }
 
 // ── Main list ─────────────────────────────────────────────────────────────────
 
-export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRole }: Props) {
+export function PurchaseOrdersPage({ initialData, initialSupplierFilter, permissions }: Props) {
   const [modal, setModal] = useState<Modal | null>(null);
   const [showEmergency, setShowEmergency] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -155,8 +156,6 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['purchase-orders'] });
-
-  const isOwner = userRole === 'owner';
 
   const statusCounts = useMemo(() => {
     return data.orders.reduce<Record<string, number>>(
@@ -300,7 +299,7 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
               ดูรายละเอียด
             </DropdownMenuItem>
 
-            {po.status === 'draft' && (
+            {po.status === 'draft' && permissions.canManagePurchaseOrders && (
               <>
                 <DropdownMenuItem onClick={() => setModal({ type: 'edit', id: po.id })}>
                   <Pencil className="size-4" />
@@ -318,9 +317,11 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
               </>
             )}
 
-            {po.status === 'pending_approval' && (
+            {po.status === 'pending_approval'
+              && (permissions.canApprovePurchaseOrders || permissions.canCancelRemaining)
+              && (
               <>
-                {isOwner && (
+                {permissions.canApprovePurchaseOrders && (
                   <DropdownMenuItem disabled={isPending} onClick={() => handleApprove(po.id)}>
                     <PackageCheck className="size-4" />
                     อนุมัติ
@@ -334,7 +335,7 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
               </>
             )}
 
-            {po.status === 'ordered' && (
+            {po.status === 'ordered' && permissions.canManagePurchaseOrders && (
               <>
                 <DropdownMenuItem onClick={() => setModal({ type: 'receive', id: po.id })}>
                   <PackageCheck className="size-4" />
@@ -348,7 +349,7 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
               </>
             )}
 
-            {po.status === 'partial_received' && (
+            {po.status === 'partial_received' && permissions.canManagePurchaseOrders && (
               <DropdownMenuItem onClick={() => setModal({ type: 'receive', id: po.id })}>
                 <PackagePlus className="size-4" />
                 รับของเพิ่ม
@@ -367,14 +368,18 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
         subtitle={`${data.orders.length.toLocaleString('th-TH')} รายการทั้งหมด · ยอดจริงยืนยันแล้ว ฿${fmt(totalValue)}`}
         actions={
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => setShowEmergency(true)}>
-              <Siren className="size-4" />
-              ซื้อฉุกเฉิน
-            </Button>
-            <Button type="button" onClick={() => setModal({ type: 'new' })}>
-              <Plus className="size-4" />
-              สร้างใบสั่งซื้อ
-            </Button>
+            {permissions.canCreateEmergencyPurchase && (
+              <Button type="button" variant="outline" onClick={() => setShowEmergency(true)}>
+                <Siren className="size-4" />
+                ซื้อฉุกเฉิน
+              </Button>
+            )}
+            {permissions.canManagePurchaseOrders && (
+              <Button type="button" onClick={() => setModal({ type: 'new' })}>
+                <Plus className="size-4" />
+                สร้างใบสั่งซื้อ
+              </Button>
+            )}
           </div>
         }      />
 
@@ -513,6 +518,7 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
             {modal.type === 'receive' && (
               <ReceiveForm
                 id={modal.id}
+                canOverReceive={permissions.canOverReceive}
                 onClose={() => setModal(null)}
                 onSaved={() => { invalidate(); setModal(null); }}
               />
@@ -520,6 +526,7 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
             {modal.type === 'detail' && (
               <PODetailModal
                 id={modal.id}
+                permissions={permissions}
                 onClose={() => setModal(null)}
                 onReceive={(id) => setModal({ type: 'receive', id })}
               />
@@ -527,13 +534,15 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, userRol
           </SheetContent>
         )}
       </Sheet>
-      <EmergencyPurchaseDialog
-        open={showEmergency}
-        onOpenChange={setShowEmergency}
-        suppliers={data.suppliers}
-        orders={data.orders}
-        onSaved={invalidate}
-      />
+      {permissions.canCreateEmergencyPurchase && (
+        <EmergencyPurchaseDialog
+          open={showEmergency}
+          onOpenChange={setShowEmergency}
+          suppliers={data.suppliers}
+          orders={data.orders}
+          onSaved={invalidate}
+        />
+      )}
     </AppShell>
   );
 }
@@ -1053,7 +1062,17 @@ function POFormEdit({ id, suppliers, onClose, onSaved }: { id: string; suppliers
 
 // ── Receive form ──────────────────────────────────────────────────────────────
 
-function ReceiveForm({ id, onClose, onSaved }: { id: string; onClose: () => void; onSaved: () => void }) {
+function ReceiveForm({
+  id,
+  canOverReceive,
+  onClose,
+  onSaved,
+}: {
+  id: string;
+  canOverReceive: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const { data, isLoading } = useQuery({
     queryKey: ['po-detail', id],
     queryFn: async () => {
@@ -1072,10 +1091,20 @@ function ReceiveForm({ id, onClose, onSaved }: { id: string; onClose: () => void
     );
   }
 
-  return <ReceiveFormInner data={data} onClose={onClose} onSaved={onSaved} />;
+  return <ReceiveFormInner data={data} canOverReceive={canOverReceive} onClose={onClose} onSaved={onSaved} />;
 }
 
-function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose: () => void; onSaved: () => void }) {
+function ReceiveFormInner({
+  data,
+  canOverReceive,
+  onClose,
+  onSaved,
+}: {
+  data: PODetail;
+  canOverReceive: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
   const isPartialStatus = data.po.status === 'partial_received';
 
@@ -1254,13 +1283,18 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
           })}
         </div>
 
-        {hasOverReceive && (
+        {hasOverReceive && canOverReceive && (
           <div className="rounded-lg border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] p-3 space-y-2">
             <label className="flex items-center gap-2 text-sm text-[var(--status-warning-fg)]">
               <input type="checkbox" {...register('overReceiveConfirmed')} />
               ยืนยันจำนวนรับเกินใบสั่งซื้อ
             </label>
             <input {...register('overReceiveReason')} className={INPUT} placeholder="เหตุผลที่รับเกิน (บังคับ)" />
+          </div>
+        )}
+        {hasOverReceive && !canOverReceive && (
+          <div className="rounded-lg border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] p-3 text-sm text-[var(--status-danger-fg)]">
+            ไม่มีสิทธิ์รับสินค้าเกินจำนวนในใบสั่งซื้อ
           </div>
         )}
 
@@ -1303,7 +1337,7 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
           <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-border py-2 text-sm font-medium text-foreground hover:bg-muted/30">
             ยกเลิก
           </button>
-          <button type="submit" disabled={isSubmitting} className={`flex-1 rounded-lg py-2 text-sm font-medium text-white disabled:opacity-50 ${isPartialChecked ? 'bg-[var(--status-orange-fg)] hover:opacity-90' : 'bg-[var(--status-success-fg)] hover:opacity-90'}`}>
+          <button type="submit" disabled={isSubmitting || (hasOverReceive && !canOverReceive)} className={`flex-1 rounded-lg py-2 text-sm font-medium text-white disabled:opacity-50 ${isPartialChecked ? 'bg-[var(--status-orange-fg)] hover:opacity-90' : 'bg-[var(--status-success-fg)] hover:opacity-90'}`}>
             {isSubmitting ? (
               <span className="flex items-center justify-center gap-2"><Loader2 className="size-4 animate-spin" /> กำลังบันทึก…</span>
             ) : isPartialChecked ? 'บันทึกรับบางส่วน' : 'ยืนยันรับของครบ'}
@@ -1316,7 +1350,17 @@ function ReceiveFormInner({ data, onClose, onSaved }: { data: PODetail; onClose:
 
 // ── PO Detail modal ───────────────────────────────────────────────────────────
 
-function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => void; onReceive: (id: string) => void }) {
+function PODetailModal({
+  id,
+  permissions,
+  onClose,
+  onReceive,
+}: {
+  id: string;
+  permissions: InventoryUiPermissions;
+  onClose: () => void;
+  onReceive: (id: string) => void;
+}) {
   const queryClient = useQueryClient();
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['po-detail', id],
@@ -1576,11 +1620,11 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
                   </div>
                   {receipt.voidedAt ? (
                     <StatusBadge label="Void แล้ว" variant="danger" />
-                  ) : (
+                  ) : permissions.canVoidGoodsReceipt ? (
                     <Button type="button" size="sm" variant="outline" disabled={isReceiptPending} onClick={() => handleVoidReceipt(receipt.id)}>
                       <Ban className="size-3.5" /> Void receipt
                     </Button>
-                  )}
+                  ) : null}
                 </div>
                 {receipt.items.map((ri) => {
                   const poItem = po.items.find((candidate) => candidate.id === ri.purchaseOrderItemId);
@@ -1594,7 +1638,7 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
                         {ri.discrepancyType !== 'none' && <StatusBadge label={DISCREPANCY_LABEL[ri.discrepancyType]} variant="warning" />}
                         {ri.priceStatus === 'confirmed' && ri.actualUnitCost != null ? (
                           <StatusBadge label={`ราคาจริง ฿${fmt(ri.actualUnitCost)}`} variant="success" />
-                        ) : !receipt.voidedAt ? (
+                        ) : !receipt.voidedAt && permissions.canConfirmPurchasePrice ? (
                           <Button type="button" size="sm" variant="outline" disabled={isReceiptPending} onClick={() => handleConfirmReceiptPrice(ri.id, ri.estimatedUnitCost)}>
                             ยืนยันราคาจริง
                           </Button>
@@ -1612,7 +1656,7 @@ function PODetailModal({ id, onClose, onReceive }: { id: string; onClose: () => 
           </div>
         )}
         {/* Receive more button for partial */}
-        {po.status === 'partial_received' && (
+        {po.status === 'partial_received' && permissions.canManagePurchaseOrders && (
           <button
             type="button"
             onClick={() => { onClose(); onReceive(po.id); }}

@@ -310,7 +310,15 @@ function HistorySkeleton() {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function StockCountHistoryTab() {
+export function StockCountHistoryTab({
+  canManageCounts,
+  canReview,
+  canUnreview,
+}: {
+  canManageCounts: boolean;
+  canReview: boolean;
+  canUnreview: boolean;
+}) {
   const router = useRouter();
   const [counts, setCounts] = useState<StockCountListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -462,7 +470,7 @@ export function StockCountHistoryTab() {
                       >
                         <Eye className="size-3.5" /> ดู
                       </Button>
-                      {count.status !== 'reviewed' && (
+                      {canManageCounts && count.status !== 'reviewed' && (
                         <Button
                           type="button"
                           size="sm"
@@ -474,7 +482,7 @@ export function StockCountHistoryTab() {
                           <PenLine className="size-3.5" /> แก้ไข
                         </Button>
                       )}
-                      {count.status === 'submitted' && (
+                      {canReview && count.status === 'submitted' && (
                         <Button
                           type="button"
                           size="sm"
@@ -490,7 +498,7 @@ export function StockCountHistoryTab() {
                           <BadgeCheck className="size-3.5" /> ยืนยัน
                         </Button>
                       )}
-                      {count.status === 'reviewed' && (
+                      {canUnreview && count.status === 'reviewed' && (
                         <Button
                           type="button"
                           size="sm"
@@ -503,16 +511,18 @@ export function StockCountHistoryTab() {
                           ยกเลิกยืนยัน
                         </Button>
                       )}
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setDeletingCount(count)}
-                        aria-label="ลบ"
-                        className="h-7 gap-1 px-2 text-xs border-[var(--status-danger-border)] text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] hover:text-[var(--status-danger-fg)]"
-                      >
-                        <Trash2 className="size-3.5" /> ลบ
-                      </Button>
+                      {canManageCounts && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDeletingCount(count)}
+                          aria-label="ลบ"
+                          className="h-7 gap-1 px-2 text-xs border-[var(--status-danger-border)] text-[var(--status-danger-fg)] hover:bg-[var(--status-danger-bg)] hover:text-[var(--status-danger-fg)]"
+                        >
+                          <Trash2 className="size-3.5" /> ลบ
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

@@ -178,6 +178,7 @@ const NAV: Record<Role, NavSection[]> = {
         kdsGroup,
         queueGroup,
         tableGroup,
+        inventoryGroup,
         { href: '/payment-settings', label: 'Payment Settings', Icon: CreditCard },
         { href: '/approval-code',    label: 'รหัสอนุมัติ',     Icon: KeyRound },
         { href: '/hr-incidents',     label: 'รายงานพนักงาน',   Icon: ClipboardList },

@@ -1,15 +1,19 @@
 import Script from 'next/script';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { requireActiveSessionUser } from '@/lib/auth/require-active';
 import { SidebarLayout } from '@/components/shared/SidebarLayout';
 import { ThemeProvider } from '@/components/shared/ThemeProvider';
 import { getInventoryAlertCount } from '@/lib/actions/inventory';
 import { getMenuLabels } from '@/lib/actions/store';
-import type { Role } from '@/lib/auth/permissions';
+import { can, type Role } from '@/lib/auth/permissions';
+import { canAccessProtectedAdminPath } from '@/lib/auth/inventory-access';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { freshUser } = await requireActiveSessionUser();
-  if (freshUser.role !== 'owner') redirect('/');
+  const pathname = (await headers()).get('x-current-path') ?? '';
+  const role = freshUser.role as Role;
+  if (!canAccessProtectedAdminPath(role, pathname, can(role, 'inventory:view'))) redirect('/');
 
   const [{ lowStockCount, pendingApprovalCount }, menuLabels] = await Promise.all([
     getInventoryAlertCount(),
@@ -30,7 +34,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       />
       <ThemeProvider>
         <SidebarLayout
-          role={freshUser.role as Role}
+          role={role}
           userName={freshUser.name}
           badgeCounts={badgeCounts}
           uiLayout={freshUser.uiLayout ?? null}

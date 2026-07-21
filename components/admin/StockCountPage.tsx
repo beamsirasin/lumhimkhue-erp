@@ -46,6 +46,7 @@ import { formatThaiDate } from '@/lib/date-time';
 import { calculateReorderBreakdown } from '@/lib/inventory/procurement-integrity';
 import { calculatePhysicalStockUsage } from '@/lib/inventory/procurement-math';
 import { cn } from '@/lib/utils';
+import type { InventoryUiPermissions } from '@/lib/auth/inventory-access';
 
 type ItemState = {
   openingBalance: number;
@@ -59,6 +60,7 @@ type Props = {
   initialData: StockCountPageData;
   today: string;
   defaultTab?: 'daily' | 'history';
+  permissions: InventoryUiPermissions;
 };
 
 function formatNumber(value: number, digits = 2) {
@@ -68,7 +70,7 @@ function formatNumber(value: number, digits = 2) {
   });
 }
 
-export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Props) {
+export function StockCountPage({ initialData, today, defaultTab = 'daily', permissions }: Props) {
   const router = useRouter();
   const existing = initialData.existingCount;
   const readonly = existing?.status === 'submitted' || existing?.status === 'reviewed';
@@ -333,7 +335,11 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
       />
 
       {activeTab === 'history' ? (
-        <StockCountHistoryTab />
+        <StockCountHistoryTab
+          canManageCounts={permissions.canCreateStockCount}
+          canReview={permissions.canReviewStockCount}
+          canUnreview={permissions.canUnreviewStockCount}
+        />
       ) : (
         <div className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/30 p-4">
@@ -350,7 +356,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
                 </span>
               )}
             </div>
-            {!readonly && (
+            {!readonly && permissions.canCreateStockCount && (
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" size="sm" onClick={copyOpeningToPhysical}>
                   <ClipboardCopy className="size-4" />
@@ -559,16 +565,18 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
           </div>
 
           {!readonly ? (
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button variant="outline" className="flex-1" disabled={isPending} onClick={() => save(true)}>
-                {isPending && <Loader2 className="size-4 animate-spin" />}
-                บันทึกแบบร่าง
-              </Button>
-              <Button className="flex-1" disabled={isPending || uncountedCount > 0} onClick={() => save(false)}>
-                {isPending && <Loader2 className="size-4 animate-spin" />}
-                ส่งผลนับ ({uncountedCount > 0 ? `เหลือ ${uncountedCount}` : 'ครบแล้ว'})
-              </Button>
-            </div>
+            permissions.canCreateStockCount ? (
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button variant="outline" className="flex-1" disabled={isPending} onClick={() => save(true)}>
+                  {isPending && <Loader2 className="size-4 animate-spin" />}
+                  บันทึกแบบร่าง
+                </Button>
+                <Button className="flex-1" disabled={isPending || uncountedCount > 0} onClick={() => save(false)}>
+                  {isPending && <Loader2 className="size-4 animate-spin" />}
+                  ส่งผลนับ ({uncountedCount > 0 ? `เหลือ ${uncountedCount}` : 'ครบแล้ว'})
+                </Button>
+              </div>
+            ) : null
           ) : (
             <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-4">
               <CheckCircle2 className="size-5 text-[var(--status-success-fg)]" />
@@ -580,10 +588,12 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily' }: Pro
                   หลังส่งแล้ว การแก้ไขต้องทำผ่านรายการปรับปรุงเพื่อรักษาประวัติ
                 </div>
               </div>
-              <Button variant="outline" size="sm" onClick={() => setShowAdjustment(true)}>
-                <PenLine className="size-4" />
-                เพิ่มรายการปรับปรุง
-              </Button>
+              {permissions.canCreateStockCount && (
+                <Button variant="outline" size="sm" onClick={() => setShowAdjustment(true)}>
+                  <PenLine className="size-4" />
+                  เพิ่มรายการปรับปรุง
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={() => router.push('/inventory/orders')}>
                 <ShoppingCart className="size-4" />
                 เปิดใบสั่งซื้อ

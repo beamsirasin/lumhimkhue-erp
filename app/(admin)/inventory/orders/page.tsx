@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import { PurchaseOrdersPage } from '@/components/admin/PurchaseOrdersPage';
 import { getPurchaseOrderListData } from '@/lib/actions/inventory';
+import { getInventoryUiPermissions } from '@/lib/auth/inventory-access';
 
 export const metadata = { title: 'ใบสั่งซื้อ — ร้านชาบู ERP' };
 
@@ -16,11 +17,12 @@ export default async function InventoryOrdersPage({ searchParams }: Props) {
     getPurchaseOrderListData(),
   ]);
   if (!result.ok) redirect('/dashboard');
+  if (!session?.user?.role) redirect('/');
   return (
     <PurchaseOrdersPage
       initialData={result.data}
       initialSupplierFilter={params.supplierId}
-      userRole={session?.user?.role}
+      permissions={getInventoryUiPermissions(session.user.role)}
     />
   );
 }
