@@ -19,6 +19,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 type EmergencyLine = {
   ingredientId: string;
@@ -161,31 +168,41 @@ export function EmergencyPurchaseDialog({
           </div>
           <div className="space-y-1.5">
             <Label>ผูก Supplier (ถ้ามี)</Label>
-            <select
-              value={supplierId}
-              onChange={(event) => setSupplierId(event.target.value)}
-              className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
-            >
-              <option value="">ไม่ผูก Supplier</option>
-              {suppliers.map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
-              ))}
-            </select>
+            <Select value={supplierId || 'none'} onValueChange={(v) => setSupplierId(v === 'none' || v == null ? '' : v)}>
+              <SelectTrigger className="h-10 w-full">
+                <SelectValue>
+                  {(v) => (!v || v === 'none' ? 'ไม่ผูก Supplier' : (suppliers.find((s) => s.id === v)?.name ?? 'ไม่ผูก Supplier'))}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">ไม่ผูก Supplier</SelectItem>
+                {suppliers.map((supplier) => (
+                  <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1.5 md:col-span-2">
             <Label>PO ต้นทางที่ของขาด/ส่งไม่ทัน (ถ้ามี)</Label>
-            <select
-              value={sourcePurchaseOrderId}
-              onChange={(event) => setSourcePurchaseOrderId(event.target.value)}
-              className="h-10 w-full rounded-lg border bg-background px-3 text-sm"
-            >
-              <option value="">ไม่ผูก PO ต้นทาง</option>
-              {orders.filter((order) => order.status === 'ordered' || order.status === 'partial_received').map((order) => (
-                <option key={order.id} value={order.id}>
-                  {order.poNumber} · {order.displaySupplierName}
-                </option>
-              ))}
-            </select>
+            <Select value={sourcePurchaseOrderId || 'none'} onValueChange={(v) => setSourcePurchaseOrderId(v === 'none' || v == null ? '' : v)}>
+              <SelectTrigger className="h-10 w-full">
+                <SelectValue>
+                  {(v) => {
+                    if (!v || v === 'none') return 'ไม่ผูก PO ต้นทาง';
+                    const o = orders.find((order) => order.id === v);
+                    return o ? `${o.poNumber} · ${o.displaySupplierName}` : 'ไม่ผูก PO ต้นทาง';
+                  }}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">ไม่ผูก PO ต้นทาง</SelectItem>
+                {orders.filter((order) => order.status === 'ordered' || order.status === 'partial_received').map((order) => (
+                  <SelectItem key={order.id} value={order.id}>
+                    {order.poNumber} · {order.displaySupplierName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1.5">
             <Label>เหตุผล *</Label>
@@ -210,15 +227,15 @@ export function EmergencyPurchaseDialog({
                 key={String(index)}
                 className="grid gap-2 rounded-lg border p-3 lg:grid-cols-[2fr_100px_120px_110px_140px_150px_40px]"
               >
-                <select
-                  value={line.ingredientId}
-                  onChange={(event) => {
-                    const ingredient = ingredients.find((candidate) => candidate.id === event.target.value);
+                <Select
+                  value={line.ingredientId || null}
+                  onValueChange={(value) => {
+                    const ingredient = ingredients.find((candidate) => candidate.id === value);
                     setLines((current) => current.map((candidate, candidateIndex) => (
                       candidateIndex === index
                         ? {
                             ...candidate,
-                            ingredientId: event.target.value,
+                            ingredientId: value ?? '',
                             unit: ingredient?.unit ?? candidate.unit,
                             purchaseUnit: ingredient?.orderUnit ?? ingredient?.unit ?? candidate.purchaseUnit,
                             conversion: Number(ingredient?.orderUnitConversion) || 1,
@@ -226,12 +243,18 @@ export function EmergencyPurchaseDialog({
                         : candidate
                     )));
                   }}
-                  className="h-10 rounded-lg border bg-background px-3 text-sm"
                 >
-                  {ingredients.map((ingredient) => (
-                    <option key={ingredient.id} value={ingredient.id}>{ingredient.name}</option>
-                  ))}
-                </select>
+                  <SelectTrigger className="h-10 w-full">
+                    <SelectValue placeholder="เลือกวัตถุดิบ">
+                      {(v) => ingredients.find((i) => i.id === v)?.name ?? 'เลือกวัตถุดิบ'}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ingredients.map((ingredient) => (
+                      <SelectItem key={ingredient.id} value={ingredient.id}>{ingredient.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Input
                   type="number"
                   min="0.01"
@@ -258,18 +281,24 @@ export function EmergencyPurchaseDialog({
                   )))}
                   title="ตัวคูณเป็นหน่วยสต็อก"
                 />
-                <select
+                <Select
                   value={line.priceStatus}
-                  onChange={(event) => setLines((current) => current.map((candidate, candidateIndex) => (
+                  onValueChange={(value) => setLines((current) => current.map((candidate, candidateIndex) => (
                     candidateIndex === index
-                      ? { ...candidate, priceStatus: event.target.value as 'pending' | 'confirmed' }
+                      ? { ...candidate, priceStatus: (value as 'pending' | 'confirmed') ?? 'pending' }
                       : candidate
                   )))}
-                  className="h-10 rounded-lg border bg-background px-3 text-sm"
                 >
-                  <option value="pending">รอราคา</option>
-                  <option value="confirmed">ราคาจริง</option>
-                </select>
+                  <SelectTrigger className="h-10 w-full">
+                    <SelectValue>
+                      {(v) => (v === 'confirmed' ? 'ราคาจริง' : 'รอราคา')}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">รอราคา</SelectItem>
+                    <SelectItem value="confirmed">ราคาจริง</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Input
                   type="number"
                   min="0"

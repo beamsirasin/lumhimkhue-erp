@@ -19,6 +19,8 @@ import {
   type StockCountPageData,
 } from '@/lib/actions/inventory';
 import { StockCountHistoryTab } from '@/components/admin/StockCountHistoryTab';
+import { useConfirm } from '@/components/shared/ConfirmDialog';
+import { usePrompt } from '@/components/shared/PromptDialog';
 import { AppShell } from '@/components/ui/app-shell';
 import { Button } from '@/components/ui/button';
 import {
@@ -72,6 +74,8 @@ function formatNumber(value: number, digits = 2) {
 
 export function StockCountPage({ initialData, today, defaultTab = 'daily', permissions }: Props) {
   const router = useRouter();
+  const { openConfirm, dialog: confirmDialog } = useConfirm();
+  const { prompt, dialog: promptDialog } = usePrompt();
   const existing = initialData.existingCount;
   const readonly = existing?.status === 'submitted' || existing?.status === 'reviewed';
   const [activeTab, setActiveTab] = useState<'daily' | 'history'>(defaultTab);
@@ -154,40 +158,64 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily', permi
   }
 
   function copyOpeningToPhysical() {
-    if (!window.confirm('คัดลอกยอดยกมาเป็นยอดนับจริงให้ทุกรายการที่มองเห็นอยู่หรือไม่?')) return;
-    setItemState((current) => {
-      const next = { ...current };
-      for (const ingredient of visibleIngredients) {
-        next[ingredient.id] = {
-          ...next[ingredient.id],
-          physicalCount: next[ingredient.id].openingBalance,
-          isCounted: true,
-        };
-      }
-      return next;
-    });
+    openConfirm(
+      'คัดลอกยอดยกมาเป็นยอดนับจริงให้ทุกรายการที่มองเห็นอยู่หรือไม่?',
+      () => {
+        setItemState((current) => {
+          const next = { ...current };
+          for (const ingredient of visibleIngredients) {
+            next[ingredient.id] = {
+              ...next[ingredient.id],
+              physicalCount: next[ingredient.id].openingBalance,
+              isCounted: true,
+            };
+          }
+          return next;
+        });
+      },
+      { confirmLabel: 'คัดลอกทั้งหมด', variant: 'default' },
+    );
   }
 
-  function changeOpening(ingredientId: string) {
+  async function changeOpening(ingredientId: string, ingredientName: string) {
     const current = itemState[ingredientId];
-    const raw = window.prompt('ยอดยกมาใหม่', String(current.openingBalance));
-    if (raw == null) return;
-    const value = Number(raw);
-    if (!Number.isFinite(value) || value < 0) {
-      toast.error('ยอดยกมาต้องเป็นเลขตั้งแต่ 0 ขึ้นไป');
-      return;
-    }
-    const reason = window.prompt('เหตุผลที่แก้ยอดยกมา (บังคับ)');
-    if (!reason?.trim()) {
-      toast.error('ต้องระบุเหตุผลเพื่อบันทึก audit');
-      return;
-    }
+    const result = await prompt({
+      title: 'แก้ยอดยกมา',
+      description: ingredientName,
+      confirmLabel: 'บันทึกยอดยกมา',
+      fields: [
+        {
+          name: 'opening',
+          label: 'ยอดยกมาใหม่',
+          type: 'number',
+          required: true,
+          min: 0,
+          step: '0.01',
+          defaultValue: String(current.openingBalance),
+          validate: (value) => {
+            const num = Number(value);
+            return Number.isFinite(num) && num >= 0
+              ? null
+              : 'ยอดยกมาต้องเป็นเลขตั้งแต่ 0 ขึ้นไป';
+          },
+        },
+        {
+          name: 'reason',
+          label: 'เหตุผลที่แก้ยอดยกมา',
+          type: 'textarea',
+          required: true,
+          hint: 'บังคับระบุเพื่อบันทึกประวัติ (audit)',
+          placeholder: 'เช่น ปรับตามยอดจริงหลังตรวจนับซ้ำ',
+        },
+      ],
+    });
+    if (!result) return;
     setItemState((state) => ({
       ...state,
       [ingredientId]: {
         ...state[ingredientId],
-        openingBalance: value,
-        openingOverrideReason: reason.trim(),
+        openingBalance: Number(result.opening),
+        openingOverrideReason: result.reason.trim(),
       },
     }));
   }
@@ -341,32 +369,53 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily', permi
           canUnreview={permissions.canUnreviewStockCount}
         />
       ) : (
-        <div className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/30 p-4">
-            <div className="flex flex-wrap gap-5 text-sm">
-              <span>ในรอบ <strong>{visibleIngredients.length}</strong> รายการ</span>
-              <span className="text-[var(--status-success-fg)]">นับแล้ว <strong>{countedCount}</strong></span>
-              <span className={cn(uncountedCount > 0 && 'text-[var(--status-warning-fg)]')}>
-                ยังไม่ได้นับ <strong>{uncountedCount}</strong>
-              </span>
-              {initialData.todayGuestCount > 0 && (
-                <span className="inline-flex items-center gap-1 text-muted-foreground">
-                  <Users className="size-4" />
-                  {initialData.todayGuestCount.toLocaleString('th-TH')} หัว
+        <div className="space-y-4 pb-24">
+          {/* Sticky progress + toolbar */}
+          <div className="sticky top-0 z-20 -mx-6 border-b bg-background/95 px-6 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-1 flex-wrap items-center gap-x-5 gap-y-1.5 text-sm">
+                <span className="text-muted-foreground">
+                  ในรอบ <strong className="text-foreground">{visibleIngredients.length}</strong> รายการ
                 </span>
+                <span className="inline-flex items-center gap-1.5 text-[var(--status-success-fg)]">
+                  <CheckCircle2 className="size-4" /> นับแล้ว <strong>{countedCount}</strong>
+                </span>
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1.5',
+                    uncountedCount > 0 ? 'text-[var(--status-warning-fg)]' : 'text-muted-foreground',
+                  )}
+                >
+                  ยังไม่ได้นับ <strong>{uncountedCount}</strong>
+                </span>
+                {initialData.todayGuestCount > 0 && (
+                  <span className="inline-flex items-center gap-1 text-muted-foreground">
+                    <Users className="size-4" />
+                    {initialData.todayGuestCount.toLocaleString('th-TH')} หัว
+                  </span>
+                )}
+              </div>
+              {!readonly && permissions.canCreateStockCount && (
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={copyOpeningToPhysical}>
+                    <ClipboardCopy className="size-4" />
+                    คัดลอกยอดยกมา
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setShowWeekly((value) => !value)}>
+                    {showWeekly ? 'ซ่อนรายสัปดาห์' : 'รวมรายสัปดาห์'}
+                  </Button>
+                </div>
               )}
             </div>
-            {!readonly && permissions.canCreateStockCount && (
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={copyOpeningToPhysical}>
-                  <ClipboardCopy className="size-4" />
-                  คัดลอกยอดยกมา
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setShowWeekly((value) => !value)}>
-                  {showWeekly ? 'ซ่อนรายการรายสัปดาห์' : 'รวมรายการรายสัปดาห์'}
-                </Button>
-              </div>
-            )}
+            {/* Progress bar */}
+            <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-[var(--status-success-fg)] transition-all"
+                style={{
+                  width: `${visibleIngredients.length === 0 ? 0 : Math.round((countedCount / visibleIngredients.length) * 100)}%`,
+                }}
+              />
+            </div>
           </div>
 
           {initialData.pendingPriceIngredientIds.length > 0 && (
@@ -384,19 +433,19 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily', permi
               actions={<span className="text-xs text-muted-foreground">{categoryIngredients.length} รายการ</span>}
             >
               <div className="overflow-x-auto">
-                <Table className="min-w-[1500px]">
+                <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/30">
-                      <TableHead className="w-56">วัตถุดิบ</TableHead>
+                      <TableHead className="min-w-[150px]">วัตถุดิบ</TableHead>
                       <TableHead className="text-right">ยอดยกมา</TableHead>
-                      <TableHead className="text-right">รับปกติ</TableHead>
-                      <TableHead className="text-right">ซื้อฉุกเฉิน</TableHead>
+                      <TableHead className="hidden text-right lg:table-cell">รับปกติ</TableHead>
+                      <TableHead className="hidden text-right lg:table-cell">ซื้อฉุกเฉิน</TableHead>
                       <TableHead className="text-center">ยอดนับจริง</TableHead>
-                      <TableHead className="text-right">พร่องรวม</TableHead>
-                      <TableHead className="text-right">ของเสีย</TableHead>
-                      <TableHead className="text-right">ออกอื่น</TableHead>
-                      <TableHead className="text-right">ใช้ดำเนินงาน</TableHead>
-                      <TableHead className="text-right">ต้นทุนประมาณ</TableHead>
+                      <TableHead className="hidden text-right xl:table-cell">พร่องรวม</TableHead>
+                      <TableHead className="hidden text-right 2xl:table-cell">ของเสีย</TableHead>
+                      <TableHead className="hidden text-right 2xl:table-cell">ออกอื่น</TableHead>
+                      <TableHead className="hidden text-right md:table-cell">ใช้ดำเนินงาน</TableHead>
+                      <TableHead className="hidden text-right xl:table-cell">ต้นทุนประมาณ</TableHead>
                       <TableHead className="text-right">แนะนำสั่ง</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -449,37 +498,49 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily', permi
                       });
                       const reorder = state.isCounted ? reorderInfo.recommendedQuantity : 0;
                       const isLow = state.isCounted && physical < min;
+                      const openingSource = initialData.openingSources[ingredient.id];
                       return (
-                        <TableRow key={ingredient.id} className={cn(isLow && 'bg-[var(--status-danger-bg)]')}>
+                        <TableRow
+                          key={ingredient.id}
+                          className={cn(
+                            'border-l-4',
+                            isLow
+                              ? 'border-l-[var(--status-danger-fg)] bg-[var(--status-danger-bg)]/50'
+                              : state.isCounted
+                                ? 'border-l-[var(--status-success-fg)]'
+                                : 'border-l-transparent',
+                          )}
+                        >
                           <TableCell>
                             <div className="font-medium">{ingredient.name}</div>
                             <div className="text-xs text-muted-foreground">
-                              {ingredient.unit}
+                              หน่วย {ingredient.unit}
                               {ingredient.countFrequency === 'weekly' && ' · รายสัปดาห์'}
                             </div>
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-right align-top">
                             <button
                               type="button"
                               disabled={readonly}
-                              onClick={() => changeOpening(ingredient.id)}
-                              className="tabular-nums hover:underline disabled:no-underline"
+                              onClick={() => changeOpening(ingredient.id, ingredient.name)}
+                              className="tabular-nums underline-offset-2 hover:underline disabled:no-underline"
                             >
                               {formatNumber(state.openingBalance)}
                             </button>
-                            {initialData.openingSources[ingredient.id] ? (
+                            {openingSource ? (
                               <div className="text-[10px] text-muted-foreground">
-                                ยกมาจาก {formatThaiDate(initialData.openingSources[ingredient.id].countDate)}
-                                <br />รับเข้าหลังวันดังกล่าว–{formatThaiDate(today)}
+                                ยกมาจาก {formatThaiDate(openingSource.countDate)}
                               </div>
                             ) : (
                               <div className="text-[10px] text-[var(--status-warning-fg)]">
-                                ยอดเริ่มต้นแบบ manual · คลิกยอดเพื่อระบุเหตุผล
+                                manual · แตะเพื่อระบุเหตุผล
                               </div>
                             )}
                           </TableCell>
-                          <TableCell className="text-right tabular-nums">{formatNumber(regular)}</TableCell>
-                          <TableCell className="text-right tabular-nums">
+                          <TableCell className="hidden text-right tabular-nums lg:table-cell">
+                            {formatNumber(regular)}
+                          </TableCell>
+                          <TableCell className="hidden text-right tabular-nums lg:table-cell">
                             {emergency > 0 ? (
                               <span className="text-[var(--status-warning-fg)]">{formatNumber(emergency)}</span>
                             ) : '—'}
@@ -499,31 +560,50 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily', permi
                                   step="0.01"
                                   value={state.physicalCount ?? ''}
                                   onChange={(event) => setPhysicalCount(ingredient.id, event.target.value)}
-                                  placeholder="ยังไม่ได้นับ"
-                                  className="h-9 w-28 text-right tabular-nums"
+                                  placeholder="นับจริง"
+                                  aria-label={`ยอดนับจริง ${ingredient.name}`}
+                                  className="h-10 w-20 text-right font-semibold tabular-nums"
                                 />
-                                <Button type="button" size="sm" variant="outline" onClick={() => markEmpty(ingredient.id)}>
-                                  หมด
-                                </Button>
-                                <Button type="button" size="sm" variant="ghost" onClick={() => markUncounted(ingredient.id)}>
-                                  ยังไม่ได้นับ
-                                </Button>
+                                <div className="flex flex-col gap-1">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-[19px] px-1.5 text-[11px]"
+                                    onClick={() => markEmpty(ingredient.id)}
+                                  >
+                                    หมด
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-[19px] px-1.5 text-[11px]"
+                                    onClick={() => markUncounted(ingredient.id)}
+                                  >
+                                    ล้าง
+                                  </Button>
+                                </div>
                               </div>
                             )}
                           </TableCell>
-                          <TableCell className={cn('text-right tabular-nums', depletion < 0 && 'text-[var(--status-danger-fg)]')}>
+                          <TableCell className={cn('hidden text-right tabular-nums xl:table-cell', depletion < 0 && 'text-[var(--status-danger-fg)]')}>
                             {state.isCounted ? formatNumber(depletion) : '—'}
                           </TableCell>
-                          <TableCell className="text-right tabular-nums">{waste ? formatNumber(waste) : '—'}</TableCell>
-                          <TableCell className="text-right tabular-nums">{outbound ? formatNumber(outbound) : '—'}</TableCell>
-                          <TableCell className={cn('text-right tabular-nums', operational < 0 && 'text-[var(--status-danger-fg)]')}>
+                          <TableCell className="hidden text-right tabular-nums 2xl:table-cell">
+                            {waste ? formatNumber(waste) : '—'}
+                          </TableCell>
+                          <TableCell className="hidden text-right tabular-nums 2xl:table-cell">
+                            {outbound ? formatNumber(outbound) : '—'}
+                          </TableCell>
+                          <TableCell className={cn('hidden text-right tabular-nums md:table-cell', operational < 0 && 'text-[var(--status-danger-fg)]')}>
                             {state.isCounted ? formatNumber(operational) : '—'}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="hidden text-right xl:table-cell">
                             {state.isCounted && !incompleteCost ? (
                               <span className="tabular-nums">≈ ฿{formatNumber(Math.max(0, operational) * unitCost)}</span>
-                            ) : incompleteCost ? (
-                              <span className="text-xs text-[var(--status-warning-fg)]">ต้นทุนไม่สมบูรณ์</span>
+                            ) : incompleteCost && state.isCounted ? (
+                              <span className="text-xs text-[var(--status-warning-fg)]">ไม่สมบูรณ์</span>
                             ) : '—'}
                           </TableCell>
                           <TableCell className="text-right">
@@ -532,12 +612,14 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily', permi
                                 <span className="font-semibold text-[var(--status-warning-fg)]">
                                   +{formatNumber(reorder)}
                                 </span>
-                                <div className="text-[10px] text-muted-foreground">
-                                  PO ปกติ {formatNumber(guaranteedIncoming)}
-                                </div>
+                                {guaranteedIncoming > 0 && (
+                                  <div className="text-[10px] text-muted-foreground">
+                                    PO ปกติ {formatNumber(guaranteedIncoming)}
+                                  </div>
+                                )}
                                 {delayedIncoming > 0 && (
                                   <div className="text-[10px] text-[var(--status-danger-fg)]">
-                                    PO ล่าช้า {formatNumber(delayedIncoming)} (ไม่หักจากคำแนะนำ)
+                                    PO ล่าช้า {formatNumber(delayedIncoming)}
                                   </div>
                                 )}
                               </div>
@@ -564,20 +646,7 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily', permi
             />
           </div>
 
-          {!readonly ? (
-            permissions.canCreateStockCount ? (
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Button variant="outline" className="flex-1" disabled={isPending} onClick={() => save(true)}>
-                  {isPending && <Loader2 className="size-4 animate-spin" />}
-                  บันทึกแบบร่าง
-                </Button>
-                <Button className="flex-1" disabled={isPending || uncountedCount > 0} onClick={() => save(false)}>
-                  {isPending && <Loader2 className="size-4 animate-spin" />}
-                  ส่งผลนับ ({uncountedCount > 0 ? `เหลือ ${uncountedCount}` : 'ครบแล้ว'})
-                </Button>
-              </div>
-            ) : null
-          ) : (
+          {readonly && (
             <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-4">
               <CheckCircle2 className="size-5 text-[var(--status-success-fg)]" />
               <div className="flex-1">
@@ -598,6 +667,22 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily', permi
                 <ShoppingCart className="size-4" />
                 เปิดใบสั่งซื้อ
               </Button>
+            </div>
+          )}
+
+          {/* Sticky action bar */}
+          {!readonly && permissions.canCreateStockCount && (
+            <div className="sticky bottom-0 z-20 -mx-6 border-t bg-background/95 px-6 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button variant="outline" className="flex-1" disabled={isPending} onClick={() => save(true)}>
+                  {isPending && <Loader2 className="size-4 animate-spin" />}
+                  บันทึกแบบร่าง
+                </Button>
+                <Button className="flex-1" disabled={isPending || uncountedCount > 0} onClick={() => save(false)}>
+                  {isPending && <Loader2 className="size-4 animate-spin" />}
+                  ส่งผลนับ ({uncountedCount > 0 ? `เหลือ ${uncountedCount}` : 'ครบแล้ว'})
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -659,6 +744,9 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily', permi
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {confirmDialog}
+      {promptDialog}
     </AppShell>
   );
 }

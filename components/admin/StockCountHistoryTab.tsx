@@ -23,6 +23,7 @@ import {
   type StockCountListItem,
   type StockCountDetail,
 } from '@/lib/actions/inventory';
+import { usePrompt } from '@/components/shared/PromptDialog';
 import { Button } from '@/components/ui/button';
 import { ThaiDateInput } from '@/components/ui/thai-date-input';
 import { Label } from '@/components/ui/label';
@@ -320,6 +321,7 @@ export function StockCountHistoryTab({
   canUnreview: boolean;
 }) {
   const router = useRouter();
+  const { prompt, dialog: promptDialog } = usePrompt();
   const [counts, setCounts] = useState<StockCountListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterDate, setFilterDate] = useState('');
@@ -349,22 +351,49 @@ export function StockCountHistoryTab({
     router.push(`/inventory/count?date=${count.countDate}`);
   }
 
-  function handleReview(count: StockCountListItem) {
-    const reason = window.prompt(`ระบุเหตุผลตรวจรับผลนับวันที่ ${fmtDate(count.countDate)}`);
-    if (!reason?.trim()) return;
+  async function handleReview(count: StockCountListItem) {
+    const result = await prompt({
+      title: 'ตรวจรับผลนับสต็อก',
+      description: `วันที่ ${fmtDate(count.countDate)}`,
+      confirmLabel: 'ยืนยันตรวจรับ',
+      fields: [
+        {
+          name: 'reason',
+          label: 'เหตุผล / หมายเหตุการตรวจรับ',
+          type: 'textarea',
+          required: true,
+          placeholder: 'เช่น ตรวจสอบยอดถูกต้องครบถ้วน',
+        },
+      ],
+    });
+    if (!result) return;
     startReviewTransition(async () => {
-      const r = await reviewStockCount(count.id, reason.trim());
+      const r = await reviewStockCount(count.id, result.reason.trim());
       if (!r.ok) { toast.error(r.error); return; }
       toast.success('ยืนยันการตรวจสอบแล้ว');
       await loadCounts();
     });
   }
 
-  function handleUnreview(count: StockCountListItem) {
-    const reason = window.prompt(`ระบุเหตุผลยกเลิกการตรวจรับผลนับวันที่ ${fmtDate(count.countDate)}`);
-    if (!reason?.trim()) return;
+  async function handleUnreview(count: StockCountListItem) {
+    const result = await prompt({
+      title: 'ยกเลิกการตรวจรับ',
+      description: `วันที่ ${fmtDate(count.countDate)}`,
+      confirmLabel: 'ยกเลิกการตรวจรับ',
+      variant: 'danger',
+      fields: [
+        {
+          name: 'reason',
+          label: 'เหตุผลที่ยกเลิกการตรวจรับ',
+          type: 'textarea',
+          required: true,
+          hint: 'ระบบจะบันทึกประวัติ (audit) ไว้',
+        },
+      ],
+    });
+    if (!result) return;
     startUnreviewTransition(async () => {
-      const r = await unreviewStockCount(count.id, reason.trim());
+      const r = await unreviewStockCount(count.id, result.reason.trim());
       if (!r.ok) { toast.error(r.error); return; }
       toast.success('ยกเลิกการตรวจรับแล้ว ระบบบันทึก audit ไว้แล้ว');
       await loadCounts();
@@ -546,6 +575,8 @@ export function StockCountHistoryTab({
           isPending={isDeleting}
         />
       )}
+
+      {promptDialog}
     </div>
   );
 }

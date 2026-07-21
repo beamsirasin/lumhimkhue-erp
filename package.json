@@ -30,6 +30,7 @@
     "db:migrate-phase17ui-hr-incidents": "tsx lib/db/migrate-phase17ui-hr-incidents.ts",
     "db:migrate-phase17ui-damage-items": "tsx lib/db/migrate-phase17ui-damage-items.ts",
     "db:migrate-phase17ui-incident-link": "tsx lib/db/migrate-phase17ui-incident-link.ts",
+    "db:migrate-phase17a": "tsx lib/db/migrate-phase17a-procurement-stock.ts",
     "payments:backfill": "tsx scripts/backfill-payment-rows.ts",
     "payments:verify": "tsx scripts/verify-payment-foundation.ts",
     "reconcile:payments": "tsx scripts/reconcile-payments.ts",

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useTransition } from 'react';
+import type { ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -68,11 +69,20 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Sheet,
-  SheetContent,
-} from '@/components/ui/sheet';
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { formatThaiDate } from '@/lib/date-time';
 import { EmergencyPurchaseDialog } from '@/components/admin/EmergencyPurchaseDialog';
+import { usePrompt } from '@/components/shared/PromptDialog';
 import type { InventoryUiPermissions } from '@/lib/auth/inventory-access';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -142,6 +152,7 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, permiss
   const [supplierFilter, setSupplierFilter] = useState(initialSupplierFilter ?? '');
   const [search, setSearch] = useState('');
   const [isPending, startTransition] = useTransition();
+  const { prompt, dialog: promptDialog } = usePrompt();
   const qc = useQueryClient();
 
   const { data = initialData, isFetching } = useQuery({
@@ -212,11 +223,25 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, permiss
     });
   }
 
-  function handleCancel(id: string) {
-    const reason = window.prompt('ระบุเหตุผลยกเลิกใบสั่งซื้อ/ยอดค้างรับ');
-    if (!reason?.trim()) return;
+  async function handleCancel(id: string) {
+    const result = await prompt({
+      title: 'ยกเลิกใบสั่งซื้อ',
+      description: 'ระบบจะยกเลิกใบสั่งซื้อและยอดค้างรับที่เหลือ',
+      confirmLabel: 'ยกเลิกใบสั่งซื้อ',
+      variant: 'danger',
+      fields: [
+        {
+          name: 'reason',
+          label: 'เหตุผลการยกเลิก',
+          type: 'textarea',
+          required: true,
+          placeholder: 'เช่น ผู้ขายไม่มีของ / สั่งซ้ำ',
+        },
+      ],
+    });
+    if (!result) return;
     startTransition(async () => {
-      const r = await cancelOrder({ id, reason: reason.trim() });
+      const r = await cancelOrder({ id, reason: result.reason.trim() });
       if (!r.ok) toast.error(r.error);
       else { toast.success('ยกเลิกแล้ว'); invalidate(); }
     });
@@ -449,16 +474,22 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, permiss
                 </button>
               ))}
             </div>
-            <select
-              value={supplierFilter}
-              onChange={(event) => setSupplierFilter(event.target.value)}
-              className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            <Select
+              value={supplierFilter || 'all'}
+              onValueChange={(v) => setSupplierFilter(v === 'all' || v == null ? '' : v)}
             >
-              <option value="">ทุก Supplier</option>
-              {data.suppliers.map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
-              ))}
-            </select>
+              <SelectTrigger className="h-8 w-full sm:w-48">
+                <SelectValue>
+                  {(v) => (!v || v === 'all' ? 'ทุก Supplier' : (data.suppliers.find((s) => s.id === v)?.name ?? 'ทุก Supplier'))}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">ทุก Supplier</SelectItem>
+                {data.suppliers.map((supplier) => (
+                  <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {hasFilters && (
               <Button type="button" variant="outline" onClick={resetFilters}>
                 ล้างตัวกรอง
@@ -490,14 +521,14 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, permiss
         />
       </DataCard>
 
-      <Sheet open={modal !== null} onOpenChange={(open) => { if (!open) setModal(null); }}>
+      <Dialog open={modal !== null} onOpenChange={(open) => { if (!open) setModal(null); }}>
         {modal && (
-          <SheetContent
+          <DialogContent
             showCloseButton={false}
             className={cn(
-              'w-full p-0 sm:max-w-[760px]',
-              modal.type === 'receive' && 'sm:max-w-[680px]',
-              modal.type === 'detail' && 'sm:max-w-[680px]',
+              'flex max-h-[92vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl lg:max-w-5xl',
+              modal.type === 'receive' && 'sm:max-w-2xl lg:max-w-3xl',
+              modal.type === 'detail' && 'sm:max-w-3xl lg:max-w-3xl',
             )}
           >
             {modal.type === 'new' && (
@@ -531,9 +562,9 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, permiss
                 onReceive={(id) => setModal({ type: 'receive', id })}
               />
             )}
-          </SheetContent>
+          </DialogContent>
         )}
-      </Sheet>
+      </Dialog>
       {permissions.canCreateEmergencyPurchase && (
         <EmergencyPurchaseDialog
           open={showEmergency}
@@ -543,6 +574,7 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, permiss
           onSaved={invalidate}
         />
       )}
+      {promptDialog}
     </AppShell>
   );
 }
@@ -688,15 +720,24 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-[var(--surface-1)] p-6">
-      <div className="mb-5 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-foreground">
-          {schemaType === 'edit' ? 'แก้ไขใบสั่งซื้อ' : 'สร้างใบสั่งซื้อ'}
-        </h2>
-        <button type="button" aria-label="ปิด" onClick={onClose} className="text-muted-foreground hover:text-foreground text-lg">×</button>
+    <div className="flex min-h-0 flex-1 flex-col bg-[var(--surface-1)]">
+      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-6 py-4">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <ShoppingBag className="size-5" />
+          </div>
+          <div className="space-y-0.5">
+            <DialogTitle>{schemaType === 'edit' ? 'แก้ไขใบสั่งซื้อ' : 'สร้างใบสั่งซื้อ'}</DialogTitle>
+            <p className="text-xs text-muted-foreground">เลือก Supplier และเพิ่มรายการวัตถุดิบที่ต้องการสั่ง</p>
+          </div>
+        </div>
+        <button type="button" aria-label="ปิด" onClick={onClose} className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+          <X className="size-4" />
+        </button>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
         {schemaType === 'edit' && (
           <input type="hidden" {...register('id' as keyof FormValues)} />
         )}
@@ -704,10 +745,22 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-3 sm:col-span-1">
             <label className="block text-xs font-medium text-muted-foreground mb-1">Supplier <span className="text-[var(--status-danger-fg)]">*</span></label>
-            <select {...register('supplierId')} className={INPUT}>
-              <option value="">เลือก Supplier</option>
-              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <Controller
+              control={control}
+              name="supplierId"
+              render={({ field }) => (
+                <Select value={field.value ? String(field.value) : null} onValueChange={(v) => field.onChange(v ?? '')}>
+                  <SelectTrigger className="h-10 w-full">
+                    <SelectValue placeholder="เลือก Supplier">
+                      {(v) => suppliers.find((s) => s.id === v)?.name ?? 'เลือก Supplier'}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
+            />
             {errors.supplierId && <p className="mt-1 text-xs text-[var(--status-danger-fg)]">{errors.supplierId.message}</p>}
           </div>
           <div>
@@ -865,7 +918,7 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
             </div>
           )}
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             {fields.map((field, idx) => {
               const ingId = watchedItems?.[idx]?.ingredientId;
               const ing = ingredients.find((i) => i.id === ingId);
@@ -873,79 +926,120 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
               const normalizedQuantity = (Number(watchedItems?.[idx]?.purchaseQuantity ?? watchedItems?.[idx]?.quantity) || 0) * (Number(watchedItems?.[idx]?.conversionFactor) || 1);
               const lineTotal = priceStatus === 'pending' ? null : normalizedQuantity * (Number(watchedItems?.[idx]?.unitCost) || 0);
               return (
-                <div key={field.id} className="grid grid-cols-12 gap-2 items-start">
-                  <div className="col-span-3">
-                    <select
-                      {...register(`items.${idx}.ingredientId` as never)}
-                      className={`${INPUT} text-xs`}
-                      onChange={(e) => {
-                        const found = ingredients.find((i) => i.id === e.target.value);
-                        if (found) {
-                          const unitInput = document.querySelector<HTMLInputElement>(`[name="items.${idx}.unit"]`);
-                          const costInput = document.querySelector<HTMLInputElement>(`[name="items.${idx}.unitCost"]`);
-                          if (unitInput) unitInput.value = found.unit;
-                          if (costInput) costInput.value = found.lastCost;
-                          setValue(`items.${idx}.unit` as never, found.unit as never);
-                          setValue(`items.${idx}.purchaseUnit` as never, (found.orderUnit ?? found.unit) as never);
-                          setValue(`items.${idx}.conversionFactor` as never, Number(found.orderUnitConversion ?? 1) as never);
-                          setValue(`items.${idx}.unitCost` as never, Number(found.lastCost) as never);
-                          setValue(`items.${idx}.priceStatus` as never, 'estimated' as never);
-                        }
-                      }}
-                    >
-                      <option value="">เลือกวัตถุดิบ</option>
-                      {ingredients.map((i) => (
-                        <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="col-span-1">
-                    <input
-                      {...register(`items.${idx}.quantity` as never, { valueAsNumber: true })}
-                      type="number" step="0.01" min="0.01" placeholder="จำนวน"
-                      className={`${INPUT} text-right text-xs`}
-                    />
-                  </div>
-                  <div className="col-span-1">
-                    <input
-                      {...register(`items.${idx}.unit` as never)}
-                      placeholder="หน่วย" defaultValue={ing?.unit ?? ''}
-                      className={`${INPUT} text-xs`}
-                    />
-                  </div>
-                  <div className="col-span-1">
-                    <input {...register(`items.${idx}.purchaseQuantity` as never, { valueAsNumber: true })} type="number" min="0.01" step="0.01" placeholder="จำนวนซื้อ" className={`${INPUT} text-right text-xs`} />
-                  </div>
-                  <div className="col-span-1">
-                    <input {...register(`items.${idx}.purchaseUnit` as never)} placeholder="หน่วยซื้อ" className={`${INPUT} text-xs`} />
-                  </div>
-                  <div className="col-span-1">
-                    <input {...register(`items.${idx}.conversionFactor` as never, { valueAsNumber: true })} type="number" min="0.0001" step="0.0001" title="ตัวคูณเป็น stock unit" className={`${INPUT} text-right text-xs`} />
-                  </div>
-                  <div className="col-span-2">
-                    <select {...register(`items.${idx}.priceStatus` as never)} className={`${INPUT} text-xs`}>
-                      <option value="pending">รอราคา</option>
-                      <option value="estimated">ประมาณการ</option>
-
-                    </select>
-                  </div>
-                  <div className="col-span-2">
-                    <input
-                      {...register(`items.${idx}.unitCost` as never, { valueAsNumber: true })}
-                      type="number" step="0.01" min="0" placeholder={priceStatus === 'pending' ? 'รอราคา' : `ราคา/${ing?.unit ?? 'หน่วยสต็อก'}`} disabled={priceStatus === 'pending'}
-                      defaultValue={ing ? Number(ing.lastCost) : 0}
-                      className={`${INPUT} text-right text-xs`}
-                    />
-                  </div>
-                  <div className="col-span-2 flex items-center justify-end pt-2">
-                    <span className="text-xs tabular-nums text-muted-foreground">{lineTotal == null ? 'รอราคา' : `${priceStatus === 'confirmed' ? '฿' : '≈ ฿'}${fmt(lineTotal)} · ${fmt(normalizedQuantity)} ${ing?.unit ?? ''}`}</span>
-                  </div>
-                  <div className="col-span-1 flex items-center justify-center pt-1.5">
+                <div key={field.id} className="rounded-xl border border-border bg-[var(--surface-0)] p-3.5 shadow-[var(--shadow-card)]">
+                  {/* Row 1: ingredient + remove */}
+                  <div className="flex items-end gap-2">
+                    <div className="min-w-0 flex-1">
+                      <LineLabel>วัตถุดิบ</LineLabel>
+                      <Controller
+                        control={control}
+                        name={`items.${idx}.ingredientId` as never}
+                        render={({ field: f }) => (
+                          <Select
+                            value={f.value ? String(f.value) : null}
+                            onValueChange={(v) => {
+                              f.onChange(v ?? '');
+                              const found = ingredients.find((i) => i.id === v);
+                              if (found) {
+                                setValue(`items.${idx}.unit` as never, found.unit as never);
+                                setValue(`items.${idx}.purchaseUnit` as never, (found.orderUnit ?? found.unit) as never);
+                                setValue(`items.${idx}.conversionFactor` as never, Number(found.orderUnitConversion ?? 1) as never);
+                                setValue(`items.${idx}.unitCost` as never, Number(found.lastCost) as never);
+                                setValue(`items.${idx}.priceStatus` as never, 'estimated' as never);
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="h-9 w-full">
+                              <SelectValue placeholder="เลือกวัตถุดิบ">
+                                {(v) => { const f2 = ingredients.find((i) => i.id === v); return f2 ? `${f2.name} (${f2.unit})` : 'เลือกวัตถุดิบ'; }}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ingredients.map((i) => (
+                                <SelectItem key={i.id} value={i.id}>{i.name} ({i.unit})</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                    </div>
                     {fields.length > 1 && (
-                      <button type="button" onClick={() => remove(idx)} aria-label="ลบรายการ" className="text-muted-foreground hover:text-[var(--status-danger-fg)]">
-                        <Trash2 className="size-3.5" />
+                      <button type="button" onClick={() => remove(idx)} aria-label="ลบรายการ" className="mb-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[var(--status-danger-bg)] hover:text-[var(--status-danger-fg)]">
+                        <Trash2 className="size-4" />
                       </button>
                     )}
+                  </div>
+
+                  {/* Row 2: numeric fields */}
+                  <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+                    <div>
+                      <LineLabel>จำนวน</LineLabel>
+                      <input
+                        {...register(`items.${idx}.quantity` as never, { valueAsNumber: true })}
+                        type="number" step="0.01" min="0.01" placeholder="0"
+                        className={`${INPUT} text-right text-xs`}
+                      />
+                    </div>
+                    <div>
+                      <LineLabel>หน่วยนับ</LineLabel>
+                      <input
+                        {...register(`items.${idx}.unit` as never)}
+                        placeholder="หน่วย" defaultValue={ing?.unit ?? ''}
+                        className={`${INPUT} text-xs`}
+                      />
+                    </div>
+                    <div>
+                      <LineLabel>จำนวนซื้อ</LineLabel>
+                      <input {...register(`items.${idx}.purchaseQuantity` as never, { valueAsNumber: true })} type="number" min="0.01" step="0.01" placeholder="0" className={`${INPUT} text-right text-xs`} />
+                    </div>
+                    <div>
+                      <LineLabel>หน่วยซื้อ</LineLabel>
+                      <input {...register(`items.${idx}.purchaseUnit` as never)} placeholder="หน่วยซื้อ" className={`${INPUT} text-xs`} />
+                    </div>
+                    <div>
+                      <LineLabel>ตัวคูณ → สต็อก</LineLabel>
+                      <input {...register(`items.${idx}.conversionFactor` as never, { valueAsNumber: true })} type="number" min="0.0001" step="0.0001" title="ตัวคูณเป็น stock unit" className={`${INPUT} text-right text-xs`} />
+                    </div>
+                    <div>
+                      <LineLabel>สถานะราคา</LineLabel>
+                      <Controller
+                        control={control}
+                        name={`items.${idx}.priceStatus` as never}
+                        render={({ field: f }) => (
+                          <Select value={f.value ? String(f.value) : 'estimated'} onValueChange={(v) => f.onChange(v ?? 'estimated')}>
+                            <SelectTrigger className="h-9 w-full text-xs">
+                              <SelectValue>
+                                {(v) => (v === 'pending' ? 'รอราคา' : 'ประมาณการ')}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">รอราคา</SelectItem>
+                              <SelectItem value="estimated">ประมาณการ</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Row 3: price + line total */}
+                  <div className="mt-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    <div>
+                      <LineLabel>ราคา/หน่วยสต็อก (฿)</LineLabel>
+                      <input
+                        {...register(`items.${idx}.unitCost` as never, { valueAsNumber: true })}
+                        type="number" step="0.01" min="0" placeholder={priceStatus === 'pending' ? 'รอราคา' : `ราคา/${ing?.unit ?? 'หน่วย'}`} disabled={priceStatus === 'pending'}
+                        defaultValue={ing ? Number(ing.lastCost) : 0}
+                        className={`${INPUT} text-right text-xs disabled:opacity-50`}
+                      />
+                    </div>
+                    <div className="flex items-end justify-end rounded-lg bg-muted/40 px-3 py-1.5">
+                      <span className="text-sm tabular-nums font-medium text-foreground">
+                        {lineTotal == null
+                          ? <span className="text-[var(--status-warning-fg)]">รอราคา</span>
+                          : <>{priceStatus === 'confirmed' ? '฿' : '≈ ฿'}{fmt(lineTotal)}<span className="ml-1.5 text-xs font-normal text-muted-foreground">· {fmt(normalizedQuantity)} {ing?.unit ?? ''}</span></>}
+                      </span>
+                    </div>
                   </div>
                 </div>
               );
@@ -992,8 +1086,9 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
           <label className="block text-xs font-medium text-muted-foreground mb-1">หมายเหตุ</label>
           <textarea {...register('notes')} rows={2} className={`${INPUT} resize-none`} />
         </div>
+        </div>
 
-        <div className="flex gap-3">
+        <div className="flex shrink-0 gap-3 border-t border-border bg-[var(--surface-1)] px-6 py-4">
           <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-border py-2 text-sm font-medium text-foreground hover:bg-muted/30">
             ยกเลิก
           </button>
@@ -1004,6 +1099,10 @@ function POFormInner({ schema: schemaType, suppliers, initialValues, onClose, on
       </form>
     </div>
   );
+}
+
+function LineLabel({ children }: { children: ReactNode }) {
+  return <label className="mb-1 block text-[11px] font-medium text-muted-foreground">{children}</label>;
 }
 
 // ── Edit PO wrapper ───────────────────────────────────────────────────────────
@@ -1021,7 +1120,7 @@ function POFormEdit({ id, suppliers, onClose, onSaved }: { id: string; suppliers
 
   if (isLoading || !data) {
     return (
-      <div className="flex h-full items-center justify-center gap-2 p-10 text-muted-foreground">
+      <div className="flex min-h-[320px] items-center justify-center gap-2 p-10 text-muted-foreground">
         <Loader2 className="size-5 animate-spin" /> กำลังโหลด…
       </div>
     );
@@ -1085,7 +1184,7 @@ function ReceiveForm({
 
   if (isLoading || !data) {
     return (
-      <div className="flex h-full items-center justify-center gap-2 p-10 text-muted-foreground">
+      <div className="flex min-h-[320px] items-center justify-center gap-2 p-10 text-muted-foreground">
         <Loader2 className="size-5 animate-spin" /> กำลังโหลด…
       </div>
     );
@@ -1165,18 +1264,24 @@ function ReceiveFormInner({
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-[var(--surface-1)] p-6">
-      <div className="mb-5 flex items-center justify-between">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">
-            {isPartialStatus ? 'รับของเพิ่ม' : 'รับของ'} — {data.po.poNumber}
-          </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">{data.po.supplier?.name ?? data.po.vendorName ?? 'ไม่ระบุผู้ขาย'}</p>
+    <div className="flex min-h-0 flex-1 flex-col bg-[var(--surface-1)]">
+      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-6 py-4">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[var(--status-success-bg)] text-[var(--status-success-fg)]">
+            <PackageCheck className="size-5" />
+          </div>
+          <div className="space-y-0.5">
+            <DialogTitle>{isPartialStatus ? 'รับของเพิ่ม' : 'รับของ'} — {data.po.poNumber}</DialogTitle>
+            <p className="text-xs text-muted-foreground">{data.po.supplier?.name ?? data.po.vendorName ?? 'ไม่ระบุผู้ขาย'}</p>
+          </div>
         </div>
-        <button type="button" aria-label="ปิด" onClick={onClose} className="text-muted-foreground hover:text-foreground text-lg">×</button>
+        <button type="button" aria-label="ปิด" onClick={onClose} className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+          <X className="size-4" />
+        </button>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
         <input type="hidden" {...register('id')} />
 
         {/* Received date */}
@@ -1235,15 +1340,25 @@ function ReceiveFormInner({
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="block text-xs font-medium text-muted-foreground mb-1">สถานะสินค้า</label>
-                    <select
-                      {...register(`items.${idx}.discrepancyType`)}
-                      className="w-full rounded-lg border border-border bg-background text-foreground px-2 py-1.5 text-xs outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
-                    >
-                      <option value="none">ปกติ</option>
-                      <option value="short">ขาด</option>
-                      <option value="wrong">ผิดรายการ</option>
-                      <option value="spoiled">เสียหาย</option>
-                    </select>
+                    <Controller
+                      control={control}
+                      name={`items.${idx}.discrepancyType`}
+                      render={({ field: f }) => (
+                        <Select value={f.value ?? 'none'} onValueChange={(v) => f.onChange(v ?? 'none')}>
+                          <SelectTrigger className="h-9 w-full text-xs">
+                            <SelectValue>
+                              {(v) => DISCREPANCY_LABEL[(v as string) ?? 'none'] ?? 'ปกติ'}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">ปกติ</SelectItem>
+                            <SelectItem value="short">ขาด</SelectItem>
+                            <SelectItem value="wrong">ผิดรายการ</SelectItem>
+                            <SelectItem value="spoiled">เสียหาย</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
                   </div>
                   {discrepancyVal !== 'none' && (
                     <div className="col-span-2">
@@ -1260,11 +1375,24 @@ function ReceiveFormInner({
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-xs font-medium text-muted-foreground mb-1">สถานะราคาเมื่อรับ</label>
-                    <select {...register(`items.${idx}.priceStatus`)} className={INPUT}>
-                      <option value="pending">รอราคา</option>
-                      <option value="estimated">ประมาณการ</option>
-                      <option value="confirmed">ราคาจริงยืนยันแล้ว</option>
-                    </select>
+                    <Controller
+                      control={control}
+                      name={`items.${idx}.priceStatus`}
+                      render={({ field: f }) => (
+                        <Select value={f.value ?? 'pending'} onValueChange={(v) => f.onChange(v ?? 'pending')}>
+                          <SelectTrigger className="h-10 w-full">
+                            <SelectValue>
+                              {(v) => (v === 'confirmed' ? 'ราคาจริงยืนยันแล้ว' : v === 'estimated' ? 'ประมาณการ' : 'รอราคา')}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">รอราคา</SelectItem>
+                            <SelectItem value="estimated">ประมาณการ</SelectItem>
+                            <SelectItem value="confirmed">ราคาจริงยืนยันแล้ว</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-muted-foreground mb-1">ราคาจริงต่อ {item.unit}</label>
@@ -1332,8 +1460,9 @@ function ReceiveFormInner({
           <label className="block text-xs font-medium text-muted-foreground mb-1">หมายเหตุ (ถ้ามี)</label>
           <textarea {...register('notes')} rows={2} className={`${INPUT} resize-none`} placeholder="หมายเหตุสำหรับการรับของครั้งนี้" />
         </div>
+        </div>
 
-        <div className="flex gap-3">
+        <div className="flex shrink-0 gap-3 border-t border-border bg-[var(--surface-1)] px-6 py-4">
           <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-border py-2 text-sm font-medium text-foreground hover:bg-muted/30">
             ยกเลิก
           </button>
@@ -1362,6 +1491,7 @@ function PODetailModal({
   onReceive: (id: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const { prompt, dialog: promptDialog } = usePrompt();
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['po-detail', id],
     queryFn: async () => {
@@ -1377,7 +1507,7 @@ function PODetailModal({
 
   if (isLoading || !data) {
     return (
-      <div className="flex h-full items-center justify-center gap-2 p-10 text-muted-foreground">
+      <div className="flex min-h-[320px] items-center justify-center gap-2 p-10 text-muted-foreground">
         <Loader2 className="size-5 animate-spin" /> กำลังโหลด…
       </div>
     );
@@ -1461,31 +1591,68 @@ function PODetailModal({
 
   const receipts = po.goodsReceipts ?? [];
 
-  function handleConfirmReceiptPrice(receiptItemId: string, estimated: string | null) {
-    const rawPrice = window.prompt(`ราคาจริงต่อหน่วย${estimated ? ` (ประมาณไว้ ฿${fmt(estimated)})` : ''}`);
-    if (!rawPrice) return;
-    const actualUnitCost = Number(rawPrice);
-    if (!Number.isFinite(actualUnitCost) || actualUnitCost <= 0) {
-      toast.error('ราคาจริงต้องมากกว่า 0');
-      return;
-    }
-    const reason = window.prompt('ระบุแหล่งที่มาหรือเหตุผลการยืนยันราคา');
-    if (!reason?.trim()) return;
+  async function handleConfirmReceiptPrice(receiptItemId: string, estimated: string | null) {
+    const result = await prompt({
+      title: 'ยืนยันราคาจริง',
+      description: estimated ? `ราคาที่ประมาณไว้ ฿${fmt(estimated)}` : undefined,
+      confirmLabel: 'ยืนยันราคา',
+      fields: [
+        {
+          name: 'price',
+          label: 'ราคาจริงต่อหน่วย (บาท)',
+          type: 'number',
+          required: true,
+          min: 0,
+          step: '0.01',
+          defaultValue: estimated ?? '',
+          validate: (value) => {
+            const num = Number(value);
+            return Number.isFinite(num) && num > 0 ? null : 'ราคาจริงต้องมากกว่า 0';
+          },
+        },
+        {
+          name: 'reason',
+          label: 'แหล่งที่มา / เหตุผลการยืนยันราคา',
+          type: 'textarea',
+          required: true,
+          placeholder: 'เช่น ใบกำกับภาษีเลขที่ ... / ราคาจากผู้ขาย',
+        },
+      ],
+    });
+    if (!result) return;
     startReceiptTransition(async () => {
-      const result = await confirmReceiptPrice({ goodsReceiptItemId: receiptItemId, actualUnitCost, reason: reason.trim() });
-      if (!result.ok) { toast.error(result.error); return; }
+      const r = await confirmReceiptPrice({
+        goodsReceiptItemId: receiptItemId,
+        actualUnitCost: Number(result.price),
+        reason: result.reason.trim(),
+      });
+      if (!r.ok) { toast.error(r.error); return; }
       toast.success('ยืนยันราคาจริงและบันทึกประวัติแล้ว');
       await refetch();
       await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
     });
   }
 
-  function handleVoidReceipt(goodsReceiptId: string) {
-    const reason = window.prompt('เหตุผลยกเลิกใบรับของ (ระบบจะย้อนยอดรับ)');
-    if (!reason?.trim()) return;
+  async function handleVoidReceipt(goodsReceiptId: string) {
+    const result = await prompt({
+      title: 'ยกเลิกใบรับของ',
+      description: 'ระบบจะย้อนยอดรับของกลับคืน',
+      confirmLabel: 'ยกเลิกใบรับของ',
+      variant: 'danger',
+      fields: [
+        {
+          name: 'reason',
+          label: 'เหตุผลการยกเลิก',
+          type: 'textarea',
+          required: true,
+          placeholder: 'เช่น รับผิดจำนวน / คืนของ',
+        },
+      ],
+    });
+    if (!result) return;
     startReceiptTransition(async () => {
-      const result = await voidGoodsReceipt({ goodsReceiptId, reason: reason.trim() });
-      if (!result.ok) { toast.error(result.error); return; }
+      const r = await voidGoodsReceipt({ goodsReceiptId, reason: result.reason.trim() });
+      if (!r.ok) { toast.error(r.error); return; }
       toast.success('ยกเลิกใบรับของและย้อนยอดรับแล้ว');
       await refetch();
       await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
@@ -1493,10 +1660,10 @@ function PODetailModal({
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-[var(--surface-1)] p-6">
-      <div className="mb-5 flex items-center justify-between">
+    <div className="flex min-h-0 flex-1 flex-col bg-[var(--surface-1)]">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-6 py-4">
         <div>
-          <h2 className="text-sm font-semibold text-foreground font-mono">{po.poNumber}</h2>
+          <DialogTitle className="font-mono">{po.poNumber}</DialogTitle>
           <div className="mt-1">
             <StatusBadge label={STATUS_LABEL[po.status] ?? po.status} variant={STATUS_VARIANT[po.status] ?? 'neutral'} dot />
           </div>
@@ -1516,11 +1683,13 @@ function PODetailModal({
           >
             <Printer className="size-3.5" /> พิมพ์
           </button>
-          <button type="button" aria-label="ปิด" onClick={onClose} className="text-muted-foreground hover:text-foreground text-lg">×</button>
+          <button type="button" aria-label="ปิด" onClick={onClose} className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+            <X className="size-4" />
+          </button>
         </div>
       </div>
 
-      <div className="space-y-4 text-sm">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5 text-sm">
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-xs text-muted-foreground">Supplier</p>
@@ -1668,6 +1837,7 @@ function PODetailModal({
 
         <p className="text-xs text-muted-foreground">สร้างโดย: {po.createdByUser.name}</p>
       </div>
+      {promptDialog}
     </div>
   );
 }

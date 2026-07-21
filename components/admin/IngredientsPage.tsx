@@ -1,12 +1,13 @@
 ﻿'use client';
 
 import { useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
-import { MoreHorizontal, Package, Plus, Search, SlidersHorizontal, MapPin } from 'lucide-react';
-import type { Resolver } from 'react-hook-form';
+import { MoreHorizontal, Package, Plus, Search, SlidersHorizontal, MapPin, Layers, Ruler, Boxes, Truck, X } from 'lucide-react';
+import type { Resolver, Control, FieldPath } from 'react-hook-form';
 import { cn } from '@/lib/utils';
 import {
   getIngredientPageData,
@@ -40,17 +41,20 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const COMMON_UNITS = ['กก.', 'กรัม', 'ลิตร', 'มล.', 'ชิ้น', 'แพ็ค', 'ขวด', 'ลัง', 'ถุง'];
-
-const SELECT_CLS = 'h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50';
 
 type SheetState =
   | { type: 'add' }
@@ -370,8 +374,11 @@ export function IngredientsPage({ initialData }: Props) {
         />
       </DataCard>
 
-      <Sheet open={sheet !== null} onOpenChange={(open) => { if (!open) setSheet(null); }}>
-        <SheetContent side="right" showCloseButton={false} className="gap-0 p-0 sm:max-w-[560px]">
+      <Dialog open={sheet !== null} onOpenChange={(open) => { if (!open) setSheet(null); }}>
+        <DialogContent
+          showCloseButton={false}
+          className="flex max-h-[92vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl lg:max-w-4xl"
+        >
           {sheet && (
             <IngredientForm
               key={sheet.type === 'edit' ? sheet.ingredient.id : 'new'}
@@ -382,8 +389,8 @@ export function IngredientsPage({ initialData }: Props) {
               onSaved={() => { invalidate(); setSheet(null); }}
             />
           )}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
@@ -406,6 +413,7 @@ function IngredientForm({
 
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
@@ -447,174 +455,314 @@ function IngredientForm({
     onSaved();
   }
 
-  return (
-    <form onSubmit={handleSubmit(onSubmit)} className="flex h-full flex-col">
-      <SheetHeader className="border-b border-border px-5 py-4">
-        <SheetTitle>{initial ? 'แก้ไขวัตถุดิบ' : 'เพิ่มวัตถุดิบ'}</SheetTitle>
-        <SheetDescription>ตั้งค่าหน่วยนับ จุดสั่งซื้อ Supplier และข้อมูลสำหรับนับสต็อก</SheetDescription>
-      </SheetHeader>
+  const ctrl = control as Control<FormValues>;
 
-      <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
+        <div className="flex items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Package className="size-5" />
+          </div>
+          <div className="space-y-0.5">
+            <DialogTitle>{initial ? 'แก้ไขวัตถุดิบ' : 'เพิ่มวัตถุดิบ'}</DialogTitle>
+            <DialogDescription>ตั้งค่าหน่วยนับ จุดสั่งซื้อ Supplier และข้อมูลสำหรับนับสต็อก</DialogDescription>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="ปิด"
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--surface-1)] px-6 py-5">
         {initial && (
           <input type="hidden" {...register('id' as keyof FormValues)} />
         )}
 
-        <div className="space-y-1.5">
-          <Label htmlFor="ing-name" className="text-xs text-muted-foreground">
-            ชื่อวัตถุดิบ <span className="text-destructive">*</span>
-          </Label>
-          <Input id="ing-name" {...register('name')} placeholder="เช่น เนื้อวัวสไลซ์" />
-          {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
-        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {/* Basic info — spans full width */}
+          <SectionBox icon={<Layers className="size-3.5" />} title="ข้อมูลพื้นฐาน" className="lg:col-span-2">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="ชื่อวัตถุดิบ" htmlFor="ing-name" required error={errors.name?.message} className="sm:col-span-2">
+                <Input id="ing-name" {...register('name')} placeholder="เช่น เนื้อวัวสไลซ์" />
+              </Field>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="ing-category" className="text-xs text-muted-foreground">
-              หมวด <span className="text-destructive">*</span>
-            </Label>
-            <select id="ing-category" {...register('categoryId')} className={SELECT_CLS}>
-              <option value="">เลือกหมวด</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
-            {errors.categoryId && <p className="text-xs text-destructive">{errors.categoryId.message}</p>}
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="ing-unit" className="text-xs text-muted-foreground">
-              หน่วยนับ (สต็อก) <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="ing-unit"
-              {...register('unit')}
-              list="ing-unit-suggestions"
-              placeholder="เช่น กก., ขวด"
-            />
-            <datalist id="ing-unit-suggestions">
-              {COMMON_UNITS.map((u) => <option key={u} value={u} />)}
-            </datalist>
-            {errors.unit && <p className="text-xs text-destructive">{errors.unit.message}</p>}
-          </div>
-        </div>
+              <Field label="หมวด" htmlFor="ing-category" required error={errors.categoryId?.message}>
+                <Controller
+                  control={ctrl}
+                  name={'categoryId' as FieldPath<FormValues>}
+                  render={({ field }) => (
+                    <Select
+                      value={field.value ? String(field.value) : null}
+                      onValueChange={(v) => field.onChange(v ?? '')}
+                    >
+                      <SelectTrigger id="ing-category" className="h-9 w-full">
+                        <SelectValue placeholder="เลือกหมวด">
+                          {(v) => categories.find((c) => c.id === v)?.name ?? 'เลือกหมวด'}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </Field>
 
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="ing-minstock" className="text-xs text-muted-foreground">จุดสั่งซื้อ</Label>
-            <Input
-              id="ing-minstock"
-              {...register('minStock', { valueAsNumber: true })}
-              type="number" step="0.01" min="0" placeholder="0"
-            />
-            {errors.minStock && <p className="text-xs text-destructive">{errors.minStock.message}</p>}
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="ing-parlevel" className="text-xs text-muted-foreground">ระดับที่ควรมี</Label>
-            <Input
-              id="ing-parlevel"
-              {...register('parLevel', { valueAsNumber: true })}
-              type="number" step="0.01" min="0" placeholder="0"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="ing-lastcost" className="text-xs text-muted-foreground">ราคาล่าสุด (฿)</Label>
-            <Input
-              id="ing-lastcost"
-              {...register('lastCost', { valueAsNumber: true })}
-              type="number" step="0.01" min="0" placeholder="0.00"
-            />
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-border bg-[var(--surface-2)] p-4 space-y-3">
-          <p className="text-xs font-semibold text-foreground">การจัดการสต็อก</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="ing-freq" className="text-xs text-muted-foreground">ความถี่การนับ</Label>
-              <select id="ing-freq" {...register('countFrequency' as keyof FormValues)} className={SELECT_CLS}>
-                <option value="daily">รายวัน (A/B — สด / ราคาสูง)</option>
-                <option value="weekly">รายสัปดาห์ (C — ของแห้ง)</option>
-              </select>
+              <Field label="หน่วยนับ (สต็อก)" htmlFor="ing-unit" required error={errors.unit?.message}>
+                <Controller
+                  control={ctrl}
+                  name={'unit' as FieldPath<FormValues>}
+                  render={({ field }) => {
+                    const current = field.value ? String(field.value) : '';
+                    const options = COMMON_UNITS.includes(current) || !current
+                      ? COMMON_UNITS
+                      : [current, ...COMMON_UNITS];
+                    return (
+                      <Select
+                        value={current || null}
+                        onValueChange={(v) => field.onChange(v ?? '')}
+                      >
+                        <SelectTrigger id="ing-unit" className="h-9 w-full">
+                          <SelectValue placeholder="เลือกหน่วยนับ" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {options.map((u) => (
+                            <SelectItem key={u} value={u}>{u}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    );
+                  }}
+                />
+              </Field>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="ing-yield" className="text-xs text-muted-foreground">
-                Yield (%) <span className="font-normal text-muted-foreground/70">— สูญเสียจากการเตรียม</span>
-              </Label>
-              <Input
-                id="ing-yield"
-                {...register('yieldPercent', { valueAsNumber: true })}
-                type="number" step="1" min="0" max="100" placeholder="100"
-              />
-              <p className="text-xs text-muted-foreground">100% = ไม่มีสูญเสีย, 80% = เตรียมแล้วเหลือ 80%</p>
-            </div>
-          </div>
-        </div>
+          </SectionBox>
 
-        <div className="rounded-xl border border-border bg-[var(--surface-2)] p-4 space-y-3">
-          <p className="text-xs font-semibold text-foreground">
-            หน่วยสั่งซื้อ <span className="font-normal text-muted-foreground">(ถ้าต่างจากหน่วยนับสต็อก)</span>
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="ing-orderunit" className="text-xs text-muted-foreground">หน่วยสั่งซื้อ</Label>
-              <Input
-                id="ing-orderunit"
-                {...register('orderUnit' as keyof FormValues)}
-                placeholder="เช่น ลัง, ถุง 5กก."
-              />
+          {/* Levels & price — spans full width */}
+          <SectionBox icon={<Ruler className="size-3.5" />} title="ระดับสต็อกและราคา" className="lg:col-span-2">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="จุดสั่งซื้อ" htmlFor="ing-minstock" error={errors.minStock?.message} hint="แจ้งเตือนเมื่อต่ำกว่า">
+                <Input
+                  id="ing-minstock"
+                  {...register('minStock', { valueAsNumber: true })}
+                  type="number" step="0.01" min="0" placeholder="0"
+                />
+              </Field>
+              <Field label="ระดับที่ควรมี" htmlFor="ing-parlevel" hint="Par level ที่ต้องเติมถึง">
+                <Input
+                  id="ing-parlevel"
+                  {...register('parLevel', { valueAsNumber: true })}
+                  type="number" step="0.01" min="0" placeholder="0"
+                />
+              </Field>
+              <Field label="ราคาล่าสุด (฿)" htmlFor="ing-lastcost" hint="ต่อ 1 หน่วยนับสต็อก">
+                <Input
+                  id="ing-lastcost"
+                  {...register('lastCost', { valueAsNumber: true })}
+                  type="number" step="0.01" min="0" placeholder="0.00"
+                />
+              </Field>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="ing-orderconv" className="text-xs text-muted-foreground">
-                จำนวน (หน่วยสต็อก) ต่อ 1 หน่วยสั่งซื้อ
-              </Label>
-              <Input
-                id="ing-orderconv"
-                {...register('orderUnitConversion', { valueAsNumber: true })}
-                type="number" step="0.001" min="0.001" placeholder="1"
-              />
-              <p className="text-xs text-muted-foreground">เช่น 1 ลัง = 12 ขวด → ใส่ 12</p>
-            </div>
-          </div>
-        </div>
+          </SectionBox>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="ing-storage" className="text-xs text-muted-foreground">
-              ที่จัดเก็บ <span className="font-normal text-muted-foreground/70">(ถ้ามี)</span>
-            </Label>
-            <Input
-              id="ing-storage"
-              {...register('storageLocation' as keyof FormValues)}
-              placeholder="เช่น ตู้เย็น A, ชั้น 2"
+          {/* Stock management */}
+          <SectionBox icon={<Boxes className="size-3.5" />} title="การจัดการสต็อก">
+            <div className="space-y-4">
+              <Field label="ความถี่การนับ" htmlFor="ing-freq">
+                <Controller
+                  control={ctrl}
+                  name={'countFrequency' as FieldPath<FormValues>}
+                  render={({ field }) => (
+                    <Select
+                      value={field.value ? String(field.value) : 'daily'}
+                      onValueChange={(v) => field.onChange(v ?? 'daily')}
+                    >
+                      <SelectTrigger id="ing-freq" className="h-9 w-full">
+                        <SelectValue>
+                          {(v) => (v === 'weekly' ? 'รายสัปดาห์ (C — ของแห้ง)' : 'รายวัน (A/B — สด / ราคาสูง)')}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="daily">รายวัน (A/B — สด / ราคาสูง)</SelectItem>
+                        <SelectItem value="weekly">รายสัปดาห์ (C — ของแห้ง)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </Field>
+              <Field
+                label="Yield (%)"
+                htmlFor="ing-yield"
+                labelSuffix="— สูญเสียจากการเตรียม"
+                hint="100% = ไม่มีสูญเสีย, 80% = เตรียมแล้วเหลือ 80%"
+              >
+                <Input
+                  id="ing-yield"
+                  {...register('yieldPercent', { valueAsNumber: true })}
+                  type="number" step="1" min="0" max="100" placeholder="100"
+                />
+              </Field>
+            </div>
+          </SectionBox>
+
+          {/* Order unit */}
+          <SectionBox
+            icon={<Truck className="size-3.5" />}
+            title="หน่วยสั่งซื้อ"
+            titleSuffix="(ถ้าต่างจากหน่วยนับสต็อก)"
+          >
+            <div className="space-y-4">
+              <Field label="หน่วยสั่งซื้อ" htmlFor="ing-orderunit">
+                <Input
+                  id="ing-orderunit"
+                  {...register('orderUnit' as keyof FormValues)}
+                  placeholder="เช่น ลัง, ถุง 5กก."
+                />
+              </Field>
+              <Field
+                label="จำนวน (หน่วยสต็อก) ต่อ 1 หน่วยสั่งซื้อ"
+                htmlFor="ing-orderconv"
+                hint="เช่น 1 ลัง = 12 ขวด → ใส่ 12"
+              >
+                <Input
+                  id="ing-orderconv"
+                  {...register('orderUnitConversion', { valueAsNumber: true })}
+                  type="number" step="0.001" min="0.001" placeholder="1"
+                />
+              </Field>
+            </div>
+          </SectionBox>
+
+          {/* Storage & supplier — spans full width */}
+          <SectionBox icon={<MapPin className="size-3.5" />} title="ที่จัดเก็บและ Supplier" className="lg:col-span-2">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="ที่จัดเก็บ" htmlFor="ing-storage" labelSuffix="(ถ้ามี)">
+                <Input
+                  id="ing-storage"
+                  {...register('storageLocation' as keyof FormValues)}
+                  placeholder="เช่น ตู้เย็น A, ชั้น 2"
+                />
+              </Field>
+              <Field label="Supplier หลัก" htmlFor="ing-supplier">
+                <Controller
+                  control={ctrl}
+                  name={'defaultSupplierId' as FieldPath<FormValues>}
+                  render={({ field }) => (
+                    <Select
+                      value={field.value ? String(field.value) : 'none'}
+                      onValueChange={(v) => field.onChange(v === 'none' || v == null ? '' : v)}
+                    >
+                      <SelectTrigger id="ing-supplier" className="h-9 w-full">
+                        <SelectValue>
+                          {(v) => (v && v !== 'none' ? (suppliers.find((s) => s.id === v)?.name ?? '— ไม่ระบุ —') : '— ไม่ระบุ —')}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">— ไม่ระบุ —</SelectItem>
+                        {suppliers.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </Field>
+            </div>
+          </SectionBox>
+
+          {/* Notes — spans full width */}
+          <div className="space-y-1.5 lg:col-span-2">
+            <Label htmlFor="ing-notes" className="text-xs text-muted-foreground">หมายเหตุ</Label>
+            <Textarea
+              id="ing-notes"
+              {...register('notes')}
+              placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
+              className="resize-none"
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="ing-supplier" className="text-xs text-muted-foreground">Supplier หลัก</Label>
-            <select id="ing-supplier" {...register('defaultSupplierId')} className={SELECT_CLS}>
-              <option value="">— ไม่ระบุ —</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="ing-notes" className="text-xs text-muted-foreground">หมายเหตุ</Label>
-          <Textarea
-            id="ing-notes"
-            {...register('notes')}
-            placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
-            className="resize-none"
-          />
         </div>
       </div>
 
-      <SheetFooter className="border-t border-border px-5 py-4 sm:flex-row sm:justify-end">
+      {/* Footer */}
+      <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border bg-[var(--surface-1)] px-6 py-4">
         <Button type="button" variant="outline" onClick={onClose}>ยกเลิก</Button>
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting ? 'กำลังบันทึก...' : 'บันทึก'}
         </Button>
-      </SheetFooter>
+      </div>
     </form>
+  );
+}
+
+function SectionBox({
+  icon,
+  title,
+  titleSuffix,
+  className,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  titleSuffix?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className={cn('rounded-xl border border-border bg-[var(--surface-0)] p-4 shadow-[var(--shadow-card)]', className)}>
+      <div className="mb-3 flex items-center gap-2">
+        <span className="flex size-6 items-center justify-center rounded-md bg-muted text-muted-foreground">{icon}</span>
+        <p className="text-sm font-semibold text-foreground">
+          {title}
+          {titleSuffix && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{titleSuffix}</span>}
+        </p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Field({
+  label,
+  htmlFor,
+  required,
+  error,
+  hint,
+  labelSuffix,
+  className,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  required?: boolean;
+  error?: string;
+  hint?: string;
+  labelSuffix?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={cn('space-y-1.5', className)}>
+      <Label htmlFor={htmlFor} className="text-xs text-muted-foreground">
+        {label}
+        {required && <span className="ml-0.5 text-destructive">*</span>}
+        {labelSuffix && <span className="ml-1 font-normal text-muted-foreground/70">{labelSuffix}</span>}
+      </Label>
+      {children}
+      {error ? (
+        <p className="text-xs text-destructive">{error}</p>
+      ) : hint ? (
+        <p className="text-xs text-muted-foreground">{hint}</p>
+      ) : null}
+    </div>
   );
 }
