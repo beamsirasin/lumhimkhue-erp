@@ -13,6 +13,7 @@ import {
   FlaskConical,
   Package,
   RefreshCw,
+  Rocket,
   ShoppingBag,
   TrendingUp,
 } from 'lucide-react';
@@ -105,6 +106,29 @@ function OverviewTab({ data, isRefreshing }: { data: InventoryDashboardData; isR
 
   return (
     <div className="space-y-6">
+      {!data.latestCount && (
+        <div className="rounded-xl border border-[var(--status-info-border)] bg-[var(--status-info-bg)] p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--status-info-fg)]/10 text-[var(--status-info-fg)]">
+                <Rocket className="size-5" />
+              </span>
+              <div>
+                <p className="text-base font-semibold text-[var(--status-info-fg)]">เริ่มต้นใช้งานสต็อก</p>
+                <p className="mt-1 max-w-xl text-sm text-[var(--status-info-fg)]/90">
+                  ยังไม่มีผลนับที่ตรวจรับแล้ว ให้นับของจริงครั้งแรกเพื่อกำหนดยอดเปิดของระบบก่อน
+                  ระบบจึงจะเริ่มคำนวณการใช้วัตถุดิบและคำแนะนำสั่งซื้อได้
+                </p>
+              </div>
+            </div>
+            <LinkButton href="/inventory/setup" variant="default" size="lg" className="shrink-0 justify-between">
+              <span className="inline-flex items-center gap-2"><Rocket className="size-4" /> ตั้งยอดสต็อกเริ่มต้น</span>
+              <ArrowRight className="size-4" />
+            </LinkButton>
+          </div>
+        </div>
+      )}
+
       <StatCardGrid cols={4}>
         <StatCard
           loading={isRefreshing}
@@ -220,6 +244,13 @@ function OverviewTab({ data, isRefreshing }: { data: InventoryDashboardData; isR
               <span className="inline-flex items-center gap-2">
                 <ClipboardList className="size-4" />
                 นับสต็อกวันนี้
+              </span>
+              <ArrowRight className="size-4" />
+            </LinkButton>
+            <LinkButton href="/inventory/reorder" variant="outline" size="lg" className="w-full justify-between">
+              <span className="inline-flex items-center gap-2">
+                <RefreshCw className="size-4" />
+                คำแนะนำสั่งซื้อ
               </span>
               <ArrowRight className="size-4" />
             </LinkButton>

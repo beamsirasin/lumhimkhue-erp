@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   ClipboardList,
   Package,
+  RefreshCw,
   ShoppingBag,
   TrendingUp,
   Truck,
@@ -21,6 +22,7 @@ type NavItem = {
 const ITEMS: NavItem[] = [
   { href: '/inventory', label: 'ภาพรวม', Icon: TrendingUp, exact: true },
   { href: '/inventory/count', label: 'นับสต็อก', Icon: ClipboardList, exact: false },
+  { href: '/inventory/reorder', label: 'คำแนะนำสั่งซื้อ', Icon: RefreshCw, exact: false },
   { href: '/inventory/ingredients', label: 'วัตถุดิบ', Icon: Package, exact: false },
   { href: '/inventory/suppliers', label: 'ผู้ขาย', Icon: Truck, exact: false },
   { href: '/inventory/orders', label: 'ใบสั่งซื้อ', Icon: ShoppingBag, exact: false },

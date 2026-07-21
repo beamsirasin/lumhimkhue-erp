@@ -141,6 +141,31 @@ arrived via dev-time `db:push` (no script) — present and verified.
 - **Rollback:** disable the Phase 17A application code and restore the pre-run database
   snapshot. Do not drop confirmation history or restore NOT NULL constraints in place
   without first resolving pending-price/null-supplier rows.
+### 4.4b Phase 17B inventory init & reorder draft — PENDING, NOT RUN
+
+- **Script:** `lib/db/migrate-phase17b-inventory-init-reorder.ts` (`npm run db:migrate-phase17b`).
+- **Dependency:** the Phase 17A.1 ledger key (`phase17a1_procurement_stock_integrity`) must be
+  present in `app_migrations`; the script aborts before mutation otherwise.
+- **Scope (additive only, no row values changed):**
+  - `stock_counts.count_type varchar(16) NOT NULL DEFAULT 'daily'` + CHECK `('daily','initial_setup')`.
+    Existing counts stay `daily`. `initial_setup` marks the first physical-truth count whose
+    stored usage fields are all zero (`quantity_on_hand` = counted physical).
+  - `purchase_orders.reorder_generation_key text` + unique index
+    `purchase_orders_reorder_gen_key_uq` (NULLs distinct → manual/emergency POs unaffected).
+    Idempotency tag `base_key:supplier_id` so a double "generate draft" click resolves to the
+    already-created drafts instead of duplicating them.
+  - `purchase_order_items.reorder_*` snapshot columns (all nullable): reviewed count date,
+    physical stock, par level, on-time incoming, delayed incoming, recommended stock qty,
+    recommended purchase qty. NULL on manually-entered lines; structural (never note-parsed).
+- **Safety:** read-only preflight reports reviewed-count and PO counts. All DDL/backfill/
+  constraint/ledger writes run in one Neon transaction; every statement is `IF NOT EXISTS`
+  / idempotent and the ledger gate stops a rerun.
+- **Production status:** **not executed by Phase 17B implementation work.** Requires a
+  disposable PostgreSQL migration run + manual flow UAT before any staging approval. Never
+  run against the primary/shared Neon database in this phase.
+- **Rollback:** disable Phase 17B application code; the additive columns/index are inert when
+  unused and may be left in place or dropped after restoring a pre-run snapshot.
+
 ### 4.5 `payments.idempotency_key` — applied here, **verify per environment**
 
 - Applied on the current `DATABASE_URL` (verified). If the Vercel production deployment

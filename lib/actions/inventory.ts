@@ -45,12 +45,23 @@ import {
   roundMoney,
 } from '@/lib/inventory/procurement-math';
 import {
-  calculateReorderBreakdown,
   normalizePlanningPriceStatus,
   normalizePurchaseQuantity,
 } from '@/lib/inventory/procurement-integrity';
 import { prepareCostMetadataRecalculation } from '@/lib/inventory/stock-cost-metadata';
 import { getOpenPoIncomingBreakdown } from '@/lib/inventory/reorder-db';
+import {
+  buildReorderRecommendation,
+  partitionReorderSelection,
+  reorderGenerationKeyForSupplier,
+  type ReorderSelectionLine,
+} from '@/lib/inventory/reorder-recommendation';
+import {
+  buildInitialSetupItemValues,
+  evaluateInitialSetupGate,
+  isCountedValue,
+  INITIAL_SETUP_COUNT_TYPE,
+} from '@/lib/inventory/initial-setup';
 import {
   findReviewedCountUsingMovement,
   getInventoryIntervalBreakdown,
@@ -65,7 +76,9 @@ import {
   createStockAdjustmentSchema,
   createSupplierSchema,
   emergencyPurchaseSchema,
+  generateReorderDraftSchema,
   receivePurchaseOrderSchema,
+  saveInitialSetupSchema,
   saveStockCountSchema,
   updateIngredientSchema,
   updatePurchaseOrderSchema,
@@ -999,6 +1012,14 @@ export type StockCountReorderItem = {
   defaultSupplierId: string | null;
   defaultSupplierName: string | null;
   hasDelayedOrder: boolean;
+  // Phase 17B — purchase-unit recommendation
+  purchaseUnit: string | null;
+  conversion: number | null;
+  canRecommend: boolean;
+  blockedReason: 'missing_conversion' | null;
+  recommendedPurchaseQty: number;
+  normalizedStockQty: number;
+  projectedStock: number;
 };
 
 export async function getStockCountReorderItems() {
@@ -1020,6 +1041,8 @@ export async function getStockCountReorderItems() {
                   parLevel: true,
                   lastCost: true,
                   defaultSupplierId: true,
+                  orderUnit: true,
+                  orderUnitConversion: true,
                 },
                 with: { defaultSupplier: { columns: { id: true, name: true } } },
               },
@@ -1069,12 +1092,20 @@ export async function getStockCountReorderItems() {
         const delayedIncomingQty = delayedIncoming[item.ingredient.id] ?? 0;
         const parLevel = Number(item.ingredient.parLevel);
         const minStock = Number(item.ingredient.minStock);
-        const reorder = calculateReorderBreakdown({
+        const rawConversion = Number(item.ingredient.orderUnitConversion);
+        const orderUnit = item.ingredient.orderUnit;
+        // A conversion of exactly 1 with no distinct order unit means the
+        // purchase unit is the stock unit itself — a valid 1:1 recommendation.
+        const conversion = Number.isFinite(rawConversion) && rawConversion > 0 ? rawConversion : null;
+        const recommendation = buildReorderRecommendation({
           physicalStock: quantityOnHand,
           parLevel,
           minimumStock: minStock,
           onTimeIncoming: inTransitQty,
           delayedIncoming: delayedIncomingQty,
+          conversion,
+          purchaseUnit: orderUnit ?? item.unit,
+          stockUnit: item.unit,
         });
         return {
           ingredientId: item.ingredient.id,
@@ -1085,11 +1116,18 @@ export async function getStockCountReorderItems() {
           delayedIncomingQty,
           minStock,
           parLevel,
-          reorderQty: reorder.recommendedQuantity,
+          reorderQty: recommendation.shortageStockQty,
           lastCost: Number(item.ingredient.lastCost),
           defaultSupplierId: item.ingredient.defaultSupplierId ?? null,
           defaultSupplierName: item.ingredient.defaultSupplier?.name ?? null,
           hasDelayedOrder: delayedIncomingQty > 0,
+          purchaseUnit: recommendation.purchaseUnit,
+          conversion: recommendation.conversion,
+          canRecommend: recommendation.canRecommend,
+          blockedReason: recommendation.blockedReason,
+          recommendedPurchaseQty: recommendation.recommendedPurchaseQty,
+          normalizedStockQty: recommendation.normalizedStockQty,
+          projectedStock: recommendation.projectedStock,
         };
       })
       .filter((item) => item.reorderQty > 0);
@@ -2304,5 +2342,330 @@ export async function getInventoryAlertCount(): Promise<{
     return { lowStockCount, pendingApprovalCount: pending[0]?.count ?? 0 };
   } catch {
     return { lowStockCount: 0, pendingApprovalCount: 0 };
+  }
+}
+
+// ── Phase 17B: Initial inventory setup ───────────────────────────────────────
+
+export async function getInitialSetupState() {
+  if (!await requireView()) return { ok: false as const, error: NO_PERMISSION };
+  try {
+    const [reviewedCount, existingSetup, ingredientRows, categories] = await Promise.all([
+      db.query.stockCounts.findFirst({
+        where: eq(stockCounts.status, 'reviewed'),
+        columns: { id: true, countType: true, countDate: true },
+      }),
+      db.query.stockCounts.findFirst({
+        where: eq(stockCounts.countType, INITIAL_SETUP_COUNT_TYPE),
+        orderBy: [desc(stockCounts.createdAt)],
+        with: { items: true },
+      }),
+      db.query.ingredients.findMany({
+        where: eq(ingredients.isActive, true),
+        orderBy: [asc(ingredients.name)],
+        with: { category: true },
+      }),
+      db.select().from(ingredientCategories)
+        .where(eq(ingredientCategories.isActive, true))
+        .orderBy(asc(ingredientCategories.sortOrder)),
+    ]);
+    const gate = evaluateInitialSetupGate({
+      hasReviewedCount: Boolean(reviewedCount),
+      existingSetupStatus: (existingSetup?.status ?? null) as 'draft' | 'submitted' | 'reviewed' | null,
+    });
+    return {
+      ok: true as const,
+      data: {
+        gate,
+        alreadyInitialized: Boolean(reviewedCount),
+        existingSetup: existingSetup ?? null,
+        ingredients: ingredientRows,
+        categories,
+      },
+    };
+  } catch (error) {
+    console.error('[getInitialSetupState]', error);
+    return { ok: false as const, error: GENERAL_ERROR };
+  }
+}
+
+export type InitialSetupState = NonNullable<
+  Extract<Awaited<ReturnType<typeof getInitialSetupState>>, { ok: true }>['data']
+>;
+
+export async function saveInitialSetup(input: unknown) {
+  const session = await requireStockCount();
+  if (!session) return { ok: false as const, error: NO_PERMISSION };
+  const parsed = saveInitialSetupSchema.safeParse(input);
+  if (!parsed.success) return { ok: false as const, error: parsed.error.issues[0]?.message ?? INVALID_DATA };
+  const { countDate, asDraft, notes, items } = parsed.data;
+  if (!asDraft && items.some((item) => !item.isCounted || item.physicalCount == null)) {
+    return { ok: false as const, error: 'กรุณานับให้ครบทุกวัตถุดิบก่อนยืนยันยอดเริ่มต้น' };
+  }
+  const userId = session.user.id as string;
+  try {
+    const [reviewedCount, existingSetup] = await Promise.all([
+      db.query.stockCounts.findFirst({
+        where: eq(stockCounts.status, 'reviewed'),
+        columns: { id: true },
+      }),
+      db.query.stockCounts.findFirst({
+        where: eq(stockCounts.countType, INITIAL_SETUP_COUNT_TYPE),
+        columns: { id: true, status: true },
+      }),
+    ]);
+    const gate = evaluateInitialSetupGate({
+      hasReviewedCount: Boolean(reviewedCount),
+      existingSetupStatus: (existingSetup?.status ?? null) as 'draft' | 'submitted' | 'reviewed' | null,
+    });
+    if (!gate.allowed) {
+      return { ok: false as const, error: 'ร้านนี้มีผลนับที่ตรวจรับแล้ว ไม่สามารถตั้งยอดเริ่มต้นซ้ำได้' };
+    }
+    if (existingSetup && existingSetup.status !== 'draft') {
+      return { ok: false as const, error: 'แก้ไขได้เฉพาะยอดเริ่มต้นที่ยังเป็นแบบร่าง' };
+    }
+
+    const businessDay = await ensureOpenBusinessDay(countDate);
+    const countId = existingSetup?.id ?? randomUUID();
+    const selectedIds = items.map((item) => item.ingredientId);
+    const operations: [BatchItem<'pg'>, ...BatchItem<'pg'>[]] = [
+      existingSetup
+        ? db.update(stockCounts).set({
+            status: asDraft ? 'draft' : 'submitted',
+            countType: INITIAL_SETUP_COUNT_TYPE,
+            countDate,
+            businessDayId: businessDay.id,
+            notes: notes ?? null,
+            submittedAt: asDraft ? null : new Date(),
+          }).where(eq(stockCounts.id, countId))
+        : db.insert(stockCounts).values({
+            id: countId,
+            countDate,
+            countedBy: userId,
+            status: asDraft ? 'draft' : 'submitted',
+            countType: INITIAL_SETUP_COUNT_TYPE,
+            businessDayId: businessDay.id,
+            notes: notes ?? null,
+            submittedAt: asDraft ? null : new Date(),
+          }),
+    ];
+    if (selectedIds.length > 0) {
+      operations.push(db.delete(stockCountItems).where(and(
+        eq(stockCountItems.stockCountId, countId),
+        inArray(stockCountItems.ingredientId, selectedIds),
+      )));
+    }
+    const itemValues = items.map((item) => {
+      const counted = item.isCounted && isCountedValue(item.physicalCount);
+      const values = buildInitialSetupItemValues(counted ? Number(item.physicalCount) : 0);
+      return {
+        stockCountId: countId,
+        ingredientId: item.ingredientId,
+        openingBalance: qty(values.openingBalance),
+        receivedQty: qty(0),
+        usedQty: qty(0),
+        quantityOnHand: qty(values.quantityOnHand),
+        isCounted: counted,
+        regularReceivedQty: qty(values.regularReceivedQty),
+        emergencyReceivedQty: qty(values.emergencyReceivedQty),
+        positiveAdjustmentQty: qty(values.positiveAdjustmentQty),
+        recordedWasteQty: qty(values.recordedWasteQty),
+        otherOutboundQty: qty(values.otherOutboundQty),
+        totalDepletionQty: qty(values.totalDepletionQty),
+        estimatedOperationalUsageQty: qty(values.estimatedOperationalUsageQty),
+        usageUnitCost: null,
+        usageCostStatus: 'confirmed',
+        estimatedUsageCost: null,
+        costRecalculatedAt: new Date(),
+        unit: item.unit,
+        notes: item.notes ?? null,
+      };
+    });
+    operations.push(db.insert(stockCountItems).values(itemValues));
+    operations.push(audit(
+      userId,
+      session.user.role,
+      asDraft ? 'initial_setup_draft' : 'initial_setup_submit',
+      'stock_counts',
+      countId,
+      existingSetup ? { status: existingSetup.status } : null,
+      { status: asDraft ? 'draft' : 'submitted', countType: INITIAL_SETUP_COUNT_TYPE, itemCount: items.length },
+    ));
+
+    await db.batch(operations);
+    revalidateInventory();
+    return { ok: true as const, countId };
+  } catch (error) {
+    console.error('[saveInitialSetup]', error);
+    return { ok: false as const, error: businessError(error) };
+  }
+}
+
+// ── Phase 17B: Reorder recommendation page + draft generation ────────────────
+
+export async function getReorderRecommendationPageData() {
+  if (!await requireView()) return { ok: false as const, error: NO_PERMISSION };
+  const reco = await getStockCountReorderItems();
+  if (!reco.ok) return reco;
+  try {
+    const supplierRows = await db.select({ id: suppliers.id, name: suppliers.name })
+      .from(suppliers)
+      .where(eq(suppliers.isActive, true))
+      .orderBy(asc(suppliers.name));
+    return {
+      ok: true as const,
+      data: {
+        items: reco.data.items,
+        countDate: reco.data.countDate,
+        suppliers: supplierRows,
+      },
+    };
+  } catch (error) {
+    console.error('[getReorderRecommendationPageData]', error);
+    return { ok: false as const, error: GENERAL_ERROR };
+  }
+}
+
+export type ReorderRecommendationPageData = NonNullable<
+  Extract<Awaited<ReturnType<typeof getReorderRecommendationPageData>>, { ok: true }>['data']
+>;
+
+export async function generateReorderDraft(input: unknown) {
+  const session = await requirePO();
+  if (!session) return { ok: false as const, error: NO_PERMISSION };
+  const parsed = generateReorderDraftSchema.safeParse(input);
+  if (!parsed.success) return { ok: false as const, error: parsed.error.issues[0]?.message ?? INVALID_DATA };
+  try {
+    const reco = await getStockCountReorderItems();
+    if (!reco.ok) return reco;
+    const recoMap = new Map(reco.data.items.map((item) => [item.ingredientId, item]));
+    const reviewedCountDate = reco.data.countDate;
+
+    type SelectionLine = ReorderSelectionLine & { reco: StockCountReorderItem };
+    const unknownItems: string[] = [];
+    const lines: SelectionLine[] = [];
+    for (const line of parsed.data.lines) {
+      const item = recoMap.get(line.ingredientId);
+      if (!item) { unknownItems.push(line.ingredientId); continue; }
+      lines.push({
+        ingredientId: line.ingredientId,
+        supplierId: (line.supplierId ?? item.defaultSupplierId) ?? null,
+        purchaseQuantity: line.purchaseQuantity,
+        conversion: item.conversion,
+        reco: item,
+      });
+    }
+    if (unknownItems.length > 0) {
+      return { ok: false as const, error: 'บางรายการไม่อยู่ในคำแนะนำล่าสุดแล้ว กรุณารีเฟรชหน้าคำแนะนำ' };
+    }
+    const partition = partitionReorderSelection(lines);
+    if (partition.invalidQuantity.length > 0) {
+      return { ok: false as const, error: 'มีจำนวนสั่งซื้อไม่ถูกต้อง' };
+    }
+    if (partition.invalidConversion.length > 0) {
+      return { ok: false as const, error: 'มีรายการที่ยังไม่ได้ตั้งค่าหน่วยสั่งซื้อ (conversion) กรุณาตั้งค่าก่อนสร้างใบสั่งซื้อ' };
+    }
+    if (partition.missingSupplier.length > 0) {
+      return { ok: false as const, error: 'มีรายการที่ยังไม่ได้เลือก Supplier กรุณาเลือก Supplier ก่อน' };
+    }
+
+    const orderDate = getBangkokBusinessDate();
+    const businessDay = await ensureOpenBusinessDay(orderDate);
+    const costs = await ingredientCostMap(lines.map((line) => line.ingredientId));
+
+    let created = 0;
+    let duplicated = 0;
+    const poIds: string[] = [];
+    for (const group of partition.groups) {
+      const genKey = reorderGenerationKeyForSupplier(parsed.data.idempotencyKey, group.supplierId);
+      const existing = await db.query.purchaseOrders.findFirst({
+        where: eq(purchaseOrders.reorderGenerationKey, genKey),
+        columns: { id: true },
+      });
+      if (existing) { duplicated += 1; poIds.push(existing.id); continue; }
+
+      const poId = randomUUID();
+      const poNumber = await getNextPoNumber();
+      const groupItems = group.lines.map((line) => {
+        const conversion = line.conversion as number;
+        const normalized = normalizePurchaseQuantity(line.purchaseQuantity, conversion);
+        const lastCost = costs.get(line.ingredientId) ?? 0;
+        const priceStatus = lastCost > 0 ? ('estimated' as const) : ('pending' as const);
+        return { line, conversion, normalized, lastCost, priceStatus };
+      });
+      const totals = calculatePurchaseTotals(groupItems.map((gi) => ({
+        quantity: gi.normalized,
+        priceStatus: gi.priceStatus,
+        estimatedUnitCost: gi.priceStatus === 'estimated' ? gi.lastCost : null,
+        confirmedUnitCost: null,
+      })), 7);
+      const operations: [BatchItem<'pg'>, ...BatchItem<'pg'>[]] = [
+        db.insert(purchaseOrders).values({
+          id: poId,
+          poNumber,
+          supplierId: group.supplierId,
+          status: 'draft',
+          businessDayId: businessDay.id,
+          purchaseType: 'supplier_order',
+          orderDate,
+          expectedDate: null,
+          subtotal: money(totals.subtotal)!,
+          vatRate: '7.00',
+          vatAmount: money(totals.vatAmount)!,
+          total: money(totals.total)!,
+          priceStatus: totals.priceStatus,
+          hasPendingPrices: totals.priceStatus !== 'confirmed',
+          confirmedSubtotal: '0',
+          confirmedVatAmount: '0',
+          confirmedTotal: '0',
+          estimatedSubtotal: money(totals.subtotal),
+          estimatedVatAmount: money(totals.vatAmount),
+          estimatedTotal: money(totals.total),
+          pendingPriceItemCount: totals.pendingItemCount,
+          hasTaxInvoice: false,
+          taxInvoiceNumber: null,
+          reorderGenerationKey: genKey,
+          notes: 'สร้างจากคำแนะนำสั่งซื้อของผลนับที่ตรวจรับแล้ว',
+          createdBy: session.user.id as string,
+        }),
+        db.insert(purchaseOrderItems).values(groupItems.map((gi) => {
+          const item = gi.line.reco;
+          const unitCost = gi.priceStatus === 'pending' ? null : gi.lastCost;
+          return {
+            purchaseOrderId: poId,
+            ingredientId: gi.line.ingredientId,
+            quantity: qty(gi.normalized),
+            unit: item.unit,
+            purchaseQuantity: qty(gi.line.purchaseQuantity),
+            purchaseUnit: item.purchaseUnit ?? item.unit,
+            purchaseUnitConversion: String(gi.conversion),
+            unitCost: money(unitCost),
+            lineTotal: unitCost == null ? null : money(gi.normalized * unitCost),
+            lastCostSnapshot: money(gi.lastCost),
+            estimatedUnitCost: gi.priceStatus === 'estimated' ? money(unitCost) : null,
+            confirmedUnitCost: null,
+            priceStatus: gi.priceStatus,
+            reorderReviewedCountDate: reviewedCountDate,
+            reorderPhysicalStock: qty(item.quantityOnHand),
+            reorderParLevel: qty(item.parLevel),
+            reorderOnTimeIncoming: qty(item.inTransitQty),
+            reorderDelayedIncoming: qty(item.delayedIncomingQty),
+            reorderRecommendedStockQty: qty(item.reorderQty),
+            reorderRecommendedPurchaseQty: qty(item.recommendedPurchaseQty),
+          };
+        })),
+      ];
+      await db.batch(operations);
+      created += 1;
+      poIds.push(poId);
+    }
+    revalidateInventory();
+    return {
+      ok: true as const,
+      data: { created, duplicated, supplierCount: partition.groups.length, poIds },
+    };
+  } catch (error) {
+    console.error('[generateReorderDraft]', error);
+    return { ok: false as const, error: businessError(error) };
   }
 }

@@ -186,6 +186,40 @@ export const emergencyPurchaseSchema = z.object({
   });
 });
 
+// ── Phase 17B: initial inventory setup ───────────────────────────────────────
+
+export const saveInitialSetupSchema = z.object({
+  countDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'วันที่ไม่ถูกต้อง'),
+  asDraft: z.boolean(),
+  notes: toNullableString.optional(),
+  items: z.array(z.object({
+    ingredientId: z.string().uuid(),
+    /** null/blank = ยังไม่ได้นับ; 0 = นับแล้วและของหมด. */
+    physicalCount: toNullableNumber,
+    isCounted: z.boolean(),
+    unit: z.string().min(1),
+    notes: toNullableString.optional(),
+  })).min(1, 'ยังไม่มีวัตถุดิบให้ตั้งยอด'),
+});
+
+export type SaveInitialSetupInput = z.infer<typeof saveInitialSetupSchema>;
+
+// ── Phase 17B: generate draft PO from reorder recommendation ─────────────────
+
+export const generateReorderDraftSchema = z.object({
+  /** Client-generated idempotency key; one per "generate" click. */
+  idempotencyKey: z.string().min(16).max(64),
+  lines: z.array(z.object({
+    ingredientId: z.string().uuid(),
+    /** Supplier override; may be null → the action rejects the line explicitly. */
+    supplierId: toNullableUuid.optional(),
+    /** User-adjusted whole purchase-unit quantity. */
+    purchaseQuantity: z.coerce.number().positive('จำนวนสั่งซื้อต้องมากกว่า 0'),
+  })).min(1, 'กรุณาเลือกอย่างน้อย 1 รายการ'),
+});
+
+export type GenerateReorderDraftInput = z.infer<typeof generateReorderDraftSchema>;
+
 export type PoItemInput = z.infer<typeof poItemSchema>;
 export type CreatePurchaseOrderInput = z.infer<typeof createPurchaseOrderSchema>;
 export type UpdatePurchaseOrderInput = z.infer<typeof updatePurchaseOrderSchema>;

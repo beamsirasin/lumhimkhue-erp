@@ -969,6 +969,8 @@ export const stockCounts = pgTable(
       .notNull()
       .references(() => users.id),
     status: stockCountStatusEnum('status').notNull().default('draft'),
+    /** Phase 17B: 'daily' operational count vs 'initial_setup' first physical truth. */
+    countType: varchar('count_type', { length: 16 }).notNull().default('daily'),
     branchId: uuid('branch_id').references(() => branches.id),
     businessDayId: uuid('business_day_id').references(() => storeBusinessDays.id),
     notes: text('notes'),
@@ -1055,6 +1057,8 @@ export const purchaseOrders = pgTable(
     hasTaxInvoice: boolean('has_tax_invoice').notNull().default(false),
     taxInvoiceNumber: text('tax_invoice_number'),
     cancelledRemainingReason: text('cancelled_remaining_reason'),
+    /** Phase 17B: idempotency tag for reorder-generated drafts (base_key:supplier_id). */
+    reorderGenerationKey: text('reorder_generation_key'),
     notes: text('notes'),
     createdBy: uuid('created_by')
       .notNull()
@@ -1066,6 +1070,7 @@ export const purchaseOrders = pgTable(
     index('purchase_orders_supplier_idx').on(t.supplierId),
     index('purchase_orders_status_idx').on(t.status),
     index('purchase_orders_date_idx').on(t.orderDate),
+    uniqueIndex('purchase_orders_reorder_gen_key_uq').on(t.reorderGenerationKey),
   ],
 );
 
@@ -1118,6 +1123,14 @@ export const purchaseOrderItems = pgTable(
     purchaseUnit: text('purchase_unit'),
     purchaseUnitConversion: numeric('purchase_unit_conversion', { precision: 10, scale: 4 }),
     receivedQuantity: numeric('received_quantity', { precision: 10, scale: 2 }),
+    /** Phase 17B reorder snapshot (nullable — only set on reorder-generated draft lines). */
+    reorderReviewedCountDate: date('reorder_reviewed_count_date'),
+    reorderPhysicalStock: numeric('reorder_physical_stock', { precision: 10, scale: 2 }),
+    reorderParLevel: numeric('reorder_par_level', { precision: 10, scale: 2 }),
+    reorderOnTimeIncoming: numeric('reorder_on_time_incoming', { precision: 10, scale: 2 }),
+    reorderDelayedIncoming: numeric('reorder_delayed_incoming', { precision: 10, scale: 2 }),
+    reorderRecommendedStockQty: numeric('reorder_recommended_stock_qty', { precision: 10, scale: 2 }),
+    reorderRecommendedPurchaseQty: numeric('reorder_recommended_purchase_qty', { precision: 10, scale: 2 }),
   },
   (t) => [index('po_items_po_idx').on(t.purchaseOrderId)],
 );

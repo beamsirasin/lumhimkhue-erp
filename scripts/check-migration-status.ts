@@ -330,6 +330,23 @@ const GROUPS: Group[] = [
       { kind: 'index', index: 'purchase_price_confirmations_receipt_item_uq' },
     ],
   },
+  {
+    id: 'phase17b-inventory-init-reorder',
+    source: 'lib/db/migrate-phase17b-inventory-init-reorder.ts — REQUIRED before deploying Phase 17B initial-setup + reorder-draft code (Drizzle selects these columns on stock_counts / purchase_orders / purchase_order_items queries)',
+    severity: 'CRITICAL',
+    reqs: [
+      { kind: 'column', table: 'stock_counts', column: 'count_type' },
+      { kind: 'column', table: 'purchase_orders', column: 'reorder_generation_key' },
+      { kind: 'column', table: 'purchase_order_items', column: 'reorder_reviewed_count_date' },
+      { kind: 'column', table: 'purchase_order_items', column: 'reorder_physical_stock' },
+      { kind: 'column', table: 'purchase_order_items', column: 'reorder_par_level' },
+      { kind: 'column', table: 'purchase_order_items', column: 'reorder_on_time_incoming' },
+      { kind: 'column', table: 'purchase_order_items', column: 'reorder_delayed_incoming' },
+      { kind: 'column', table: 'purchase_order_items', column: 'reorder_recommended_stock_qty' },
+      { kind: 'column', table: 'purchase_order_items', column: 'reorder_recommended_purchase_qty' },
+      { kind: 'index', index: 'purchase_orders_reorder_gen_key_uq' },
+    ],
+  },
 ];
 
 export async function runMigrationStatusCheck(
