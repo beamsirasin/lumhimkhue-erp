@@ -1,4 +1,6 @@
 import type { NextAuthConfig } from 'next-auth';
+import { can } from '@/lib/auth/permissions';
+import { canAccessProtectedAdminPath } from '@/lib/auth/inventory-access';
 
 /**
  * Route protection — two tiers:
@@ -10,9 +12,9 @@ import type { NextAuthConfig } from 'next-auth';
  *      the module list and must never be locked out by it.
  */
 
-// All admin routes are owner-only. Listing them here gives middleware coverage
-// in addition to the app/(admin)/layout.tsx guard (defense in depth for routes
-// such as /inventory/* and /recipes not historically in this list).
+// Admin routes remain owner-only except Inventory, which is governed by the
+// explicit inventory:view permission. The shared helper is also used by the
+// admin layout so navigation and direct URLs make the same decision.
 const adminPrefixes = [
   '/dashboard', '/menu', '/pricing-tiles', '/users', '/reports',
   '/settings', '/hr', '/inventory', '/recipes', '/branches', '/system',
@@ -53,9 +55,10 @@ export const authConfig: NextAuthConfig = {
 
       // --- Tier 1: role-based checks ---
 
-      // All admin paths require owner role.
+      // Owner bypass remains unchanged. Inventory is permission-gated; every
+      // other admin path stays owner-only.
       if (adminPrefixes.some((p) => pathname.startsWith(p))) {
-        if (role !== 'owner') {
+        if (!canAccessProtectedAdminPath(role, pathname, can(role, 'inventory:view'))) {
           return Response.redirect(new URL('/', nextUrl.origin));
         }
       }

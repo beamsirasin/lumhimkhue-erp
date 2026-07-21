@@ -970,9 +970,12 @@ export const stockCounts = pgTable(
       .references(() => users.id),
     status: stockCountStatusEnum('status').notNull().default('draft'),
     branchId: uuid('branch_id').references(() => branches.id),
+    businessDayId: uuid('business_day_id').references(() => storeBusinessDays.id),
     notes: text('notes'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     submittedAt: timestamp('submitted_at'),
+    reviewedAt: timestamp('reviewed_at'),
+    reviewedBy: uuid('reviewed_by').references(() => users.id),
   },
   (t) => [
     uniqueIndex('stock_counts_date_unique').on(t.countDate),
@@ -998,6 +1001,22 @@ export const stockCountItems = pgTable(
     usedQty: numeric('used_qty', { precision: 10, scale: 2 }).notNull().default('0'),
     /** คงเหลือ = openingBalance + receivedQty − usedQty (stored computed) */
     quantityOnHand: numeric('quantity_on_hand', { precision: 10, scale: 2 }).notNull().default('0'),
+    /** Phase 17A: distinguishes an explicit zero (หมด) from a row not counted yet. */
+    isCounted: boolean('is_counted').notNull().default(true),
+    openingSourceCountId: uuid('opening_source_count_id').references(() => stockCounts.id),
+    openingSourceDate: date('opening_source_date'),
+    openingOverrideReason: text('opening_override_reason'),
+    regularReceivedQty: numeric('regular_received_qty', { precision: 10, scale: 2 }).notNull().default('0'),
+    emergencyReceivedQty: numeric('emergency_received_qty', { precision: 10, scale: 2 }).notNull().default('0'),
+    positiveAdjustmentQty: numeric('positive_adjustment_qty', { precision: 10, scale: 2 }).notNull().default('0'),
+    recordedWasteQty: numeric('recorded_waste_qty', { precision: 10, scale: 2 }).notNull().default('0'),
+    otherOutboundQty: numeric('other_outbound_qty', { precision: 10, scale: 2 }).notNull().default('0'),
+    totalDepletionQty: numeric('total_depletion_qty', { precision: 10, scale: 2 }).notNull().default('0'),
+    estimatedOperationalUsageQty: numeric('estimated_operational_usage_qty', { precision: 10, scale: 2 }).notNull().default('0'),
+    usageUnitCost: numeric('usage_unit_cost', { precision: 12, scale: 4 }),
+    usageCostStatus: varchar('usage_cost_status', { length: 16 }).notNull().default('pending'),
+    estimatedUsageCost: numeric('estimated_usage_cost', { precision: 12, scale: 2 }),
+    costRecalculatedAt: timestamp('cost_recalculated_at'),
     unit: text('unit').notNull(),
     notes: text('notes'),
   },
@@ -1009,11 +1028,14 @@ export const purchaseOrders = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     poNumber: text('po_number').notNull().unique(),
-    supplierId: uuid('supplier_id')
-      .notNull()
-      .references(() => suppliers.id),
+    supplierId: uuid('supplier_id').references(() => suppliers.id),
     status: purchaseOrderStatusEnum('status').notNull().default('draft'),
     branchId: uuid('branch_id').references(() => branches.id),
+    businessDayId: uuid('business_day_id').references(() => storeBusinessDays.id),
+    purchaseType: varchar('purchase_type', { length: 24 }).notNull().default('supplier_order'),
+    vendorName: text('vendor_name'),
+    purchasedAt: timestamp('purchased_at'),
+    sourcePurchaseOrderId: uuid('source_purchase_order_id'),
     orderDate: date('order_date').notNull(),
     expectedDate: date('expected_date'),
     receivedDate: date('received_date'),
@@ -1021,8 +1043,18 @@ export const purchaseOrders = pgTable(
     vatRate: numeric('vat_rate', { precision: 5, scale: 2 }).notNull().default('7.00'),
     vatAmount: numeric('vat_amount', { precision: 12, scale: 2 }).notNull().default('0'),
     total: numeric('total', { precision: 12, scale: 2 }).notNull().default('0'),
+    priceStatus: varchar('price_status', { length: 16 }).notNull().default('pending'),
+    hasPendingPrices: boolean('has_pending_prices').notNull().default(true),
+    confirmedSubtotal: numeric('confirmed_subtotal', { precision: 12, scale: 2 }),
+    confirmedVatAmount: numeric('confirmed_vat_amount', { precision: 12, scale: 2 }),
+    confirmedTotal: numeric('confirmed_total', { precision: 12, scale: 2 }),
+    estimatedSubtotal: numeric('estimated_subtotal', { precision: 12, scale: 2 }),
+    estimatedVatAmount: numeric('estimated_vat_amount', { precision: 12, scale: 2 }),
+    estimatedTotal: numeric('estimated_total', { precision: 12, scale: 2 }),
+    pendingPriceItemCount: integer('pending_price_item_count').notNull().default(0),
     hasTaxInvoice: boolean('has_tax_invoice').notNull().default(false),
     taxInvoiceNumber: text('tax_invoice_number'),
+    cancelledRemainingReason: text('cancelled_remaining_reason'),
     notes: text('notes'),
     createdBy: uuid('created_by')
       .notNull()
@@ -1049,6 +1081,8 @@ export const stockCountAdjustments = pgTable(
       .references(() => ingredients.id),
     adjustmentQty: numeric('adjustment_qty', { precision: 10, scale: 2 }).notNull(),
     adjustmentType: adjustmentTypeEnum('adjustment_type').notNull().default('adjustment'),
+    businessDayId: uuid('business_day_id').references(() => storeBusinessDays.id),
+    effectiveDate: date('effective_date'),
     reason: text('reason').notNull(),
     createdBy: uuid('created_by')
       .notNull()
@@ -1073,8 +1107,16 @@ export const purchaseOrderItems = pgTable(
       .references(() => ingredients.id),
     quantity: numeric('quantity', { precision: 10, scale: 2 }).notNull(),
     unit: text('unit').notNull(),
-    unitCost: numeric('unit_cost', { precision: 10, scale: 2 }).notNull(),
-    lineTotal: numeric('line_total', { precision: 12, scale: 2 }).notNull(),
+    /** Legacy/planning cost. Nullable means the supplier price was unknown. */
+    unitCost: numeric('unit_cost', { precision: 10, scale: 2 }),
+    lineTotal: numeric('line_total', { precision: 12, scale: 2 }),
+    lastCostSnapshot: numeric('last_cost_snapshot', { precision: 10, scale: 2 }),
+    estimatedUnitCost: numeric('estimated_unit_cost', { precision: 10, scale: 2 }),
+    confirmedUnitCost: numeric('confirmed_unit_cost', { precision: 10, scale: 2 }),
+    priceStatus: varchar('price_status', { length: 16 }).notNull().default('pending'),
+    purchaseQuantity: numeric('purchase_quantity', { precision: 10, scale: 2 }),
+    purchaseUnit: text('purchase_unit'),
+    purchaseUnitConversion: numeric('purchase_unit_conversion', { precision: 10, scale: 4 }),
     receivedQuantity: numeric('received_quantity', { precision: 10, scale: 2 }),
   },
   (t) => [index('po_items_po_idx').on(t.purchaseOrderId)],
@@ -1090,16 +1132,23 @@ export const goodsReceipts = pgTable(
     purchaseOrderId: uuid('purchase_order_id')
       .notNull()
       .references(() => purchaseOrders.id),
+    businessDayId: uuid('business_day_id').references(() => storeBusinessDays.id),
     receivedDate: date('received_date').notNull(),
+    idempotencyKey: varchar('idempotency_key', { length: 64 }),
+    receiptImageUrl: text('receipt_image_url'),
     notes: text('notes'),
     receivedBy: uuid('received_by')
       .notNull()
       .references(() => users.id),
     createdAt: timestamp('created_at').notNull().defaultNow(),
+    voidedAt: timestamp('voided_at'),
+    voidedBy: uuid('voided_by').references(() => users.id),
+    voidReason: text('void_reason'),
   },
   (t) => [
     index('goods_receipts_po_idx').on(t.purchaseOrderId),
     index('goods_receipts_date_idx').on(t.receivedDate),
+    uniqueIndex('goods_receipts_idempotency_key_uq').on(t.idempotencyKey),
   ],
 );
 
@@ -1114,10 +1163,39 @@ export const goodsReceiptItems = pgTable(
       .notNull()
       .references(() => purchaseOrderItems.id),
     receivedQuantity: numeric('received_quantity', { precision: 10, scale: 2 }).notNull(),
+    receivedPurchaseQuantity: numeric('received_purchase_quantity', { precision: 10, scale: 2 }),
+    purchaseUnit: text('purchase_unit'),
+    purchaseUnitConversion: numeric('purchase_unit_conversion', { precision: 10, scale: 4 }),
+    stockUnit: text('stock_unit'),
     discrepancyType: discrepancyTypeEnum('discrepancy_type').notNull().default('none'),
     discrepancyNotes: text('discrepancy_notes'),
+    estimatedUnitCost: numeric('estimated_unit_cost', { precision: 10, scale: 2 }),
+    actualUnitCost: numeric('actual_unit_cost', { precision: 10, scale: 2 }),
+    priceStatus: varchar('price_status', { length: 16 }).notNull().default('pending'),
+    priceConfirmedAt: timestamp('price_confirmed_at'),
+    priceConfirmedBy: uuid('price_confirmed_by').references(() => users.id),
   },
   (t) => [index('goods_receipt_items_receipt_idx').on(t.goodsReceiptId)],
+);
+
+/** Immutable price-finalization history. Current price lives on goods_receipt_items. */
+export const purchasePriceConfirmations = pgTable(
+  'purchase_price_confirmations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    goodsReceiptItemId: uuid('goods_receipt_item_id')
+      .notNull()
+      .references(() => goodsReceiptItems.id),
+    estimatedUnitCost: numeric('estimated_unit_cost', { precision: 10, scale: 2 }),
+    previousActualUnitCost: numeric('previous_actual_unit_cost', { precision: 10, scale: 2 }),
+    actualUnitCost: numeric('actual_unit_cost', { precision: 10, scale: 2 }).notNull(),
+    varianceAmount: numeric('variance_amount', { precision: 12, scale: 2 }),
+    variancePercent: numeric('variance_percent', { precision: 9, scale: 2 }),
+    reason: text('reason').notNull(),
+    confirmedBy: uuid('confirmed_by').notNull().references(() => users.id),
+    confirmedAt: timestamp('confirmed_at').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('purchase_price_confirmations_receipt_item_uq').on(t.goodsReceiptItemId)],
 );
 
 // ─── Recipe Tables ───────────────────────────────────────────────────────────
@@ -1834,7 +1912,7 @@ export const goodsReceiptsRelations = relations(goodsReceipts, ({ one, many }) =
   items: many(goodsReceiptItems),
 }));
 
-export const goodsReceiptItemsRelations = relations(goodsReceiptItems, ({ one }) => ({
+export const goodsReceiptItemsRelations = relations(goodsReceiptItems, ({ one, many }) => ({
   goodsReceipt: one(goodsReceipts, {
     fields: [goodsReceiptItems.goodsReceiptId],
     references: [goodsReceipts.id],
@@ -1843,6 +1921,15 @@ export const goodsReceiptItemsRelations = relations(goodsReceiptItems, ({ one })
     fields: [goodsReceiptItems.purchaseOrderItemId],
     references: [purchaseOrderItems.id],
   }),
+  priceConfirmations: many(purchasePriceConfirmations),
+}));
+
+export const purchasePriceConfirmationsRelations = relations(purchasePriceConfirmations, ({ one }) => ({
+  goodsReceiptItem: one(goodsReceiptItems, {
+    fields: [purchasePriceConfirmations.goodsReceiptItemId],
+    references: [goodsReceiptItems.id],
+  }),
+  confirmedByUser: one(users, { fields: [purchasePriceConfirmations.confirmedBy], references: [users.id] }),
 }));
 
 // ─── HR Relations ─────────────────────────────────────────────────────────────
@@ -2046,6 +2133,8 @@ export type GoodsReceipt = typeof goodsReceipts.$inferSelect;
 export type NewGoodsReceipt = typeof goodsReceipts.$inferInsert;
 export type GoodsReceiptItem = typeof goodsReceiptItems.$inferSelect;
 export type NewGoodsReceiptItem = typeof goodsReceiptItems.$inferInsert;
+export type PurchasePriceConfirmation = typeof purchasePriceConfirmations.$inferSelect;
+export type NewPurchasePriceConfirmation = typeof purchasePriceConfirmations.$inferInsert;
 
 // ─── HR Types ─────────────────────────────────────────────────────────────────
 

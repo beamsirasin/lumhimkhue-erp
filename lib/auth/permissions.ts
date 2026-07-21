@@ -19,6 +19,14 @@ export type Action =
   | 'stock_count:create'
   | 'purchase_order:manage'
   | 'purchase_order:approve'
+  | 'purchase_price:confirm'
+  | 'goods_receipt:void'
+  | 'goods_receipt:over_receive'
+  | 'purchase_emergency:create'
+  | 'purchase_order:cancel_remaining'
+  | 'stock_count:override_opening'
+  | 'stock_count:review'
+  | 'stock_count:unreview'
   | 'recipe:manage'
   | 'hr:manage'
   // --- Phase 1: granular payment & cash-control permissions (colon-style) ---
@@ -55,6 +63,14 @@ const PERMISSIONS: Record<Role, Action[]> = {
     'stock_count:create',
     'purchase_order:manage',
     'purchase_order:approve',
+    'purchase_price:confirm',
+    'goods_receipt:void',
+    'goods_receipt:over_receive',
+    'purchase_emergency:create',
+    'purchase_order:cancel_remaining',
+    'stock_count:override_opening',
+    'stock_count:review',
+    'stock_count:unreview',
     'recipe:manage',
     'hr:manage',
     // Phase 1
@@ -86,6 +102,14 @@ const PERMISSIONS: Record<Role, Action[]> = {
     'inventory:edit',
     'stock_count:create',
     'purchase_order:manage',
+    'purchase_price:confirm',
+    'goods_receipt:void',
+    'goods_receipt:over_receive',
+    'purchase_emergency:create',
+    'purchase_order:cancel_remaining',
+    'stock_count:override_opening',
+    'stock_count:review',
+    'stock_count:unreview',
     'recipe:manage',
     // Phase 1
     'payment:void',
