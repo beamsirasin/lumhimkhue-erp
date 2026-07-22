@@ -27,6 +27,8 @@ export type PromptField = {
   hint?: string;
   min?: number;
   step?: string;
+  /** Quick-pick chips that fill this field on click (still editable after). */
+  presets?: string[];
   /** Return an error string to block submission, or null when valid. */
   validate?: (value: string, all: Record<string, string>) => string | null;
 };
@@ -124,6 +126,25 @@ export function usePrompt() {
                   {field.label}
                   {field.required && <span className="ml-0.5 text-[var(--status-danger-fg)]">*</span>}
                 </Label>
+                {field.presets && field.presets.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {field.presets.map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => onChange(preset)}
+                        className={cn(
+                          'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                          value === preset
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border bg-[var(--surface-1)] text-muted-foreground hover:text-foreground',
+                        )}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {field.type === 'textarea' ? (
                   <Textarea
                     id={`prompt-${field.name}`}

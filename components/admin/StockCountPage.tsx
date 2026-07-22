@@ -204,8 +204,13 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily', permi
           label: 'เหตุผลที่แก้ยอดยกมา',
           type: 'textarea',
           required: true,
-          hint: 'บังคับระบุเพื่อบันทึกประวัติ (audit)',
-          placeholder: 'เช่น ปรับตามยอดจริงหลังตรวจนับซ้ำ',
+          presets: [
+            'ปรับตามยอดจริงหลังตรวจนับซ้ำ',
+            'ยอดยกมาเดิมบันทึกผิด',
+            'รับของเพิ่มหลังปิดรอบก่อนหน้า',
+          ],
+          hint: 'เลือกเหตุผลด้านบน หรือพิมพ์เอง · บังคับระบุเพื่อบันทึกประวัติ (audit)',
+          placeholder: 'หรือพิมพ์เหตุผลอื่น…',
         },
       ],
     });

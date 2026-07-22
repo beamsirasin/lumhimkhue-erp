@@ -29,6 +29,7 @@ import {
   purchaseOrderItems,
   purchaseOrders,
   purchasePriceConfirmations,
+  recipeIngredients,
   sessionGuests,
   sessions,
   stockCountAdjustments,
@@ -301,6 +302,43 @@ export async function toggleIngredientActive(id: string) {
     return { ok: true as const };
   } catch (error) {
     console.error('[toggleIngredientActive]', error);
+    return { ok: false as const, error: GENERAL_ERROR };
+  }
+}
+
+export async function deleteIngredient(id: string) {
+  const session = await requireEdit();
+  if (!session) return { ok: false as const, error: NO_PERMISSION };
+  try {
+    const row = await db.query.ingredients.findFirst({
+      where: eq(ingredients.id, id),
+      columns: { id: true, name: true },
+    });
+    if (!row) return { ok: false as const, error: 'ไม่พบวัตถุดิบ' };
+
+    // History must stay intact — refuse a hard delete when the ingredient is
+    // referenced anywhere, and steer the user to deactivate instead.
+    const [countItem, poItem, adjustment, recipeItem] = await Promise.all([
+      db.select({ id: stockCountItems.id }).from(stockCountItems).where(eq(stockCountItems.ingredientId, id)).limit(1),
+      db.select({ id: purchaseOrderItems.id }).from(purchaseOrderItems).where(eq(purchaseOrderItems.ingredientId, id)).limit(1),
+      db.select({ id: stockCountAdjustments.id }).from(stockCountAdjustments).where(eq(stockCountAdjustments.ingredientId, id)).limit(1),
+      db.select({ id: recipeIngredients.id }).from(recipeIngredients).where(eq(recipeIngredients.ingredientId, id)).limit(1),
+    ]);
+    if (countItem.length || poItem.length || adjustment.length || recipeItem.length) {
+      return {
+        ok: false as const,
+        error: 'วัตถุดิบนี้ถูกใช้ในการนับสต็อก ใบสั่งซื้อ หรือสูตรอาหารแล้ว จึงลบไม่ได้ — กรุณาปิดใช้งานแทน',
+      };
+    }
+
+    await db.batch([
+      db.delete(ingredients).where(eq(ingredients.id, id)),
+      audit(session.user.id as string, session.user.role, 'delete', 'ingredients', id, { name: row.name }, null),
+    ]);
+    revalidateInventory();
+    return { ok: true as const };
+  } catch (error) {
+    console.error('[deleteIngredient]', error);
     return { ok: false as const, error: GENERAL_ERROR };
   }
 }

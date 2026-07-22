@@ -14,6 +14,7 @@ import {
   createIngredient,
   updateIngredient,
   toggleIngredientActive,
+  deleteIngredient,
   type IngredientPageData,
   type IngredientRow,
 } from '@/lib/actions/inventory';
@@ -33,6 +34,7 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { DataCard } from '@/components/ui/section-card';
 import { DataTable } from '@/components/ui/data-table';
+import { useConfirm } from '@/components/shared/ConfirmDialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -80,6 +82,7 @@ export function IngredientsPage({ initialData }: Props) {
   const [catFilter, setCatFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const qc = useQueryClient();
+  const { openConfirm, dialog: confirmDialog } = useConfirm();
 
   const { data = initialData, isFetching } = useQuery({
     queryKey: ['ingredients'],
@@ -101,6 +104,22 @@ export function IngredientsPage({ initialData }: Props) {
       else invalidate();
     },
   });
+
+  const { mutate: doDelete } = useMutation({
+    mutationFn: (id: string) => deleteIngredient(id),
+    onSuccess: (r) => {
+      if (!r.ok) toast.error(r.error);
+      else { toast.success('ลบวัตถุดิบแล้ว'); invalidate(); }
+    },
+  });
+
+  function confirmDelete(ing: IngredientRow) {
+    openConfirm(
+      `ลบวัตถุดิบ “${ing.name}” ? หากวัตถุดิบเคยถูกใช้ในการนับสต็อก ใบสั่งซื้อ หรือสูตรอาหาร จะลบไม่ได้ — ให้ปิดใช้งานแทน`,
+      () => doDelete(ing.id),
+      { confirmLabel: 'ลบวัตถุดิบ', variant: 'danger' },
+    );
+  }
 
   const filteredIngredients = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -233,6 +252,10 @@ export function IngredientsPage({ initialData }: Props) {
               onClick={() => doToggle(ing.id)}
             >
               {ing.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={() => confirmDelete(ing)}>
+              ลบ
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -391,6 +414,8 @@ export function IngredientsPage({ initialData }: Props) {
           )}
         </DialogContent>
       </Dialog>
+
+      {confirmDialog}
     </AppShell>
   );
 }
