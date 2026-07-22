@@ -11,22 +11,16 @@ import {
   Truck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { INVENTORY_NAV_ITEMS } from '@/lib/inventory/inventory-nav';
 
-type NavItem = {
-  href: string;
-  label: string;
-  Icon: typeof Package;
-  exact: boolean;
+const ICONS: Record<string, typeof Package> = {
+  '/inventory': TrendingUp,
+  '/inventory/count': ClipboardList,
+  '/inventory/reorder': RefreshCw,
+  '/inventory/orders': ShoppingBag,
+  '/inventory/ingredients': Package,
+  '/inventory/suppliers': Truck,
 };
-
-const ITEMS: NavItem[] = [
-  { href: '/inventory', label: 'ภาพรวม', Icon: TrendingUp, exact: true },
-  { href: '/inventory/count', label: 'นับสต็อก', Icon: ClipboardList, exact: false },
-  { href: '/inventory/reorder', label: 'คำแนะนำสั่งซื้อ', Icon: RefreshCw, exact: false },
-  { href: '/inventory/ingredients', label: 'วัตถุดิบ', Icon: Package, exact: false },
-  { href: '/inventory/suppliers', label: 'ผู้ขาย', Icon: Truck, exact: false },
-  { href: '/inventory/orders', label: 'ใบสั่งซื้อ', Icon: ShoppingBag, exact: false },
-];
 
 export function InventorySubNav() {
   const pathname = usePathname();
@@ -36,7 +30,8 @@ export function InventorySubNav() {
       aria-label="เมนูคลังวัตถุดิบ"
       className="flex gap-1 overflow-x-auto border-b [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      {ITEMS.map(({ href, label, Icon, exact }) => {
+      {INVENTORY_NAV_ITEMS.map(({ href, label, exact }) => {
+        const Icon = ICONS[href] ?? Package;
         const active = exact
           ? pathname === href
           : pathname === href || pathname.startsWith(`${href}/`);

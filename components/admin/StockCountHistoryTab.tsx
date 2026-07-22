@@ -4,9 +4,11 @@ import { useState, useEffect, useTransition, useMemo } from 'react';
 import { toast } from 'sonner';
 import {
   AlertTriangle,
+  ArrowRight,
   ClipboardList,
   Loader2,
   Trash2,
+  PackageCheck,
   PenLine,
   X,
   Eye,
@@ -34,6 +36,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -330,6 +333,7 @@ export function StockCountHistoryTab({
   const [isDeleting, startDeleteTransition] = useTransition();
   const [isReviewing, startReviewTransition] = useTransition();
   const [isUnreviewing, startUnreviewTransition] = useTransition();
+  const [reviewedDone, setReviewedDone] = useState(false);
 
   async function loadCounts() {
     setLoading(true);
@@ -353,16 +357,17 @@ export function StockCountHistoryTab({
 
   async function handleReview(count: StockCountListItem) {
     const result = await prompt({
-      title: 'ตรวจรับผลนับสต็อก',
-      description: `วันที่ ${fmtDate(count.countDate)}`,
-      confirmLabel: 'ยืนยันตรวจรับ',
+      title: 'ยืนยันยอดปิดร้าน',
+      description: `วันที่ ${fmtDate(count.countDate)} — เมื่อยืนยันแล้ว ยอดนี้จะเป็นยอดยกมาของการนับครั้งถัดไป`,
+      confirmLabel: 'ยืนยันยอดปิดร้าน',
       fields: [
         {
           name: 'reason',
-          label: 'เหตุผล / หมายเหตุการตรวจรับ',
+          label: 'เหตุผล / หมายเหตุการยืนยัน',
           type: 'textarea',
           required: true,
-          placeholder: 'เช่น ตรวจสอบยอดถูกต้องครบถ้วน',
+          presets: ['ตรวจสอบยอดถูกต้องครบถ้วน', 'ยืนยันยอดปิดร้านประจำวัน'],
+          placeholder: 'หรือพิมพ์หมายเหตุอื่น…',
         },
       ],
     });
@@ -370,7 +375,7 @@ export function StockCountHistoryTab({
     startReviewTransition(async () => {
       const r = await reviewStockCount(count.id, result.reason.trim());
       if (!r.ok) { toast.error(r.error); return; }
-      toast.success('ยืนยันการตรวจสอบแล้ว');
+      setReviewedDone(true);
       await loadCounts();
     });
   }
@@ -575,6 +580,26 @@ export function StockCountHistoryTab({
           isPending={isDeleting}
         />
       )}
+
+      <Dialog open={reviewedDone} onOpenChange={(open) => { if (!open) setReviewedDone(false); }}>
+        <DialogContent showCloseButton={false} className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-[var(--status-success-bg)] text-[var(--status-success-fg)]">
+              <PackageCheck className="size-6" />
+            </div>
+            <DialogTitle className="text-center">ยืนยันยอดปิดร้านแล้ว</DialogTitle>
+            <DialogDescription className="text-center">
+              ยอดนี้จะเป็นยอดยกมาของการนับครั้งถัดไป และระบบพร้อมคำนวณคำแนะนำสั่งซื้อให้แล้ว
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:flex-row sm:justify-center">
+            <Button variant="outline" onClick={() => setReviewedDone(false)}>ปิด</Button>
+            <Button onClick={() => { setReviewedDone(false); router.push('/inventory/reorder'); }}>
+              ดูคำแนะนำสั่งซื้อ <ArrowRight className="size-4" />
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {promptDialog}
     </div>

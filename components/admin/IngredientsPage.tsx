@@ -372,7 +372,7 @@ export function IngredientsPage({ initialData }: Props) {
             <EmptyState
               icon={<Package className="size-5" />}
               title={hasFilters ? 'ไม่พบวัตถุดิบที่ตรงกัน' : 'ยังไม่มีวัตถุดิบ'}
-              description={hasFilters ? 'ลองเปลี่ยนคำค้นหาหรือตัวกรองหมวดหมู่' : 'เพิ่มวัตถุดิบแรกเพื่อเริ่มจัดการสต็อก'}
+              description={hasFilters ? 'ลองเปลี่ยนคำค้นหาหรือตัวกรองหมวดหมู่' : 'เริ่มจากเพิ่มผู้ขายและวัตถุดิบที่ต้องนับ พร้อมตั้งหน่วยนับ หน่วยสั่งซื้อ และจุดสั่งซื้อ'}
               size="sm"
               action={
                 hasFilters ? (

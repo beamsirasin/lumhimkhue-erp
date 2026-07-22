@@ -37,6 +37,7 @@ import {
 import { getInventoryDashboard, type InventoryDashboardData } from '@/lib/actions/inventory';
 import { getDailyVariance, type VarianceRow } from '@/lib/actions/inventory-variance';
 import { checkReorderNeeded, createDraftPOFromReorder, type ReorderItem } from '@/lib/actions/reorder';
+import { buildInventoryNextStep, type NextActionTone } from '@/lib/inventory/next-step';
 import { cn } from '@/lib/utils';
 import { formatThaiDate, formatThaiLongDate } from '@/lib/date-time';
 
@@ -59,7 +60,7 @@ const STATUS_CONFIG: Record<string, { label: string; variant: BadgeVariant }> = 
 const TABS: { key: DashTab; label: string; description: string; Icon: typeof Package }[] = [
   { key: 'overview', label: 'ภาพรวม', description: 'สถานะสต็อกล่าสุด', Icon: Package },
   { key: 'variance', label: 'Variance', description: 'ตรวจความคลาดเคลื่อน', Icon: FlaskConical },
-  { key: 'reorder', label: 'Auto-Reorder', description: 'สร้าง PO จากจุดสั่งซื้อ', Icon: RefreshCw },
+  { key: 'reorder', label: 'เครื่องมือเดิม', description: 'ตรวจ Auto-Reorder แบบด่วน (เดิม)', Icon: RefreshCw },
 ];
 
 function fmt(n: string | number) {
@@ -100,34 +101,71 @@ function LinkButton({
   );
 }
 
+const NEXT_STEP_TONE: Record<NextActionTone, { card: string; chip: string }> = {
+  primary: { card: 'border-[var(--status-info-border)] bg-[var(--status-info-bg)]', chip: 'text-[var(--status-info-fg)]' },
+  info: { card: 'border-[var(--status-info-border)] bg-[var(--status-info-bg)]', chip: 'text-[var(--status-info-fg)]' },
+  warning: { card: 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)]', chip: 'text-[var(--status-warning-fg)]' },
+  success: { card: 'border-[var(--status-success-border)] bg-[var(--status-success-bg)]', chip: 'text-[var(--status-success-fg)]' },
+};
+
+function nextStepIcon(key: string) {
+  if (key.includes('ingredient') || key === 'up-to-date') return Package;
+  if (key.includes('initial-setup')) return Rocket;
+  if (key.includes('count')) return ClipboardList;
+  if (key.includes('recommendation')) return RefreshCw;
+  return ShoppingBag;
+}
+
+function NextStepCard({ data }: { data: InventoryDashboardData }) {
+  const { primary, secondary } = buildInventoryNextStep(data.nextStepSignals);
+  const tone = NEXT_STEP_TONE[primary.tone];
+  const Icon = nextStepIcon(primary.key);
+  return (
+    <div className={cn('rounded-xl border p-5 shadow-[var(--shadow-card)]', tone.card)}>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-start gap-3">
+          <span className={cn('flex size-11 shrink-0 items-center justify-center rounded-xl bg-background/60', tone.chip)}>
+            <Icon className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className={cn('text-[11px] font-semibold uppercase tracking-widest', tone.chip)}>สิ่งที่ต้องทำต่อ</p>
+              {primary.step && <StatusBadge label={primary.step} variant="info" />}
+            </div>
+            <p className="mt-1 text-lg font-semibold text-foreground">{primary.title}</p>
+            <p className="mt-0.5 max-w-2xl text-sm text-muted-foreground">{primary.description}</p>
+          </div>
+        </div>
+        <LinkButton href={primary.href} variant="default" size="lg" className="shrink-0 justify-between">
+          <span className="inline-flex items-center gap-2"><Icon className="size-4" /> {primary.ctaLabel}</span>
+          <ArrowRight className="size-4" />
+        </LinkButton>
+      </div>
+      {secondary.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-2 border-t border-border/60 pt-3">
+          {secondary.map((action) => (
+            <Link
+              key={action.key}
+              href={action.href}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/70 px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {action.title}
+              <ChevronRight className="size-3.5" />
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OverviewTab({ data, isRefreshing }: { data: InventoryDashboardData; isRefreshing: boolean }) {
   const latestCountLabel = data.latestCount ? fmtDate(data.latestCount.countDate) : 'ยังไม่มีข้อมูล';
   const latestCountStatus = data.latestCount ? getStatusConfig(data.latestCount.status) : null;
 
   return (
     <div className="space-y-6">
-      {!data.latestCount && (
-        <div className="rounded-xl border border-[var(--status-info-border)] bg-[var(--status-info-bg)] p-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--status-info-fg)]/10 text-[var(--status-info-fg)]">
-                <Rocket className="size-5" />
-              </span>
-              <div>
-                <p className="text-base font-semibold text-[var(--status-info-fg)]">เริ่มต้นใช้งานสต็อก</p>
-                <p className="mt-1 max-w-xl text-sm text-[var(--status-info-fg)]/90">
-                  ยังไม่มีผลนับที่ตรวจรับแล้ว ให้นับของจริงครั้งแรกเพื่อกำหนดยอดเปิดของระบบก่อน
-                  ระบบจึงจะเริ่มคำนวณการใช้วัตถุดิบและคำแนะนำสั่งซื้อได้
-                </p>
-              </div>
-            </div>
-            <LinkButton href="/inventory/setup" variant="default" size="lg" className="shrink-0 justify-between">
-              <span className="inline-flex items-center gap-2"><Rocket className="size-4" /> ตั้งยอดสต็อกเริ่มต้น</span>
-              <ArrowRight className="size-4" />
-            </LinkButton>
-          </div>
-        </div>
-      )}
+      <NextStepCard data={data} />
 
       <StatCardGrid cols={4}>
         <StatCard
@@ -607,8 +645,18 @@ function ReorderTab() {
 
   return (
     <div className="space-y-5">
+      <div className="rounded-xl border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] p-3 text-sm text-[var(--status-warning-fg)]">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <span>นี่คือเครื่องมือเดิม — แนะนำให้ใช้หน้า “แนะนำให้ซื้อ” ซึ่งปัดหน่วยสั่งซื้อและเก็บที่มาของคำแนะนำให้ครบ</span>
+          <LinkButton href="/inventory/reorder" variant="outline" size="sm" className="shrink-0">
+            ไปหน้าแนะนำให้ซื้อ
+            <ArrowRight className="size-3.5" />
+          </LinkButton>
+        </div>
+      </div>
+
       <DataCard
-        title="Auto-Reorder"
+        title="Auto-Reorder (เครื่องมือเดิม)"
         subtitle="ตรวจรายการที่สต็อกต่ำกว่า Par Level แล้วสร้าง PO แยกตามผู้ขาย"
         actions={
           items ? (

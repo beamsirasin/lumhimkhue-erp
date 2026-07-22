@@ -81,6 +81,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { formatThaiDate } from '@/lib/date-time';
+import {
+  PO_LIFECYCLE_STEPS,
+  PO_STATUS_DESCRIPTIONS,
+  poStepIndex,
+  type PoStatus,
+} from '@/lib/inventory/purchase-order-flow';
 import { EmergencyPurchaseDialog } from '@/components/admin/EmergencyPurchaseDialog';
 import { usePrompt } from '@/components/shared/PromptDialog';
 import type { InventoryUiPermissions } from '@/lib/auth/inventory-access';
@@ -90,14 +96,14 @@ import type { InventoryUiPermissions } from '@/lib/auth/inventory-access';
 const INPUT = 'w-full rounded-lg border border-border bg-background text-foreground px-3 py-2 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50';
 
 const STATUS_LABEL: Record<string, string> = {
-  draft: 'ร่าง',
+  draft: 'ฉบับร่าง',
   pending_approval: 'รออนุมัติ',
-  ordered: 'ยืนยันแล้ว',
-  partial_received: 'รับบางส่วน',
-  received: 'รับของแล้ว',
+  ordered: 'ส่งให้ผู้ขายแล้ว',
+  partial_received: 'รับของบางส่วน',
+  received: 'รับของครบแล้ว',
   cancelled: 'ยกเลิก',
   delayed: 'ล่าช้า',
-  pending_price: 'รอราคา',
+  pending_price: 'ยังไม่ทราบราคา',
   emergency: 'ซื้อฉุกเฉิน',
 };
 
@@ -129,6 +135,48 @@ function fmt(n: string | number | null | undefined) {
 
 function fmtDate(d: string) {
   return formatThaiDate(d, d);
+}
+
+function PoStepper({ status }: { status: PoStatus }) {
+  const current = poStepIndex(status);
+  if (current < 0) {
+    return (
+      <div className="rounded-lg border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-3 py-2 text-xs text-[var(--status-danger-fg)]">
+        {PO_STATUS_DESCRIPTIONS[status]}
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-xl border border-border bg-[var(--surface-2)] p-3">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
+        {PO_LIFECYCLE_STEPS.map((step, idx) => {
+          const done = idx < current;
+          const active = idx === current;
+          return (
+            <div key={step.status} className="flex items-center gap-1.5">
+              <span
+                className={cn(
+                  'flex size-5 items-center justify-center rounded-full text-[10px] font-semibold',
+                  done
+                    ? 'bg-[var(--status-success-fg)] text-white'
+                    : active
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground',
+                )}
+              >
+                {done ? '✓' : idx + 1}
+              </span>
+              <span className={cn('text-xs', active ? 'font-semibold text-foreground' : 'text-muted-foreground')}>
+                {step.label}
+              </span>
+              {idx < PO_LIFECYCLE_STEPS.length - 1 && <span className="text-muted-foreground/60">›</span>}
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">{PO_STATUS_DESCRIPTIONS[status]}</p>
+    </div>
+  );
 }
 
 type Modal =
@@ -513,7 +561,7 @@ export function PurchaseOrdersPage({ initialData, initialSupplierFilter, permiss
             <EmptyState
               icon={<ShoppingBag className="size-6" />}
               title={hasFilters ? 'ไม่พบใบสั่งซื้อที่ตรงกับตัวกรอง' : 'ยังไม่มีใบสั่งซื้อ'}
-              description={hasFilters ? 'ลองล้างตัวกรองหรือค้นหาด้วยคำอื่น' : 'เริ่มสร้างใบสั่งซื้อแรกเพื่อส่งต่อไปยังขั้นตอนอนุมัติและรับของ'}
+              description={hasFilters ? 'ลองล้างตัวกรองหรือค้นหาด้วยคำอื่น' : 'เริ่มจากหน้า “แนะนำให้ซื้อ” เพื่อสร้างใบสั่งซื้อฉบับร่างจากยอดนับล่าสุด หรือกดปุ่ม “สร้างใบสั่งซื้อ” ด้านบน'}
               action={hasFilters ? <Button type="button" variant="outline" onClick={resetFilters}>ล้างตัวกรอง</Button> : undefined}
             />
           }
@@ -1690,6 +1738,9 @@ function PODetailModal({
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5 text-sm">
+        {po.purchaseType !== 'emergency_direct' && (
+          <PoStepper status={po.status as PoStatus} />
+        )}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-xs text-muted-foreground">Supplier</p>

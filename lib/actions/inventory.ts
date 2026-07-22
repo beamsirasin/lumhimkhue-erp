@@ -2216,6 +2216,9 @@ export async function getInventoryDashboard() {
       todayCount,
       recentOrders,
       countHistory,
+      initialSetup,
+      draftPoRow,
+      pendingApprovalRow,
     ] = await Promise.all([
       db.select({ count: sql<number>`count(*)::int` })
         .from(ingredients)
@@ -2254,6 +2257,7 @@ export async function getInventoryDashboard() {
       db.query.stockCounts.findFirst({
         where: eq(stockCounts.countDate, today),
         columns: { id: true, status: true, countDate: true },
+        with: { items: { columns: { id: true, isCounted: true } } },
       }),
       db.query.purchaseOrders.findMany({
         orderBy: [desc(purchaseOrders.createdAt)],
@@ -2268,7 +2272,35 @@ export async function getInventoryDashboard() {
           items: { columns: { id: true, isCounted: true } },
         },
       }),
+      db.query.stockCounts.findFirst({
+        where: eq(stockCounts.countType, INITIAL_SETUP_COUNT_TYPE),
+        orderBy: [desc(stockCounts.createdAt)],
+        columns: { id: true, status: true },
+      }),
+      db.select({ count: sql<number>`count(*)::int` })
+        .from(purchaseOrders).where(eq(purchaseOrders.status, 'draft')),
+      db.select({ count: sql<number>`count(*)::int` })
+        .from(purchaseOrders).where(eq(purchaseOrders.status, 'pending_approval')),
     ]);
+    const recommendationResult = await getStockCountReorderItems();
+    const recommendationCount = recommendationResult.ok ? recommendationResult.data.items.length : 0;
+
+    const hasReviewedCount = Boolean(latestCount);
+    const todayItems = todayCount?.items ?? [];
+    const nextStepSignals = {
+      hasIngredients: (totalIngredients[0]?.count ?? 0) > 0,
+      hasReviewedCount,
+      initialSetupStatus: hasReviewedCount
+        ? null
+        : ((initialSetup?.status ?? null) as 'draft' | 'submitted' | 'reviewed' | null),
+      todayCountStatus: (todayCount?.status ?? null) as 'draft' | 'submitted' | 'reviewed' | null,
+      todayCounted: todayItems.filter((item) => item.isCounted).length,
+      todayTotal: todayItems.length,
+      recommendationCount,
+      draftPoCount: draftPoRow[0]?.count ?? 0,
+      pendingApprovalPoCount: pendingApprovalRow[0]?.count ?? 0,
+      awaitingReceiptCount: pendingOrders[0]?.count ?? 0,
+    };
     const lowStockItems = latestCount
       ? latestCount.items.filter((item) => (
           item.isCounted && Number(item.quantityOnHand) < Number(item.ingredient.minStock)
@@ -2287,6 +2319,7 @@ export async function getInventoryDashboard() {
         lowStockItems,
         recentOrders,
         countHistory,
+        nextStepSignals,
       },
     };
   } catch (error) {

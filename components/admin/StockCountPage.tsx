@@ -681,11 +681,11 @@ export function StockCountPage({ initialData, today, defaultTab = 'daily', permi
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Button variant="outline" className="flex-1" disabled={isPending} onClick={() => save(true)}>
                   {isPending && <Loader2 className="size-4 animate-spin" />}
-                  บันทึกแบบร่าง
+                  บันทึกไว้ก่อน
                 </Button>
                 <Button className="flex-1" disabled={isPending || uncountedCount > 0} onClick={() => save(false)}>
                   {isPending && <Loader2 className="size-4 animate-spin" />}
-                  ส่งผลนับ ({uncountedCount > 0 ? `เหลือ ${uncountedCount}` : 'ครบแล้ว'})
+                  ส่งให้ตรวจ ({uncountedCount > 0 ? `เหลืออีก ${uncountedCount}` : 'ครบแล้ว'})
                 </Button>
               </div>
             </div>

@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ClipboardList, PackagePlus, RefreshCw, ShoppingBag, TriangleAlert } from 'lucide-react';
+import { ArrowRight, ChevronDown, ClipboardList, Info, PackagePlus, PackageCheck, RefreshCw, ShoppingBag, TriangleAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   generateReorderDraft,
@@ -17,6 +17,14 @@ import { Input } from '@/components/ui/input';
 import { DataCard } from '@/components/ui/section-card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { StatusBadge } from '@/components/ui/status-badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -46,6 +54,8 @@ export function ReorderRecommendationPage({ initialData, permissions }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const [result, setResult] = useState<{ created: number; duplicated: number; supplierCount: number } | null>(null);
+  const [detailsFor, setDetailsFor] = useState<Set<string>>(() => new Set());
 
   const [state, setState] = useState<Record<string, LineState>>(() => {
     const initial: Record<string, LineState> = {};
@@ -108,20 +118,10 @@ export function ReorderRecommendationPage({ initialData, permissions }: Props) {
       return;
     }
     startTransition(async () => {
-      const result = await generateReorderDraft({ idempotencyKey, lines });
-      if (!result.ok) { toast.error(result.error); return; }
-      const { created, duplicated, supplierCount } = result.data;
-      if (created === 0 && duplicated > 0) {
-        toast.info('ใบสั่งซื้อร่างนี้ถูกสร้างไว้แล้ว ระบบไม่สร้างซ้ำ');
-      } else {
-        toast.success(
-          `สร้างใบสั่งซื้อร่าง ${created} ใบ (แยกตาม Supplier ${supplierCount} ราย`
-          + (duplicated > 0 ? ` · มี ${duplicated} ใบที่มีอยู่แล้ว)` : ')'),
-        );
-      }
+      const response = await generateReorderDraft({ idempotencyKey, lines });
+      if (!response.ok) { toast.error(response.error); return; }
       setIdempotencyKey(crypto.randomUUID());
-      router.push('/inventory/orders');
-      router.refresh();
+      setResult(response.data);
     });
   }
 
@@ -144,14 +144,19 @@ export function ReorderRecommendationPage({ initialData, permissions }: Props) {
   return (
     <AppShell>
       <PageHeader
-        title="คำแนะนำสั่งซื้อ"
-        subtitle={`อ้างอิงผลนับที่ตรวจรับล่าสุด ${formatThaiDate(initialData.countDate)} · ${items.length.toLocaleString('th-TH')} รายการที่ต่ำกว่าเป้า`}
+        title="แนะนำให้ซื้อ"
+        subtitle={`อ้างอิงผลนับที่ยืนยันล่าสุด ${formatThaiDate(initialData.countDate)} · ${items.length.toLocaleString('th-TH')} รายการที่ต่ำกว่าเป้า`}
         actions={
           <Button variant="outline" onClick={() => router.refresh()}>
             <RefreshCw className="size-4" /> รีเฟรช
           </Button>
         }
       />
+
+      <div className="flex items-start gap-2.5 rounded-xl border border-[var(--status-info-border)] bg-[var(--status-info-bg)] p-3 text-sm text-[var(--status-info-fg)]">
+        <Info className="mt-0.5 size-4 shrink-0" />
+        <span>ระบบคำนวณจากยอดนับล่าสุด เป้าหมายสต็อก (Par) และของที่สั่งแล้วซึ่งจะมาตรงเวลา — เป็นเพียงคำแนะนำ ตรวจและแก้จำนวนก่อนสร้างใบสั่งซื้อได้เสมอ</span>
+      </div>
 
       {items.length === 0 ? (
         <DataCard>
@@ -182,6 +187,12 @@ export function ReorderRecommendationPage({ initialData, permissions }: Props) {
                   state={state[item.ingredientId]}
                   suppliers={initialData.suppliers}
                   disabled={!canManage}
+                  showDetails={detailsFor.has(item.ingredientId)}
+                  onToggleDetails={() => setDetailsFor((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(item.ingredientId)) next.delete(item.ingredientId); else next.add(item.ingredientId);
+                    return next;
+                  })}
                   onPatch={(next) => patch(item.ingredientId, next)}
                 />
               ))}
@@ -209,6 +220,36 @@ export function ReorderRecommendationPage({ initialData, permissions }: Props) {
           )}
         </>
       )}
+
+      <Dialog open={result !== null} onOpenChange={(open) => { if (!open) { setResult(null); router.refresh(); } }}>
+        <DialogContent showCloseButton={false} className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-[var(--status-success-bg)] text-[var(--status-success-fg)]">
+              <PackageCheck className="size-6" />
+            </div>
+            <DialogTitle className="text-center">
+              {result && result.created > 0 ? 'สร้างใบสั่งซื้อฉบับร่างแล้ว' : 'ใบสั่งซื้อร่างนี้มีอยู่แล้ว'}
+            </DialogTitle>
+            <DialogDescription className="text-center">
+              {result && result.created > 0 ? (
+                <>สร้าง {result.created} ใบ แยกตาม Supplier {result.supplierCount} ราย
+                {result.duplicated > 0 && <> · มี {result.duplicated} ใบที่สร้างไว้ก่อนแล้ว</>}
+                <br />ยังเป็น “ฉบับร่าง” — ตรวจและแก้จำนวนก่อนส่งให้ผู้ขาย</>
+              ) : (
+                'ระบบไม่สร้างซ้ำ กดตรวจใบสั่งซื้อเพื่อดูฉบับร่างที่มีอยู่'
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="sm:flex-row sm:justify-center">
+            <Button variant="outline" onClick={() => { setResult(null); router.push('/inventory'); }}>
+              กลับหน้าภาพรวม
+            </Button>
+            <Button onClick={() => { setResult(null); router.push('/inventory/orders'); }}>
+              ตรวจใบสั่งซื้อ <ArrowRight className="size-4" />
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
@@ -218,12 +259,16 @@ function ReorderRow({
   state,
   suppliers,
   disabled,
+  showDetails,
+  onToggleDetails,
   onPatch,
 }: {
   item: StockCountReorderItem;
   state: LineState | undefined;
   suppliers: ReorderRecommendationPageData['suppliers'];
   disabled: boolean;
+  showDetails: boolean;
+  onToggleDetails: () => void;
   onPatch: (next: Partial<LineState>) => void;
 }) {
   const selected = state?.selected ?? false;
@@ -254,30 +299,40 @@ function ReorderRow({
             )}
           </div>
 
-          {/* Figures */}
-          <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-3 lg:grid-cols-4">
-            <Figure label="คงเหลือจริง" value={`${fmt(item.quantityOnHand)} ${item.unit}`} />
-            <Figure label="ระดับที่ควรมี (Par)" value={`${fmt(item.parLevel)} ${item.unit}`} />
-            <Figure label="Minimum" value={`${fmt(item.minStock)} ${item.unit}`} />
-            <Figure label="กำลังเข้า (ตรงเวลา)" value={`${fmt(item.inTransitQty)} ${item.unit}`} />
+          {/* Essential figures — always visible */}
+          <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-4">
+            <Figure label="ของเหลือล่าสุด" value={`${fmt(item.quantityOnHand)} ${item.unit}`} />
+            <Figure label="เป้าหมายที่ควรมี" value={`${fmt(item.parLevel)} ${item.unit}`} />
+            <Figure label="ขาดอยู่" value={`${fmt(item.reorderQty)} ${item.unit}`} highlight />
             <Figure
-              label="ขาดตามหน่วยสต็อก"
-              value={`${fmt(item.reorderQty)} ${item.unit}`}
-              highlight
-            />
-            <Figure
-              label="หน่วยสั่งซื้อ"
-              value={item.conversion ? `1 ${item.purchaseUnit ?? item.unit} = ${fmt(item.conversion)} ${item.unit}` : '—'}
-            />
-            <Figure
-              label="แนะนำ (หน่วยซื้อ)"
+              label="ระบบแนะนำ"
               value={item.canRecommend ? `${fmt(item.recommendedPurchaseQty, 0)} ${item.purchaseUnit ?? item.unit}` : '—'}
             />
-            <Figure
-              label="รวมสต็อกหลังรับครบ"
-              value={item.canRecommend ? `${fmt(item.projectedStock)} ${item.unit}` : '—'}
-            />
           </div>
+
+          <button
+            type="button"
+            onClick={onToggleDetails}
+            className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+          >
+            <ChevronDown className={cn('size-3.5 transition-transform', showDetails && 'rotate-180')} />
+            {showDetails ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
+          </button>
+          {showDetails && (
+            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg bg-muted/40 p-2.5 text-xs sm:grid-cols-3">
+              <Figure label="ขั้นต่ำ (Minimum)" value={`${fmt(item.minStock)} ${item.unit}`} />
+              <Figure label="กำลังมา (ตรงเวลา)" value={`${fmt(item.inTransitQty)} ${item.unit}`} />
+              <Figure label="กำลังมา (ล่าช้า)" value={item.delayedIncomingQty > 0 ? `${fmt(item.delayedIncomingQty)} ${item.unit}` : '—'} />
+              <Figure
+                label="หน่วยสั่งซื้อ"
+                value={item.conversion ? `1 ${item.purchaseUnit ?? item.unit} = ${fmt(item.conversion)} ${item.unit}` : 'ยังไม่ตั้งค่า'}
+              />
+              <Figure
+                label="เมื่อรับครบจะมี"
+                value={item.canRecommend ? `${fmt(item.projectedStock)} ${item.unit}` : '—'}
+              />
+            </div>
+          )}
 
           {/* Editable controls */}
           {item.canRecommend ? (
